@@ -1,0 +1,7 @@
+apiVersion: aws.managed.openshift.io/v1alpha1
+kind: AccountPool
+metadata:
+  name: example-accountpool
+spec:
+  # Add fields here
+  size: 3
