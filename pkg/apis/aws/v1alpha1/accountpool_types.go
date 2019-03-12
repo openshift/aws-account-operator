@@ -10,6 +10,7 @@ import (
 // AccountPoolSpec defines the desired state of AccountPool
 // +k8s:openapi-gen=true
 type AccountPoolSpec struct {
+	PoolSize string `json:"poolsize"`
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
