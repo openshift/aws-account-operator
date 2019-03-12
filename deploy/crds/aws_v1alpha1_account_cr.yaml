@@ -1,0 +1,7 @@
+apiVersion: aws.managed.openshift.io/v1alpha1
+kind: Account
+metadata:
+  name: example-account
+spec:
+  # Add fields here
+  size: 3
