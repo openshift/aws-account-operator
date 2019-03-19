@@ -218,5 +218,5 @@ func getStsCredentials(client awsclient.Client, awsAccountID string) (*sts.Assum
 		return nil, err
 	}
 
-	return assumeRoleOutput, err
+	return assumeRoleOutput, nil
 }
