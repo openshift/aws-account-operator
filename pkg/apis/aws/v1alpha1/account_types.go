@@ -13,6 +13,9 @@ type AccountSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
+	AwsAccountID  string `json:"awsaccountid"`
+	IAMUserSecret string `json:"iamusersecret"`
+	ClaimLink     string `json:"claimlink"`
 }
 
 // AccountStatus defines the observed state of Account
@@ -21,6 +24,8 @@ type AccountStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
+	Claimed bool   `json:"claimed"`
+	State   string `json:"state"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
