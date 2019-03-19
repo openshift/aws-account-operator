@@ -7,8 +7,8 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/openshift/aws-account-operator/aws-account-operator/pkg/apis"
-	"github.com/openshift/aws-account-operator/aws-account-operator/pkg/controller"
+	"github.com/openshift/aws-account-operator/pkg/apis"
+	"github.com/openshift/aws-account-operator/pkg/controller"
 
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"github.com/operator-framework/operator-sdk/pkg/leader"

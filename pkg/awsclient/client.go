@@ -58,6 +58,9 @@ type Client interface {
 	ListAccounts(*organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error)
 	CreateAccount(*organizations.CreateAccountInput) (*organizations.CreateAccountOutput, error)
 	DescribeCreateAccountStatus(*organizations.DescribeCreateAccountStatusInput) (*organizations.DescribeCreateAccountStatusOutput, error)
+
+	//sts
+	AssumeRole(*sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error)
 }
 
 type awsClient struct {

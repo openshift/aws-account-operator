@@ -180,7 +180,7 @@ func (r *ReconcileAccount) getAWSClient(awsAccessID, awsAccessSecret, region str
 
 // getAwsAccountId searches the list of accounts in the orgnaization and returns the
 // AWS account ID for the account which matches the AWS account name
-func getAwsAccountId(client awsclient.Client, awsAccountName string) (*string, error) {
+func getAwsAccountID(client awsclient.Client, awsAccountName string) (*string, error) {
 	var id *string
 	awsAccountList, err := client.ListAccounts(&organizations.ListAccountsInput{})
 	if err != nil {
@@ -192,11 +192,11 @@ func getAwsAccountId(client awsclient.Client, awsAccountName string) (*string, e
 			id = accountStatus.Id
 		}
 	}
-
+	return id, nil
 }
 
 // getStsCredentials returns sts credentials for the specified account ARN
-func getStsCredentials(client awsclient.Client, awsAccountId string) (*sts.AssumeRoleOutput, error) {
+func getStsCredentials(client awsclient.Client, awsAccountID string) (*sts.AssumeRoleOutput, error) {
 	// Use the role session name to uniquely identify a session when the same role
 	// is assumed by different principals or for different reasons.
 	var roleSessionName = "awsAccountOperator"
@@ -205,7 +205,7 @@ func getStsCredentials(client awsclient.Client, awsAccountId string) (*sts.Assum
 	var roleSessionDuration int64 = 3600
 	// The role ARN made up of the account number and the role which is the default role name
 	// created in child accounts
-	var roleArn = fmt.Sprintf("arn:aws:iam::%s:role/OrganizationAccountAccessRole", awsAccountId)
+	var roleArn = fmt.Sprintf("arn:aws:iam::%s:role/OrganizationAccountAccessRole", awsAccountID)
 	// Build input for AssumeRole
 	assumeRoleInput := sts.AssumeRoleInput{
 		DurationSeconds: &roleSessionDuration,
@@ -218,5 +218,5 @@ func getStsCredentials(client awsclient.Client, awsAccountId string) (*sts.Assum
 		return nil, err
 	}
 
-	return nil, &assumeRoleOutput
+	return assumeRoleOutput, err
 }
