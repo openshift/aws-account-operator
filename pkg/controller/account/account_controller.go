@@ -2,10 +2,12 @@ package account
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/aws/aws-sdk-go/service/organizations"
+	"github.com/aws/aws-sdk-go/service/sts"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -174,4 +176,47 @@ func (r *ReconcileAccount) getAWSClient(awsAccessID, awsAccessSecret, region str
 		return nil, err
 	}
 	return awsClient, nil
+}
+
+// getAwsAccountId searches the list of accounts in the orgnaization and returns the
+// AWS account ID for the account which matches the AWS account name
+func getAwsAccountId(client awsclient.Client, awsAccountName string) (*string, error) {
+	var id *string
+	awsAccountList, err := client.ListAccounts(&organizations.ListAccountsInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, accountStatus := range awsAccountList.Accounts {
+		if *accountStatus.Name == awsAccountName {
+			id = accountStatus.Id
+		}
+	}
+
+}
+
+// getStsCredentials returns sts credentials for the specified account ARN
+func getStsCredentials(client awsclient.Client, awsAccountId string) (*sts.AssumeRoleOutput, error) {
+	// Use the role session name to uniquely identify a session when the same role
+	// is assumed by different principals or for different reasons.
+	var roleSessionName = "awsAccountOperator"
+	// Default duration in seconds of the session token 3600. We need to have the roles policy
+	// changed if we want it to be longer than 3600 seconds
+	var roleSessionDuration int64 = 3600
+	// The role ARN made up of the account number and the role which is the default role name
+	// created in child accounts
+	var roleArn = fmt.Sprintf("arn:aws:iam::%s:role/OrganizationAccountAccessRole", awsAccountId)
+	// Build input for AssumeRole
+	assumeRoleInput := sts.AssumeRoleInput{
+		DurationSeconds: &roleSessionDuration,
+		RoleArn:         &roleArn,
+		RoleSessionName: &roleSessionName,
+	}
+
+	assumeRoleOutput, err := client.AssumeRole(&assumeRoleInput)
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, &assumeRoleOutput
 }

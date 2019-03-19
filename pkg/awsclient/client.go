@@ -14,9 +14,6 @@ limitations under the License.
 package awsclient
 
 import (
-	"github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -25,6 +22,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/iam/iamiface"
 	"github.com/aws/aws-sdk-go/service/organizations"
+	"github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
+	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go/service/sts/stsiface"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -63,6 +64,7 @@ type awsClient struct {
 	ec2Client ec2iface.EC2API
 	iamClient iamiface.IAMAPI
 	orgClient organizationsiface.OrganizationsAPI
+	stsClient stsiface.STSAPI
 }
 
 func (c *awsClient) DescribeAvailabilityZones(input *ec2.DescribeAvailabilityZonesInput) (*ec2.DescribeAvailabilityZonesOutput, error) {
@@ -125,6 +127,9 @@ func (c *awsClient) CreateAccount(input *organizations.CreateAccountInput) (*org
 func (c *awsClient) DescribeCreateAccountStatus(input *organizations.DescribeCreateAccountStatusInput) (*organizations.DescribeCreateAccountStatusOutput, error) {
 	return c.orgClient.DescribeCreateAccountStatus(input)
 }
+func (c *awsClient) AssumeRole(input *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error) {
+	return c.stsClient.AssumeRole(input)
+}
 
 // NewClient creates our client wrapper object for the actual AWS clients we use.
 // For authentication the underlying clients will use either the cluster AWS credentials
@@ -143,5 +148,6 @@ func NewClient(kubeClient client.Client, awsAccessID, awsAccessSecret, region st
 		ec2Client: ec2.New(s),
 		iamClient: iam.New(s),
 		orgClient: organizations.New(s),
+		stsClient: sts.New(s),
 	}, nil
 }
