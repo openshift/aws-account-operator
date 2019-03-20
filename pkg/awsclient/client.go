@@ -124,12 +124,15 @@ func (c *awsClient) PutUserPolicy(input *iam.PutUserPolicyInput) (*iam.PutUserPo
 func (c *awsClient) ListAccounts(input *organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error) {
 	return c.orgClient.ListAccounts(input)
 }
+
 func (c *awsClient) CreateAccount(input *organizations.CreateAccountInput) (*organizations.CreateAccountOutput, error) {
 	return c.orgClient.CreateAccount(input)
 }
+
 func (c *awsClient) DescribeCreateAccountStatus(input *organizations.DescribeCreateAccountStatusInput) (*organizations.DescribeCreateAccountStatusOutput, error) {
 	return c.orgClient.DescribeCreateAccountStatus(input)
 }
+
 func (c *awsClient) AssumeRole(input *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error) {
 	return c.stsClient.AssumeRole(input)
 }
