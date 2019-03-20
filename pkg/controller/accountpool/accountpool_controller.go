@@ -2,14 +2,13 @@ package accountpool
 
 import (
 	"context"
+	"strconv"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
-
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -54,9 +53,9 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	// TODO(user): Modify this to be the types you create that are owned by the primary resource
 	// Watch for changes to secondary resource Pods and requeue the owner AccountPool
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
+	err = c.Watch(&source.Kind{Type: &awsv1alpha1.Account{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
-		OwnerType:    &awsv1alpha1.AccountPool{},
+		OwnerType:    &awsv1alpha1.Account{},
 	})
 	if err != nil {
 		return err
@@ -87,8 +86,8 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	reqLogger.Info("Reconciling AccountPool")
 
 	// Fetch the AccountPool instance
-	instance := &awsv1alpha1.AccountPool{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
+	currentAccountPool := &awsv1alpha1.AccountPool{}
+	err := r.client.Get(context.TODO(), request.NamespacedName, currentAccountPools)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -100,54 +99,59 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 		return reconcile.Result{}, err
 	}
 
-	// Define a new Pod object
-	pod := newPodForCR(instance)
+	// Get the number of desired unclaimed AWS accounts in the pool
+	poolSizeCount, _ := strconv.Atoi(currentAccountPool.Spec.PoolSize)
+
+	//Get the number of actual unclaimed AWS accounts in the pool
+	accountList := &awsv1alpha1.AccountList{}
+
+	listOps := &client.ListOptions{Namespace: currentAccountPool.Namespace}
+	if err = r.client.List(context.TODO(), listOps, accountList); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	unclaimedAccountCount := 0
+	for account := range accountList.Items {
+		if account.Status.Claimed == false {
+			unclaimedAccountCount++
+		}
+	}
+
+	if unclaimedAccountCount >= poolSizeCount {
+		return reconcile.Result{}, nil
+	}
+
+	// Create Account CR
+	accountInstance := &awsv1alpha1.Account{}
+	newAccount := newAccountForCR()
 
 	// Set AccountPool instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
+	if err := controllerutil.SetControllerReference(accountInstance, newAccount, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
 
-	// Check if this Pod already exists
-	found := &corev1.Pod{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-		err = r.client.Create(context.TODO(), pod)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Pod created successfully - don't requeue
-		return reconcile.Result{}, nil
-	} else if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+	r.client.Create(context.TODO(), newAccount)
 	return reconcile.Result{}, nil
 }
 
-// newPodForCR returns a busybox pod with the same name/namespace as the cr
-func newPodForCR(cr *awsv1alpha1.AccountPool) *corev1.Pod {
-	labels := map[string]string{
-		"app": cr.Name,
-	}
-	return &corev1.Pod{
+// newAccountForCR returns a Pending, Unclaimed CR with a name of libra-ops-<generated-string>
+func newAccountForCR() *awsv1alpha1.Account {
+
+	uuid := rand.String(6)
+	accountName := "libra-ops-" + uuid
+
+	return &awsv1alpha1.Account{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Name + "-pod",
-			Namespace: cr.Namespace,
-			Labels:    labels,
+			Name: accountName,
 		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:    "busybox",
-					Image:   "busybox",
-					Command: []string{"sleep", "3600"},
-				},
-			},
+		Status: awsv1alpha1.AccountStatus{
+			Claimed: false,
+			State:   "Pending",
+		},
+		Spec: awsv1alpha1.AccountSpec{
+			AwsAccountID:  accountName,
+			IAMUserSecret: "",
+			ClaimLink:     "",
 		},
 	}
 }
