@@ -87,7 +87,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 
 	// Fetch the AccountPool instance
 	currentAccountPool := &awsv1alpha1.AccountPool{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, currentAccountPools)
+	err := r.client.Get(context.TODO(), request.NamespacedName, currentAccountPool)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -111,7 +111,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	}
 
 	unclaimedAccountCount := 0
-	for account := range accountList.Items {
+	for _, account := range accountList.Items {
 		if account.Status.Claimed == false {
 			unclaimedAccountCount++
 		}
