@@ -13,6 +13,10 @@ type AccountClaimSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
+	LegalEntity         LegalEntity         `json:"legalentity"`
+	AwsCredentialSecret AwsCredentialSecret `json:"awscredentialsecret"`
+	Aws                 Aws                 `json:"aws"`
+	AccountLink         string              `json:"acconutlink"`
 }
 
 // AccountClaimStatus defines the observed state of AccountClaim
@@ -42,6 +46,30 @@ type AccountClaimList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []AccountClaim `json:"items"`
+}
+
+// LegalEntity contains Red Hat specific identifiers to the original creator the clusters
+type LegalEntity struct {
+	Name string `json:,"name"`
+	Id   int    `json:,"id"`
+}
+
+// AwsCredentialSecret contains the name of the secret and name of the namespace
+// where UHC would like the AWS credentials secret to be placed
+type AwsCredentialSecret struct {
+	Name      string `json:,"name"`
+	Namespace string `json:,"namespace"`
+}
+
+// Aws struct contains specific AWS account configuration options
+type Aws struct {
+	Regions []AwsRegions `json:,"regions"`
+}
+
+// AwsRegions struct contains specific AwsRegion information, at the moment its just
+// name but in the future it will contain specific resource limits etc.
+type AwsRegions struct {
+	Name string `json:,"name"`
 }
 
 func init() {
