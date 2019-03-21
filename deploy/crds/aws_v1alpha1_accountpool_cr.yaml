@@ -4,4 +4,4 @@ metadata:
   name: example-accountpool
 spec:
   # Add fields here
-  size: 3
+  poolsize: 20
