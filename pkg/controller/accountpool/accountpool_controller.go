@@ -110,13 +110,29 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	}
 
 	unclaimedAccountCount := 0
+	claimedAccountCount := 0
 	for _, account := range accountList.Items {
-		if account.Status.Claimed == false && account.Status.State != "Failed" {
-			unclaimedAccountCount++
+		if account.Status.Claimed == false {
+			if account.Status.State != "Failed" {
+				unclaimedAccountCount++
+			}
+		} else {
+			claimedAccountCount++
+		}
+	}
+
+	if currentAccountPool.Status.PoolSize != currentAccountPool.Spec.PoolSize || currentAccountPool.Status.UnclaimedAccounts != unclaimedAccountCount || currentAccountPool.Status.ClaimedAccounts != claimedAccountCount {
+		currentAccountPool.Status.PoolSize = currentAccountPool.Spec.PoolSize
+		currentAccountPool.Status.UnclaimedAccounts = unclaimedAccountCount
+		currentAccountPool.Status.ClaimedAccounts = claimedAccountCount
+		err = r.client.Status().Update(context.TODO(), currentAccountPool)
+		if err != nil {
+			return reconcile.Result{}, err
 		}
 	}
 
 	if unclaimedAccountCount >= poolSizeCount {
+
 		return reconcile.Result{}, nil
 	}
 
