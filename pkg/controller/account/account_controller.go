@@ -110,7 +110,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	// update the account cr with accountID , create secret for IAm ,
 	// set the secret string to that name
 	// set state to ready
-	reqLogger.Info("Current Account: ", currentAcct)
+	//reqLogger.Info("Current Account: ", currentAcct)
 
 	return reconcile.Result{}, nil
 }

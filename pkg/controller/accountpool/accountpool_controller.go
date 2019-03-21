@@ -54,7 +54,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Watch for changes to secondary resource Pods and requeue the owner AccountPool
 	err = c.Watch(&source.Kind{Type: &awsv1alpha1.Account{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
-		OwnerType:    &awsv1alpha1.Account{},
+		OwnerType:    &awsv1alpha1.AccountPool{},
 	})
 	if err != nil {
 		return err
@@ -111,7 +111,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 
 	unclaimedAccountCount := 0
 	for _, account := range accountList.Items {
-		if account.Status.Claimed == false {
+		if account.Status.Claimed == false && account.Status.State != "Failed" {
 			unclaimedAccountCount++
 		}
 	}
@@ -121,31 +121,31 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	}
 
 	// Create Account CR
-	accountInstance := &awsv1alpha1.Account{}
-	newAccount := newAccountForCR()
+	newAccount := newAccountForCR(request.Namespace)
 
 	// Set AccountPool instance as the owner and controller
-	if err := controllerutil.SetControllerReference(accountInstance, newAccount, r.scheme); err != nil {
+	if err := controllerutil.SetControllerReference(currentAccountPool, newAccount, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
 
-	r.client.Create(context.TODO(), newAccount)
+	err = r.client.Create(context.TODO(), newAccount)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
 	return reconcile.Result{}, nil
 }
 
 // newAccountForCR returns a Pending, Unclaimed CR with a name of libra-ops-<generated-string>
-func newAccountForCR() *awsv1alpha1.Account {
+func newAccountForCR(namespace string) *awsv1alpha1.Account {
 
 	uuid := rand.String(6)
 	accountName := "libra-ops-" + uuid
 
 	return &awsv1alpha1.Account{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: accountName,
-		},
-		Status: awsv1alpha1.AccountStatus{
-			Claimed: false,
-			State:   "Pending",
+			Name:      accountName,
+			Namespace: namespace,
 		},
 		Spec: awsv1alpha1.AccountSpec{
 			AwsAccountID:  accountName,
