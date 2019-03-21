@@ -2,7 +2,6 @@ package accountpool
 
 import (
 	"context"
-	"strconv"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -100,7 +99,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	}
 
 	// Get the number of desired unclaimed AWS accounts in the pool
-	poolSizeCount, _ := strconv.Atoi(currentAccountPool.Spec.PoolSize)
+	poolSizeCount := currentAccountPool.Spec.PoolSize
 
 	//Get the number of actual unclaimed AWS accounts in the pool
 	accountList := &awsv1alpha1.AccountList{}
