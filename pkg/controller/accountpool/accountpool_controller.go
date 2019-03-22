@@ -121,7 +121,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 		}
 	}
 
-	if currentAccountPool.Status.PoolSize != currentAccountPool.Spec.PoolSize || currentAccountPool.Status.UnclaimedAccounts != unclaimedAccountCount || currentAccountPool.Status.ClaimedAccounts != claimedAccountCount {
+	if updateAccountPoolStatus(currentAccountPool, unclaimedAccountCount, claimedAccountCount) {
 		currentAccountPool.Status.PoolSize = currentAccountPool.Spec.PoolSize
 		currentAccountPool.Status.UnclaimedAccounts = unclaimedAccountCount
 		currentAccountPool.Status.ClaimedAccounts = claimedAccountCount
@@ -150,6 +150,19 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func updateAccountPoolStatus(currentAccountPool *awsv1alpha1.AccountPool, unclaimedAccounts int, claimedAccounts int) bool {
+	if currentAccountPool.Status.PoolSize != currentAccountPool.Spec.PoolSize {
+		return true
+	} else if currentAccountPool.Status.UnclaimedAccounts != unclaimedAccounts {
+		return true
+	} else if currentAccountPool.Status.ClaimedAccounts != claimedAccounts {
+		return true
+	} else {
+		return false
+	}
+
 }
 
 // newAccountForCR returns a Pending, Unclaimed CR with a name of libra-ops-<generated-string>
