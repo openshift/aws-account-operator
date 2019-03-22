@@ -169,7 +169,7 @@ func updateAccountPoolStatus(currentAccountPool *awsv1alpha1.AccountPool, unclai
 func newAccountForCR(namespace string) *awsv1alpha1.Account {
 
 	uuid := rand.String(6)
-	accountName := "libra-ops-" + uuid
+	accountName := "osd-creds-mgm-" + uuid
 
 	return &awsv1alpha1.Account{
 		ObjectMeta: metav1.ObjectMeta{
