@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -14,6 +15,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -81,36 +83,113 @@ type ReconcileAccount struct {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-
-	// pull from name secrets
-	//	awsClient, err := r.getAWSClient("id", "secret", "region")
-	//	if err != nil {
-	//		return reconcile.Result{}, err
-	//	}
-
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling Account")
-
 	// Fetch the Account instance
-	currentAcct := &awsv1alpha1.Account{}
-	err := r.Client.Get(context.TODO(), request.NamespacedName, currentAcct)
+	currentAcctInstance := &awsv1alpha1.Account{}
+	err := r.Client.Get(context.TODO(), request.NamespacedName, currentAcctInstance)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-			// Return and don't requeue
 			return reconcile.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
-	// see if instance state is blank if it is , set state pending ,
-	// create account , create iam user, create ec2 instance , delete ec2 instance
-	// update the account cr with accountID , create secret for IAm ,
-	// set the secret string to that name
-	// set state to ready
-	//reqLogger.Info("Current Account: ", currentAcct)
+	if (currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false) {
+		// set state creating
+		updatedAccount := currentAcctInstance
+		updatedAccount.Status.State = "Creating"
+		reqLogger.Info("Creating Account")
+		err = r.Client.Status().Update(context.TODO(), updatedAccount)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		// get awsclient to setup  account
+		// TODO: pull from name secrets
+		awsSetupClient, err := r.getAWSClient(os.Getenv("aws_access_key_id"), os.Getenv("aws_secret_access_key"), "us-east-1")
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		// create account -- for now email hardcoded for testing
+		email := "email" + "+" + rand.String(6) + "@redhat.com"
+		orgOutput, err := CreateAccount(awsSetupClient, updatedAccount.Name, email)
+		// if it failed to create account set the status to failed and return
+		if err != nil && err.Error() == "Failed to create account" {
+			updatedAccount.Status.State = "Failed"
+			err = r.Client.Status().Update(context.TODO(), updatedAccount)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			failReason := *orgOutput.CreateAccountStatus.FailureReason
+			reqLogger.Info(failReason)
+			return reconcile.Result{}, nil
+		}
+		// TODO: add better error handling in the future to handle retry getting a status before returning
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		reqLogger.Info("Account Created")
+
+		// update account cr with accountID from aws
+		updatedAccount.Spec.AwsAccountID = *orgOutput.CreateAccountStatus.AccountId
+		fmt.Println("AccountID: ", updatedAccount.Spec.AwsAccountID)
+		err = r.Client.Update(context.TODO(), updatedAccount)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		reqLogger.Info("Creating IAM User")
+
+		// assume role
+		creds, err := getStsCredentials(awsSetupClient, updatedAccount.Spec.AwsAccountID)
+		if err != nil {
+			fmt.Println("getStsCredentials", err.Error())
+			return reconcile.Result{}, err
+		}
+
+		awsAssumedRoleClient, err := r.getAWSClient(*creds.Credentials.AccessKeyId, *creds.Credentials.SecretAccessKey, "us-east-1")
+		if err != nil {
+			fmt.Println("create iam error", err)
+			return reconcile.Result{}, err
+		}
+
+		// create iam user
+		_, err = CreateIAMUser(awsAssumedRoleClient, "osdManagedAdmin")
+		// TODO: better error handling but for now scrap account
+		if err != nil {
+			updatedAccount.Status.State = "Failed"
+			err = r.Client.Status().Update(context.TODO(), updatedAccount)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			reqLogger.Info("Failed to create user")
+			return reconcile.Result{}, nil
+		}
+		reqLogger.Info("IAM User Created")
+
+		reqLogger.Info("Creating Secrets")
+		// create user secrets
+		userSecretInfo, err := CreateUserAccessKey(awsAssumedRoleClient, "osdManagedAdmin")
+		if err != nil {
+			updatedAccount.Status.State = "Failed"
+			err = r.Client.Status().Update(context.TODO(), updatedAccount)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			reqLogger.Info("Failed to create user secret")
+			return reconcile.Result{}, nil
+		}
+
+		// TODO: create secret details
+		log.Info(userSecretInfo.String())
+		// update the account cr with accountID,
+		// create ec2 instance , delete ec2 instance
+		// set the secret string to that name
+		// set state to readys
+	}
 
 	return reconcile.Result{}, nil
 }
@@ -131,7 +210,7 @@ func getAwsAccountID(client awsclient.Client, awsAccountName string) (*string, e
 	var id *string
 	awsAccountList, err := client.ListAccounts(&organizations.ListAccountsInput{})
 	if err != nil {
-		return nil, err
+		return id, err
 	}
 
 	for _, accountStatus := range awsAccountList.Accounts {
@@ -166,13 +245,14 @@ func CreateAccount(client awsclient.Client, accountName, accountEmail string) (*
 			return &organizations.DescribeCreateAccountStatusOutput{}, err
 		}
 
-		accountStatus := *status.CreateAccountStatus.State
+		accountStatus = status
+		createStatus := *status.CreateAccountStatus.State
 
-		if accountStatus == "FAILED" {
+		if createStatus == "FAILED" {
 			return &organizations.DescribeCreateAccountStatusOutput{}, errors.New("Failed to create account")
 		}
 
-		if accountStatus != "IN_PROGRESS" {
+		if createStatus != "IN_PROGRESS" {
 			break
 		}
 
@@ -192,7 +272,7 @@ func CreateIAMUser(client awsclient.Client, userName string) (*iam.CreateUserOut
 	awserr, ok := err.(awserr.Error)
 
 	if err != nil && awserr.Code() != iam.ErrCodeNoSuchEntityException {
-		return nil, err
+		return &iam.CreateUserOutput{}, err
 	}
 
 	var createUserOutput *iam.CreateUserOutput
@@ -201,7 +281,7 @@ func CreateIAMUser(client awsclient.Client, userName string) (*iam.CreateUserOut
 			UserName: aws.String(userName),
 		})
 		if err != nil {
-			return nil, err
+			return &iam.CreateUserOutput{}, err
 		}
 		createUserOutput = createResult
 	}
@@ -234,6 +314,7 @@ func getStsCredentials(client awsclient.Client, awsAccountID string) (*sts.Assum
 	// The role ARN made up of the account number and the role which is the default role name
 	// created in child accounts
 	var roleArn = fmt.Sprintf("arn:aws:iam::%s:role/OrganizationAccountAccessRole", awsAccountID)
+	fmt.Println("roleArn: ", roleArn)
 	// Build input for AssumeRole
 	assumeRoleInput := sts.AssumeRoleInput{
 		DurationSeconds: &roleSessionDuration,
@@ -241,9 +322,10 @@ func getStsCredentials(client awsclient.Client, awsAccountID string) (*sts.Assum
 		RoleSessionName: &roleSessionName,
 	}
 
+	fmt.Printf("Assume role input : %+v\n", assumeRoleInput)
 	assumeRoleOutput, err := client.AssumeRole(&assumeRoleInput)
 	if err != nil {
-		return nil, err
+		return &sts.AssumeRoleOutput{}, err
 	}
 
 	return assumeRoleOutput, nil
