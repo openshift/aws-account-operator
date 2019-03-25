@@ -2,9 +2,9 @@ package accountclaim
 
 import (
 	"context"
+	"fmt"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -50,13 +50,13 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	// TODO(user): Modify this to be the types you create that are owned by the primary resource
 	// Watch for changes to secondary resource Pods and requeue the owner AccountClaim
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &awsv1alpha1.AccountClaim{},
-	})
-	if err != nil {
-		return err
-	}
+	// err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
+	// 	IsController: true,
+	// 	OwnerType:    &awsv1alpha1.AccountClaim{},
+	// })
+	// if err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
@@ -96,5 +96,65 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	accountList := &awsv1alpha1.AccountList{}
+
+	listOps := &client.ListOptions{Namespace: accountClaim.Namespace}
+	if err = r.client.List(context.TODO(), listOps, accountList); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	selectedAccount, err := selectAccount(accountList)
+	if err != nil {
+		reqLogger.Error(err, "Error selecting account account")
+	}
+
+	// Attempt to claim account
+	err = setClaim(accountClaim, &selectedAccount)
+	if err != nil {
+		// If we got an error log it and reqeue the request
+		return reconcile.Result{}, err
+	}
+
 	return reconcile.Result{}, nil
+}
+
+func selectAccount(accountList *awsv1alpha1.AccountList) (awsv1alpha1.Account, error) {
+	var selectedAccount awsv1alpha1.Account
+
+	// Range through accounts and select the first one that doesn't have a claim link
+	for _, account := range accountList.Items {
+		if account.Status.Claimed == false && account.Spec.ClaimLink == "" {
+			selectedAccount = account
+		}
+	}
+
+	return selectedAccount, nil
+}
+
+func setClaim(awsAccountClaim *awsv1alpha1.AccountClaim, awsAccount *awsv1alpha1.Account) error {
+	// Set Account Spec.ClaimLink to name of the claim, fail if its not empty
+	// so we can select another account
+	// Initially this will naively deal with concurrency
+	if awsAccount.Status.Claimed == true || awsAccount.Spec.ClaimLink != "" {
+		return fmt.Errorf("AWS Account already claimed by %s, attempting to select another account", awsAccount.Spec.ClaimLink)
+	}
+
+	// Set link on Account
+	awsAccount.Spec.ClaimLink = awsAccountClaim.ObjectMeta.Name
+
+	// This shouldn't error but lets log it just incase
+	if awsAccountClaim.Spec.AccountLink != "" {
+		fmt.Errorf("AccountLink field is already populated for claim: %s, AWS account link is: %s", awsAccountClaim.ObjectMeta.Name, awsAccountClaim.Spec.AccountLink)
+	}
+	// Set link on AccountClaim
+	awsAccountClaim.Spec.AccountLink = awsAccount.ObjectMeta.Name
+
+	// Set Status on Account
+	// This shouldn't error but lets log it just incase
+	if awsAccount.Status.Claimed != false {
+		fmt.Errorf("Account Status.Claimed field is %s it should be false", awsAccount.Status.Claimed)
+	}
+	awsAccount.Status.Claimed = true
+
+	return nil
 }
