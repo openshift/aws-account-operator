@@ -28,6 +28,7 @@ type AccountStatus struct {
 	State   string `json:"state"`
 }
 
+// +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // Account is the Schema for the accounts API

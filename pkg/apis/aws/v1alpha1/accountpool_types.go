@@ -27,6 +27,7 @@ type AccountPoolStatus struct {
 	ClaimedAccounts   int `json:"claimedaccounts"`
 }
 
+// +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // AccountPool is the Schema for the accountpools API
