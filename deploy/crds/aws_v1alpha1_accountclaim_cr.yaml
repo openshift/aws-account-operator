@@ -3,5 +3,14 @@ kind: AccountClaim
 metadata:
   name: example-accountclaim
 spec:
-  # Add fields here
-  size: 3
+  legalEntity:
+    name:
+    id:
+  awsCredentialSecret:
+    name:
+    namespace:
+  aws:
+    regions:
+    - name:
+  # Blank by default, the claim controller will populate this
+  accountLink: ""
