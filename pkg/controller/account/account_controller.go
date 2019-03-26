@@ -130,8 +130,6 @@ func (r *ReconcileAccount) getAWSClient(awsAccessID, awsAccessSecret, region str
 func getAwsAccountID(client awsclient.Client, awsAccountName string) (*string, error) {
 	var id *string
 
-	var awsAccounts []*organizations.Account
-
 	var nextToken *string
 
 	// Ensure we paginate through the account list
@@ -140,17 +138,16 @@ func getAwsAccountID(client awsclient.Client, awsAccountName string) (*string, e
 		if err != nil {
 			fmt.Println("Error getting a list of accounts")
 		}
-		awsAccounts = append(awsAccounts, awsAccountList.Accounts...)
-		if awsAccountList.NextToken != nil {
+		for _, accountStatus := range awsAccountList.Accounts {
+			if *accountStatus.Name == awsAccountName {
+				id = accountStatus.Id
+				break
+			}
+		}
+		if awsAccountList.NextToken != nil && id == nil {
 			nextToken = awsAccountList.NextToken
 		} else {
 			break
-		}
-	}
-
-	for _, accountStatus := range awsAccounts {
-		if *accountStatus.Name == awsAccountName {
-			id = accountStatus.Id
 		}
 	}
 
