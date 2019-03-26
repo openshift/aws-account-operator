@@ -138,13 +138,11 @@ func (c *awsClient) AssumeRole(input *sts.AssumeRoleInput) (*sts.AssumeRoleOutpu
 }
 
 // NewClient creates our client wrapper object for the actual AWS clients we use.
-// For authentication the underlying clients will use either the cluster AWS credentials
-func NewClient(kubeClient client.Client, awsAccessID, awsAccessSecret, region string) (Client, error) {
+func NewClient(kubeClient client.Client, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
 	awsConfig := &aws.Config{Region: aws.String(region)}
 	awsConfig.Credentials = credentials.NewStaticCredentials(
-		awsAccessID, awsAccessSecret, "")
+		awsAccessID, awsAccessSecret, token)
 
-	// Otherwise default to relying on the IAM role of the masters where the actuator is running:
 	s, err := session.NewSession(awsConfig)
 	if err != nil {
 		return nil, err
