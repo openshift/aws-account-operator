@@ -108,17 +108,37 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		reqLogger.Error(err, "Error selecting account account")
 	}
 
-	// Attempt to claim account
-	err = setClaim(accountClaim, &selectedAccount)
+	// Set claim link on Account
+	err = setClaimLink(accountClaim, selectedAccount)
 	if err != nil {
 		// If we got an error log it and reqeue the request
+		return reconcile.Result{}, err
+	}
+
+	// Update the Spec on Account
+	err = r.client.Update(context.TODO(), selectedAccount)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	// Update the Status on Account
+	err = r.client.Status().Update(context.TODO(), selectedAccount)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Set account link on AccountClaim
+	setAccountLink(selectedAccount, accountClaim)
+
+	// Update the Spec on AccountClaim
+	err = r.client.Update(context.TODO(), accountClaim)
+	if err != nil {
 		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{}, nil
 }
 
-func selectAccount(accountList *awsv1alpha1.AccountList) (awsv1alpha1.Account, error) {
+func selectAccount(accountList *awsv1alpha1.AccountList) (*awsv1alpha1.Account, error) {
 	var selectedAccount awsv1alpha1.Account
 
 	// Range through accounts and select the first one that doesn't have a claim link
@@ -128,10 +148,11 @@ func selectAccount(accountList *awsv1alpha1.AccountList) (awsv1alpha1.Account, e
 		}
 	}
 
-	return selectedAccount, nil
+	return &selectedAccount, nil
 }
 
-func setClaim(awsAccountClaim *awsv1alpha1.AccountClaim, awsAccount *awsv1alpha1.Account) error {
+// setClaimLink sets Account.Spec.ClaimLink to AccountClaim.ObjectMetadata.Name
+func setClaimLink(awsAccountClaim *awsv1alpha1.AccountClaim, awsAccount *awsv1alpha1.Account) error {
 	// Set Account Spec.ClaimLink to name of the claim, fail if its not empty
 	// so we can select another account
 	// Initially this will naively deal with concurrency
@@ -142,19 +163,22 @@ func setClaim(awsAccountClaim *awsv1alpha1.AccountClaim, awsAccount *awsv1alpha1
 	// Set link on Account
 	awsAccount.Spec.ClaimLink = awsAccountClaim.ObjectMeta.Name
 
-	// This shouldn't error but lets log it just incase
-	if awsAccountClaim.Spec.AccountLink != "" {
-		fmt.Errorf("AccountLink field is already populated for claim: %s, AWS account link is: %s", awsAccountClaim.ObjectMeta.Name, awsAccountClaim.Spec.AccountLink)
-	}
-	// Set link on AccountClaim
-	awsAccountClaim.Spec.AccountLink = awsAccount.ObjectMeta.Name
-
 	// Set Status on Account
 	// This shouldn't error but lets log it just incase
 	if awsAccount.Status.Claimed != false {
-		fmt.Errorf("Account Status.Claimed field is %s it should be false", awsAccount.Status.Claimed)
+		fmt.Printf("Account Status.Claimed field is %v it should be false\n", awsAccount.Status.Claimed)
 	}
 	awsAccount.Status.Claimed = true
 
 	return nil
+}
+
+// setAccountLink sets AccountClaim.Spec.AccountLink to Account.ObjectMetadata.Name
+func setAccountLink(awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
+	// This shouldn't error but lets log it just incase
+	if awsAccountClaim.Spec.AccountLink != "" {
+		fmt.Printf("AccountLink field is already populated for claim: %s, AWS account link is: %s\n", awsAccountClaim.ObjectMeta.Name, awsAccountClaim.Spec.AccountLink)
+	}
+	// Set link on AccountClaim
+	awsAccountClaim.Spec.AccountLink = awsAccount.ObjectMeta.Name
 }
