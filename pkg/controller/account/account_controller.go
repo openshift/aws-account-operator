@@ -140,11 +140,13 @@ func getAwsAccountID(client awsclient.Client, awsAccountName string) (*string, e
 		}
 		for _, accountStatus := range awsAccountList.Accounts {
 			if *accountStatus.Name == awsAccountName {
+				if id != nil {
+					return id, fmt.Errorf("more than one account with the name: %s found", *id)
+				}
 				id = accountStatus.Id
-				break
 			}
 		}
-		if awsAccountList.NextToken != nil && id == nil {
+		if awsAccountList.NextToken != nil {
 			nextToken = awsAccountList.NextToken
 		} else {
 			break
