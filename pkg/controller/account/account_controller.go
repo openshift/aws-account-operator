@@ -129,15 +129,33 @@ func (r *ReconcileAccount) getAWSClient(awsAccessID, awsAccessSecret, region str
 // AWS account ID for the account which matches the AWS account name
 func getAwsAccountID(client awsclient.Client, awsAccountName string) (*string, error) {
 	var id *string
-	awsAccountList, err := client.ListAccounts(&organizations.ListAccountsInput{})
-	if err != nil {
-		return nil, err
+
+	var nextToken *string
+
+	// Ensure we paginate through the account list
+	for {
+		awsAccountList, err := client.ListAccounts(&organizations.ListAccountsInput{NextToken: nextToken})
+		if err != nil {
+			fmt.Println("Error getting a list of accounts")
+		}
+		for _, accountStatus := range awsAccountList.Accounts {
+			if *accountStatus.Name == awsAccountName {
+				if id != nil {
+					return id, fmt.Errorf("more than one account with the name: %s found", *id)
+				}
+				id = accountStatus.Id
+			}
+		}
+		if awsAccountList.NextToken != nil {
+			nextToken = awsAccountList.NextToken
+		} else {
+			break
+		}
 	}
 
-	for _, accountStatus := range awsAccountList.Accounts {
-		if *accountStatus.Name == awsAccountName {
-			id = accountStatus.Id
-		}
+	// Check to see if we found an account
+	if id == nil {
+		return id, fmt.Errorf("No account named %s", awsAccountName)
 	}
 	return id, nil
 }
