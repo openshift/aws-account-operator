@@ -4,6 +4,13 @@ metadata:
   creationTimestamp: null
   name: accounts.aws.managed.openshift.io
 spec:
+  additionalPrinterColumns:
+  - JSONPath: .status.state
+    name: State
+    type: string
+  - JSONPath: .status.claimed
+    name: Claimed
+    type: boolean
   group: aws.managed.openshift.io
   names:
     kind: Account
