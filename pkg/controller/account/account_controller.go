@@ -128,10 +128,9 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		// get awsclient to setup  account
 		awsSetupClient, err := r.getAWSClient(newAwsClientInput{
 			secretName: "aws-config",
-			nameSpace:  "default",
+			nameSpace:  request.Namespace,
 			awsRegion:  "us-east-1",
 		})
-
 
 		if err != nil {
 			return reconcile.Result{}, err
