@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -127,24 +126,17 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// get awsclient to setup  account
-		//TODO: Pull from secret
-		// awsSetupClient, err := r.getAWSClient(newAwsClientInput{
-		// 	secretName: "aws-config",
-		// 	nameSpace:  "default",
-		// 	awsRegion:  "us-east-1",
-		// })
-
-		//Hardcoding pulling from enviroment
 		awsSetupClient, err := r.getAWSClient(newAwsClientInput{
-			awsCredsSecretIDKey:     os.Getenv(awsCredsSecretIDKey),
-			awsCredsSecretAccessKey: os.Getenv(awsCredsSecretAccessKey),
-			awsRegion:               "us-east-1",
+			secretName: "aws-config",
+			nameSpace:  "default",
+			awsRegion:  "us-east-1",
 		})
+
+
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 
-		//email := "razevedo" + "+" + rand.String(6) + "@redhat.com"
 		email := formatAccountEmail(updatedAccount.Name)
 		orgOutput, err := CreateAccount(awsSetupClient, updatedAccount.Name, email)
 		// if it failed to create account set the status to failed and return
@@ -220,7 +212,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, nil
 		}
 
-		// TODO: create secret details
 		userSecretInput := secretInput{
 			SecretName:              updatedAccount.Name,
 			NameSpace:               request.Namespace,
@@ -253,7 +244,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 		reqLogger.Info("Account Ready to be claimed")
 
-		// set state to readys
 		// create ec2 instance , delete ec2 instance
 
 	}
@@ -268,7 +258,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 // If it includes awsCredsSecretIDKey and awsCredsSecretAccessKey it will build credentials from those
 func (r *ReconcileAccount) getAWSClient(input newAwsClientInput) (awsclient.Client, error) {
 
-	// error is region is not included
+	// error if region is not included
 	if input.awsRegion == "" {
 		return nil, fmt.Errorf("getAWSClient:NoRegion: %v", input.awsRegion)
 	}
@@ -488,7 +478,3 @@ func formatAccountEmail(name string) string {
 	email := prefix + "+" + splitString[len(splitString)-1] + "@redhat.com"
 	return email
 }
-
-// create a ec2 instance
-
-//result requeue after duration.
