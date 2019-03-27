@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -138,6 +139,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 
 	// Create Account CR
 	newAccount := newAccountForCR(request.Namespace)
+	addFinalizer(newAccount, "finalizer.aws.managed.openshift.io")
 
 	// Set AccountPool instance as the owner and controller
 	if err := controllerutil.SetControllerReference(currentAccountPool, newAccount, r.scheme); err != nil {
@@ -182,4 +184,10 @@ func newAccountForCR(namespace string) *awsv1alpha1.Account {
 			ClaimLink:     "",
 		},
 	}
+}
+
+func addFinalizer(object metav1.Object, finalizer string) {
+	finalizers := sets.NewString(object.GetFinalizers()...)
+	finalizers.Insert(finalizer)
+	object.SetFinalizers(finalizers.List())
 }
