@@ -2,6 +2,7 @@ package accountclaim
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -96,6 +97,14 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	fmt.Println("Got account claim")
+
+	// Return if this claim has been satisfied
+	if accountClaim.Spec.AccountLink != "" {
+		reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.ObjectMeta.Name))
+		return reconcile.Result{}, nil
+	}
+
 	accountList := &awsv1alpha1.AccountList{}
 
 	listOps := &client.ListOptions{Namespace: accountClaim.Namespace}
@@ -103,10 +112,16 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	fmt.Println("Set listoptions")
+
 	selectedAccount, err := selectAccount(accountList)
 	if err != nil {
 		reqLogger.Error(err, "Error selecting account account")
+		return reconcile.Result{}, err
 	}
+
+	fmt.Println("Selected account")
+	fmt.Printf("Selected Account Name: %s\n", selectedAccount.ObjectMeta.Name)
 
 	// Set claim link on Account
 	err = setClaimLink(accountClaim, selectedAccount)
@@ -115,17 +130,22 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	fmt.Println("ClaimLink set")
+
 	// Update the Spec on Account
 	err = r.client.Update(context.TODO(), selectedAccount)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
+	fmt.Println("ClaimLink set on spec")
+
 	// Update the Status on Account
 	err = r.client.Status().Update(context.TODO(), selectedAccount)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
+	fmt.Println("Account status updated")
 	// Set account link on AccountClaim
 	setAccountLink(selectedAccount, accountClaim)
 
@@ -135,19 +155,35 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	fmt.Println("Updated account status")
+
 	return reconcile.Result{}, nil
 }
 
 func selectAccount(accountList *awsv1alpha1.AccountList) (*awsv1alpha1.Account, error) {
 	var selectedAccount awsv1alpha1.Account
+	var selectedAccountFound = false
 
 	// Range through accounts and select the first one that doesn't have a claim link
 	for _, account := range accountList.Items {
-		if account.Status.Claimed == false && account.Spec.ClaimLink == "" {
+		if account.Status.Claimed == false && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
+			fmt.Printf("Claiming account: %s", account.ObjectMeta.Name)
 			selectedAccount = account
+			selectedAccountFound = true
+			break
 		}
 	}
 
+	selectedAccountPrettyPrint, err := json.MarshalIndent(selectedAccount, "", "  ")
+	if err != nil {
+		fmt.Printf("Error unmarshalling json: %s", err)
+	}
+
+	if !selectedAccountFound {
+		return &selectedAccount, fmt.Errorf("can't find a ready account to claim")
+	}
+
+	fmt.Printf("%s\n", selectedAccountPrettyPrint)
 	return &selectedAccount, nil
 }
 
