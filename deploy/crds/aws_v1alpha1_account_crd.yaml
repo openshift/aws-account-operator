@@ -59,6 +59,7 @@ spec:
                 code after modifying this file Add custom validation using kubebuilder
                 tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
               type: boolean
+<<<<<<< HEAD
             conditions:
               items:
                 properties:
@@ -90,12 +91,17 @@ spec:
                 - status
                 type: object
               type: array
+=======
+>>>>>>> cc0de5d... Updated the SDK and reran the operator-sdk gen
             state:
               type: string
           required:
           - claimed
           - state
+<<<<<<< HEAD
           - conditions
+=======
+>>>>>>> cc0de5d... Updated the SDK and reran the operator-sdk gen
           type: object
   version: v1alpha1
   versions:
