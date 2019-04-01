@@ -17,7 +17,7 @@ type AccountClaimSpec struct {
 	LegalEntity         LegalEntity         `json:"legalentity"`
 	AwsCredentialSecret AwsCredentialSecret `json:"awscredentialsecret"`
 	Aws                 Aws                 `json:"aws"`
-	AccountLink         string              `json:"acconutlink"`
+	AccountLink         string              `json:"accountlink"`
 }
 
 // AccountClaimStatus defines the observed state of AccountClaim

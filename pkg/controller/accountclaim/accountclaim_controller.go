@@ -137,7 +137,26 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	if err != nil {
 		return reconcile.Result{}, err
 	}
+
+	objectKey, err := client.ObjectKeyFromObject(selectedAccount)
+	if err != nil {
+		reqLogger.Error(err, "Unable to get name and namespace of Acccount object")
+	}
+
+	err = r.client.Get(context.TODO(), objectKey, selectedAccount)
+	if err != nil {
+		fmt.Println("Getting updated account")
+		return reconcile.Result{}, err
+	}
+
+	setClaimStatus(accountClaim, selectedAccount)
+	selectedAccountPrettyPrint, err := json.MarshalIndent(selectedAccount, "", "  ")
+	if err != nil {
+		fmt.Printf("Error unmarshalling json: %s", err)
+	}
 	fmt.Println("ClaimLink set on spec")
+
+	fmt.Println(string(selectedAccountPrettyPrint))
 
 	// Update the Status on Account
 	err = r.client.Status().Update(context.TODO(), selectedAccount)
@@ -198,15 +217,17 @@ func setClaimLink(awsAccountClaim *awsv1alpha1.AccountClaim, awsAccount *awsv1al
 
 	// Set link on Account
 	awsAccount.Spec.ClaimLink = awsAccountClaim.ObjectMeta.Name
+	return nil
+}
 
+func setClaimStatus(awsAccountClaim *awsv1alpha1.AccountClaim, awsAccount *awsv1alpha1.Account) {
 	// Set Status on Account
 	// This shouldn't error but lets log it just incase
 	if awsAccount.Status.Claimed != false {
 		fmt.Printf("Account Status.Claimed field is %v it should be false\n", awsAccount.Status.Claimed)
 	}
+	// Set Account status to claimed
 	awsAccount.Status.Claimed = true
-
-	return nil
 }
 
 // setAccountLink sets AccountClaim.Spec.AccountLink to Account.ObjectMetadata.Name
