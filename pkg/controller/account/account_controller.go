@@ -12,6 +12,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -181,15 +182,18 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
+		// create ec2 instance , delete ec2 instance [WIP]
+		err = r.BulidandDestroyEC2Instances(reqLogger, awsAssumedRoleClient)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
 		currentAcctInstance.Status.State = "Ready"
 		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 		reqLogger.Info("Account Ready to be claimed")
-
-		// create ec2 instance , delete ec2 instance
-
 	}
 
 	return reconcile.Result{}, nil
@@ -325,6 +329,44 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 		return "", createErr
 	}
 	return userSecret.ObjectMeta.Name, nil
+}
+
+func (r *ReconcileAccount) BulidandDestroyEC2Instances(reqLogger logr.Logger, awsClient awsclient.Client) error {
+
+	//Create instance
+	reqLogger.Info("Creating EC2 Instance")
+	instanceID, err := CreateEC2Instance(awsClient)
+	if err != nil {
+		return err
+	}
+
+	// Wait till instance is running
+	var DescError error
+	for i := 0; i < 300; i++ {
+		var code int
+		time.Sleep(1 * time.Second)
+		code, DescError = DescribeEC2Instances(awsClient)
+		if code == 16 {
+			reqLogger.Info("EC2 Instance Running")
+			break
+		}
+
+	}
+
+	if DescError != nil {
+		return errors.New("Could not get ec3 instance state")
+	}
+
+	// Terminate Instance
+	reqLogger.Info("Terminating EC2 Instance")
+	err = DeleteEC2Instance(awsClient, instanceID)
+	if err != nil {
+		return err
+	}
+
+	reqLogger.Info("EC2 Instance Terminated")
+
+	return nil
 }
 
 // CreateAccount creates an AWS account for the specified accountName and accountEmail in the orgnization
@@ -474,4 +516,65 @@ func formatAccountEmail(name string) string {
 
 	email := prefix + "+" + splitString[len(splitString)-1] + "@redhat.com"
 	return email
+}
+
+//Creates ec2 instance and returns its instance ID
+func CreateEC2Instance(client awsclient.Client) (string, error) {
+
+	// Create EC2 service client
+
+	// Specify the details of the instance that you want to create.
+	runResult, err := client.RunInstances(&ec2.RunInstancesInput{
+		// An Amazon Linux AMI ID for t2.micro instances in the us-west-2 region
+		ImageId:      aws.String("ami-000db10762d0c4c05"),
+		InstanceType: aws.String("t2.micro"),
+		MinCount:     aws.Int64(1),
+		MaxCount:     aws.Int64(1),
+	})
+
+	if err != nil {
+		fmt.Println("Could not create instance", err)
+		return "", err
+	}
+
+	return *runResult.Instances[0].InstanceId, nil
+
+}
+
+// Returns the InstanceState code
+func DescribeEC2Instances(client awsclient.Client) (int, error) {
+	// States and codes
+	// 0 : pending
+	// 16 : running
+	// 32 : shutting-down
+	// 48 : terminated
+	// 64 : stopping
+	// 80 : stopped
+
+	result, err := client.DescribeInstanceStatus(nil)
+	if err != nil {
+		fmt.Println("Error", err)
+		return 0, err
+	}
+
+	if len(result.InstanceStatuses) > 1 {
+		return 0, errors.New("More than one EC2 instance found")
+	}
+
+	if len(result.InstanceStatuses) == 0 {
+		return 0, errors.New("No EC2 instances found")
+	}
+	fmt.Println("Success", result)
+	return int(*result.InstanceStatuses[0].InstanceState.Code), nil
+}
+
+func DeleteEC2Instance(client awsclient.Client, instanceID string) error {
+	_, err := client.TerminateInstances(&ec2.TerminateInstancesInput{
+		InstanceIds: aws.StringSlice([]string{instanceID}),
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

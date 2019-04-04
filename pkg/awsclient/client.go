@@ -38,9 +38,8 @@ const (
 // Client is a wrapper object for actual AWS SDK clients to allow for easier testing.
 type Client interface {
 	//EC2
-	DescribeAvailabilityZones(*ec2.DescribeAvailabilityZonesInput) (*ec2.DescribeAvailabilityZonesOutput, error)
 	RunInstances(*ec2.RunInstancesInput) (*ec2.Reservation, error)
-	DescribeInstances(*ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)
+	DescribeInstanceStatus(*ec2.DescribeInstanceStatusInput) (*ec2.DescribeInstanceStatusOutput, error)
 	TerminateInstances(*ec2.TerminateInstancesInput) (*ec2.TerminateInstancesOutput, error)
 
 	//IAM
@@ -70,16 +69,12 @@ type awsClient struct {
 	stsClient stsiface.STSAPI
 }
 
-func (c *awsClient) DescribeAvailabilityZones(input *ec2.DescribeAvailabilityZonesInput) (*ec2.DescribeAvailabilityZonesOutput, error) {
-	return c.ec2Client.DescribeAvailabilityZones(input)
-}
-
 func (c *awsClient) RunInstances(input *ec2.RunInstancesInput) (*ec2.Reservation, error) {
 	return c.ec2Client.RunInstances(input)
 }
 
-func (c *awsClient) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
-	return c.ec2Client.DescribeInstances(input)
+func (c *awsClient) DescribeInstanceStatus(input *ec2.DescribeInstanceStatusInput) (*ec2.DescribeInstanceStatusOutput, error) {
+	return c.ec2Client.DescribeInstanceStatus(input)
 }
 
 func (c *awsClient) TerminateInstances(input *ec2.TerminateInstancesInput) (*ec2.TerminateInstancesOutput, error) {
