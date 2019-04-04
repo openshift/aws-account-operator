@@ -17,7 +17,7 @@ type AccountClaimSpec struct {
 	LegalEntity         LegalEntity         `json:"legalentity"`
 	AwsCredentialSecret AwsCredentialSecret `json:"awscredentialsecret"`
 	Aws                 Aws                 `json:"aws"`
-	AccountLink         string              `json:"acconutlink"`
+	AccountLink         string              `json:"accountlink"`
 }
 
 // AccountClaimStatus defines the observed state of AccountClaim
@@ -28,6 +28,7 @@ type AccountClaimStatus struct {
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
 	BillingAccountID string                  `json:"billingAcountID"`
 	Conditions       []AccountClaimCondition `json:"conditions"`
+	State            ClaimStatus             `json:"state"`
 }
 
 // +genclient
@@ -52,8 +53,27 @@ type AccountClaimCondition struct {
 	Message string `json:"message,omitempty"`
 }
 
-// AccountClaimConditionType  is a valid value for AccountClaimCondition.Type
+// AccountClaimConditionType is a valid value for AccountClaimCondition.Type
 type AccountClaimConditionType string
+
+const (
+	// AccountClaimed is set when an Account is claimed
+	AccountClaimed AccountClaimConditionType = "Claimed"
+	// AccountUnclaimed is set when an Account is not claimed
+	AccountUnclaimed AccountClaimConditionType = "Unclaimed"
+)
+
+// ClaimStatus is a valid value from AccountClaim.Status
+type ClaimStatus string
+
+const (
+	// ClaimStatusPending pending status for a claim
+	ClaimStatusPending ClaimStatus = "Pending"
+	// ClaimStatusReady ready status for a claim
+	ClaimStatusReady ClaimStatus = "Ready"
+	// ClaimStatusError error status for a claim
+	ClaimStatusError ClaimStatus = "Error"
+)
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 

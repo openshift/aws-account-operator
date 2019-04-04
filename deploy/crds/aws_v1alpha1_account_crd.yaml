@@ -10,6 +10,12 @@ spec:
   - JSONPath: .status.claimed
     name: Claimed
     type: boolean
+  - JSONPath: .spec.claimlink
+    name: CLAIM
+    type: string
+  - JSONPath: .metadata.creationTimestamp
+    name: Age
+    type: date
   group: aws.managed.openshift.io
   names:
     kind: Account
@@ -59,43 +65,11 @@ spec:
                 code after modifying this file Add custom validation using kubebuilder
                 tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
               type: boolean
-            conditions:
-              items:
-                properties:
-                  lastProbeTime:
-                    description: LastProbeTime is the last time we probed the condition.
-                    format: date-time
-                    type: string
-                  lastTransitioNTime:
-                    description: LastTransitionTime is the laste time the condition
-                      transitioned from one status to another.
-                    format: date-time
-                    type: string
-                  message:
-                    description: Message is a human-readable message indicating details
-                      about last transition.
-                    type: string
-                  reason:
-                    description: Reason is a unique, one-word, CamelCase reason for
-                      the condition's last transition.
-                    type: string
-                  status:
-                    description: Status is the status of the condition
-                    type: string
-                  type:
-                    description: Type is the type of the condition.
-                    type: string
-                required:
-                - type
-                - status
-                type: object
-              type: array
             state:
               type: string
           required:
           - claimed
           - state
-          - conditions
           type: object
   version: v1alpha1
   versions:

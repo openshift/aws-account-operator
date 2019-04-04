@@ -21,6 +21,10 @@ import (
 
 var log = logf.Log.WithName("controller_accountpool")
 
+const (
+	emailID = "osd-creds-mgm"
+)
+
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
 * business logic.  Delete these comments after modifying this file.*
@@ -171,7 +175,7 @@ func updateAccountPoolStatus(currentAccountPool *awsv1alpha1.AccountPool, unclai
 func newAccountForCR(namespace string) *awsv1alpha1.Account {
 
 	uuid := rand.String(6)
-	accountName := "osd-creds-mgm-" + uuid
+	accountName := emailID + "-" + uuid
 
 	return &awsv1alpha1.Account{
 		ObjectMeta: metav1.ObjectMeta{

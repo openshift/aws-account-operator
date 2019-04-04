@@ -3,6 +3,16 @@ kind: CustomResourceDefinition
 metadata:
   name: accountclaims.aws.managed.openshift.io
 spec:
+  additionalPrinterColumns:
+  - JSONPath: .status.state
+    name: State
+    type: string
+  - JSONPath: .spec.accountlink
+    name: Account
+    type: string
+  - JSONPath: .metadata.creationTimestamp
+    name: Age
+    type: date
   group: aws.managed.openshift.io
   names:
     kind: AccountClaim
@@ -29,7 +39,7 @@ spec:
           type: object
         spec:
           properties:
-            acconutlink:
+            accountlink:
               type: string
             aws:
               type: object
@@ -42,10 +52,7 @@ spec:
                 https://book.kubebuilder.io/beyond_basics/generating_crd.html'
               type: object
           required:
-          - legalentity
-          - awscredentialsecret
           - aws
-          - acconutlink
           type: object
         status:
           properties:
@@ -86,9 +93,12 @@ spec:
                 - status
                 type: object
               type: array
+            state:
+              type: string
           required:
           - billingAcountID
           - conditions
+          - state
           type: object
   version: v1alpha1
   versions:

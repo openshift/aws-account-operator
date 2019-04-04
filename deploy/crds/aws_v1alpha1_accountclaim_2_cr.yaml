@@ -1,14 +1,14 @@
 apiVersion: aws.managed.openshift.io/v1alpha1
 kind: AccountClaim
 metadata:
-  name: corp-org-accountclaim
+  name: corp2-org-accountclaim
 spec:
   legalEntity:
-    name: corp-org
-    id: 123456
+    name: corp2-org
+    id: 222222
   awsCredentialSecret:
-    name: iam-credentials
-    namespace: corp-org-ns
+    name: iam-credentials-corp2
+    namespace: corp2-org-ns
   aws:
     regions:
     - name: us-east-1
