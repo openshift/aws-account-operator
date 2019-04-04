@@ -2,10 +2,12 @@ package accountclaim
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
+	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -15,6 +17,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+)
+
+const (
+	AccountClaimed   = "AccountClaimed"
+	AccountUnclaimed = "AccountUnclaimed"
 )
 
 var log = logf.Log.WithName("controller_accountclaim")
@@ -97,12 +104,28 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
-	fmt.Println("Got account claim")
-
 	// Return if this claim has been satisfied
 	if accountClaim.Spec.AccountLink != "" {
 		reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.ObjectMeta.Name))
 		return reconcile.Result{}, nil
+	}
+
+	if accountClaim.Status.State == "" {
+		message := "Attempting to claim account"
+		accountClaim.Status.State = awsv1alpha1.ClaimStatusPending
+
+		accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
+			accountClaim.Status.Conditions,
+			awsv1alpha1.AccountUnclaimed,
+			corev1.ConditionTrue,
+			AccountClaimed,
+			message,
+			controllerutils.UpdateConditionNever)
+		// Update the Spec on AccountClaim
+		err = r.client.Status().Update(context.TODO(), accountClaim)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	accountList := &awsv1alpha1.AccountList{}
@@ -112,61 +135,56 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
-	fmt.Println("Set listoptions")
-
-	selectedAccount, err := selectAccount(accountList)
+	// Get an unclaimed account from the pool
+	unclaimedAccount, err := getUnclaimedAccount(accountList)
 	if err != nil {
-		reqLogger.Error(err, "Error selecting account account")
+		reqLogger.Error(err, "Unable to select an unclaimed account from the pool")
 		return reconcile.Result{}, err
 	}
-
-	fmt.Println("Selected account")
-	fmt.Printf("Selected Account Name: %s\n", selectedAccount.ObjectMeta.Name)
 
 	// Set claim link on Account
-	err = setClaimLink(accountClaim, selectedAccount)
+	err = setAccountLinkToClaim(reqLogger, unclaimedAccount, accountClaim)
 	if err != nil {
 		// If we got an error log it and reqeue the request
+		reqLogger.Error(err, "Unable to set account link on claim")
 		return reconcile.Result{}, err
 	}
-
-	fmt.Println("ClaimLink set")
+	reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.ObjectMeta.Name))
 
 	// Update the Spec on Account
-	err = r.client.Update(context.TODO(), selectedAccount)
+	err = r.client.Update(context.TODO(), unclaimedAccount)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	objectKey, err := client.ObjectKeyFromObject(selectedAccount)
+	objectKey, err := client.ObjectKeyFromObject(unclaimedAccount)
 	if err != nil {
 		reqLogger.Error(err, "Unable to get name and namespace of Acccount object")
 	}
 
-	err = r.client.Get(context.TODO(), objectKey, selectedAccount)
+	// Get updated Account object
+	err = r.client.Get(context.TODO(), objectKey, unclaimedAccount)
 	if err != nil {
-		fmt.Println("Getting updated account")
+		reqLogger.Error(err, "Unable to get updated Acccount object")
 		return reconcile.Result{}, err
 	}
 
-	setClaimStatus(accountClaim, selectedAccount)
-	selectedAccountPrettyPrint, err := json.MarshalIndent(selectedAccount, "", "  ")
-	if err != nil {
-		fmt.Printf("Error unmarshalling json: %s", err)
-	}
-	fmt.Println("ClaimLink set on spec")
+	// Set Account status to claimed
+	setAccountStatusClaimed(reqLogger, unclaimedAccount, accountClaim)
 
-	fmt.Println(string(selectedAccountPrettyPrint))
+	// selectedAccountPrettyPrint, err := json.MarshalIndent(unclaimedAccount, "", "  ")
+	// if err != nil {
+	// 	fmt.Printf("Error unmarshalling json: %s", err)
+	// }
 
 	// Update the Status on Account
-	err = r.client.Status().Update(context.TODO(), selectedAccount)
+	err = r.client.Status().Update(context.TODO(), unclaimedAccount)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	fmt.Println("Account status updated")
 	// Set account link on AccountClaim
-	setAccountLink(selectedAccount, accountClaim)
+	setAccountLink(reqLogger, unclaimedAccount, accountClaim)
 
 	// Update the Spec on AccountClaim
 	err = r.client.Update(context.TODO(), accountClaim)
@@ -174,42 +192,53 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
-	fmt.Println("Updated account status")
+	objectKey, err = client.ObjectKeyFromObject(accountClaim)
+	if err != nil {
+		reqLogger.Error(err, "Unable to get name and namespace of Acccount object")
+	}
+
+	// Get updated AccountClaim object
+	err = r.client.Get(context.TODO(), objectKey, accountClaim)
+	if err != nil {
+		reqLogger.Error(err, "Unable to get updated AcccountClaim object")
+		return reconcile.Result{}, err
+	}
+
+	// Set AccountClaim status
+	setAccountClaimStatus(reqLogger, unclaimedAccount, accountClaim)
+
+	// Update the Spec on AccountClaim
+	err = r.client.Status().Update(context.TODO(), accountClaim)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 
 	return reconcile.Result{}, nil
 }
 
-func selectAccount(accountList *awsv1alpha1.AccountList) (*awsv1alpha1.Account, error) {
-	var selectedAccount awsv1alpha1.Account
-	var selectedAccountFound = false
+func getUnclaimedAccount(accountList *awsv1alpha1.AccountList) (*awsv1alpha1.Account, error) {
+	var unclaimedAccount awsv1alpha1.Account
+	var unclaimedAccountFound = false
 
 	// Range through accounts and select the first one that doesn't have a claim link
 	for _, account := range accountList.Items {
 		if account.Status.Claimed == false && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
 			fmt.Printf("Claiming account: %s", account.ObjectMeta.Name)
-			selectedAccount = account
-			selectedAccountFound = true
+			unclaimedAccount = account
+			unclaimedAccountFound = true
 			break
 		}
 	}
 
-	selectedAccountPrettyPrint, err := json.MarshalIndent(selectedAccount, "", "  ")
-	if err != nil {
-		fmt.Printf("Error unmarshalling json: %s", err)
+	if !unclaimedAccountFound {
+		return &unclaimedAccount, fmt.Errorf("can't find a ready account to claim")
 	}
 
-	if !selectedAccountFound {
-		return &selectedAccount, fmt.Errorf("can't find a ready account to claim")
-	}
-
-	fmt.Printf("%s\n", selectedAccountPrettyPrint)
-	return &selectedAccount, nil
+	return &unclaimedAccount, nil
 }
 
-// setClaimLink sets Account.Spec.ClaimLink to AccountClaim.ObjectMetadata.Name
-func setClaimLink(awsAccountClaim *awsv1alpha1.AccountClaim, awsAccount *awsv1alpha1.Account) error {
-	// Set Account Spec.ClaimLink to name of the claim, fail if its not empty
-	// so we can select another account
+// setAccountLinkToClaim sets Account.Spec.ClaimLink to AccountClaim.ObjectMetadata.Name
+func setAccountLinkToClaim(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) error {
 	// Initially this will naively deal with concurrency
 	if awsAccount.Status.Claimed == true || awsAccount.Spec.ClaimLink != "" {
 		return fmt.Errorf("AWS Account already claimed by %s, attempting to select another account", awsAccount.Spec.ClaimLink)
@@ -217,25 +246,42 @@ func setClaimLink(awsAccountClaim *awsv1alpha1.AccountClaim, awsAccount *awsv1al
 
 	// Set link on Account
 	awsAccount.Spec.ClaimLink = awsAccountClaim.ObjectMeta.Name
+	reqLogger.Info(fmt.Sprintf("Account %s ClaimLink set to AccountClaim %s", awsAccount.Name, awsAccountClaim.Name))
 	return nil
 }
 
-func setClaimStatus(awsAccountClaim *awsv1alpha1.AccountClaim, awsAccount *awsv1alpha1.Account) {
+func setAccountClaimStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
+	message := fmt.Sprintf("Account claimed by %s", awsAccount.Name)
+	awsAccountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
+		awsAccountClaim.Status.Conditions,
+		awsv1alpha1.AccountClaimed,
+		corev1.ConditionTrue,
+		AccountClaimed,
+		message,
+		controllerutils.UpdateConditionNever)
+	awsAccountClaim.Status.State = awsv1alpha1.ClaimStatusReady
+	reqLogger.Info(fmt.Sprintf("Account %s status updated", awsAccountClaim.Name))
+}
+
+func setAccountStatusClaimed(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
 	// Set Status on Account
 	// This shouldn't error but lets log it just incase
 	if awsAccount.Status.Claimed != false {
 		fmt.Printf("Account Status.Claimed field is %v it should be false\n", awsAccount.Status.Claimed)
 	}
+
 	// Set Account status to claimed
 	awsAccount.Status.Claimed = true
+	reqLogger.Info(fmt.Sprintf("Account %s status updated", awsAccountClaim.Name))
 }
 
 // setAccountLink sets AccountClaim.Spec.AccountLink to Account.ObjectMetadata.Name
-func setAccountLink(awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
+func setAccountLink(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
 	// This shouldn't error but lets log it just incase
 	if awsAccountClaim.Spec.AccountLink != "" {
-		fmt.Printf("AccountLink field is already populated for claim: %s, AWS account link is: %s\n", awsAccountClaim.ObjectMeta.Name, awsAccountClaim.Spec.AccountLink)
+		reqLogger.Info("AccountLink field is already populated for claim: %s, AWS account link is: %s\n", awsAccountClaim.ObjectMeta.Name, awsAccountClaim.Spec.AccountLink)
 	}
 	// Set link on AccountClaim
 	awsAccountClaim.Spec.AccountLink = awsAccount.ObjectMeta.Name
+	reqLogger.Info(fmt.Sprintf("Linked claim %s to account %s", awsAccountClaim.Name, awsAccount.Name))
 }

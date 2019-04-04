@@ -32,7 +32,8 @@ type AccountSpec struct {
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
 	AwsAccountID  string `json:"awsaccountid"`
 	IAMUserSecret string `json:"iamusersecret"`
-	ClaimLink     string `json:"claimlink"`
+	// +optional
+	ClaimLink string `json:"claimlink"`
 }
 
 // AccountStatus defines the observed state of Account
@@ -41,9 +42,8 @@ type AccountStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	Claimed    bool               `json:"claimed"`
-	State      string             `json:"state"`
-	Conditions []AccountCondition `json:"conditions"`
+	Claimed bool   `json:"claimed"`
+	State   string `json:"state"`
 }
 
 // AccountCondition contains details for the current condition of a AWS account
