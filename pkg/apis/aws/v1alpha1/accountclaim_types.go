@@ -31,8 +31,6 @@ type AccountClaimStatus struct {
 	State            ClaimStatus             `json:"state"`
 }
 
-// +genclient
-
 // AccountClaimCondition contains details for the current condition of a AWS account claim
 type AccountClaimCondition struct {
 	// Type is the type of the condition.
@@ -75,6 +73,7 @@ const (
 	ClaimStatusError ClaimStatus = "Error"
 )
 
+// +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // AccountClaim is the Schema for the accountclaims API
