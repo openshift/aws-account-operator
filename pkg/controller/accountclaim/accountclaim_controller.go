@@ -213,6 +213,22 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	// Get secret created by Account controller and copy it to the name/namespace combo that UHC is expecting
+	accountIAMUserSecret := &corev1.Secret{}
+	objectKey = client.ObjectKey{Namespace: unclaimedAccount.Namespace, Name: unclaimedAccount.Spec.IAMUserSecret}
+
+	err = r.client.Get(context.TODO(), objectKey, accountIAMUserSecret)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	accountIAMUserSecret.Name = accountClaim.Spec.AwsCredentialSecret.Name
+	accountIAMUserSecret.Namespace = accountClaim.Spec.AwsCredentialSecret.Namespace
+	err = r.client.Create(context.TODO(), accountIAMUserSecret)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
 	return reconcile.Result{}, nil
 }
 
