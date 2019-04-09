@@ -332,6 +332,7 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 }
 
 func (r *ReconcileAccount) BulidandDestroyEC2Instances(reqLogger logr.Logger, awsClient awsclient.Client) error {
+	//wait a bit for account to be ready to create
 
 	//Create instance
 	reqLogger.Info("Creating EC2 Instance")
@@ -520,24 +521,37 @@ func formatAccountEmail(name string) string {
 
 //Creates ec2 instance and returns its instance ID
 func CreateEC2Instance(client awsclient.Client) (string, error) {
-
 	// Create EC2 service client
 
-	// Specify the details of the instance that you want to create.
-	runResult, err := client.RunInstances(&ec2.RunInstancesInput{
-		// An Amazon Linux AMI ID for t2.micro instances in the us-west-2 region
-		ImageId:      aws.String("ami-000db10762d0c4c05"),
-		InstanceType: aws.String("t2.micro"),
-		MinCount:     aws.Int64(1),
-		MaxCount:     aws.Int64(1),
-	})
-
-	if err != nil {
-		fmt.Println("Could not create instance", err)
-		return "", err
+	var instanceID string
+	var runErr error
+	attempt := 1
+	for i := 0; i < 300; i++ {
+		time.Sleep(time.Duration(attempt*5) * time.Second)
+		attempt++
+		if attempt%5 == 0 {
+			attempt = attempt * 2
+		}
+		// Specify the details of the instance that you want to create.
+		runResult, runErr := client.RunInstances(&ec2.RunInstancesInput{
+			// An Amazon Linux AMI ID for t2.micro instances in the us-west-2 region
+			ImageId:      aws.String("ami-000db10762d0c4c05"),
+			InstanceType: aws.String("t2.micro"),
+			MinCount:     aws.Int64(1),
+			MaxCount:     aws.Int64(1),
+		})
+		if runErr == nil {
+			instanceID = *runResult.Instances[0].InstanceId
+			break
+		}
 	}
 
-	return *runResult.Instances[0].InstanceId, nil
+	if runErr != nil {
+		fmt.Println("Could not create instance", runErr)
+		return "", runErr
+	}
+
+	return instanceID, nil
 
 }
 
