@@ -331,6 +331,7 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 	return userSecret.ObjectMeta.Name, nil
 }
 
+//BulidandDestroyEC2Instances runs and ec2 instance and terminates it
 func (r *ReconcileAccount) BulidandDestroyEC2Instances(reqLogger logr.Logger, awsClient awsclient.Client) error {
 	//wait a bit for account to be ready to create
 
@@ -519,7 +520,7 @@ func formatAccountEmail(name string) string {
 	return email
 }
 
-//Creates ec2 instance and returns its instance ID
+//CreateEC2Instance creates ec2 instance and returns its instance ID
 func CreateEC2Instance(client awsclient.Client) (string, error) {
 	// Create EC2 service client
 
@@ -547,7 +548,6 @@ func CreateEC2Instance(client awsclient.Client) (string, error) {
 	}
 
 	if runErr != nil {
-		fmt.Println("Could not create instance", runErr)
 		return "", runErr
 	}
 
@@ -555,7 +555,7 @@ func CreateEC2Instance(client awsclient.Client) (string, error) {
 
 }
 
-// Returns the InstanceState code
+//DescribeEC2Instances returns the InstanceState code
 func DescribeEC2Instances(client awsclient.Client) (int, error) {
 	// States and codes
 	// 0 : pending
@@ -567,7 +567,6 @@ func DescribeEC2Instances(client awsclient.Client) (int, error) {
 
 	result, err := client.DescribeInstanceStatus(nil)
 	if err != nil {
-		fmt.Println("Error", err)
 		return 0, err
 	}
 
@@ -578,10 +577,10 @@ func DescribeEC2Instances(client awsclient.Client) (int, error) {
 	if len(result.InstanceStatuses) == 0 {
 		return 0, errors.New("No EC2 instances found")
 	}
-	fmt.Println("Success", result)
 	return int(*result.InstanceStatuses[0].InstanceState.Code), nil
 }
 
+//DeleteEC2Instance terminates the ec2 instance from the instanceID provided
 func DeleteEC2Instance(client awsclient.Client, instanceID string) error {
 	_, err := client.TerminateInstances(&ec2.TerminateInstancesInput{
 		InstanceIds: aws.StringSlice([]string{instanceID}),
