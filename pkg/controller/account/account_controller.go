@@ -38,6 +38,9 @@ const (
 	awsCredsSecretIDKey     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
 	iamUserName             = "osdManagedAdmin"
+	awsSecretName           = "aws-config"
+	awsAMI                  = "ami-000db10762d0c4c05"
+	awsInstanceType         = "t2.micro"
 )
 
 /**
@@ -127,7 +130,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		awsSetupClient, err := r.getAWSClient(newAwsClientInput{
-			secretName: "aws-config",
+			secretName: awsSecretName,
 			nameSpace:  request.Namespace,
 			awsRegion:  "us-east-1",
 		})
@@ -536,8 +539,8 @@ func CreateEC2Instance(client awsclient.Client) (string, error) {
 		// Specify the details of the instance that you want to create.
 		runResult, runErr := client.RunInstances(&ec2.RunInstancesInput{
 			// An Amazon Linux AMI ID for t2.micro instances in the us-west-2 region
-			ImageId:      aws.String("ami-000db10762d0c4c05"),
-			InstanceType: aws.String("t2.micro"),
+			ImageId:      aws.String(awsAMI),
+			InstanceType: aws.String(awsInstanceType),
 			MinCount:     aws.Int64(1),
 			MaxCount:     aws.Int64(1),
 		})
