@@ -28,7 +28,7 @@ objects:
     name: aws-account-operator-og
   spec:
     targetNamespaces:
-    - hive
+    - aws-account-operator
 
 - apiVersion: operators.coreos.com/v1alpha1
   kind: Subscription

@@ -16,7 +16,7 @@ rm -rf "$SAAS_OPERATOR_DIR"
 
 git clone \
     --branch "$BRANCH_CHANNEL" \
-    https://app:"${APP_SRE_BOT_PUSH_TOKEN}"@github.com/app-sre/saas-hive-operator-bundle.git \
+    https://app:"${APP_SRE_BOT_PUSH_TOKEN}"@github.com/app-sre/saas-aws-account-operator-bundle.git \
     "$SAAS_OPERATOR_DIR"
 
 # remove any versions more recent than deployed hash
@@ -28,6 +28,7 @@ if [[ "$REMOVE_UNDEPLOYED" == true ]]; then
     )
 
     delete=false
+    # Sort based on commit number
     for version in $(ls $BUNDLE_DIR | sort -t . -k 3 -g); do
         # skip if not directory
         [ -d "$BUNDLE_DIR/$version" ] || continue
