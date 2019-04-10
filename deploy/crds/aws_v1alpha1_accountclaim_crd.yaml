@@ -39,28 +39,56 @@ spec:
           type: object
         spec:
           properties:
-            accountlink:
+            accountLink:
               type: string
             aws:
+              properties:
+                regions:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  type: array
+              required:
+              - regions
               type: object
-            awscredentialsecret:
+            awsCredentialSecret:
+              properties:
+                name:
+                  type: string
+                namespace:
+                  type: string
+              required:
+              - name
+              - namespace
               type: object
-            legalentity:
+            legalEntity:
               description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                 Important: Run "operator-sdk generate k8s" to regenerate code after
                 modifying this file Add custom validation using kubebuilder tags:
                 https://book.kubebuilder.io/beyond_basics/generating_crd.html'
+              properties:
+                id:
+                  format: int64
+                  type: integer
+                name:
+                  type: string
+              required:
+              - name
+              - id
               type: object
           required:
+          - legalEntity
+          - awsCredentialSecret
           - aws
+          - accountLink
           type: object
         status:
           properties:
-            billingAcountID:
-              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                of cluster Important: Run "operator-sdk generate k8s" to regenerate
-                code after modifying this file Add custom validation using kubebuilder
-                tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
+            billingAccountID:
               type: string
             conditions:
               items:
@@ -96,7 +124,7 @@ spec:
             state:
               type: string
           required:
-          - billingAcountID
+          - billingAccountID
           - conditions
           - state
           type: object

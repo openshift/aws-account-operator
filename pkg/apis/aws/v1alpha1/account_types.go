@@ -30,10 +30,10 @@ type AccountSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	AwsAccountID  string `json:"awsaccountid"`
-	IAMUserSecret string `json:"iamusersecret"`
+	AwsAccountID  string `json:"awsAccountID"`
+	IAMUserSecret string `json:"iamUserSecret"`
 	// +optional
-	ClaimLink string `json:"claimlink"`
+	ClaimLink string `json:"claimLink"`
 }
 
 // AccountStatus defines the observed state of Account
