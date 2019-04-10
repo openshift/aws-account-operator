@@ -9,6 +9,7 @@ import (
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -20,8 +21,10 @@ import (
 )
 
 const (
-	AccountClaimed   = "AccountClaimed"
-	AccountUnclaimed = "AccountUnclaimed"
+	AccountClaimed      = "AccountClaimed"
+	AccountUnclaimed    = "AccountUnclaimed"
+	awsCredsUserName    = "aws_user_name"
+	awsCredsSecretIDKey = "aws_access_key_id"
 )
 
 var log = logf.Log.WithName("controller_accountclaim")
@@ -222,10 +225,18 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
-	accountIAMUserSecret.Name = accountClaim.Spec.AwsCredentialSecret.Name
-	accountIAMUserSecret.Namespace = accountClaim.Spec.AwsCredentialSecret.Namespace
-	err = r.client.Create(context.TODO(), accountIAMUserSecret)
+	UHCSecretName := accountClaim.Spec.AwsCredentialSecret.Name
+	UHCSecretNamespace := accountClaim.Spec.AwsCredentialSecret.Namespace
+	awsAccessKeyID := accountIAMUserSecret.Data[awsCredsSecretIDKey]
+	awsSecretAccessKey := accountIAMUserSecret.Data[awsCredsSecretIDKey]
+	if string(awsAccessKeyID) == "" || string(awsSecretAccessKey) == "" {
+		reqLogger.Error(err, "Cannot get AWS Credentials from secret referenced from Account")
+	}
+	UHCSecret := newSecretforCR(UHCSecretName, UHCSecretNamespace, awsAccessKeyID, awsSecretAccessKey)
+
+	err = r.client.Create(context.TODO(), UHCSecret)
 	if err != nil {
+		reqLogger.Error(err, "Unable to create secret for UHC")
 		return reconcile.Result{}, err
 	}
 
@@ -300,4 +311,23 @@ func setAccountLink(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsA
 	// Set link on AccountClaim
 	awsAccountClaim.Spec.AccountLink = awsAccount.ObjectMeta.Name
 	reqLogger.Info(fmt.Sprintf("Linked claim %s to account %s", awsAccountClaim.Name, awsAccount.Name))
+}
+
+func newSecretforCR(secretName string, secretNameSpace string, awsAccessKeyID []byte, awsSecretAccessKey []byte) *corev1.Secret {
+	return &corev1.Secret{
+		Type: "Opaque",
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: secretNameSpace,
+		},
+		Data: map[string][]byte{
+			"aws_access_key_id":     awsAccessKeyID,
+			"aws_secret_access_key": awsSecretAccessKey,
+		},
+	}
+
 }
