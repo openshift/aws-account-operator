@@ -7,6 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+	"github.com/openshift/aws-account-operator/pkg/metrics"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -240,6 +241,14 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	accountClaimList := &awsv1alpha1.AccountClaimList{}
+
+	listOps = &client.ListOptions{Namespace: accountClaim.Namespace}
+	if err = r.client.List(context.TODO(), listOps, accountList); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	metrics.UpdateAccountClaimMetrics(accountClaimList)
 	return reconcile.Result{}, nil
 }
 

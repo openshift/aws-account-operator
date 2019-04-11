@@ -9,6 +9,7 @@ import (
 
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	"github.com/openshift/aws-account-operator/pkg/controller"
+	operatormetrics "github.com/openshift/aws-account-operator/pkg/metrics"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	"github.com/operator-framework/operator-sdk/pkg/metrics"
@@ -102,6 +103,9 @@ func main() {
 	if err != nil {
 		log.Info(err.Error())
 	}
+
+	log.Info("Starting prometheus metrics")
+	operatormetrics.StartMetrics()
 
 	log.Info("Starting the Cmd.")
 

@@ -19,6 +19,7 @@ import (
 	"net/http"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -80,17 +81,20 @@ func StartMetrics() {
 func RegisterMetrics() error {
 	for _, metric := range metricsList {
 		err := prometheus.Register(metric)
-		return err
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func updateAWSMetrics() {
+// UpdateAWSMetrics updates all AWS related metrics
+func UpdateAWSMetrics(awsClient awsclient.Client) {
 
 	metricTotalAWSAccounts.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(0))
 }
 
-// UpdateAccountCRMetrics ...
+// UpdateAccountCRMetrics updates all metrics related to Account CRs
 func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 
 	unclaimedAccountCount := 0
@@ -115,12 +119,14 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	metricTotalAccountCRsFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(failedAccountCount))
 }
 
-func updateAccountClaimMetrics(accountClaimList *awsv1alpha1.AccountClaimList) {
+// UpdateAccountClaimMetrics updates all metrics related to AccountClaim CRs
+func UpdateAccountClaimMetrics(accountClaimList *awsv1alpha1.AccountClaimList) {
 
 	metricTotalAccountClaimCRs.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(len(accountClaimList.Items)))
 }
 
-func updatePoolSizeVsUnclaimed(poolSize int, unclaimedAccountCount int) {
+// UpdatePoolSizeVsUnclaimed updates the metric that measures the difference between Poolsize and Unclaimed Account CRs
+func UpdatePoolSizeVsUnclaimed(poolSize int, unclaimedAccountCount int) {
 
 	metric := math.Abs(float64(poolSize) - float64(unclaimedAccountCount))
 
