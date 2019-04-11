@@ -50,9 +50,9 @@ spec:
     - description: Account Claims for reconciled AWS Accounts.
       displayName: Account Claim
       kind: AccountClaim
-      name: accountclaim.aws.managed.openshift.io
+      name: accountclaims.aws.managed.openshift.io
       version: v1alpha1
-    - description: Pool of unclaimed reconiled AWS Accounts.
+    - description: Pool of unclaimed AWS Accounts.
       displayName: Account Pool
       kind: AccountPool
       name: accountpools.aws.managed.openshift.io
