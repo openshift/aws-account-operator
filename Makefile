@@ -4,13 +4,15 @@ GOFILES = $(shell find $(SRC_DIRS) -name '*.go' | grep -v bindata)
 
 BUILD_CMD ?= docker build
 
+DOCKER_CMD ?= docker
+
 # Image URL to use all building/pushing image targets
 IMG ?= aws-account-operator:latest
 
 # Look up distro name (e.g. Fedora)
 DISTRO ?= $(shell if which lsb_release &> /dev/null; then lsb_release -si; else echo "Unknown"; fi)
 
-OPERATOR_IMAGE_URI=$(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY)/$(IMAGE_NAME):v$(VERSION_FULL)
+OPERATOR_NAME = aws-account-operator
 
 BINFILE=build/_output/bin/$(OPERATOR_NAME)
 MAINPACKAGE=./cmd/manager
@@ -42,7 +44,7 @@ gobuild: gocheck gotest ## Build binary
 # Build the docker image
 .PHONY: docker-build
 docker-build:
-	$(BUILD_CMD) -t ${IMG} build/.
+	$(BUILD_CMD) -t ${IMG} ./build/
 
 # Push the docker image
 .PHONY: docker-push
