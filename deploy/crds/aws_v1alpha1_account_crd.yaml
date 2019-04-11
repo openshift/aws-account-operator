@@ -42,20 +42,20 @@ spec:
           type: object
         spec:
           properties:
-            awsaccountid:
+            awsAccountID:
               description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                 Important: Run "operator-sdk generate k8s" to regenerate code after
                 modifying this file Add custom validation using kubebuilder tags:
                 https://book.kubebuilder.io/beyond_basics/generating_crd.html'
               type: string
-            claimlink:
+            claimLink:
               type: string
-            iamusersecret:
+            iamUserSecret:
               type: string
           required:
-          - awsaccountid
-          - iamusersecret
-          - claimlink
+          - awsAccountID
+          - iamUserSecret
+          - claimLink
           type: object
         status:
           properties:

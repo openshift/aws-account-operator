@@ -14,21 +14,20 @@ type AccountClaimSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	LegalEntity         LegalEntity         `json:"legalentity"`
-	AwsCredentialSecret AwsCredentialSecret `json:"awscredentialsecret"`
+	LegalEntity         LegalEntity         `json:"legalEntity"`
+	AwsCredentialSecret AwsCredentialSecret `json:"awsCredentialSecret"`
 	Aws                 Aws                 `json:"aws"`
-	AccountLink         string              `json:"accountlink"`
+	AccountLink         string              `json:"accountLink"`
 }
 
 // AccountClaimStatus defines the observed state of AccountClaim
 // +k8s:openapi-gen=true
 type AccountClaimStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
-	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	BillingAccountID string                  `json:"billingAcountID"`
-	Conditions       []AccountClaimCondition `json:"conditions"`
-	State            ClaimStatus             `json:"state"`
+	BillingAccountID string `json:"billingAccountID"`
+
+	Conditions []AccountClaimCondition `json:"conditions"`
+
+	State ClaimStatus `json:"state"`
 }
 
 // AccountClaimCondition contains details for the current condition of a AWS account claim
@@ -97,26 +96,26 @@ type AccountClaimList struct {
 
 // LegalEntity contains Red Hat specific identifiers to the original creator the clusters
 type LegalEntity struct {
-	Name string `json:,"name"`
-	Id   int    `json:,"id"`
+	Name string `json:"name"`
+	ID   int    `json:"id"`
 }
 
 // AwsCredentialSecret contains the name of the secret and name of the namespace
 // where UHC would like the AWS credentials secret to be placed
 type AwsCredentialSecret struct {
-	Name      string `json:,"name"`
-	Namespace string `json:,"namespace"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
 }
 
 // Aws struct contains specific AWS account configuration options
 type Aws struct {
-	Regions []AwsRegions `json:,"regions"`
+	Regions []AwsRegions `json:"regions"`
 }
 
 // AwsRegions struct contains specific AwsRegion information, at the moment its just
 // name but in the future it will contain specific resource limits etc.
 type AwsRegions struct {
-	Name string `json:,"name"`
+	Name string `json:"name"`
 }
 
 func init() {
