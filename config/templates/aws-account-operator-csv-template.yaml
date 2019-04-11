@@ -1,0 +1,59 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: aws-account-operator-0.0.1
+  namespace: placeholder
+  annotations:
+    categories: A list of comma separated categories that your operator falls under.
+    certified: "false"
+    description: AWS account creator. 
+    containerImage: quay.io/app-sre/aws-account-operator:latest
+    createdAt: "2019-04-10T17:34:33Z"
+    support: James Harrington
+spec:
+  displayName: aws-account-operator
+  description: AWS account creator.
+  keywords:
+  - kubernetes
+  - openshift
+  - multi-cluster
+  - cluster
+  version: 0.0.1
+  provider:
+    name: Red Hat, Inc
+  maturity: alpha
+  installModes:
+  - type: OwnNamespace
+    supported: true
+  - type: SingleNamespace
+    supported: true
+  - type: MultiNamespace
+    supported: false
+  - type: AllNamespaces
+    supported: false
+  install:
+    strategy: deployment
+    spec:
+      clusterPermissions:
+      - serviceAccountName: aws-account-operator-operator
+        # Rules will be added here by the generate-csv.py script.
+      deployments:
+      - name: aws-account-operator-operator
+        # Deployment spec will be added here by the generate-csv.py script.
+  customresourcedefinitions:
+    owned:
+    - description: Reconcile AWS accounts ready for use.
+      displayName: Account
+      kind: Account
+      name: accounts.aws.managed.openshift.io
+      version: v1alpha1
+    - description: Account Claims for reconciled AWS Accounts.
+      displayName: Account Claim
+      kind: AccountClaim
+      name: accountclaim.aws.managed.openshift.io
+      version: v1alpha1
+    - description: Pool of unclaimed reconiled AWS Accounts.
+      displayName: Account Pool
+      kind: AccountPool
+      name: accountpools.aws.managed.openshift.io
+      version: v1alpha1
