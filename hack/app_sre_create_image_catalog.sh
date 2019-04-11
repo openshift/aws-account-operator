@@ -6,7 +6,7 @@ BRANCH_CHANNEL="$1"
 QUAY_IMAGE="$2"
 
 GIT_HASH=$(git rev-parse --short=7 HEAD)
-GIT_COMMIT_COUNT=$(git rev-list 9a5e025f954009144cdc403acbdc3cb5178addf5..HEAD --count)
+GIT_COMMIT_COUNT=$(git rev-list $(git rev-list --max-parents=0 HEAD)..HEAD --count)
 
 # clone bundle repo
 SAAS_OPERATOR_DIR="saas-aws-account-operator-bundle"
