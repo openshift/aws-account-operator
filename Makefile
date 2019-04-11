@@ -44,7 +44,7 @@ gobuild: gocheck gotest ## Build binary
 # Build the docker image
 .PHONY: docker-build
 docker-build:
-	$(BUILD_CMD) -t ${IMG} ./build/
+	$(BUILD_CMD) -t ${IMG} -f ./build/Dockerfile .
 
 # Push the docker image
 .PHONY: docker-push
