@@ -35,10 +35,10 @@ spec:
     strategy: deployment
     spec:
       clusterPermissions:
-      - serviceAccountName: aws-account-operator-operator
+      - serviceAccountName: aws-account-operator
         # Rules will be added here by the generate-csv.py script.
       deployments:
-      - name: aws-account-operator-operator
+      - name: aws-account-operator
         # Deployment spec will be added here by the generate-csv.py script.
   customresourcedefinitions:
     owned:
