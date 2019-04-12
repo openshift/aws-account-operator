@@ -15,9 +15,11 @@
 package metrics
 
 import (
+	"fmt"
 	"math"
 	"net/http"
 
+	"github.com/aws/aws-sdk-go/service/organizations"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/prometheus/client_golang/prometheus"
@@ -90,8 +92,25 @@ func RegisterMetrics() error {
 
 // UpdateAWSMetrics updates all AWS related metrics
 func UpdateAWSMetrics(awsClient awsclient.Client) {
+	var awsAccounts []*organizations.Account
 
-	metricTotalAWSAccounts.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(0))
+	var nextToken *string
+
+	// Ensure we paginate through the account list
+	for {
+		awsAccountList, err := awsClient.ListAccounts(&organizations.ListAccountsInput{NextToken: nextToken})
+		if err != nil {
+			fmt.Println("Error getting a list of accounts")
+		}
+		awsAccounts = append(awsAccounts, awsAccountList.Accounts...)
+		if awsAccountList.NextToken != nil {
+			nextToken = awsAccountList.NextToken
+		} else {
+			break
+		}
+	}
+
+	metricTotalAWSAccounts.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(len(awsAccounts)))
 }
 
 // UpdateAccountCRMetrics updates all metrics related to Account CRs
