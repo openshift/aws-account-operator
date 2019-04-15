@@ -131,7 +131,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	if (currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false) {
 		// set state creating
-		currentAcctInstance.Status.State = "Creating"
+		setAccountClaimStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, "Creating")
 		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -164,7 +164,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		if credsErr != nil {
 			reqLogger.Info("Failed to get sts credentials")
 			reqLogger.Info(err.Error())
-			currentAcctInstance.Status.State = "Failed"
+			setAccountClaimStatus(reqLogger, currentAcctInstance, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
 			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 			if err != nil {
 				return reconcile.Result{}, err
@@ -199,7 +199,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		currentAcctInstance.Status.State = "Ready"
+		setAccountClaimStatus(reqLogger, currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, "Ready")
 		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -271,7 +271,7 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 	orgOutput, orgErr := CreateAccount(awsClient, account.Name, email)
 	// if it failed to create account set the status to failed and return
 	if orgErr != nil && orgErr.Error() == "Failed to create account" {
-		account.Status.State = "Failed"
+		setAccountClaimStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
@@ -299,7 +299,7 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 	_, userErr := CreateIAMUser(awsClient, iamUserName)
 	// TODO: better error handling but for now scrap account
 	if userErr != nil {
-		account.Status.State = "Failed"
+		setAccountClaimStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
@@ -312,7 +312,7 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 	// create user secrets
 	userSecretInfo, userSecretErr := CreateUserAccessKey(awsClient, iamUserName)
 	if userSecretErr != nil {
-		account.Status.State = "Failed"
+		setAccountClaimStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
@@ -331,7 +331,7 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 	userSecret := userSecretInput.newSecretforCR()
 	createErr := r.Client.Create(context.TODO(), userSecret)
 	if createErr != nil {
-		account.Status.State = "Failed"
+		setAccountClaimStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
