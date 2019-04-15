@@ -42,8 +42,9 @@ type AccountStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	Claimed bool   `json:"claimed"`
-	State   string `json:"state"`
+	Claimed    bool               `json:"claimed"`
+	Conditions []AccountCondition `json:"conditions"`
+	State      string             `json:"state"`
 }
 
 // AccountCondition contains details for the current condition of a AWS account
@@ -68,6 +69,17 @@ type AccountCondition struct {
 
 // AccountConditionType is a valid value for AccountCondition.Type
 type AccountConditionType string
+
+const (
+	// AccountCreating is set when an Account is being created
+	AccountCreating AccountConditionType = "Creating"
+	// AccountReady is set when an Account creation is ready
+	AccountReady AccountConditionType = "Ready"
+	// AccountFailed is set when account creation has failed
+	AccountFailed AccountConditionType = "Failed"
+	// AccountPending is set when account creation is pending
+	AccountPending AccountConditionType = "Pending"
+)
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

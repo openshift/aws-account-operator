@@ -40,7 +40,7 @@ func shouldUpdateCondition(
 	return updateConditionCheck(oldReason, oldMessage, newReason, newMessage)
 }
 
-// SetAccountClaimCondition sets a condition on a ClusterDeployment resource's status
+// SetAccountClaimCondition sets a condition on a AccountClaim resource's status
 func SetAccountClaimCondition(
 	conditions []awsv1alpha1.AccountClaimCondition,
 	conditionType awsv1alpha1.AccountClaimConditionType,
@@ -86,6 +86,60 @@ func SetAccountClaimCondition(
 // FindAccountClaimCondition finds in the condition that has the
 // specified condition type in the given list. If none exists, then returns nil.
 func FindAccountClaimCondition(conditions []awsv1alpha1.AccountClaimCondition, conditionType awsv1alpha1.AccountClaimConditionType) *awsv1alpha1.AccountClaimCondition {
+	for i, condition := range conditions {
+		if condition.Type == conditionType {
+			return &conditions[i]
+		}
+	}
+	return nil
+}
+
+// SetAccountCondition sets a condition on a Account resource's status
+func SetAccountCondition(
+	conditions []awsv1alpha1.AccountCondition,
+	conditionType awsv1alpha1.AccountConditionType,
+	status corev1.ConditionStatus,
+	reason string,
+	message string,
+	updateConditionCheck UpdateConditionCheck,
+) []awsv1alpha1.AccountCondition {
+	now := metav1.Now()
+	existingCondition := FindAccountCondition(conditions, conditionType)
+	if existingCondition == nil {
+		if status == corev1.ConditionTrue {
+			conditions = append(
+				conditions,
+				awsv1alpha1.AccountCondition{
+					Type:               conditionType,
+					Status:             status,
+					Reason:             reason,
+					Message:            message,
+					LastTransitionTime: now,
+					LastProbeTime:      now,
+				},
+			)
+		}
+	} else {
+		if shouldUpdateCondition(
+			existingCondition.Status, existingCondition.Reason, existingCondition.Message,
+			status, reason, message,
+			updateConditionCheck,
+		) {
+			if existingCondition.Status != status {
+				existingCondition.LastTransitionTime = now
+			}
+			existingCondition.Status = status
+			existingCondition.Reason = reason
+			existingCondition.Message = message
+			existingCondition.LastProbeTime = now
+		}
+	}
+	return conditions
+}
+
+// FindAccountCondition finds in the condition that has the
+// specified condition type in the given list. If none exists, then returns nil.
+func FindAccountCondition(conditions []awsv1alpha1.AccountCondition, conditionType awsv1alpha1.AccountConditionType) *awsv1alpha1.AccountCondition {
 	for i, condition := range conditions {
 		if condition.Type == conditionType {
 			return &conditions[i]

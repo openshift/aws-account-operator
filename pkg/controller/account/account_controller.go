@@ -7,9 +7,6 @@ import (
 	"strings"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -19,7 +16,10 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -41,6 +41,14 @@ const (
 	awsSecretName           = "aws-config"
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
+	// AccountPending indicates an account is pending
+	AccountPending = "Pending"
+	// AccountCreating indicates an account is being created
+	AccountCreating = "Creating"
+	// AccountFailed indicates account creation has failed
+	AccountFailed = "Failed"
+	// AccountReady indicates account creation is ready
+	AccountReady = "Ready"
 )
 
 /**
@@ -593,4 +601,16 @@ func DeleteEC2Instance(client awsclient.Client, instanceID string) error {
 	}
 
 	return nil
+}
+
+func setAccountClaimStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string, ctype awsv1alpha1.AccountConditionType, state string) {
+	awsAccount.Status.Conditions = controllerutils.SetAccountCondition(
+		awsAccount.Status.Conditions,
+		ctype,
+		corev1.ConditionTrue,
+		state,
+		message,
+		controllerutils.UpdateConditionNever)
+	awsAccount.Status.State = state
+	reqLogger.Info(fmt.Sprintf("Account %s status updated", awsAccount.Name))
 }
