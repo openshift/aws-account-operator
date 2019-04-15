@@ -62,6 +62,15 @@ with open('deploy/cluster_role.yaml', 'r') as stream:
             'serviceAccountName': 'aws-account-operator',
         })
 
+# Add aws-account-operator-client role to the CSV:
+with open('deploy/uhc_cluster_role.yaml', 'r') as stream:
+    operator_role = yaml.load(stream)
+    csv['spec']['install']['spec']['clusterPermissions'].append(
+        {
+            'rules': operator_role['rules'],
+            'serviceAccountName': 'aws-account-operator-client',
+        })
+
 # Add our deployment spec for the hive operator:
 with open('deploy/operator.yaml', 'r') as stream:
     operator_components = []
