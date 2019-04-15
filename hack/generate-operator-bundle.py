@@ -54,7 +54,7 @@ with open('config/templates/aws-account-operator-csv-template.yaml', 'r') as str
 csv['spec']['install']['spec']['clusterPermissions'] = []
 
 # Add aws-account-operator role to the CSV:
-with open('deploy/role.yaml', 'r') as stream:
+with open('deploy/cluster_role.yaml', 'r') as stream:
     operator_role = yaml.load(stream)
     csv['spec']['install']['spec']['clusterPermissions'].append(
         {
