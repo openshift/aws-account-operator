@@ -38,7 +38,7 @@ const (
 	awsCredsSecretIDKey     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
 	iamUserName             = "osdManagedAdmin"
-	awsSecretName           = "aws-config"
+	awsSecretName           = "aws-account-operator-credentials"
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
 	// AccountPending indicates an account is pending
