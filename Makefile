@@ -1,52 +1,11 @@
-BINDIR = bin
-SRC_DIRS = pkg
-GOFILES = $(shell find $(SRC_DIRS) -name '*.go' | grep -v bindata)
+SHELL := /usr/bin/env bash
 
-BUILD_CMD ?= docker build
+OPERATOR_DOCKERFILE = ./build/Dockerfile
 
-DOCKER_CMD ?= docker
-
-# Image URL to use all building/pushing image targets
-IMG ?= aws-account-operator:latest
-
-# Look up distro name (e.g. Fedora)
-DISTRO ?= $(shell if which lsb_release &> /dev/null; then lsb_release -si; else echo "Unknown"; fi)
-
-OPERATOR_NAME = aws-account-operator
-
-BINFILE=build/_output/bin/$(OPERATOR_NAME)
-MAINPACKAGE=./cmd/manager
-GOENV=GOOS=linux GOARCH=amd64 CGO_ENABLED=0
-GOFLAGS=-gcflags="all=-trimpath=${GOPATH}" -asmflags="all=-trimpath=${GOPATH}"
-
-TESTTARGETS := $(shell go list -e ./... | egrep -v "/(vendor)/")
-TESTOPTS := 
+# Include shared Makefiles
+include project.mk
+include standard.mk
 
 default: gobuild
 
-.PHONY: clean
-clean:
-	rm -rf ./build/_output
-
-.PHONY: gotest
-gotest:
-	go test $(TESTOPTS) $(TESTTARGETS)
-
-.PHONY: gocheck
-gocheck: ## Lint code
-	gofmt -s -l $(shell go list -f '{{ .Dir }}' ./... ) | grep ".*\.go"; if [ "$$?" = "0" ]; then gofmt -s -d $(shell go list -f '{{ .Dir }}' ./... ); exit 1; fi
-	go vet ./cmd/... ./pkg/...
-
-.PHONY: gobuild
-gobuild: gocheck gotest ## Build binary
-	${GOENV} go build ${GOFLAGS} -o ${BINFILE} ${MAINPACKAGE}
-
-# Build the docker image
-.PHONY: docker-build
-docker-build:
-	$(BUILD_CMD) -t ${IMG} -f ./build/Dockerfile .
-
-# Push the docker image
-.PHONY: docker-push
-docker-push:
-	$(DOCKER_CMD) push ${IMG}
+# Extend Makefile after here
