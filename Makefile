@@ -9,3 +9,6 @@ include standard.mk
 default: gobuild
 
 # Extend Makefile after here
+
+.PHONY: docker-build
+docker-build: build
