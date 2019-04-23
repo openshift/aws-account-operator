@@ -137,9 +137,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
+		// We expect this secret to exist in the same namespace Account CR's are created
 		awsSetupClient, err := r.getAWSClient(newAwsClientInput{
 			secretName: awsSecretName,
-			nameSpace:  request.Namespace,
+			nameSpace:  awsv1alpha1.AccountCrNamespace,
 			awsRegion:  "us-east-1",
 		})
 		if err != nil {
@@ -284,6 +285,15 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 	// TODO: add better error handling in the future to handle retry getting a status before returning
 	if orgErr != nil {
 		return "", orgErr
+	}
+
+	accountObjectKey, err := client.ObjectKeyFromObject(account)
+	if err != nil {
+		reqLogger.Error(err, "Unable to get name and namespace of Acccount object")
+	}
+	err = r.Client.Get(context.TODO(), accountObjectKey, account)
+	if err != nil {
+		reqLogger.Error(err, "Unable to get updated Acccount object after status update")
 	}
 
 	reqLogger.Info("Account Created")

@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -92,7 +93,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 
 	// Fetch the AccountPool instance
 	currentAccountPool := &awsv1alpha1.AccountPool{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, currentAccountPool)
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: request.Name, Namespace: awsv1alpha1.AccountCrNamespace}, currentAccountPool)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -110,7 +111,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	//Get the number of actual unclaimed AWS accounts in the pool
 	accountList := &awsv1alpha1.AccountList{}
 
-	listOps := &client.ListOptions{Namespace: currentAccountPool.Namespace}
+	listOps := &client.ListOptions{Namespace: awsv1alpha1.AccountCrNamespace}
 	if err = r.client.List(context.TODO(), listOps, accountList); err != nil {
 		return reconcile.Result{}, err
 	}
@@ -146,7 +147,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	}
 
 	// Create Account CR
-	newAccount := newAccountForCR(request.Namespace)
+	newAccount := newAccountForCR(awsv1alpha1.AccountCrNamespace)
 	addFinalizer(newAccount, "finalizer.aws.managed.openshift.io")
 
 	// Set AccountPool instance as the owner and controller
