@@ -10,7 +10,7 @@ spec:
   - JSONPath: .status.claimed
     name: Claimed
     type: boolean
-  - JSONPath: .spec.claimlink
+  - JSONPath: .spec.claimLink
     name: CLAIM
     type: string
   - JSONPath: .metadata.creationTimestamp
