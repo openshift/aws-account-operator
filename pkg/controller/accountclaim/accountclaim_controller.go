@@ -3,6 +3,7 @@ package accountclaim
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -109,7 +110,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	// Return if this claim has been satisfied
-	if accountClaim.Spec.AccountLink != "" {
+	if accountClaim.Spec.AccountLink != "" && accountClaim.Status.State == awsv1alpha1.ClaimStatusReady {
 		reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.ObjectMeta.Name))
 		return reconcile.Result{}, nil
 	}
@@ -130,11 +131,33 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+		err := r.client.Get(context.TODO(), request.NamespacedName, accountClaim)
+		if err != nil {
+			reqLogger.Error(err, "Unable to refresh claim")
+		}
 	}
 
+	if accountClaim.Status.State == awsv1alpha1.ClaimStatusPending {
+		if accountClaim.Spec.AccountLink != "" {
+			reqLogger.Info(fmt.Sprintf("Updating claim %s state to true", accountClaim.Name))
+			accountClaim.Status.State = awsv1alpha1.ClaimStatusReady
+			err = r.client.Status().Update(context.TODO(), accountClaim)
+			if err != nil {
+				reqLogger.Error(err, "Unable to update claim state to true")
+				return reconcile.Result{}, err
+			}
+			err := r.client.Get(context.TODO(), request.NamespacedName, accountClaim)
+			if err != nil {
+				reqLogger.Error(err, "Unable to get claim after state update")
+			}
+			// Stop here no need to continue for the claim
+			return reconcile.Result{}, nil
+		}
+
+	}
 	accountList := &awsv1alpha1.AccountList{}
 
-	listOps := &client.ListOptions{Namespace: accountClaim.Namespace}
+	listOps := &client.ListOptions{Namespace: awsv1alpha1.AccountCrNamespace}
 	if err = r.client.List(context.TODO(), listOps, accountList); err != nil {
 		return reconcile.Result{}, err
 	}
@@ -161,13 +184,13 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
-	objectKey, err := client.ObjectKeyFromObject(unclaimedAccount)
+	unclaimedAccountObjectKey, err := client.ObjectKeyFromObject(unclaimedAccount)
 	if err != nil {
 		reqLogger.Error(err, "Unable to get name and namespace of Acccount object")
 	}
 
 	// Get updated Account object
-	err = r.client.Get(context.TODO(), objectKey, unclaimedAccount)
+	err = r.client.Get(context.TODO(), unclaimedAccountObjectKey, unclaimedAccount)
 	if err != nil {
 		reqLogger.Error(err, "Unable to get updated Acccount object")
 		return reconcile.Result{}, err
@@ -184,6 +207,24 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	// Update the Status on Account
 	err = r.client.Status().Update(context.TODO(), unclaimedAccount)
 	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Unable to update the status of Account %s to claimed", unclaimedAccount.Name))
+		return reconcile.Result{}, err
+	}
+	// Refrest Account
+	err = r.client.Get(context.TODO(), unclaimedAccountObjectKey, unclaimedAccount)
+	if err != nil {
+		reqLogger.Error(err, "Unable to get updated Acccount object after status update")
+		return reconcile.Result{}, err
+	}
+
+	claimObjectKey, err := client.ObjectKeyFromObject(accountClaim)
+	if err != nil {
+		reqLogger.Error(err, "Unable to get name and namespace of Acccount object")
+	}
+	// Refresh AccountClaim
+	err = r.client.Get(context.TODO(), claimObjectKey, accountClaim)
+	if err != nil {
+		reqLogger.Error(err, "Unable to get updated AcccountClaim object after status update")
 		return reconcile.Result{}, err
 	}
 
@@ -196,13 +237,8 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
-	objectKey, err = client.ObjectKeyFromObject(accountClaim)
-	if err != nil {
-		reqLogger.Error(err, "Unable to get name and namespace of Acccount object")
-	}
-
 	// Get updated AccountClaim object
-	err = r.client.Get(context.TODO(), objectKey, accountClaim)
+	err = r.client.Get(context.TODO(), claimObjectKey, accountClaim)
 	if err != nil {
 		reqLogger.Error(err, "Unable to get updated AcccountClaim object")
 		return reconcile.Result{}, err
@@ -219,7 +255,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 	// Get secret created by Account controller and copy it to the name/namespace combo that UHC is expecting
 	accountIAMUserSecret := &corev1.Secret{}
-	objectKey = client.ObjectKey{Namespace: unclaimedAccount.Namespace, Name: unclaimedAccount.Spec.IAMUserSecret}
+	objectKey := client.ObjectKey{Namespace: unclaimedAccount.Namespace, Name: unclaimedAccount.Spec.IAMUserSecret}
 
 	err = r.client.Get(context.TODO(), objectKey, accountIAMUserSecret)
 	if err != nil {
@@ -255,7 +291,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 func getUnclaimedAccount(accountList *awsv1alpha1.AccountList) (*awsv1alpha1.Account, error) {
 	var unclaimedAccount awsv1alpha1.Account
 	var unclaimedAccountFound = false
-
+	time.Sleep(1000 * time.Millisecond)
 	// Range through accounts and select the first one that doesn't have a claim link
 	for _, account := range accountList.Items {
 		if account.Status.Claimed == false && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
@@ -296,7 +332,7 @@ func setAccountClaimStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Accoun
 		message,
 		controllerutils.UpdateConditionNever)
 	awsAccountClaim.Status.State = awsv1alpha1.ClaimStatusReady
-	reqLogger.Info(fmt.Sprintf("Account %s status updated", awsAccountClaim.Name))
+	reqLogger.Info(fmt.Sprintf("Account %s condition status updated", awsAccountClaim.Name))
 }
 
 func setAccountStatusClaimed(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {

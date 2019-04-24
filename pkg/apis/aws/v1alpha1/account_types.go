@@ -22,6 +22,8 @@ const (
 	accountStatusTransfered AccountStateStatus = "Transfered"
 	// AccountStatusTransferingDeleting const for Deleting status
 	accountStatusDeleting AccountStateStatus = "Deleting"
+	// AccountCrNamespace namespace where AWS accounts will be created
+	AccountCrNamespace = "aws-account-operator"
 )
 
 // AccountSpec defines the desired state of Account
