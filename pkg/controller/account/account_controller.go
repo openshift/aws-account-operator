@@ -41,6 +41,7 @@ const (
 	awsSecretName           = "aws-account-operator-credentials"
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
+	createPendTime          = 10 * time.Minute
 	// AccountPending indicates an account is pending
 	AccountPending = "Pending"
 	// AccountCreating indicates an account is being created
@@ -127,6 +128,13 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, nil
 		}
 		return reconcile.Result{}, err
+	}
+
+	// see if in creating for longer then 10 minutes
+	now := time.Now()
+	diff := now.Sub(currentAcctInstance.ObjectMeta.CreationTimestamp.Time)
+	if currentAcctInstance.Status.State == "Creating" && diff > createPendTime {
+		r.setStatusFailed(reqLogger, currentAcctInstance, "Creation pending for longer then 10 minutes")
 	}
 
 	if (currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false) {
