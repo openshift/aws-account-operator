@@ -4,13 +4,13 @@ metadata:
   name: accountpools.aws.managed.openshift.io
 spec:
   additionalPrinterColumns:
-  - JSONPath: .status.poolsize
+  - JSONPath: .status.poolSize
     name: Pool Size
     type: integer
-  - JSONPath: .status.unclaimedaccounts
+  - JSONPath: .status.unclaimedAccounts
     name: Unclaimed Accounts
     type: integer
-  - JSONPath: .status.claimedaccounts
+  - JSONPath: .status.claimedAccounts
     name: Claimed Accounts
     type: integer
   group: aws.managed.openshift.io
