@@ -23,10 +23,11 @@ import (
 )
 
 const (
-	AccountClaimed      = "AccountClaimed"
-	AccountUnclaimed    = "AccountUnclaimed"
-	awsCredsUserName    = "aws_user_name"
-	awsCredsSecretIDKey = "aws_access_key_id"
+	AccountClaimed          = "AccountClaimed"
+	AccountUnclaimed        = "AccountUnclaimed"
+	awsCredsUserName        = "aws_user_name"
+	awsCredsAccessKeyId     = "aws_access_key_id"
+	awsCredsSecretAccessKey = "aws_secret_access_key"
 )
 
 var log = logf.Log.WithName("controller_accountclaim")
@@ -264,8 +265,8 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 	UHCSecretName := accountClaim.Spec.AwsCredentialSecret.Name
 	UHCSecretNamespace := accountClaim.Spec.AwsCredentialSecret.Namespace
-	awsAccessKeyID := accountIAMUserSecret.Data[awsCredsSecretIDKey]
-	awsSecretAccessKey := accountIAMUserSecret.Data[awsCredsSecretIDKey]
+	awsAccessKeyID := accountIAMUserSecret.Data[awsCredsAccessKeyId]
+	awsSecretAccessKey := accountIAMUserSecret.Data[awsCredsSecretAccessKey]
 	if string(awsAccessKeyID) == "" || string(awsSecretAccessKey) == "" {
 		reqLogger.Error(err, "Cannot get AWS Credentials from secret referenced from Account")
 	}
