@@ -143,12 +143,15 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			awsRegion:  "us-east-1",
 		})
 		if err != nil {
+			reqLogger.Info(err.Error())
+			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to get AWS client")
 			return reconcile.Result{}, err
 		}
 
 		// Build Aws Account
 		accountID, err := r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
 		if err != nil {
+			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to build account")
 			return reconcile.Result{}, err
 		}
 
@@ -162,13 +165,9 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		// Get STS credentials so that we can create an aws client with
 		creds, credsErr := getStsCredentials(awsSetupClient, accountID)
 		if credsErr != nil {
-			reqLogger.Info("Failed to get sts credentials")
 			reqLogger.Info(err.Error())
 			setAccountClaimStatus(reqLogger, currentAcctInstance, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
-			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
+			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to get sts credentials")
 			return reconcile.Result{}, credsErr
 		}
 
@@ -178,13 +177,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			awsToken:                *creds.Credentials.SessionToken,
 			awsRegion:               "us-east-1"})
 		if err != nil {
-			reqLogger.Info("Failed to assume role")
 			reqLogger.Info(err.Error())
+			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to assume role")
 			return reconcile.Result{}, err
 		}
 
 		secretName, err := r.BuildUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, request.Namespace)
 		if err != nil {
+			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to build user")
 			return reconcile.Result{}, err
 		}
 		currentAcctInstance.Spec.IAMUserSecret = secretName
@@ -196,6 +196,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		// create ec2 instance , delete ec2 instance [WIP]
 		err = r.BulidandDestroyEC2Instances(reqLogger, awsAssumedRoleClient)
 		if err != nil {
+			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to build and destroy ec2 instances")
 			return reconcile.Result{}, err
 		}
 
@@ -380,6 +381,12 @@ func (r *ReconcileAccount) BulidandDestroyEC2Instances(reqLogger logr.Logger, aw
 	reqLogger.Info("EC2 Instance Terminated")
 
 	return nil
+}
+
+func (r *ReconcileAccount) setStatusFailed(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string) {
+	reqLogger.Info(message)
+	awsAccount.Status.State = "Failed"
+	_ = r.Client.Status().Update(context.TODO(), awsAccount)
 }
 
 // CreateAccount creates an AWS account for the specified accountName and accountEmail in the orgnization
