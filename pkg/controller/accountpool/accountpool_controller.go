@@ -2,6 +2,7 @@ package accountpool
 
 import (
 	"context"
+	"fmt"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/metrics"
@@ -142,7 +143,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	metrics.UpdatePoolSizeVsUnclaimed(currentAccountPool.Spec.PoolSize, unclaimedAccountCount)
 
 	if unclaimedAccountCount >= poolSizeCount {
-
+		reqLogger.Info(fmt.Sprintf("unclaimed account pool satisifed, unclaimedAccounts %d >= poolSize %d", unclaimedAccountCount, poolSizeCount))
 		return reconcile.Result{}, nil
 	}
 

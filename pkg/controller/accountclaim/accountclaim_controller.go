@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -62,16 +63,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// TODO(user): Modify this to be the types you create that are owned by the primary resource
-	// Watch for changes to secondary resource Pods and requeue the owner AccountClaim
-	// err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
-	// 	IsController: true,
-	// 	OwnerType:    &awsv1alpha1.AccountClaim{},
-	// })
-	// if err != nil {
-	// 	return err
-	// }
-
 	return nil
 }
 
@@ -87,8 +78,6 @@ type ReconcileAccountClaim struct {
 
 // Reconcile reads that state of the cluster for a AccountClaim object and makes changes based on the state read
 // and what is in the AccountClaim.Spec
-// TODO(user): Modify this Reconcile function to implement your Controller logic.  This example creates
-// a Pod as an example
 // Note:
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
@@ -128,34 +117,9 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			message,
 			controllerutils.UpdateConditionNever)
 		// Update the Spec on AccountClaim
-		err = r.client.Status().Update(context.TODO(), accountClaim)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		err := r.client.Get(context.TODO(), request.NamespacedName, accountClaim)
-		if err != nil {
-			reqLogger.Error(err, "Unable to refresh claim")
-		}
+		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 	}
 
-	if accountClaim.Status.State == awsv1alpha1.ClaimStatusPending {
-		if accountClaim.Spec.AccountLink != "" {
-			reqLogger.Info(fmt.Sprintf("Updating claim %s state to true", accountClaim.Name))
-			accountClaim.Status.State = awsv1alpha1.ClaimStatusReady
-			err = r.client.Status().Update(context.TODO(), accountClaim)
-			if err != nil {
-				reqLogger.Error(err, "Unable to update claim state to true")
-				return reconcile.Result{}, err
-			}
-			err := r.client.Get(context.TODO(), request.NamespacedName, accountClaim)
-			if err != nil {
-				reqLogger.Error(err, "Unable to get claim after state update")
-			}
-			// Stop here no need to continue for the claim
-			return reconcile.Result{}, nil
-		}
-
-	}
 	accountList := &awsv1alpha1.AccountList{}
 
 	listOps := &client.ListOptions{Namespace: awsv1alpha1.AccountCrNamespace}
@@ -163,121 +127,49 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	var unclaimedAccount *awsv1alpha1.Account
+
 	// Get an unclaimed account from the pool
-	unclaimedAccount, err := getUnclaimedAccount(accountList)
-	if err != nil {
-		reqLogger.Error(err, "Unable to select an unclaimed account from the pool")
-		return reconcile.Result{}, err
+	if accountClaim.Spec.AccountLink == "" {
+		unclaimedAccount, err = getUnclaimedAccount(accountList)
+		if err != nil {
+			reqLogger.Error(err, "Unable to select an unclaimed account from the pool")
+			return reconcile.Result{}, err
+		}
+	} else {
+		unclaimedAccount, err = r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
-	// Set claim link on Account
-	err = setAccountLinkToClaim(reqLogger, unclaimedAccount, accountClaim)
-	if err != nil {
-		// If we got an error log it and reqeue the request
-		reqLogger.Error(err, "Unable to set account link on claim")
-		return reconcile.Result{}, err
-	}
-	reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.ObjectMeta.Name))
+	// Set Account.Spec.ClaimLink
+	// This will trigger the reconcile loop for the account which will mark the account as claimed in its status
+	if unclaimedAccount.Spec.ClaimLink == "" {
+		setAccountClaimLinkOnAccount(reqLogger, unclaimedAccount, accountClaim)
+		err := r.accountSpecUpdate(reqLogger, unclaimedAccount)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
 
-	// Update the Spec on Account
-	err = r.client.Update(context.TODO(), unclaimedAccount)
-	if err != nil {
-		return reconcile.Result{}, err
 	}
 
-	unclaimedAccountObjectKey, err := client.ObjectKeyFromObject(unclaimedAccount)
-	if err != nil {
-		reqLogger.Error(err, "Unable to get name and namespace of Acccount object")
+	// Set awsAccountClaim.Spec.AccountLink
+	if accountClaim.Spec.AccountLink == "" {
+		setAccountLinkOnAccountClaim(reqLogger, unclaimedAccount, accountClaim)
+		return reconcile.Result{}, r.specUpdate(reqLogger, accountClaim)
+
 	}
 
-	// Get updated Account object
-	err = r.client.Get(context.TODO(), unclaimedAccountObjectKey, unclaimedAccount)
-	if err != nil {
-		reqLogger.Error(err, "Unable to get updated Acccount object")
-		return reconcile.Result{}, err
+	// Create secret for UHC to consume
+	if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+		err = r.createIAMSecret(reqLogger, accountClaim, unclaimedAccount)
+		if err != nil {
+			return reconcile.Result{}, nil
+		}
 	}
 
-	// Set Account status to claimed
-	setAccountStatusClaimed(reqLogger, unclaimedAccount, accountClaim)
-
-	// selectedAccountPrettyPrint, err := json.MarshalIndent(unclaimedAccount, "", "  ")
-	// if err != nil {
-	// 	fmt.Printf("Error unmarshalling json: %s", err)
-	// }
-
-	// Update the Status on Account
-	err = r.client.Status().Update(context.TODO(), unclaimedAccount)
-	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Unable to update the status of Account %s to claimed", unclaimedAccount.Name))
-		return reconcile.Result{}, err
-	}
-	// Refrest Account
-	err = r.client.Get(context.TODO(), unclaimedAccountObjectKey, unclaimedAccount)
-	if err != nil {
-		reqLogger.Error(err, "Unable to get updated Acccount object after status update")
-		return reconcile.Result{}, err
-	}
-
-	claimObjectKey, err := client.ObjectKeyFromObject(accountClaim)
-	if err != nil {
-		reqLogger.Error(err, "Unable to get name and namespace of Acccount object")
-	}
-	// Refresh AccountClaim
-	err = r.client.Get(context.TODO(), claimObjectKey, accountClaim)
-	if err != nil {
-		reqLogger.Error(err, "Unable to get updated AcccountClaim object after status update")
-		return reconcile.Result{}, err
-	}
-
-	// Set account link on AccountClaim
-	setAccountLink(reqLogger, unclaimedAccount, accountClaim)
-
-	// Update the Spec on AccountClaim
-	err = r.client.Update(context.TODO(), accountClaim)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	// Get updated AccountClaim object
-	err = r.client.Get(context.TODO(), claimObjectKey, accountClaim)
-	if err != nil {
-		reqLogger.Error(err, "Unable to get updated AcccountClaim object")
-		return reconcile.Result{}, err
-	}
-
-	// Set AccountClaim status
-	setAccountClaimStatus(reqLogger, unclaimedAccount, accountClaim)
-
-	// Update the Spec on AccountClaim
-	err = r.client.Status().Update(context.TODO(), accountClaim)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	// Get secret created by Account controller and copy it to the name/namespace combo that UHC is expecting
-	accountIAMUserSecret := &corev1.Secret{}
-	objectKey := client.ObjectKey{Namespace: unclaimedAccount.Namespace, Name: unclaimedAccount.Spec.IAMUserSecret}
-
-	err = r.client.Get(context.TODO(), objectKey, accountIAMUserSecret)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	UHCSecretName := accountClaim.Spec.AwsCredentialSecret.Name
-	UHCSecretNamespace := accountClaim.Spec.AwsCredentialSecret.Namespace
-	awsAccessKeyID := accountIAMUserSecret.Data[awsCredsAccessKeyId]
-	awsSecretAccessKey := accountIAMUserSecret.Data[awsCredsSecretAccessKey]
-	if string(awsAccessKeyID) == "" || string(awsSecretAccessKey) == "" {
-		reqLogger.Error(err, "Cannot get AWS Credentials from secret referenced from Account")
-	}
-	UHCSecret := newSecretforCR(UHCSecretName, UHCSecretNamespace, awsAccessKeyID, awsSecretAccessKey)
-
-	err = r.client.Create(context.TODO(), UHCSecret)
-	if err != nil {
-		reqLogger.Error(err, "Unable to create secret for UHC")
-		return reconcile.Result{}, err
-	}
-
+	// Set metrics
 	accountClaimList := &awsv1alpha1.AccountClaimList{}
 
 	listOps = &client.ListOptions{Namespace: accountClaim.Namespace}
@@ -286,7 +178,22 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	metrics.UpdateAccountClaimMetrics(accountClaimList)
+
+	if accountClaim.Status.State != awsv1alpha1.ClaimStatusReady && accountClaim.Spec.AccountLink != "" {
+		// Set AccountClaim.Status.Conditions and AccountClaim.Status.State to Ready
+		setAccountClaimStatus(reqLogger, unclaimedAccount, accountClaim)
+		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
+	}
 	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileAccountClaim) getClaimedAccount(accountLink string, namespace string) (*awsv1alpha1.Account, error) {
+	account := &awsv1alpha1.Account{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: accountLink, Namespace: namespace}, account)
+	if err != nil {
+		return nil, err
+	}
+	return account, nil
 }
 
 func getUnclaimedAccount(accountList *awsv1alpha1.AccountList) (*awsv1alpha1.Account, error) {
@@ -310,17 +217,78 @@ func getUnclaimedAccount(accountList *awsv1alpha1.AccountList) (*awsv1alpha1.Acc
 	return &unclaimedAccount, nil
 }
 
-// setAccountLinkToClaim sets Account.Spec.ClaimLink to AccountClaim.ObjectMetadata.Name
-func setAccountLinkToClaim(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) error {
-	// Initially this will naively deal with concurrency
-	if awsAccount.Status.Claimed == true || awsAccount.Spec.ClaimLink != "" {
-		return fmt.Errorf("AWS Account already claimed by %s, attempting to select another account", awsAccount.Spec.ClaimLink)
+func (r *ReconcileAccountClaim) createIAMSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {
+	// Get secret created by Account controller and copy it to the name/namespace combo that UHC is expecting
+	accountIAMUserSecret := &corev1.Secret{}
+	objectKey := client.ObjectKey{Namespace: unclaimedAccount.Namespace, Name: unclaimedAccount.Spec.IAMUserSecret}
+
+	err := r.client.Get(context.TODO(), objectKey, accountIAMUserSecret)
+	if err != nil {
+		reqLogger.Error(err, "Unable to find AWS account STS secret")
+		return err
 	}
 
+	UHCSecretName := accountClaim.Spec.AwsCredentialSecret.Name
+	UHCSecretNamespace := accountClaim.Spec.AwsCredentialSecret.Namespace
+	awsAccessKeyID := accountIAMUserSecret.Data[awsCredsAccessKeyId]
+	awsSecretAccessKey := accountIAMUserSecret.Data[awsCredsSecretAccessKey]
+
+	if string(awsAccessKeyID) == "" || string(awsSecretAccessKey) == "" {
+		reqLogger.Error(err, fmt.Sprintf("Cannot get AWS Credentials from secret %s referenced from Account", unclaimedAccount.Spec.IAMUserSecret))
+	}
+
+	UHCSecret := newSecretforCR(UHCSecretName, UHCSecretNamespace, awsAccessKeyID, awsSecretAccessKey)
+
+	err = r.client.Create(context.TODO(), UHCSecret)
+	if err != nil {
+		reqLogger.Error(err, "Unable to create secret for UHC")
+		return err
+	}
+
+	reqLogger.Info(fmt.Sprintf("Secret %s created for claim %s", UHCSecret.Name, accountClaim.Name))
+	return nil
+}
+
+func (r *ReconcileAccountClaim) checkIAMSecretExists(name string, namespace string) bool {
+	// Need to check if the secret exists AND that it matches what we're expecting
+	secret := corev1.Secret{}
+	secretObjectKey := client.ObjectKey{Name: name, Namespace: namespace}
+	err := r.client.Get(context.TODO(), secretObjectKey, &secret)
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+func (r *ReconcileAccountClaim) statusUpdate(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+	err := r.client.Status().Update(context.TODO(), accountClaim)
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", accountClaim.Name))
+	}
+	return err
+}
+
+func (r *ReconcileAccountClaim) specUpdate(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+	err := r.client.Update(context.TODO(), accountClaim)
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Spec update for %s failed", accountClaim.Name))
+	}
+	return err
+}
+
+func (r *ReconcileAccountClaim) accountSpecUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	err := r.client.Update(context.TODO(), account)
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Account spec update for %s failed", account.Name))
+	}
+	return err
+}
+
+// setAccountClaimLinkOnAccount sets Account.Spec.ClaimLink to AccountClaim.ObjectMetadata.Name
+func setAccountClaimLinkOnAccount(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
 	// Set link on Account
 	awsAccount.Spec.ClaimLink = awsAccountClaim.ObjectMeta.Name
 	reqLogger.Info(fmt.Sprintf("Account %s ClaimLink set to AccountClaim %s", awsAccount.Name, awsAccountClaim.Name))
-	return nil
 }
 
 func setAccountClaimStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
@@ -336,20 +304,8 @@ func setAccountClaimStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Accoun
 	reqLogger.Info(fmt.Sprintf("Account %s condition status updated", awsAccountClaim.Name))
 }
 
-func setAccountStatusClaimed(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
-	// Set Status on Account
-	// This shouldn't error but lets log it just incase
-	if awsAccount.Status.Claimed != false {
-		fmt.Printf("Account Status.Claimed field is %v it should be false\n", awsAccount.Status.Claimed)
-	}
-
-	// Set Account status to claimed
-	awsAccount.Status.Claimed = true
-	reqLogger.Info(fmt.Sprintf("Account %s status updated", awsAccountClaim.Name))
-}
-
 // setAccountLink sets AccountClaim.Spec.AccountLink to Account.ObjectMetadata.Name
-func setAccountLink(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
+func setAccountLinkOnAccountClaim(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
 	// This shouldn't error but lets log it just incase
 	if awsAccountClaim.Spec.AccountLink != "" {
 		reqLogger.Info("AccountLink field is already populated for claim: %s, AWS account link is: %s\n", awsAccountClaim.ObjectMeta.Name, awsAccountClaim.Spec.AccountLink)

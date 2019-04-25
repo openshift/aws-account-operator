@@ -130,6 +130,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
+	// Update account Status.Claimed to true if the account is ready and the claim link is not empty
+	if currentAcctInstance.Status.State == AccountReady && currentAcctInstance.Spec.ClaimLink != "" {
+		if currentAcctInstance.Status.Claimed != true {
+			currentAcctInstance.Status.Claimed = true
+			return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
+		}
+	}
+
 	// see if in creating for longer then 10 minutes
 	now := time.Now()
 	diff := now.Sub(currentAcctInstance.ObjectMeta.CreationTimestamp.Time)
@@ -638,4 +646,13 @@ func setAccountClaimStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Accoun
 		controllerutils.UpdateConditionNever)
 	awsAccount.Status.State = state
 	reqLogger.Info(fmt.Sprintf("Account %s status updated", awsAccount.Name))
+}
+
+func (r *ReconcileAccount) statusUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	err := r.Client.Status().Update(context.TODO(), account)
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", account.Name))
+	}
+	reqLogger.Info(fmt.Sprintf("Status updated for %s", account.Name))
+	return err
 }
