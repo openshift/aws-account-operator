@@ -52,6 +52,7 @@ type Client interface {
 	ListAccessKeys(*iam.ListAccessKeysInput) (*iam.ListAccessKeysOutput, error)
 	ListUserPolicies(*iam.ListUserPoliciesInput) (*iam.ListUserPoliciesOutput, error)
 	PutUserPolicy(*iam.PutUserPolicyInput) (*iam.PutUserPolicyOutput, error)
+	AttachUserPolicy(*iam.AttachUserPolicyInput) (*iam.AttachUserPolicyOutput, error)
 
 	//Organizations
 	ListAccounts(*organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error)
@@ -114,6 +115,10 @@ func (c *awsClient) ListUserPolicies(input *iam.ListUserPoliciesInput) (*iam.Lis
 
 func (c *awsClient) PutUserPolicy(input *iam.PutUserPolicyInput) (*iam.PutUserPolicyOutput, error) {
 	return c.iamClient.PutUserPolicy(input)
+}
+
+func (c *awsClient) AttachUserPolicy(input *iam.AttachUserPolicyInput) (*iam.AttachUserPolicyOutput, error) {
+	return c.iamClient.AttachUserPolicy(input)
 }
 
 func (c *awsClient) ListAccounts(input *organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error) {

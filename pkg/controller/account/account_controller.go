@@ -327,6 +327,15 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 		return "", userErr
 	}
 
+	reqLogger.Info("Attaching Admin Policy to IAM user")
+	// Setting user access policy
+	_, policyErr := AttachAdminUserPolicy(awsClient, iamUserName)
+	if policyErr != nil {
+		setAccountClaimStatus(reqLogger, account, "Failed to set admin policy", awsv1alpha1.AccountFailed, "Failed")
+		r.setStatusFailed(reqLogger, account, "Failed to build user")
+		return "", policyErr
+	}
+
 	reqLogger.Info("Creating Secrets")
 	// create user secrets
 	userSecretInfo, userSecretErr := CreateUserAccessKey(awsClient, iamUserName)
@@ -473,6 +482,28 @@ func CreateIAMUser(client awsclient.Client, userName string) (*iam.CreateUserOut
 	}
 
 	return createUserOutput, nil
+}
+
+// AttachAdminUserPolicy takes a client and string attaches the admin policy to the user
+func AttachAdminUserPolicy(client awsclient.Client, userName string) (*iam.AttachUserPolicyOutput, error) {
+
+	attachPolicyOutput := &iam.AttachUserPolicyOutput{}
+	var err error
+	for i := 0; i < 100; i++ {
+		time.Sleep(500 * time.Millisecond)
+		attachPolicyOutput, err = client.AttachUserPolicy(&iam.AttachUserPolicyInput{
+			UserName:  aws.String(userName),
+			PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
+		})
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return &iam.AttachUserPolicyOutput{}, err
+	}
+
+	return attachPolicyOutput, nil
 }
 
 // CreateUserAccessKey creates an IAM user's secret and returns the accesskey id and secret for that user in a aws.CreateAccessKeyOutput struct
