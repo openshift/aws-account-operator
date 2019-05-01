@@ -88,8 +88,6 @@ spec:
           type: object
         status:
           properties:
-            billingAccountID:
-              type: string
             conditions:
               items:
                 properties:
@@ -124,7 +122,6 @@ spec:
             state:
               type: string
           required:
-          - billingAccountID
           - conditions
           - state
           type: object

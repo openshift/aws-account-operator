@@ -154,12 +154,6 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimStatus(ref common.ReferenceCallbac
 			SchemaProps: spec.SchemaProps{
 				Description: "AccountClaimStatus defines the observed state of AccountClaim",
 				Properties: map[string]spec.Schema{
-					"billingAccountID": {
-						SchemaProps: spec.SchemaProps{
-							Type:   []string{"string"},
-							Format: "",
-						},
-					},
 					"conditions": {
 						SchemaProps: spec.SchemaProps{
 							Type: []string{"array"},
@@ -179,7 +173,7 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimStatus(ref common.ReferenceCallbac
 						},
 					},
 				},
-				Required: []string{"billingAccountID", "conditions", "state"},
+				Required: []string{"conditions", "state"},
 			},
 		},
 		Dependencies: []string{
@@ -329,6 +323,18 @@ func schema_pkg_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) co
 							Format:      "",
 						},
 					},
+					"conditions": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountCondition"),
+									},
+								},
+							},
+						},
+					},
 					"state": {
 						SchemaProps: spec.SchemaProps{
 							Type:   []string{"string"},
@@ -336,9 +342,10 @@ func schema_pkg_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) co
 						},
 					},
 				},
-				Required: []string{"claimed", "state"},
+				Required: []string{"claimed", "conditions", "state"},
 			},
 		},
-		Dependencies: []string{},
+		Dependencies: []string{
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountCondition"},
 	}
 }

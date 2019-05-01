@@ -23,8 +23,6 @@ type AccountClaimSpec struct {
 // AccountClaimStatus defines the observed state of AccountClaim
 // +k8s:openapi-gen=true
 type AccountClaimStatus struct {
-	BillingAccountID string `json:"billingAccountID"`
-
 	Conditions []AccountClaimCondition `json:"conditions"`
 
 	State ClaimStatus `json:"state"`
