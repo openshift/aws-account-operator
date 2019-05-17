@@ -25,7 +25,7 @@ import (
 var log = logf.Log.WithName("controller_accountpool")
 
 const (
-	emailID = "osd-creds-mgm"
+	emailID = "osd-creds-mgmt"
 )
 
 /**
