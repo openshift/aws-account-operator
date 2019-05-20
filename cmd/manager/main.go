@@ -105,8 +105,15 @@ func main() {
 	}
 
 	// Create Service object to expose the metrics port.
-	s, _ := operatormetrics.GenerateService(8080, "metrics")
+	s, svcerr := operatormetrics.GenerateService(8080, "metrics")
+	if svcerr != nil {
+		log.Error(err, "Error generating metrics service object.")
+	} else {
+		log.Info("Generated metrics service object")
+	}
+
 	sm := operatormetrics.GenerateServiceMonitor(s)
+	log.Info("Generated metrics servicemonitor object")
 	err = mgr.GetClient().Create(context.TODO(), s)
 	if err != nil {
 		log.Error(err, "error creating metrics Service")
