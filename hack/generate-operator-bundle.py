@@ -62,6 +62,24 @@ with open('deploy/cluster_role.yaml', 'r') as stream:
             'serviceAccountName': 'aws-account-operator',
         })
 
+# Add prometheus-k8s role to the CSV:
+with open('deploy/prometheus-k8s-role.yaml', 'r') as stream:
+    prom_role = yaml.load(stream)
+    csv['spec']['install']['spec']['clusterPermissions'].append(
+        {
+            'rules': prom_role['rules'],
+            'serviceAccountName': 'aws-account-operator',
+        })
+
+# Add prometheus-k8s rolebinding to the CSV:
+with open('deploy/prometheus-k8s-rolebinding.yaml', 'r') as stream:
+    prom_rolebinding = yaml.load(stream)
+    csv['spec']['install']['spec']['clusterPermissions'].append(
+        {
+            'rules': prom_rolebinding['rules'],
+            'serviceAccountName': 'aws-account-operator',
+        }) 
+
 # Add aws-account-operator-client role to the CSV:
 with open('deploy/uhc_cluster_role.yaml', 'r') as stream:
     operator_role = yaml.load(stream)
