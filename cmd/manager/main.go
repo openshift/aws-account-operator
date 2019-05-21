@@ -12,7 +12,8 @@ import (
 	operatormetrics "github.com/openshift/aws-account-operator/pkg/metrics"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
-	"github.com/operator-framework/operator-sdk/pkg/metrics"
+
+	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	"github.com/spf13/pflag"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -92,6 +93,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := monitoringv1.AddToScheme(mgr.GetScheme()); err != nil {
+		log.Error(err, "error registering prometheus monitoring objects")
+		os.Exit(1)
+	}
+
 	// Setup all Controllers
 	if err := controller.AddToManager(mgr); err != nil {
 		log.Error(err, "")
@@ -99,9 +105,26 @@ func main() {
 	}
 
 	// Create Service object to expose the metrics port.
-	_, err = metrics.ExposeMetricsPort(ctx, metricsPort)
+	s, svcerr := operatormetrics.GenerateService(8080, "metrics")
+	if svcerr != nil {
+		log.Error(err, "Error generating metrics service object.")
+	} else {
+		log.Info("Generated metrics service object")
+	}
+
+	sm := operatormetrics.GenerateServiceMonitor(s)
+	log.Info("Generated metrics servicemonitor object")
+	err = mgr.GetClient().Create(context.TODO(), s)
 	if err != nil {
-		log.Info(err.Error())
+		log.Error(err, "error creating metrics Service")
+	} else {
+		log.Info("Created Service")
+		err = mgr.GetClient().Create(context.TODO(), sm)
+		if err != nil {
+			log.Error(err, "error creating metrics ServiceMonitor")
+		} else {
+			log.Info("Created ServiceMonitor")
+		}
 	}
 
 	log.Info("Starting prometheus metrics")
