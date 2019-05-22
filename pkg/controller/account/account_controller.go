@@ -55,14 +55,14 @@ const (
 
 // Custom errors
 
-// ErrAwsAccountLimit indicates the orgnization account limit has been reached.
-var ErrAwsAccountLimit = errors.New("ACCOUNT_LIMIT_EXCEEDED")
+// ErrAwsAccountLimitExceeded indicates the orgnization account limit has been reached.
+var ErrAwsAccountLimitExceeded = errors.New("AccountLimitExceeded")
 
 // ErrAwsInternalFailure indicates that there was an internal failure on the aws api
-var ErrAwsInternalFailure = errors.New("INTERNAL_FAILURE")
+var ErrAwsInternalFailure = errors.New("InternalFailure")
 
 // ErrAwsFailedCreateAccount indicates that an account creation failed
-var ErrAwsFailedCreateAccount = errors.New("Failed to create account")
+var ErrAwsFailedCreateAccount = errors.New("FailedCreateAccount")
 
 // ErrAwsTooManyRequests indicates that to many requests were sent in a short period
 var ErrAwsTooManyRequests = errors.New("TooManyRequestsException")
@@ -143,21 +143,20 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		awsRegion:  "us-east-1",
 	})
 	if err != nil {
-		reqLogger.Info("Failed to get AWS client")
+		reqLogger.Error(err, "Failed to get AWS client")
 		return reconcile.Result{}, err
 	}
 
 	// before doing anything make sure we are not over the limit if we are just error
 	accountTotal, err := TotalAwsAccounts(awsSetupClient)
 	if err != nil {
-		reqLogger.Info(err.Error())
+		reqLogger.Info("Failed to get AWS account total from AWS api", "Error", err.Error())
 		return reconcile.Result{}, err
 	}
 
 	if accountTotal >= awsLimit {
-		print(accountTotal)
-		reqLogger.Info("At aws account limit Total Account: %d")
-		return reconcile.Result{}, ErrAwsAccountLimit
+		reqLogger.Error(ErrAwsAccountLimitExceeded, "AWS Account limit reached", "Account Total", accountTotal)
+		return reconcile.Result{}, ErrAwsAccountLimitExceeded
 	}
 
 	// Fetch the Account instance
@@ -210,7 +209,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		// Get STS credentials so that we can create an aws client with
 		creds, credsErr := getStsCredentials(awsSetupClient, accountID)
 		if credsErr != nil {
-			reqLogger.Info(credsErr.Error())
+			reqLogger.Info("Failed to get STSCredentials from AWS api ", "Error", credsErr.Error())
 			setAccountClaimStatus(reqLogger, currentAcctInstance, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
 			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to get sts credentials")
 			return reconcile.Result{}, credsErr
@@ -315,21 +314,23 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 
 	email := formatAccountEmail(account.Name)
 	orgOutput, orgErr := CreateAccount(awsClient, account.Name, email)
-
 	// If it was an api or a limit issue don't modify account and exit if anything else set to failed
 	if orgErr != nil {
 		switch orgErr {
 		case ErrAwsFailedCreateAccount:
-			setAccountClaimStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
+			setAccountClaimStatus(reqLogger, account, "Failed to create AWS Account", awsv1alpha1.AccountFailed, "Failed")
 			err := r.Client.Status().Update(context.TODO(), account)
 			if err != nil {
 				return "", err
 			}
 
-			failReason := *orgOutput.CreateAccountStatus.FailureReason
-			reqLogger.Info(failReason)
+			reqLogger.Error(ErrAwsFailedCreateAccount, "Failed to create AWS Account")
+			return "", orgErr
+		case ErrAwsAccountLimitExceeded:
+			log.Error(orgErr, "Failed to create AWS Account limit reached")
 			return "", orgErr
 		default:
+			log.Error(orgErr, "Failed to create AWS Account nonfatal error")
 			return "", orgErr
 		}
 
@@ -469,7 +470,7 @@ func CreateAccount(client awsclient.Client, accountName, accountEmail string) (*
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case organizations.ErrCodeConstraintViolationException:
-				returnErr = ErrAwsAccountLimit
+				returnErr = ErrAwsAccountLimitExceeded
 			case organizations.ErrCodeServiceException:
 				returnErr = ErrAwsInternalFailure
 			case organizations.ErrCodeTooManyRequestsException:
@@ -500,7 +501,7 @@ func CreateAccount(client awsclient.Client, accountName, accountEmail string) (*
 			var returnErr error
 			switch *status.CreateAccountStatus.FailureReason {
 			case "ACCOUNT_LIMIT_EXCEEDED":
-				returnErr = ErrAwsAccountLimit
+				returnErr = ErrAwsAccountLimitExceeded
 			case "INTERNAL_FAILURE":
 				returnErr = ErrAwsInternalFailure
 			default:
