@@ -147,18 +147,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
-	// before doing anything make sure we are not over the limit if we are just error
-	accountTotal, err := TotalAwsAccounts(awsSetupClient)
-	if err != nil {
-		reqLogger.Info("Failed to get AWS account total from AWS api", "Error", err.Error())
-		return reconcile.Result{}, err
-	}
-
-	if accountTotal >= awsLimit {
-		reqLogger.Error(ErrAwsAccountLimitExceeded, "AWS Account limit reached", "Account Total", accountTotal)
-		return reconcile.Result{}, ErrAwsAccountLimitExceeded
-	}
-
 	// Fetch the Account instance
 	currentAcctInstance := &awsv1alpha1.Account{}
 	err = r.Client.Get(context.TODO(), request.NamespacedName, currentAcctInstance)
@@ -185,6 +173,17 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	if (currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false) {
+		// before doing anything make sure we are not over the limit if we are just error
+		accountTotal, err := TotalAwsAccounts(awsSetupClient)
+		if err != nil {
+			reqLogger.Info("Failed to get AWS account total from AWS api", "Error", err.Error())
+			return reconcile.Result{}, err
+		}
+
+		if accountTotal >= awsLimit {
+			reqLogger.Error(ErrAwsAccountLimitExceeded, "AWS Account limit reached", "Account Total", accountTotal)
+			return reconcile.Result{}, ErrAwsAccountLimitExceeded
+		}
 
 		// Build Aws Account
 		accountID, err := r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
