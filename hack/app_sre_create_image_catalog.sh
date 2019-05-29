@@ -23,7 +23,7 @@ git clone \
 REMOVED_VERSIONS=""
 if [[ "$REMOVE_UNDEPLOYED" == true ]]; then
     DEPLOYED_HASH=$(
-        curl -s 'https://gitlab.cee.redhat.com/service/saas-hive/raw/master/aws-account-operator-services/aws-account-operator.yaml' | \
+        curl -s 'https://gitlab.cee.redhat.com/service/saas-osd-operators/raw/master/aws-account-operator-services/aws-account-operator.yaml' | \
             docker run --rm -i evns/yq -r '.services[]|select(.name="aws-account-operator").hash'
     )
 
