@@ -16,14 +16,14 @@ rm -rf "$SAAS_OPERATOR_DIR"
 
 git clone \
     --branch "$BRANCH_CHANNEL" \
-    https://app:"${APP_SRE_BOT_PUSH_TOKEN}"@github.com/app-sre/saas-aws-account-operator-bundle.git \
+    https://app:"${APP_SRE_BOT_PUSH_TOKEN}"@gitlab.cee.redhat.com/service/saas-aws-account-operator-bundle.git \
     "$SAAS_OPERATOR_DIR"
 
 # remove any versions more recent than deployed hash
 REMOVED_VERSIONS=""
 if [[ "$REMOVE_UNDEPLOYED" == true ]]; then
     DEPLOYED_HASH=$(
-        curl -s 'https://raw.githubusercontent.com/app-sre/saas-hive/master/aws-account-operator-services/aws-account-operator.yaml' | \
+        curl -s 'https://gitlab.cee.redhat.com/service/saas-hive/raw/master/aws-account-operator-services/aws-account-operator.yaml' | \
             docker run --rm -i evns/yq -r '.services[]|select(.name="aws-account-operator").hash'
     )
 
