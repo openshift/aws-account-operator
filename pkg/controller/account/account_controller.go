@@ -182,7 +182,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		metrics.UpdateAWSMetrics(accountTotal)
-		
+
 		if accountTotal >= awsLimit {
 			reqLogger.Error(ErrAwsAccountLimitExceeded, "AWS Account limit reached", "Account Total", accountTotal)
 			return reconcile.Result{}, ErrAwsAccountLimitExceeded
