@@ -7,15 +7,15 @@ import (
 	"os"
 	"runtime"
 
+	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	"github.com/openshift/aws-account-operator/pkg/controller"
 	operatormetrics "github.com/openshift/aws-account-operator/pkg/metrics"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
-
-	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/api/errors"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -114,17 +114,44 @@ func main() {
 
 	sm := operatormetrics.GenerateServiceMonitor(s)
 	log.Info("Generated metrics servicemonitor object")
+	var updateErr error
 	err = mgr.GetClient().Create(context.TODO(), s)
 	if err != nil {
-		log.Error(err, "error creating metrics Service")
-	} else {
+		if errors.IsAlreadyExists(err) {
+			// update the service
+			if updateErr = mgr.GetClient().Create(context.TODO(), s); updateErr != nil {
+				log.Error(err, "error creating metrics Service")
+			} else {
+				err = nil
+			}
+		} else {
+			log.Error(err, "error creating metrics Service")
+		}
+	}
+
+	if err == nil && updateErr == nil {
+
 		log.Info("Created Service")
+
+		var smUpdateErr error
 		err = mgr.GetClient().Create(context.TODO(), sm)
 		if err != nil {
-			log.Error(err, "error creating metrics ServiceMonitor")
-		} else {
+			if errors.IsAlreadyExists(err) {
+				// update the servicemonitor
+				if smUpdateErr = mgr.GetClient().Create(context.TODO(), sm); smUpdateErr != nil {
+					log.Error(err, "error creating metrics ServiceMonitor")
+				} else {
+					err = nil
+				}
+			} else {
+				log.Error(err, "error creating metrics ServiceMonitor")
+			}
+		}
+
+		if err == nil && smUpdateErr == nil {
 			log.Info("Created ServiceMonitor")
 		}
+
 	}
 
 	log.Info("Starting prometheus metrics")
