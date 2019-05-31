@@ -7,7 +7,6 @@ import (
 	"os"
 	"runtime"
 
-	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	"github.com/openshift/aws-account-operator/pkg/controller"
 	operatormetrics "github.com/openshift/aws-account-operator/pkg/metrics"
@@ -15,7 +14,6 @@ import (
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/api/errors"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -28,6 +26,7 @@ var (
 	metricsHost       = "0.0.0.0"
 	metricsPort int32 = 8383
 )
+
 var log = logf.Log.WithName("cmd")
 
 func printVersion() {
@@ -93,69 +92,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := monitoringv1.AddToScheme(mgr.GetScheme()); err != nil {
-		log.Error(err, "error registering prometheus monitoring objects")
-		os.Exit(1)
-	}
-
 	// Setup all Controllers
 	if err := controller.AddToManager(mgr); err != nil {
 		log.Error(err, "")
 		os.Exit(1)
 	}
 
-	// Create Service object to expose the metrics port.
-	s, svcerr := operatormetrics.GenerateService(8080, "metrics")
-	if svcerr != nil {
-		log.Error(err, "Error generating metrics service object.")
-	} else {
-		log.Info("Generated metrics service object")
-	}
-
-	sm := operatormetrics.GenerateServiceMonitor(s)
-	log.Info("Generated metrics servicemonitor object")
-	var updateErr error
-	err = mgr.GetClient().Create(context.TODO(), s)
-	if err != nil {
-		if errors.IsAlreadyExists(err) {
-			// update the service
-			if updateErr = mgr.GetClient().Create(context.TODO(), s); updateErr != nil {
-				log.Error(err, "error creating metrics Service")
-			} else {
-				err = nil
-			}
-		} else {
-			log.Error(err, "error creating metrics Service")
+	// Configure metrics if it errors log the error but continue
+	if err := operatormetrics.ConfigureMetrics(log, mgr); err != nil {
+		if err == operatormetrics.ErrMetricsFailedRegisterPromCRDs {
+			log.Error(err, "Failed to register prom CRDs ")
+			os.Exit(1)
 		}
+		log.Error(err, "Failed to configure Metrics")
 	}
-
-	if err == nil && updateErr == nil {
-
-		log.Info("Created Service")
-
-		var smUpdateErr error
-		err = mgr.GetClient().Create(context.TODO(), sm)
-		if err != nil {
-			if errors.IsAlreadyExists(err) {
-				// update the servicemonitor
-				if smUpdateErr = mgr.GetClient().Create(context.TODO(), sm); smUpdateErr != nil {
-					log.Error(err, "error creating metrics ServiceMonitor")
-				} else {
-					err = nil
-				}
-			} else {
-				log.Error(err, "error creating metrics ServiceMonitor")
-			}
-		}
-
-		if err == nil && smUpdateErr == nil {
-			log.Info("Created ServiceMonitor")
-		}
-
-	}
-
-	log.Info("Starting prometheus metrics")
-	operatormetrics.StartMetrics()
 
 	log.Info("Starting the Cmd.")
 
