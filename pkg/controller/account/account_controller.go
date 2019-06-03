@@ -35,7 +35,7 @@ import (
 var log = logf.Log.WithName("controller_account")
 
 const (
-	awsLimit                = 4500
+	awsLimit                = 4700
 	awsCredsUserName        = "aws_user_name"
 	awsCredsSecretIDKey     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
