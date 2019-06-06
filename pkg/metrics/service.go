@@ -18,16 +18,20 @@ import (
 	"context"
 	"errors"
 
-	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
-	"github.com/go-logr/logr"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	v1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
+
+var log = logf.Log.WithName("metrics")
 
 // Custom errors
 
@@ -40,9 +44,6 @@ var ErrMetricsFailedCreateService = errors.New("FailedCreateService")
 // ErrMetricsFailedCreateServiceMonitor indicates that an account creation failed
 var ErrMetricsFailedCreateServiceMonitor = errors.New("FailedCreateServiceMonitor")
 
-// ErrMetricsFailedRegisterPromCRDs indicates that an account creation failed
-var ErrMetricsFailedRegisterPromCRDs = errors.New("FailedCreateRegisterProm")
-
 // GenerateService returns the static service which exposes specifed port.
 func GenerateService(port int32, portName string) (*v1.Service, error) {
 	operatorName, err := k8sutil.GetOperatorName()
@@ -53,11 +54,14 @@ func GenerateService(port int32, portName string) (*v1.Service, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	label := map[string]string{"name": operatorName}
+
 	service := &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      operatorName,
 			Namespace: namespace,
-			Labels:    map[string]string{"name": operatorName},
+			Labels:    label,
 		},
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
@@ -75,9 +79,10 @@ func GenerateService(port int32, portName string) (*v1.Service, error) {
 					Name: portName,
 				},
 			},
-			Selector: map[string]string{"name": operatorName},
+			Selector: label,
 		},
 	}
+
 	return service, nil
 }
 
@@ -115,14 +120,14 @@ func GenerateServiceMonitor(s *v1.Service) *monitoringv1.ServiceMonitor {
 // ConfigureMetrics generates metrics service and servicemonitor,
 // creates the metrics service and service monitor,
 // and finally it starts the metrics server
-func ConfigureMetrics(log logr.Logger, mgr manager.Manager) error {
-
+func ConfigureMetrics(ctx context.Context) error {
 	log.Info("Starting prometheus metrics")
 	StartMetrics()
 
-	if err := monitoringv1.AddToScheme(mgr.GetScheme()); err != nil {
-		log.Info("Error registering prometheus monitoring objects.", "Error", err.Error())
-		return ErrMetricsFailedRegisterPromCRDs
+	client, err := createClient()
+	if err != nil {
+		log.Info("Failed to create new client", "Error", err.Error())
+		return nil
 	}
 
 	// Generate Service Object
@@ -133,40 +138,78 @@ func ConfigureMetrics(log logr.Logger, mgr manager.Manager) error {
 	}
 	log.Info("Generated metrics service object")
 
+	// Create or update Service
+	_, err = createOrUpdateService(ctx, client, s)
+	if err != nil {
+		log.Info("Error getting current metrics service", "Error", err.Error())
+		return ErrMetricsFailedCreateService
+	}
+
+	log.Info("Created Service")
+
 	// Generate ServiceMonitor Object
 	sm := GenerateServiceMonitor(s)
 	log.Info("Generated metrics servicemonitor object")
 
-	// Create or Update Service
-	err := mgr.GetClient().Create(context.TODO(), s)
-	if err != nil {
-		if k8serr.IsAlreadyExists(err) {
-			// Update the service if it already exists
-			if updateErr := mgr.GetClient().Update(context.TODO(), s); updateErr != nil {
-				log.Info("Error creating metrics service", "Error", updateErr.Error())
-				return ErrMetricsFailedCreateService
-			}
-			log.Info("Error creating metrics service", "Error", err.Error())
-			return ErrMetricsFailedCreateService
-		}
-	}
-	log.Info("Created Service")
-
 	// Create or Update the ServiceMonitor
-	err = mgr.GetClient().Create(context.TODO(), sm)
+	err = client.Create(ctx, sm)
 	if err != nil {
 		if k8serr.IsAlreadyExists(err) {
 			// update the servicemonitor
-			if smUpdateErr := mgr.GetClient().Update(context.TODO(), sm); smUpdateErr != nil {
+			if smUpdateErr := client.Update(ctx, sm); smUpdateErr != nil {
 				log.Info("Error creating metrics servicemonitor", "Error", smUpdateErr.Error())
 				return ErrMetricsFailedCreateServiceMonitor
 			}
+			log.Info("Metrics ServiceMonitor object updated", "ServiceMonitor.Name", sm.Name, "ServiceMonitor.Namespace", sm.Namespace)
+			return nil
 		}
 		log.Info("Error creating metrics servicemonitor", "Error", err.Error())
 		return ErrMetricsFailedCreateServiceMonitor
 
 	}
-	log.Info("Created ServiceMonitor")
-
+	log.Info("Metrics ServiceMonitor object Created", "ServiceMonitor.Name", sm.Name, "ServiceMonitor.Namespace", sm.Namespace)
 	return nil
+}
+
+func createOrUpdateService(ctx context.Context, client client.Client, s *v1.Service) (*v1.Service, error) {
+	if err := client.Create(ctx, s); err != nil {
+		if !k8serr.IsAlreadyExists(err) {
+			return nil, err
+		}
+		// Service already exists, we want to update it
+		// as we do not know if any fields might have changed.
+		existingService := &v1.Service{}
+		err := client.Get(ctx, types.NamespacedName{
+			Name:      s.Name,
+			Namespace: s.Namespace,
+		}, existingService)
+
+		s.ResourceVersion = existingService.ResourceVersion
+		if existingService.Spec.Type == v1.ServiceTypeClusterIP {
+			s.Spec.ClusterIP = existingService.Spec.ClusterIP
+		}
+		err = client.Update(ctx, s)
+		if err != nil {
+			return nil, err
+		}
+		log.Info("Metrics Service object updated", "Service.Name", s.Name, "Service.Namespace", s.Namespace)
+		return existingService, nil
+	}
+
+	log.Info("Metrics Service object created", "Service.Name", s.Name, "Service.Namespace", s.Namespace)
+	return s, nil
+}
+
+func createClient() (client.Client, error) {
+	config, err := config.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := client.New(config, client.Options{})
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime"
 
+	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	"github.com/openshift/aws-account-operator/pkg/controller"
 	operatormetrics "github.com/openshift/aws-account-operator/pkg/metrics"
@@ -92,6 +93,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Add Prometheus schemes to manager
+	if err := monitoringv1.AddToScheme(mgr.GetScheme()); err != nil {
+		log.Error(err, "")
+		os.Exit(1)
+	}
 	// Setup all Controllers
 	if err := controller.AddToManager(mgr); err != nil {
 		log.Error(err, "")
@@ -99,11 +105,7 @@ func main() {
 	}
 
 	// Configure metrics if it errors log the error but continue
-	if err := operatormetrics.ConfigureMetrics(log, mgr); err != nil {
-		if err == operatormetrics.ErrMetricsFailedRegisterPromCRDs {
-			log.Error(err, "Failed to register prom CRDs ")
-			os.Exit(1)
-		}
+	if err := operatormetrics.ConfigureMetrics(context.TODO()); err != nil {
 		log.Error(err, "Failed to configure Metrics")
 	}
 
