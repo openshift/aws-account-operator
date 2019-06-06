@@ -240,7 +240,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// create ec2 instance , delete ec2 instance [WIP]
-		err = r.BulidandDestroyEC2Instances(reqLogger, awsAssumedRoleClient)
+		err = r.BuildandDestroyEC2Instances(reqLogger, awsAssumedRoleClient)
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to build and destroy ec2 instances")
 			return reconcile.Result{}, err
@@ -412,8 +412,8 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 	return userSecret.ObjectMeta.Name, nil
 }
 
-//BulidandDestroyEC2Instances runs and ec2 instance and terminates it
-func (r *ReconcileAccount) BulidandDestroyEC2Instances(reqLogger logr.Logger, awsClient awsclient.Client) error {
+//BuildandDestroyEC2Instances runs and ec2 instance and terminates it
+func (r *ReconcileAccount) BuildandDestroyEC2Instances(reqLogger logr.Logger, awsClient awsclient.Client) error {
 	//wait a bit for account to be ready to create
 
 	//Create instance
