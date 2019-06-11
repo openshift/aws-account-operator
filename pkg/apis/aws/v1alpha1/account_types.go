@@ -20,8 +20,10 @@ const (
 	accountStatusTransfering AccountStateStatus = "Transfering"
 	// AccountStatusTransfered const for Transfering status
 	accountStatusTransfered AccountStateStatus = "Transfered"
-	// AccountStatusTransferingDeleting const for Deleting status
+	// AccountStatusDeleting const for Deleting status
 	accountStatusDeleting AccountStateStatus = "Deleting"
+	// AccountStatusPendingVerification const for Pending Verification status
+	accountStatusPendingVerification AccountStateStatus = "PendingVerification"
 	// AccountCrNamespace namespace where AWS accounts will be created
 	AccountCrNamespace = "aws-account-operator"
 )
@@ -44,9 +46,10 @@ type AccountStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	Claimed    bool               `json:"claimed"`
-	Conditions []AccountCondition `json:"conditions"`
-	State      string             `json:"state"`
+	Claimed       bool               `json:"claimed"`
+	SupportCaseID string             `json:"supportCaseID"`
+	Conditions    []AccountCondition `json:"conditions"`
+	State         string             `json:"state"`
 }
 
 // AccountCondition contains details for the current condition of a AWS account
@@ -81,6 +84,8 @@ const (
 	AccountFailed AccountConditionType = "Failed"
 	// AccountPending is set when account creation is pending
 	AccountPending AccountConditionType = "Pending"
+	// AccountPendingVerification is set when account creation is pending
+	AccountPendingVerification AccountConditionType = "PendingVerification"
 )
 
 // +genclient
