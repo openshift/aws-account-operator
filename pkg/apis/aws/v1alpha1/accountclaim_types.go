@@ -95,7 +95,7 @@ type AccountClaimList struct {
 // LegalEntity contains Red Hat specific identifiers to the original creator the clusters
 type LegalEntity struct {
 	Name string `json:"name"`
-	ID   int    `json:"id"`
+	ID   string `json:"id"`
 }
 
 // AwsCredentialSecret contains the name of the secret and name of the namespace

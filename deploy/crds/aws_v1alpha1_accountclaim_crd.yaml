@@ -72,8 +72,7 @@ spec:
                 https://book.kubebuilder.io/beyond_basics/generating_crd.html'
               properties:
                 id:
-                  format: int64
-                  type: integer
+                  type: string
                 name:
                   type: string
               required:
