@@ -48,6 +48,14 @@ for file_name in crd_files:
     if (os.path.isfile(os.path.join('deploy/crds', file_name))):
         shutil.copy(full_path, os.path.join(version_dir, file_name))
 
+# Copy all prometheus yaml files over to the bundle output dir:
+prom_files = [ f for f in os.listdir('deploy/prometheus') if f.endswith('.yaml') ]
+for file_name in prom_files:
+    full_path = os.path.join('deploy/prometheus', file_name)
+    if (os.path.isfile(os.path.join('deploy/prometheus', file_name))):
+        shutil.copy(full_path, os.path.join(version_dir, file_name))
+
+
 with open('config/templates/aws-account-operator-csv-template.yaml', 'r') as stream:
     csv = yaml.load(stream)
 
