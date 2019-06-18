@@ -7,7 +7,7 @@ import (
 	"os"
 	"runtime"
 
-	monitoringv1 "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
+	routev1 "github.com/openshift/api/route/v1"
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	"github.com/openshift/aws-account-operator/pkg/controller"
 	operatormetrics "github.com/openshift/aws-account-operator/pkg/metrics"
@@ -94,7 +94,7 @@ func main() {
 	}
 
 	// Add Prometheus schemes to manager
-	if err := monitoringv1.AddToScheme(mgr.GetScheme()); err != nil {
+	if err := routev1.AddToScheme(mgr.GetScheme()); err != nil {
 		log.Error(err, "")
 		os.Exit(1)
 	}
