@@ -899,6 +899,7 @@ func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client
 			default:
 				returnErr = ErrAwsFailedCreateSupportCase
 			}
+			reqLogger.Error(returnErr, fmt.Sprintf("AWS Error Message: %s", aerr.Message()))
 		}
 
 		reqLogger.Error(returnErr, fmt.Sprintf("Failed to create support case for account %s", accountID))
