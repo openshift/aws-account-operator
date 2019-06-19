@@ -25,6 +25,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/organizations/organizationsiface"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/aws/aws-sdk-go/service/sts/stsiface"
+	"github.com/aws/aws-sdk-go/service/support"
+	"github.com/aws/aws-sdk-go/service/support/supportiface"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -61,13 +63,18 @@ type Client interface {
 
 	//sts
 	AssumeRole(*sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error)
+
+	//Support
+	CreateCase(*support.CreateCaseInput) (*support.CreateCaseOutput, error)
+	DescribeCases(*support.DescribeCasesInput) (*support.DescribeCasesOutput, error)
 }
 
 type awsClient struct {
-	ec2Client ec2iface.EC2API
-	iamClient iamiface.IAMAPI
-	orgClient organizationsiface.OrganizationsAPI
-	stsClient stsiface.STSAPI
+	ec2Client     ec2iface.EC2API
+	iamClient     iamiface.IAMAPI
+	orgClient     organizationsiface.OrganizationsAPI
+	stsClient     stsiface.STSAPI
+	supportClient supportiface.SupportAPI
 }
 
 func (c *awsClient) RunInstances(input *ec2.RunInstancesInput) (*ec2.Reservation, error) {
@@ -137,6 +144,14 @@ func (c *awsClient) AssumeRole(input *sts.AssumeRoleInput) (*sts.AssumeRoleOutpu
 	return c.stsClient.AssumeRole(input)
 }
 
+func (c *awsClient) CreateCase(input *support.CreateCaseInput) (*support.CreateCaseOutput, error) {
+	return c.supportClient.CreateCase(input)
+}
+
+func (c *awsClient) DescribeCases(input *support.DescribeCasesInput) (*support.DescribeCasesOutput, error) {
+	return c.supportClient.DescribeCases(input)
+}
+
 // NewClient creates our client wrapper object for the actual AWS clients we use.
 func NewClient(kubeClient client.Client, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
 	awsConfig := &aws.Config{Region: aws.String(region)}
@@ -149,9 +164,10 @@ func NewClient(kubeClient client.Client, awsAccessID, awsAccessSecret, token, re
 	}
 
 	return &awsClient{
-		ec2Client: ec2.New(s),
-		iamClient: iam.New(s),
-		orgClient: organizations.New(s),
-		stsClient: sts.New(s),
+		ec2Client:     ec2.New(s),
+		iamClient:     iam.New(s),
+		orgClient:     organizations.New(s),
+		stsClient:     sts.New(s),
+		supportClient: support.New(s),
 	}, nil
 }

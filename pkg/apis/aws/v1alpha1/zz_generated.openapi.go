@@ -302,6 +302,12 @@ func schema_pkg_apis_aws_v1alpha1_AccountSpec(ref common.ReferenceCallback) comm
 							Format: "",
 						},
 					},
+					"supportCaseID": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
 				},
 				Required: []string{"awsAccountID", "iamUserSecret"},
 			},

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go/service/support"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
@@ -44,6 +46,16 @@ const (
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
 	createPendTime          = 10 * time.Minute
+	// Fields used to create/monitor AWS case
+	caseCategoryCode              = "other-account-issues"
+	caseServiceCode               = "customer-account"
+	caseIssueType                 = "customer-service"
+	caseSeverity                  = "critical"
+	caseDesiredInstanceLimit      = 25
+	caseStatusResolved            = "resolved"
+	intervalAfterCaseCreationSecs = 30
+	intervalBetweenChecksSecs     = 30
+
 	// AccountPending indicates an account is pending
 	AccountPending = "Pending"
 	// AccountCreating indicates an account is being created
@@ -52,7 +64,28 @@ const (
 	AccountFailed = "Failed"
 	// AccountReady indicates account creation is ready
 	AccountReady = "Ready"
+	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
+	AccountPendingVerification = "PendingVerification"
 )
+
+var desiredInstanceType = "m5.xlarge"
+var coveredRegions = []string{
+	"us-east-1",
+	"us-east-2",
+	"us-west-1",
+	"us-west-2",
+	"ca-central-1",
+	"eu-central-1",
+	"eu-west-1",
+	"eu-west-2",
+	"eu-west-3",
+	"ap-northeast-1",
+	"ap-northeast-2",
+	"ap-south-1",
+	"ap-southeast-1",
+	"ap-southeast-2",
+	"sa-east-1",
+}
 
 // Custom errors
 
@@ -67,6 +100,18 @@ var ErrAwsFailedCreateAccount = errors.New("FailedCreateAccount")
 
 // ErrAwsTooManyRequests indicates that to many requests were sent in a short period
 var ErrAwsTooManyRequests = errors.New("TooManyRequestsException")
+
+// ErrAwsCaseCreationLimitExceeded indicates that the support case limit for the account has been reached
+var ErrAwsCaseCreationLimitExceeded = errors.New("SupportCaseLimitExceeded")
+
+// ErrAwsFailedCreateSupportCase indicates that a support case creation failed
+var ErrAwsFailedCreateSupportCase = errors.New("FailedCreateSupportCase")
+
+// ErrAwsSupportCaseIDNotFound indicates that the support case ID was not found
+var ErrAwsSupportCaseIDNotFound = errors.New("SupportCaseIdNotfound")
+
+// ErrAwsFailedDescribeSupportCase indicates that the support case describe failed
+var ErrAwsFailedDescribeSupportCase = errors.New("FailedDescribeSupportCase")
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -158,6 +203,57 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
+	// Test PendingVerification state creating support case and checking for case status
+	if currentAcctInstance.Status.State == AccountPendingVerification {
+		reqLogger.Info("Account in PendingVerification state", "AccountID", currentAcctInstance.Spec.AwsAccountID)
+
+		// If the supportCaseID is blank and Account State = PendingVerification, create a case
+		if currentAcctInstance.Status.SupportCaseID == "" {
+			caseID, err := createCase(reqLogger, currentAcctInstance.Spec.AwsAccountID, awsSetupClient)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			reqLogger.Info("Case created", "CaseID", caseID)
+
+			// Update supportCaseId in CR
+			currentAcctInstance.Status.SupportCaseID = caseID
+			setAccountStatus(reqLogger, currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, "PendingVerification")
+			err = r.statusUpdate(reqLogger, currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			// After creating the support case requeue the request. To avoid flooding and being blacklisted by AWS when
+			// starting the operator with a large AccountPool, add a randomInterval (between 0 and 30 secs) to the regular wait time
+			randomInterval, err := strconv.Atoi(currentAcctInstance.Spec.AwsAccountID)
+			randomInterval %= 30
+
+			// This will requeue verification for between 30 and 60 (30+30) seconds, depending on the account
+			return reconcile.Result{RequeueAfter: time.Duration(intervalAfterCaseCreationSecs+randomInterval) * time.Second}, nil
+		}
+
+		resolved, err := checkCaseResolution(reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
+		if err != nil {
+			reqLogger.Error(err, "Error checking for Case Resolution")
+			return reconcile.Result{}, err
+		}
+
+		// Case Resolved, account is Ready
+		if resolved {
+			reqLogger.Info(fmt.Sprintf("Case %s resolved", currentAcctInstance.Status.SupportCaseID))
+
+			setAccountStatus(reqLogger, currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, "Ready")
+			err = r.statusUpdate(reqLogger, currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			return reconcile.Result{}, nil
+		}
+
+		// Case not Resolved, try again in pre-defined interval
+		return reconcile.Result{RequeueAfter: intervalBetweenChecksSecs * time.Second}, nil
+	}
+
 	// Update account Status.Claimed to true if the account is ready and the claim link is not empty
 	if currentAcctInstance.Status.State == AccountReady && currentAcctInstance.Spec.ClaimLink != "" {
 		if currentAcctInstance.Status.Claimed != true {
@@ -195,7 +291,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// set state creating if the account was able to create
-		setAccountClaimStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, "Creating")
+		setAccountStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, "Creating")
 		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -212,7 +308,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		creds, credsErr := getStsCredentials(awsSetupClient, accountID)
 		if credsErr != nil {
 			reqLogger.Info("Failed to get STSCredentials from AWS api ", "Error", credsErr.Error())
-			setAccountClaimStatus(reqLogger, currentAcctInstance, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
+			setAccountStatus(reqLogger, currentAcctInstance, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
 			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to get sts credentials")
 			return reconcile.Result{}, credsErr
 		}
@@ -246,12 +342,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		setAccountClaimStatus(reqLogger, currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, "Ready")
+		setAccountStatus(reqLogger, currentAcctInstance, "Account pending AWS limits verification", awsv1alpha1.AccountPendingVerification, "PendingVerification")
 		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		reqLogger.Info("Account Ready to be claimed")
+		reqLogger.Info("Account pending AWS limits verification")
 	}
 
 	return reconcile.Result{}, nil
@@ -320,7 +416,7 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 	if orgErr != nil {
 		switch orgErr {
 		case ErrAwsFailedCreateAccount:
-			setAccountClaimStatus(reqLogger, account, "Failed to create AWS Account", awsv1alpha1.AccountFailed, "Failed")
+			setAccountStatus(reqLogger, account, "Failed to create AWS Account", awsv1alpha1.AccountFailed, "Failed")
 			err := r.Client.Status().Update(context.TODO(), account)
 			if err != nil {
 				return "", err
@@ -360,7 +456,7 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 	_, userErr := CreateIAMUser(awsClient, iamUserName)
 	// TODO: better error handling but for now scrap account
 	if userErr != nil {
-		setAccountClaimStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
+		setAccountStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
@@ -373,7 +469,7 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 	// Setting user access policy
 	_, policyErr := AttachAdminUserPolicy(awsClient, iamUserName)
 	if policyErr != nil {
-		setAccountClaimStatus(reqLogger, account, "Failed to set admin policy", awsv1alpha1.AccountFailed, "Failed")
+		setAccountStatus(reqLogger, account, "Failed to set admin policy", awsv1alpha1.AccountFailed, "Failed")
 		r.setStatusFailed(reqLogger, account, "Failed to build user")
 		return "", policyErr
 	}
@@ -382,7 +478,7 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 	// create user secrets
 	userSecretInfo, userSecretErr := CreateUserAccessKey(awsClient, iamUserName)
 	if userSecretErr != nil {
-		setAccountClaimStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
+		setAccountStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
@@ -401,7 +497,7 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 	userSecret := userSecretInput.newSecretforCR()
 	createErr := r.Client.Create(context.TODO(), userSecret)
 	if createErr != nil {
-		setAccountClaimStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
+		setAccountStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
@@ -748,7 +844,7 @@ func TotalAwsAccounts(client awsclient.Client) (int, error) {
 	return len(awsAccounts), nil
 }
 
-func setAccountClaimStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string, ctype awsv1alpha1.AccountConditionType, state string) {
+func setAccountStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string, ctype awsv1alpha1.AccountConditionType, state string) {
 	awsAccount.Status.Conditions = controllerutils.SetAccountCondition(
 		awsAccount.Status.Conditions,
 		ctype,
@@ -767,4 +863,87 @@ func (r *ReconcileAccount) statusUpdate(reqLogger logr.Logger, account *awsv1alp
 	}
 	reqLogger.Info(fmt.Sprintf("Status updated for %s", account.Name))
 	return err
+}
+
+func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client) (string, error) {
+	// Initialize basic communication body and case subject
+	caseCommunicationBody := fmt.Sprintf("Hi AWS, please add this account to Enterprise Support: %s\n\nAlso please apply the following limit increases:\n\n", accountID)
+	caseSubject := fmt.Sprintf("Add account %s to Enterprise Support and increase limits", accountID)
+
+	// For each supported AWS region append to the communication a request of limit increase
+	for index, region := range coveredRegions {
+		caseLimitIncreaseBody := fmt.Sprintf("Limit increase request %d\nService: EC2 Instances\nRegion: %s\nPrimary Instance Type: %s\nLimit name: Instance Limit\nNew limit value: %d\n------------\n", index+1, region, desiredInstanceType, caseDesiredInstanceLimit)
+		caseCommunicationBody += caseLimitIncreaseBody
+	}
+
+	createCaseInput := support.CreateCaseInput{
+		CategoryCode:      aws.String(caseCategoryCode),
+		ServiceCode:       aws.String(caseServiceCode),
+		IssueType:         aws.String(caseIssueType),
+		CommunicationBody: aws.String(caseCommunicationBody),
+		Subject:           aws.String(caseSubject),
+		SeverityCode:      aws.String(caseSeverity),
+	}
+
+	reqLogger.Info("Creating the case", "CaseInput", createCaseInput)
+
+	caseResult, caseErr := client.CreateCase(&createCaseInput)
+	if caseErr != nil {
+		var returnErr error
+		if aerr, ok := caseErr.(awserr.Error); ok {
+			switch aerr.Code() {
+			case support.ErrCodeCaseCreationLimitExceeded:
+				returnErr = ErrAwsCaseCreationLimitExceeded
+			case support.ErrCodeInternalServerError:
+				returnErr = ErrAwsInternalFailure
+			default:
+				returnErr = ErrAwsFailedCreateSupportCase
+			}
+		}
+
+		reqLogger.Error(returnErr, fmt.Sprintf("Failed to create support case for account %s", accountID))
+		return "", returnErr
+	}
+
+	reqLogger.Info("Support case created", "AccountID", accountID, "CaseID", caseResult.CaseId)
+
+	return *caseResult.CaseId, nil
+}
+
+func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.Client) (bool, error) {
+	// Look for the case using the unique ID provided
+	describeCasesInput := support.DescribeCasesInput{
+		CaseIdList: []*string{
+			aws.String(caseID),
+		},
+	}
+
+	caseResult, caseErr := client.DescribeCases(&describeCasesInput)
+	if caseErr != nil {
+
+		var returnErr error
+		if aerr, ok := caseErr.(awserr.Error); ok {
+			switch aerr.Code() {
+			case support.ErrCodeCaseIdNotFound:
+				returnErr = ErrAwsSupportCaseIDNotFound
+			case support.ErrCodeInternalServerError:
+				returnErr = ErrAwsInternalFailure
+			default:
+				returnErr = ErrAwsFailedDescribeSupportCase
+			}
+		}
+
+		reqLogger.Error(returnErr, fmt.Sprintf("Failed to describe case %s", caseID))
+		return false, returnErr
+	}
+
+	// Since we are describing cases based on the unique ID, this list will have only 1 element
+	if *caseResult.Cases[0].Status == caseStatusResolved {
+		reqLogger.Info(fmt.Sprintf("Case Resolved: %s", caseID))
+		return true, nil
+	}
+
+	reqLogger.Info(fmt.Sprintf("Case [%s] not yet Resolved, waiting. Current Status: %s", caseID, *caseResult.Cases[0].Status))
+	return false, nil
+
 }

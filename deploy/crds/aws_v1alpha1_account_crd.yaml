@@ -65,6 +65,9 @@ spec:
                 code after modifying this file Add custom validation using kubebuilder
                 tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
               type: boolean
+            supportCaseID:
+              description: 'Field will be populated by the account controller when the account gets in PendingVerification status'
+              type: string
             conditions:
               items:
                 properties:
