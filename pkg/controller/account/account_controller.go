@@ -284,10 +284,37 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, ErrAwsAccountLimitExceeded
 		}
 
-		// Build Aws Account
-		accountID, err := r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
-		if err != nil {
-			return reconcile.Result{}, err
+		var accountID string
+
+		if currentAcctInstance.Spec.AwsAccountID == "" {
+			// Build Aws Account
+			accountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			// set state creating if the account was able to create
+			setAccountClaimStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, "Creating")
+			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			// update account cr with accountID from aws
+			currentAcctInstance.Spec.AwsAccountID = accountID
+			err = r.Client.Update(context.TODO(), currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+		} else {
+			accountID = currentAcctInstance.Spec.AwsAccountID
+
+			// Account already created
+			setAccountClaimStatus(reqLogger, currentAcctInstance, "Account already created", awsv1alpha1.AccountCreating, "Creating")
+			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
 		}
 
 		// set state creating if the account was able to create
