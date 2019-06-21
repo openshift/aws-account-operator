@@ -50,7 +50,7 @@ const (
 	caseCategoryCode              = "other-account-issues"
 	caseServiceCode               = "customer-account"
 	caseIssueType                 = "customer-service"
-	caseSeverity                  = "critical"
+	caseSeverity                  = "urgent"
 	caseDesiredInstanceLimit      = 25
 	caseStatusResolved            = "resolved"
 	intervalAfterCaseCreationSecs = 30
