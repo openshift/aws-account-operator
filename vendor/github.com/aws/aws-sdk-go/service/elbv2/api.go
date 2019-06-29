@@ -1398,7 +1398,7 @@ func (c *ELBV2) DescribeListenersWithContext(ctx aws.Context, input *DescribeLis
 //    // Example iterating over at most 3 pages of a DescribeListeners operation.
 //    pageNum := 0
 //    err := client.DescribeListenersPages(params,
-//        func(page *DescribeListenersOutput, lastPage bool) bool {
+//        func(page *elbv2.DescribeListenersOutput, lastPage bool) bool {
 //            pageNum++
 //            fmt.Println(page)
 //            return pageNum <= 3
@@ -1620,7 +1620,7 @@ func (c *ELBV2) DescribeLoadBalancersWithContext(ctx aws.Context, input *Describ
 //    // Example iterating over at most 3 pages of a DescribeLoadBalancers operation.
 //    pageNum := 0
 //    err := client.DescribeLoadBalancersPages(params,
-//        func(page *DescribeLoadBalancersOutput, lastPage bool) bool {
+//        func(page *elbv2.DescribeLoadBalancersOutput, lastPage bool) bool {
 //            pageNum++
 //            fmt.Println(page)
 //            return pageNum <= 3
@@ -2105,7 +2105,7 @@ func (c *ELBV2) DescribeTargetGroupsWithContext(ctx aws.Context, input *Describe
 //    // Example iterating over at most 3 pages of a DescribeTargetGroups operation.
 //    pageNum := 0
 //    err := client.DescribeTargetGroupsPages(params,
-//        func(page *DescribeTargetGroupsOutput, lastPage bool) bool {
+//        func(page *elbv2.DescribeTargetGroupsOutput, lastPage bool) bool {
 //            pageNum++
 //            fmt.Println(page)
 //            return pageNum <= 3
@@ -3671,7 +3671,8 @@ type AuthenticateCognitoActionConfig struct {
 	//
 	//    * allow - Allow the request to be forwarded to the target.
 	//
-	// authenticate
+	//    * authenticate - Redirect the request to the IdP authorization endpoint.
+	//    This is the default value.
 	OnUnauthenticatedRequest *string `type:"string" enum:"AuthenticateCognitoActionConditionalBehaviorEnum"`
 
 	// The set of user claims to be requested from the IdP. The default is openid.
@@ -3820,7 +3821,8 @@ type AuthenticateOidcActionConfig struct {
 	//
 	//    * allow - Allow the request to be forwarded to the target.
 	//
-	// authenticate
+	//    * authenticate - Redirect the request to the IdP authorization endpoint.
+	//    This is the default value.
 	OnUnauthenticatedRequest *string `type:"string" enum:"AuthenticateOidcActionConditionalBehaviorEnum"`
 
 	// The set of user claims to be requested from the IdP. The default is openid.
@@ -4568,10 +4570,10 @@ type CreateTargetGroupInput struct {
 	HealthCheckEnabled *bool `type:"boolean"`
 
 	// The approximate amount of time, in seconds, between health checks of an individual
-	// target. For Application Load Balancers, the range is 5–300 seconds. For Network
-	// Load Balancers, the supported values are 10 or 30 seconds. If the target
-	// type is instance or ip, the default is 30 seconds. If the target type is
-	// lambda, the default is 35 seconds.
+	// target. For Application Load Balancers, the range is 5–300 seconds. For
+	// Network Load Balancers, the supported values are 10 or 30 seconds. If the
+	// target type is instance or ip, the default is 30 seconds. If the target type
+	// is lambda, the default is 35 seconds.
 	HealthCheckIntervalSeconds *int64 `min:"5" type:"integer"`
 
 	// [HTTP/HTTPS health checks] The ping path that is the destination on the targets
@@ -6073,6 +6075,80 @@ func (s *FixedResponseActionConfig) SetStatusCode(v string) *FixedResponseAction
 	return s
 }
 
+type HostHeaderConditionConfig struct {
+	_ struct{} `type:"structure"`
+
+	Values []*string `type:"list"`
+}
+
+// String returns the string representation
+func (s HostHeaderConditionConfig) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s HostHeaderConditionConfig) GoString() string {
+	return s.String()
+}
+
+// SetValues sets the Values field's value.
+func (s *HostHeaderConditionConfig) SetValues(v []*string) *HostHeaderConditionConfig {
+	s.Values = v
+	return s
+}
+
+type HttpHeaderConditionConfig struct {
+	_ struct{} `type:"structure"`
+
+	HttpHeaderName *string `type:"string"`
+
+	Values []*string `type:"list"`
+}
+
+// String returns the string representation
+func (s HttpHeaderConditionConfig) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s HttpHeaderConditionConfig) GoString() string {
+	return s.String()
+}
+
+// SetHttpHeaderName sets the HttpHeaderName field's value.
+func (s *HttpHeaderConditionConfig) SetHttpHeaderName(v string) *HttpHeaderConditionConfig {
+	s.HttpHeaderName = &v
+	return s
+}
+
+// SetValues sets the Values field's value.
+func (s *HttpHeaderConditionConfig) SetValues(v []*string) *HttpHeaderConditionConfig {
+	s.Values = v
+	return s
+}
+
+type HttpRequestMethodConditionConfig struct {
+	_ struct{} `type:"structure"`
+
+	Values []*string `type:"list"`
+}
+
+// String returns the string representation
+func (s HttpRequestMethodConditionConfig) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s HttpRequestMethodConditionConfig) GoString() string {
+	return s.String()
+}
+
+// SetValues sets the Values field's value.
+func (s *HttpRequestMethodConditionConfig) SetValues(v []*string) *HttpRequestMethodConditionConfig {
+	s.Values = v
+	return s
+}
+
 // Information about an Elastic Load Balancing resource limit for your AWS account.
 type Limit struct {
 	_ struct{} `type:"structure"`
@@ -6947,8 +7023,8 @@ type ModifyTargetGroupInput struct {
 	HealthCheckEnabled *bool `type:"boolean"`
 
 	// The approximate amount of time, in seconds, between health checks of an individual
-	// target. For Application Load Balancers, the range is 5–300 seconds. For Network
-	// Load Balancers, the supported values are 10 or 30 seconds.
+	// target. For Application Load Balancers, the range is 5–300 seconds. For
+	// Network Load Balancers, the supported values are 10 or 30 seconds.
 	//
 	// If the protocol of the target group is TCP, you can't modify this setting.
 	HealthCheckIntervalSeconds *int64 `min:"5" type:"integer"`
@@ -7118,6 +7194,80 @@ func (s ModifyTargetGroupOutput) GoString() string {
 // SetTargetGroups sets the TargetGroups field's value.
 func (s *ModifyTargetGroupOutput) SetTargetGroups(v []*TargetGroup) *ModifyTargetGroupOutput {
 	s.TargetGroups = v
+	return s
+}
+
+type PathPatternConditionConfig struct {
+	_ struct{} `type:"structure"`
+
+	Values []*string `type:"list"`
+}
+
+// String returns the string representation
+func (s PathPatternConditionConfig) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s PathPatternConditionConfig) GoString() string {
+	return s.String()
+}
+
+// SetValues sets the Values field's value.
+func (s *PathPatternConditionConfig) SetValues(v []*string) *PathPatternConditionConfig {
+	s.Values = v
+	return s
+}
+
+type QueryStringConditionConfig struct {
+	_ struct{} `type:"structure"`
+
+	Values []*QueryStringKeyValuePair `type:"list"`
+}
+
+// String returns the string representation
+func (s QueryStringConditionConfig) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s QueryStringConditionConfig) GoString() string {
+	return s.String()
+}
+
+// SetValues sets the Values field's value.
+func (s *QueryStringConditionConfig) SetValues(v []*QueryStringKeyValuePair) *QueryStringConditionConfig {
+	s.Values = v
+	return s
+}
+
+type QueryStringKeyValuePair struct {
+	_ struct{} `type:"structure"`
+
+	Key *string `type:"string"`
+
+	Value *string `type:"string"`
+}
+
+// String returns the string representation
+func (s QueryStringKeyValuePair) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s QueryStringKeyValuePair) GoString() string {
+	return s.String()
+}
+
+// SetKey sets the Key field's value.
+func (s *QueryStringKeyValuePair) SetKey(v string) *QueryStringKeyValuePair {
+	s.Key = &v
+	return s
+}
+
+// SetValue sets the Value field's value.
+func (s *QueryStringKeyValuePair) SetValue(v string) *QueryStringKeyValuePair {
+	s.Value = &v
 	return s
 }
 
@@ -7518,6 +7668,18 @@ type RuleCondition struct {
 	// The name of the field. The possible values are host-header and path-pattern.
 	Field *string `type:"string"`
 
+	HostHeaderConfig *HostHeaderConditionConfig `type:"structure"`
+
+	HttpHeaderConfig *HttpHeaderConditionConfig `type:"structure"`
+
+	HttpRequestMethodConfig *HttpRequestMethodConditionConfig `type:"structure"`
+
+	PathPatternConfig *PathPatternConditionConfig `type:"structure"`
+
+	QueryStringConfig *QueryStringConditionConfig `type:"structure"`
+
+	SourceIpConfig *SourceIpConditionConfig `type:"structure"`
+
 	// The condition value.
 	//
 	// If the field name is host-header, you can specify a single host name (for
@@ -7563,6 +7725,42 @@ func (s RuleCondition) GoString() string {
 // SetField sets the Field field's value.
 func (s *RuleCondition) SetField(v string) *RuleCondition {
 	s.Field = &v
+	return s
+}
+
+// SetHostHeaderConfig sets the HostHeaderConfig field's value.
+func (s *RuleCondition) SetHostHeaderConfig(v *HostHeaderConditionConfig) *RuleCondition {
+	s.HostHeaderConfig = v
+	return s
+}
+
+// SetHttpHeaderConfig sets the HttpHeaderConfig field's value.
+func (s *RuleCondition) SetHttpHeaderConfig(v *HttpHeaderConditionConfig) *RuleCondition {
+	s.HttpHeaderConfig = v
+	return s
+}
+
+// SetHttpRequestMethodConfig sets the HttpRequestMethodConfig field's value.
+func (s *RuleCondition) SetHttpRequestMethodConfig(v *HttpRequestMethodConditionConfig) *RuleCondition {
+	s.HttpRequestMethodConfig = v
+	return s
+}
+
+// SetPathPatternConfig sets the PathPatternConfig field's value.
+func (s *RuleCondition) SetPathPatternConfig(v *PathPatternConditionConfig) *RuleCondition {
+	s.PathPatternConfig = v
+	return s
+}
+
+// SetQueryStringConfig sets the QueryStringConfig field's value.
+func (s *RuleCondition) SetQueryStringConfig(v *QueryStringConditionConfig) *RuleCondition {
+	s.QueryStringConfig = v
+	return s
+}
+
+// SetSourceIpConfig sets the SourceIpConfig field's value.
+func (s *RuleCondition) SetSourceIpConfig(v *SourceIpConditionConfig) *RuleCondition {
+	s.SourceIpConfig = v
 	return s
 }
 
@@ -7923,6 +8121,28 @@ func (s SetSubnetsOutput) GoString() string {
 // SetAvailabilityZones sets the AvailabilityZones field's value.
 func (s *SetSubnetsOutput) SetAvailabilityZones(v []*AvailabilityZone) *SetSubnetsOutput {
 	s.AvailabilityZones = v
+	return s
+}
+
+type SourceIpConditionConfig struct {
+	_ struct{} `type:"structure"`
+
+	Values []*string `type:"list"`
+}
+
+// String returns the string representation
+func (s SourceIpConditionConfig) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation
+func (s SourceIpConditionConfig) GoString() string {
+	return s.String()
+}
+
+// SetValues sets the Values field's value.
+func (s *SourceIpConditionConfig) SetValues(v []*string) *SourceIpConditionConfig {
+	s.Values = v
 	return s
 }
 
