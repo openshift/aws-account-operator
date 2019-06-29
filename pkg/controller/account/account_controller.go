@@ -10,7 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -72,22 +71,53 @@ const (
 )
 
 var awsAccountID string
-var coveredRegions = []string{
-	"us-east-1",
-	"us-east-2",
-	"us-west-1",
-	"us-west-2",
-	"ca-central-1",
-	"eu-central-1",
-	"eu-west-1",
-	"eu-west-2",
-	"eu-west-3",
-	"ap-northeast-1",
-	"ap-northeast-2",
-	"ap-south-1",
-	"ap-southeast-1",
-	"ap-southeast-2",
-	"sa-east-1",
+var desiredInstanceType = "m5.xlarge"
+var coveredRegions = map[string]map[string]string{
+	"us-east-1": {
+		"initializationAMI": "ami-000db10762d0c4c05",
+	},
+	"us-east-2": {
+		"initializationAMI": "ami-094720ddca649952f",
+	},
+	"us-west-1": {
+		"initializationAMI": "ami-04642fc8fca1e8e67",
+	},
+	"us-west-2": {
+		"initializationAMI": "ami-0a7e1ebfee7a4570e",
+	},
+	"ca-central-1": {
+		"initializationAMI": "ami-06ca3c0058d0275b3",
+	},
+	"eu-central-1": {
+		"initializationAMI": "ami-09de4a4c670389e4b",
+	},
+	"eu-west-1": {
+		"initializationAMI": "ami-0202869bdd0fc8c75",
+	},
+	"eu-west-2": {
+		"initializationAMI": "ami-0188c0c5eddd2d032",
+	},
+	"eu-west-3": {
+		"initializationAMI": "ami-0c4224e392ec4e440",
+	},
+	"ap-northeast-1": {
+		"initializationAMI": "ami-00b95502a4d51a07e",
+	},
+	"ap-northeast-2": {
+		"initializationAMI": "ami-041b16ca28f036753",
+	},
+	"ap-south-1": {
+		"initializationAMI": "ami-0963937a03c01ecd4",
+	},
+	"ap-southeast-1": {
+		"initializationAMI": "ami-055c55112e25b1f1f",
+	},
+	"ap-southeast-2": {
+		"initializationAMI": "ami-036b423b657376f5b",
+	},
+	"sa-east-1": {
+		"initializationAMI": "ami-05c1c16cac05a7c0b",
+	},
 }
 
 // Instance types UHC supports
@@ -384,8 +414,8 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		// create ec2 instance , delete ec2 instance [WIP]
-		err = r.BuildandDestroyEC2Instances(reqLogger, awsAssumedRoleClient)
+		// Initialize all supported regions by creating and terminating an instance in each
+		err = r.InitializeSupportedRegions(reqLogger, coveredRegions, creds)
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to build and destroy ec2 instances")
 			return reconcile.Result{}, err
@@ -575,46 +605,6 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 		return "", createErr
 	}
 	return userSecret.ObjectMeta.Name, nil
-}
-
-//BuildandDestroyEC2Instances runs and ec2 instance and terminates it
-func (r *ReconcileAccount) BuildandDestroyEC2Instances(reqLogger logr.Logger, awsClient awsclient.Client) error {
-	//wait a bit for account to be ready to create
-
-	//Create instance
-	reqLogger.Info("Creating EC2 Instance")
-	instanceID, err := CreateEC2Instance(awsClient)
-	if err != nil {
-		return err
-	}
-
-	// Wait till instance is running
-	var DescError error
-	for i := 0; i < 300; i++ {
-		var code int
-		time.Sleep(1 * time.Second)
-		code, DescError = DescribeEC2Instances(awsClient)
-		if code == 16 {
-			reqLogger.Info("EC2 Instance Running")
-			break
-		}
-
-	}
-
-	if DescError != nil {
-		return errors.New("Could not get EC2 instance state")
-	}
-
-	// Terminate Instance
-	reqLogger.Info("Terminating EC2 Instance")
-	err = DeleteEC2Instance(awsClient, instanceID)
-	if err != nil {
-		return err
-	}
-
-	reqLogger.Info("EC2 Instance Terminated")
-
-	return nil
 }
 
 func (r *ReconcileAccount) setStatusFailed(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string) {
@@ -840,78 +830,6 @@ func formatAccountEmail(name string) string {
 	return email
 }
 
-//CreateEC2Instance creates ec2 instance and returns its instance ID
-func CreateEC2Instance(client awsclient.Client) (string, error) {
-	// Create EC2 service client
-
-	var instanceID string
-	var runErr error
-	attempt := 1
-	for i := 0; i < 300; i++ {
-		time.Sleep(time.Duration(attempt*5) * time.Second)
-		attempt++
-		if attempt%5 == 0 {
-			attempt = attempt * 2
-		}
-		// Specify the details of the instance that you want to create.
-		runResult, runErr := client.RunInstances(&ec2.RunInstancesInput{
-			// An Amazon Linux AMI ID for t2.micro instances in the us-west-2 region
-			ImageId:      aws.String(awsAMI),
-			InstanceType: aws.String(awsInstanceType),
-			MinCount:     aws.Int64(1),
-			MaxCount:     aws.Int64(1),
-		})
-		if runErr == nil {
-			instanceID = *runResult.Instances[0].InstanceId
-			break
-		}
-	}
-
-	if runErr != nil {
-		return "", runErr
-	}
-
-	return instanceID, nil
-
-}
-
-//DescribeEC2Instances returns the InstanceState code
-func DescribeEC2Instances(client awsclient.Client) (int, error) {
-	// States and codes
-	// 0 : pending
-	// 16 : running
-	// 32 : shutting-down
-	// 48 : terminated
-	// 64 : stopping
-	// 80 : stopped
-
-	result, err := client.DescribeInstanceStatus(nil)
-	if err != nil {
-		return 0, err
-	}
-
-	if len(result.InstanceStatuses) > 1 {
-		return 0, errors.New("More than one EC2 instance found")
-	}
-
-	if len(result.InstanceStatuses) == 0 {
-		return 0, errors.New("No EC2 instances found")
-	}
-	return int(*result.InstanceStatuses[0].InstanceState.Code), nil
-}
-
-//DeleteEC2Instance terminates the ec2 instance from the instanceID provided
-func DeleteEC2Instance(client awsclient.Client, instanceID string) error {
-	_, err := client.TerminateInstances(&ec2.TerminateInstancesInput{
-		InstanceIds: aws.StringSlice([]string{instanceID}),
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // TotalAwsAccounts returns the total number of aws accounts in the aws org
 func TotalAwsAccounts(client awsclient.Client) (int, error) {
 	var awsAccounts []*organizations.Account
@@ -965,8 +883,10 @@ func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client
 	instanceTypeList := strings.Join(coveredInstanceTypes, ", ")
 
 	// For each supported AWS region append to the communication a request of limit increase
-	for index, region := range coveredRegions {
-		caseLimitIncreaseBody := fmt.Sprintf("Limit increase request %d\nService: EC2 Instances\nRegion: %s\nInstance Types: %s\nLimit name: Instance Limit\nNew limit value: %d\n------------\n", index+1, region, instanceTypeList, caseDesiredInstanceLimit)
+	var i = 0
+	for region := range coveredRegions {
+		i++
+		caseLimitIncreaseBody := fmt.Sprintf("Limit increase request %d\nService: EC2 Instances\nRegion: %s\nPrimary Instance Type: %s\nLimit name: Instance Limit\nNew limit value: %d\n------------\n", i, region, instanceTypeList, caseDesiredInstanceLimit)
 		caseCommunicationBody += caseLimitIncreaseBody
 	}
 
