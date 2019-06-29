@@ -46,10 +46,11 @@ type AccountStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	Claimed       bool               `json:"claimed"`
-	SupportCaseID string             `json:"supportCaseID"`
-	Conditions    []AccountCondition `json:"conditions"`
-	State         string             `json:"state"`
+	Claimed           bool               `json:"claimed"`
+	SupportCaseID     string             `json:"supportCaseID"`
+	Conditions        []AccountCondition `json:"conditions"`
+	State             string             `json:"state"`
+	RotateCredentials bool               `json:"rotateCredentials"`
 }
 
 // AccountCondition contains details for the current condition of a AWS account

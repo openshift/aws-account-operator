@@ -99,12 +99,15 @@ spec:
                 - status
                 type: object
               type: array
+            rotateCredentials:
+              type: boolean
             state:
               type: string
           required:
           - claimed
           - conditions
           - state
+          - rotateCredentials
           type: object
   version: v1alpha1
   versions:

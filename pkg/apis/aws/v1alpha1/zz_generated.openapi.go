@@ -347,8 +347,14 @@ func schema_pkg_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) co
 							Format: "",
 						},
 					},
+					"rotateCredentials": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
 				},
-				Required: []string{"claimed", "conditions", "state"},
+				Required: []string{"claimed", "conditions", "state", "rotateCredentials"},
 			},
 		},
 		Dependencies: []string{

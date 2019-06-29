@@ -41,7 +41,8 @@ const (
 	awsCredsUserName        = "aws_user_name"
 	awsCredsSecretIDKey     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
-	iamUserName             = "osdManagedAdmin"
+	iamUserNameUHC          = "osdManagedAdmin"
+	iamUserNameSRE          = "osdManagedAdminSRE"
 	awsSecretName           = "aws-account-operator-credentials"
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
@@ -66,8 +67,11 @@ const (
 	AccountReady = "Ready"
 	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
 	AccountPendingVerification = "PendingVerification"
+	// IAM Role name for IAM user creating resources in account
+	accountOperatorIAMRole = "OrganizationAccountAccessRole"
 )
 
+var awsAccountID string
 var desiredInstanceType = "m5.xlarge"
 var coveredRegions = []string{
 	"us-east-1",
@@ -164,6 +168,11 @@ type ReconcileAccount struct {
 // secretInput is a struct that holds data required to create a new secret CR
 type secretInput struct {
 	SecretName, NameSpace, awsCredsUserName, awsCredsSecretIDKey, awsCredsSecretAccessKey string
+}
+
+// SRESecretInput is a struct that holds data required to create a new secret CR for SRE admins
+type SRESecretInput struct {
+	SecretName, NameSpace, awsCredsSecretIDKey, awsCredsSecretAccessKey, awsCredsSessionToken, awsCredsConsoleLoginURL string
 }
 
 // input for new aws client
@@ -285,7 +294,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Build Aws Account
-		accountID, err := r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
+		awsAccountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -297,18 +306,19 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		// update account cr with accountID from aws
-		currentAcctInstance.Spec.AwsAccountID = accountID
+		// update account cr with awsAccountID from aws
+		currentAcctInstance.Spec.AwsAccountID = awsAccountID
 		err = r.Client.Update(context.TODO(), currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 
 		// Get STS credentials so that we can create an aws client with
-		creds, credsErr := getStsCredentials(awsSetupClient, accountID)
+		creds, credsErr := getStsCredentials(reqLogger, awsSetupClient, accountOperatorIAMRole, awsAccountID)
 		if credsErr != nil {
-			reqLogger.Info("Failed to get STSCredentials from AWS api ", "Error", credsErr.Error())
-			setAccountStatus(reqLogger, currentAcctInstance, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
+			stsErrMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s", awsAccountID)
+			reqLogger.Info(stsErrMsg, "Error", credsErr.Error())
+			setAccountStatus(reqLogger, currentAcctInstance, stsErrMsg, awsv1alpha1.AccountFailed, "Failed")
 			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to get sts credentials")
 			return reconcile.Result{}, credsErr
 		}
@@ -324,14 +334,41 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		secretName, err := r.BuildUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, request.Namespace)
+		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserNameUHC, request.Namespace)
 		if err != nil {
-			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to build user")
+			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build IAM UHC user: %s", iamUserNameUHC))
 			return reconcile.Result{}, err
 		}
 		currentAcctInstance.Spec.IAMUserSecret = secretName
 		err = r.Client.Update(context.TODO(), currentAcctInstance)
 		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		// Create SRE IAM user and return the credentials
+		SREIAMUserSecret, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserNameSRE, request.Namespace)
+		if err != nil {
+			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build IAM SRE user: %s", iamUserNameSRE))
+			return reconcile.Result{}, err
+		}
+
+		// Create new awsClient with SRE IAM credentials so we can generate STS and Federation tokens from it
+		SREAWSClient, err := r.getAWSClient(newAwsClientInput{
+			secretName: SREIAMUserSecret,
+			nameSpace:  awsv1alpha1.AccountCrNamespace,
+			awsRegion:  "us-east-1"})
+
+		if err != nil {
+			var returnErr error
+			if aerr, ok := err.(awserr.Error); ok {
+				reqLogger.Error(returnErr, fmt.Sprintf("Unable to create AWS connection with SRE credentials, AWS Error Message: %s", aerr.Message()))
+			}
+		}
+
+		// Create STS CLI Credentials for SRE
+		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace)
+		if err != nil {
+			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build SRE STS credentials: %s", iamUserNameSRE))
 			return reconcile.Result{}, err
 		}
 
@@ -348,6 +385,15 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 		reqLogger.Info("Account pending AWS limits verification")
+	}
+
+	// If Account CR has `stats.rotateCredentials: true` we'll rotate the temporary credentials
+	// the secretWatcher is what updates this status field by comparing the STS credentials secret `creationTimestamp`
+	if currentAcctInstance.Status.RotateCredentials == true {
+		err = r.RotateCredentials(reqLogger, awsSetupClient, currentAcctInstance)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	return reconcile.Result{}, nil
@@ -448,47 +494,57 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 	return *orgOutput.CreateAccountStatus.AccountId, nil
 }
 
-// BuildUser takea all parameters required to create a user, user secret
-func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, nameSpace string) (string, error) {
+// BuildIAMUser takes all parameters required to create a user, user secret
+func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUserName string, nameSpace string) (string, error) {
 	reqLogger.Info("IAM User Created")
 
-	// create iam user
+	// Create IAM user
 	_, userErr := CreateIAMUser(awsClient, iamUserName)
 	// TODO: better error handling but for now scrap account
 	if userErr != nil {
-		setAccountStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
+		failedToCreateIAMUserMsg := fmt.Sprintf("Failed to create IAM user %s", iamUserName)
+		setAccountStatus(reqLogger, account, failedToCreateIAMUserMsg, awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
 		}
-		reqLogger.Info("Failed to create user")
+		reqLogger.Info(failedToCreateIAMUserMsg)
 		return "", userErr
 	}
 
-	reqLogger.Info("Attaching Admin Policy to IAM user")
+	reqLogger.Info(fmt.Sprintf("Attaching Admin Policy to IAM user %s", iamUserName))
 	// Setting user access policy
 	_, policyErr := AttachAdminUserPolicy(awsClient, iamUserName)
 	if policyErr != nil {
-		setAccountStatus(reqLogger, account, "Failed to set admin policy", awsv1alpha1.AccountFailed, "Failed")
-		r.setStatusFailed(reqLogger, account, "Failed to build user")
+		failedToAttachUserPolicyMsg := fmt.Sprintf("Failed to attach admin policy to IAM user %s", iamUserName)
+		setAccountStatus(reqLogger, account, failedToAttachUserPolicyMsg, awsv1alpha1.AccountFailed, "Failed")
+		r.setStatusFailed(reqLogger, account, failedToAttachUserPolicyMsg)
 		return "", policyErr
 	}
 
-	reqLogger.Info("Creating Secrets")
+	reqLogger.Info(fmt.Sprintf("Creating Secrets for IAM user %s", iamUserName))
 	// create user secrets
 	userSecretInfo, userSecretErr := CreateUserAccessKey(awsClient, iamUserName)
 	if userSecretErr != nil {
-		setAccountStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
+		failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s", iamUserName)
+		setAccountStatus(reqLogger, account, failedToCreateUserAccessKeyMsg, awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
 		}
-		reqLogger.Info("Failed to create user Access Key + ID")
+		reqLogger.Info(failedToCreateUserAccessKeyMsg)
 		return "", userSecretErr
 	}
 
+	secretName := account.Name
+
+	// Append to secret name if we're if its the SRE admin user secret
+	if iamUserName == iamUserNameSRE {
+		secretName = account.Name + "-" + strings.ToLower(iamUserNameSRE)
+	}
+
 	userSecretInput := secretInput{
-		SecretName:              account.Name,
+		SecretName:              secretName,
 		NameSpace:               nameSpace,
 		awsCredsUserName:        *userSecretInfo.AccessKey.UserName,
 		awsCredsSecretIDKey:     *userSecretInfo.AccessKey.AccessKeyId,
@@ -497,12 +553,13 @@ func (r *ReconcileAccount) BuildUser(reqLogger logr.Logger, awsClient awsclient.
 	userSecret := userSecretInput.newSecretforCR()
 	createErr := r.Client.Create(context.TODO(), userSecret)
 	if createErr != nil {
-		setAccountStatus(reqLogger, account, "Failed to create account", awsv1alpha1.AccountFailed, "Failed")
+		failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret for IAM user %s", iamUserName)
+		setAccountStatus(reqLogger, account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
 		}
-		reqLogger.Info("Failed to create k8s user secret")
+		reqLogger.Info(failedToCreateUserSecretMsg)
 		return "", createErr
 	}
 	return userSecret.ObjectMeta.Name, nil
@@ -683,7 +740,7 @@ func CreateUserAccessKey(client awsclient.Client, userName string) (*iam.CreateA
 }
 
 // getStsCredentials returns sts credentials for the specified account ARN
-func getStsCredentials(client awsclient.Client, awsAccountID string) (*sts.AssumeRoleOutput, error) {
+func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleName string, awsAccountID string) (*sts.AssumeRoleOutput, error) {
 	// Use the role session name to uniquely identify a session when the same role
 	// is assumed by different principals or for different reasons.
 	var roleSessionName = "awsAccountOperator"
@@ -693,6 +750,7 @@ func getStsCredentials(client awsclient.Client, awsAccountID string) (*sts.Assum
 	// The role ARN made up of the account number and the role which is the default role name
 	// created in child accounts
 	var roleArn = fmt.Sprintf("arn:aws:iam::%s:role/OrganizationAccountAccessRole", awsAccountID)
+	reqLogger.Info(fmt.Sprintf("Creating STS credentials for AWS ARN: %s", roleArn))
 	// Build input for AssumeRole
 	assumeRoleInput := sts.AssumeRoleInput{
 		DurationSeconds: &roleSessionDuration,
@@ -714,6 +772,27 @@ func getStsCredentials(client awsclient.Client, awsAccountID string) (*sts.Assum
 	}
 
 	return assumeRoleOutput, nil
+}
+
+func (input SRESecretInput) newSTSSecret() *corev1.Secret {
+	return &corev1.Secret{
+		Type: "Opaque",
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      input.SecretName + "-sre-credentials",
+			Namespace: input.NameSpace,
+		},
+		Data: map[string][]byte{
+			"aws_access_key_id":     []byte(input.awsCredsSecretIDKey),
+			"aws_secret_access_key": []byte(input.awsCredsSecretAccessKey),
+			"aws_session_token":     []byte(input.awsCredsSessionToken),
+			"aws_console_login_url": []byte(input.awsCredsConsoleLoginURL),
+		},
+	}
+
 }
 
 func (input secretInput) newSecretforCR() *corev1.Secret {
