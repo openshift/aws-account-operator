@@ -63,6 +63,8 @@ type Client interface {
 
 	//sts
 	AssumeRole(*sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error)
+	GetCallerIdentity(*sts.GetCallerIdentityInput) (*sts.GetCallerIdentityOutput, error)
+	GetFederationToken(*sts.GetFederationTokenInput) (*sts.GetFederationTokenOutput, error)
 
 	//Support
 	CreateCase(*support.CreateCaseInput) (*support.CreateCaseOutput, error)
@@ -150,6 +152,14 @@ func (c *awsClient) CreateCase(input *support.CreateCaseInput) (*support.CreateC
 
 func (c *awsClient) DescribeCases(input *support.DescribeCasesInput) (*support.DescribeCasesOutput, error) {
 	return c.supportClient.DescribeCases(input)
+}
+
+func (c *awsClient) GetCallerIdentity(input *sts.GetCallerIdentityInput) (*sts.GetCallerIdentityOutput, error) {
+	return c.stsClient.GetCallerIdentity(input)
+}
+
+func (c *awsClient) GetFederationToken(input *sts.GetFederationTokenInput) (*sts.GetFederationTokenOutput, error) {
+	return c.stsClient.GetFederationToken(input)
 }
 
 // NewClient creates our client wrapper object for the actual AWS clients we use.

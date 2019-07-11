@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"time"
 
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	"github.com/openshift/aws-account-operator/pkg/controller"
+	"github.com/openshift/aws-account-operator/pkg/credentialwatcher"
 	operatormetrics "github.com/openshift/aws-account-operator/pkg/metrics"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
@@ -24,8 +26,9 @@ import (
 
 // Change below variables to serve metrics on different host or port.
 var (
-	metricsHost       = "0.0.0.0"
-	metricsPort int32 = 8383
+	metricsHost                     = "0.0.0.0"
+	metricsPort               int32 = 8383
+	secretWatcherScanInterval       = time.Duration(10) * time.Minute
 )
 
 var log = logf.Log.WithName("cmd")
@@ -109,10 +112,21 @@ func main() {
 		log.Error(err, "Failed to configure Metrics")
 	}
 
+	// Define stopCh which we'll use to notify the secretWatcher (any any other routine)
+	// to stop work. This channel can also be used to signal routines to complete any cleanup
+	// work
+	stopCh := signals.SetupSignalHandler()
+
+	// Initialize the SecretWatcher
+	credentialwatcher.Initialize(mgr.GetClient(), secretWatcherScanInterval)
+
+	// Start the secret watcher
+	go credentialwatcher.SecretWatcher.Start(log, stopCh)
+
 	log.Info("Starting the Cmd.")
 
 	// Start the Cmd
-	if err := mgr.Start(signals.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(stopCh); err != nil {
 		log.Error(err, "Manager exited non-zero")
 		os.Exit(1)
 	}
