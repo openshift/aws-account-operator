@@ -56,6 +56,10 @@ var (
 		Name: "aws_account_operator_pool_size_vs_unclaimed",
 		Help: "Report the difference between the pool size and the number of unclaimed account CRs",
 	}, []string{"name"})
+	metricTotalAccountPendingVerification = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "aws_account_operator_total_aws_account_pending_verification",
+		Help: "Report the number of accounts waiting for enterprise support and EC2 limit increases in AWS",
+	}, []string{"name"})
 
 	metricsList = []prometheus.Collector{
 		metricTotalAWSAccounts,
@@ -65,6 +69,7 @@ var (
 		metricTotalAccountCRsFailed,
 		metricTotalAccountClaimCRs,
 		metricPoolSizeVsUnclaimed,
+		metricTotalAccountPendingVerification,
 	}
 )
 
@@ -98,6 +103,7 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	unclaimedAccountCount := 0
 	claimedAccountCount := 0
 	failedAccountCount := 0
+	pendingVerificationAccountCount := 0
 	for _, account := range accountList.Items {
 		if account.Status.Claimed == false {
 			if account.Status.State != "Failed" {
@@ -108,12 +114,15 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 		}
 		if account.Status.State == "Failed" {
 			failedAccountCount++
+		} else if account.Status.State == "PendingVerification" {
+			pendingVerificationAccountCount++
 		}
 	}
 
 	metricTotalAccountCRs.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(len(accountList.Items)))
 	metricTotalAccountCRsUnclaimed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(unclaimedAccountCount))
 	metricTotalAccountCRsClaimed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(claimedAccountCount))
+	metricTotalAccountPendingVerification.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(pendingVerificationAccountCount))
 	metricTotalAccountCRsFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(failedAccountCount))
 }
 
