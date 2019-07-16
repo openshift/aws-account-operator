@@ -955,6 +955,9 @@ func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client
 		caseCommunicationBody += caseLimitIncreaseBody
 	}
 
+	// Per AWS suggestion add final msg to case body
+	caseCommunicationBody += "\n\n**Once this is completed please resolve this case, do not set this case to Pending Customer Action.**"
+
 	createCaseInput := support.CreateCaseInput{
 		CategoryCode:      aws.String(caseCategoryCode),
 		ServiceCode:       aws.String(caseServiceCode),
