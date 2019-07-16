@@ -37,7 +37,8 @@ type AccountSpec struct {
 	AwsAccountID  string `json:"awsAccountID"`
 	IAMUserSecret string `json:"iamUserSecret"`
 	// +optional
-	ClaimLink string `json:"claimLink"`
+	ClaimLink   string      `json:"claimLink"`
+	LegalEntity LegalEntity `json:"legalEntity"`
 }
 
 // AccountStatus defines the observed state of Account
@@ -51,6 +52,7 @@ type AccountStatus struct {
 	Conditions        []AccountCondition `json:"conditions"`
 	State             string             `json:"state"`
 	RotateCredentials bool               `json:"rotateCredentials"`
+	Reused            bool               `json:"reused"`
 }
 
 // AccountCondition contains details for the current condition of a AWS account
