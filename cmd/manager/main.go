@@ -12,7 +12,8 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	"github.com/openshift/aws-account-operator/pkg/controller"
 	"github.com/openshift/aws-account-operator/pkg/credentialwatcher"
-	operatormetrics "github.com/openshift/aws-account-operator/pkg/metrics"
+	metrics "github.com/openshift/aws-account-operator/pkg/metrics"
+	custommetrics "github.com/openshift/operator-custom-metrics/pkg/metrics"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
@@ -107,8 +108,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	//Create metrics endpoint and register metrics
+	metricsServer := custommetrics.NewBuilder().WithPort("9090").WithPath("/metrics").
+		WithCollectors(metrics.MetricTotalAWSAccounts).
+		WithCollectors(metrics.MetricTotalAccountCRs).
+		WithCollectors(metrics.MetricTotalAccountCRsUnclaimed).
+		WithCollectors(metrics.MetricTotalAccountCRsClaimed).
+		WithCollectors(metrics.MetricTotalAccountCRsFailed).
+		WithCollectors(metrics.MetricTotalAccountClaimCRs).
+		WithCollectors(metrics.MetricPoolSizeVsUnclaimed).
+		GetConfig()
+
 	// Configure metrics if it errors log the error but continue
-	if err := operatormetrics.ConfigureMetrics(context.TODO()); err != nil {
+	if err := custommetrics.ConfigureMetrics(context.TODO(), *metricsServer); err != nil {
 		log.Error(err, "Failed to configure Metrics")
 	}
 
