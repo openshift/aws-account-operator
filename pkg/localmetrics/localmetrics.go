@@ -54,6 +54,10 @@ var (
 		Name: "aws_account_operator_total_aws_account_pending_verification",
 		Help: "Report the number of accounts waiting for enterprise support and EC2 limit increases in AWS",
 	}, []string{"name"})
+	MetricTotalAccountCRsReady = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "aws_account_operator_total_aws_accounts_ready",
+		Help: "Report the number of ready accounts CRs",
+	}, []string{"name"})
 
 	MetricsList = []prometheus.Collector{
 		MetricTotalAWSAccounts,
@@ -64,6 +68,7 @@ var (
 		MetricTotalAccountClaimCRs,
 		MetricPoolSizeVsUnclaimed,
 		MetricTotalAccountPendingVerification,
+		MetricTotalAccountCRsReady,
 	}
 )
 
@@ -79,6 +84,7 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	claimedAccountCount := 0
 	failedAccountCount := 0
 	pendingVerificationAccountCount := 0
+	readyAccountsCount := 0
 	for _, account := range accountList.Items {
 		if account.Status.Claimed == false {
 			if account.Status.State != "Failed" {
@@ -92,6 +98,10 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 		} else if account.Status.State == "PendingVerification" {
 			pendingVerificationAccountCount++
 		}
+		if account.Status.State == "Ready" {
+			readyAccountsCount++
+		}
+
 	}
 
 	MetricTotalAccountCRs.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(len(accountList.Items)))
@@ -99,6 +109,7 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	MetricTotalAccountCRsClaimed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(claimedAccountCount))
 	MetricTotalAccountPendingVerification.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(pendingVerificationAccountCount))
 	MetricTotalAccountCRsFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(failedAccountCount))
+	MetricTotalAccountCRsReady.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(readyAccountsCount))
 }
 
 // UpdateAccountClaimMetrics updates all metrics related to AccountClaim CRs
