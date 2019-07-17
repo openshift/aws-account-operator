@@ -27,9 +27,9 @@ import (
 
 // Change below variables to serve metrics on different host or port.
 var (
-	metricsHost                     = "0.0.0.0"
-	metricsPort               int32 = 8383
-	secretWatcherScanInterval       = time.Duration(10) * time.Minute
+	metricsPort               = "9090"
+	metricsPath               = "/metrics"
+	secretWatcherScanInterval = time.Duration(10) * time.Minute
 )
 
 var log = logf.Log.WithName("cmd")
@@ -81,8 +81,7 @@ func main() {
 
 	// Create a new Cmd to provide shared dependencies and start components
 	mgr, err := manager.New(cfg, manager.Options{
-		Namespace:          "",
-		MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
+		Namespace: "",
 	})
 	if err != nil {
 		log.Error(err, "")
@@ -109,7 +108,7 @@ func main() {
 	}
 
 	//Create metrics endpoint and register metrics
-	metricsServer := metrics.NewBuilder().WithPort("9090").WithPath("/metrics").
+	metricsServer := metrics.NewBuilder().WithPort(metricsPort).WithPath(metricsPath).
 		WithCollectors(localmetrics.MetricTotalAWSAccounts).
 		WithCollectors(localmetrics.MetricTotalAccountCRs).
 		WithCollectors(localmetrics.MetricTotalAccountCRsUnclaimed).
