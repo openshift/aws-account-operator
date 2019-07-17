@@ -76,6 +76,8 @@
     "service/organizations/organizationsiface",
     "service/sts",
     "service/sts/stsiface",
+    "service/support",
+    "service/support/supportiface",
   ]
   pruneopts = "NT"
   revision = "b9b2c2cd61a6814e3cd5d07e4c200dac18b357a4"
@@ -364,6 +366,14 @@
   pruneopts = "NT"
   revision = "0d921e363e951d89f583292c60d013c318df64dc"
   version = "v3.9.0"
+
+[[projects]]
+  branch = "master"
+  digest = "1:eb16e059ec17378bcab2d67bff2dbe95dec98f151e496f4a29a6a34d25060129"
+  name = "github.com/openshift/operator-custom-metrics"
+  packages = ["pkg/metrics"]
+  pruneopts = "NT"
+  revision = "b20490a1cf8bda14d129cfea17c1cf6781d9c3e6"
 
 [[projects]]
   digest = "1:df8e741cd0f86087367f3bcfeb1cf237e96fada71194b6d4cee9412d221ec763"
@@ -980,11 +990,12 @@
     "github.com/aws/aws-sdk-go/service/organizations/organizationsiface",
     "github.com/aws/aws-sdk-go/service/sts",
     "github.com/aws/aws-sdk-go/service/sts/stsiface",
-    "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1",
+    "github.com/aws/aws-sdk-go/service/support",
+    "github.com/aws/aws-sdk-go/service/support/supportiface",
     "github.com/go-logr/logr",
     "github.com/go-openapi/spec",
     "github.com/openshift/api/route/v1",
-    "github.com/operator-framework/operator-sdk/pkg/k8sutil",
+    "github.com/openshift/operator-custom-metrics/pkg/metrics",
     "github.com/operator-framework/operator-sdk/pkg/leader",
     "github.com/operator-framework/operator-sdk/pkg/log/zap",
     "github.com/operator-framework/operator-sdk/version",
@@ -996,7 +1007,6 @@
     "k8s.io/apimachinery/pkg/runtime",
     "k8s.io/apimachinery/pkg/runtime/schema",
     "k8s.io/apimachinery/pkg/types",
-    "k8s.io/apimachinery/pkg/util/intstr",
     "k8s.io/apimachinery/pkg/util/rand",
     "k8s.io/apimachinery/pkg/util/sets",
     "k8s.io/client-go/plugin/pkg/client/auth/gcp",

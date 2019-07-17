@@ -12,7 +12,8 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	"github.com/openshift/aws-account-operator/pkg/controller"
 	"github.com/openshift/aws-account-operator/pkg/credentialwatcher"
-	operatormetrics "github.com/openshift/aws-account-operator/pkg/metrics"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
+	"github.com/openshift/operator-custom-metrics/pkg/metrics"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
@@ -26,9 +27,9 @@ import (
 
 // Change below variables to serve metrics on different host or port.
 var (
-	metricsHost                     = "0.0.0.0"
-	metricsPort               int32 = 8383
-	secretWatcherScanInterval       = time.Duration(10) * time.Minute
+	metricsPort               = "9090"
+	metricsPath               = "/metrics"
+	secretWatcherScanInterval = time.Duration(10) * time.Minute
 )
 
 var log = logf.Log.WithName("cmd")
@@ -80,8 +81,7 @@ func main() {
 
 	// Create a new Cmd to provide shared dependencies and start components
 	mgr, err := manager.New(cfg, manager.Options{
-		Namespace:          "",
-		MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
+		Namespace: "",
 	})
 	if err != nil {
 		log.Error(err, "")
@@ -107,8 +107,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	//Create metrics endpoint and register metrics
+	metricsServer := metrics.NewBuilder().WithPort(metricsPort).WithPath(metricsPath).
+		WithCollectors(localmetrics.MetricTotalAWSAccounts).
+		WithCollectors(localmetrics.MetricTotalAccountCRs).
+		WithCollectors(localmetrics.MetricTotalAccountCRsUnclaimed).
+		WithCollectors(localmetrics.MetricTotalAccountCRsClaimed).
+		WithCollectors(localmetrics.MetricTotalAccountCRsFailed).
+		WithCollectors(localmetrics.MetricTotalAccountClaimCRs).
+		WithCollectors(localmetrics.MetricPoolSizeVsUnclaimed).
+		WithCollectors(localmetrics.MetricTotalAccountPendingVerification).
+		GetConfig()
+
 	// Configure metrics if it errors log the error but continue
-	if err := operatormetrics.ConfigureMetrics(context.TODO()); err != nil {
+	if err := metrics.ConfigureMetrics(context.TODO(), *metricsServer); err != nil {
 		log.Error(err, "Failed to configure Metrics")
 	}
 
