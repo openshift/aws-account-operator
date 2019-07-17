@@ -27,7 +27,7 @@ import (
 
 // Change below variables to serve metrics on different host or port.
 var (
-	metricsPort               = "9090"
+	metricsPort               = "8080"
 	metricsPath               = "/metrics"
 	secretWatcherScanInterval = time.Duration(10) * time.Minute
 )
