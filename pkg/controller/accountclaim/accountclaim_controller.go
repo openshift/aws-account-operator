@@ -8,7 +8,7 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
-	"github.com/openshift/aws-account-operator/pkg/metrics"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -177,7 +177,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
-	metrics.UpdateAccountClaimMetrics(accountClaimList)
+	localmetrics.UpdateAccountClaimMetrics(accountClaimList)
 
 	if accountClaim.Status.State != awsv1alpha1.ClaimStatusReady && accountClaim.Spec.AccountLink != "" {
 		// Set AccountClaim.Status.Conditions and AccountClaim.Status.State to Ready

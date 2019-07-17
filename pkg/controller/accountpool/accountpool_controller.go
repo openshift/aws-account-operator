@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
-	"github.com/openshift/aws-account-operator/pkg/metrics"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -139,8 +139,8 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 		}
 	}
 
-	metrics.UpdateAccountCRMetrics(accountList)
-	metrics.UpdatePoolSizeVsUnclaimed(currentAccountPool.Spec.PoolSize, unclaimedAccountCount)
+	localmetrics.UpdateAccountCRMetrics(accountList)
+	localmetrics.UpdatePoolSizeVsUnclaimed(currentAccountPool.Spec.PoolSize, unclaimedAccountCount)
 
 	if unclaimedAccountCount >= poolSizeCount {
 		reqLogger.Info(fmt.Sprintf("unclaimed account pool satisfied, unclaimedAccounts %d >= poolSize %d", unclaimedAccountCount, poolSizeCount))
