@@ -40,11 +40,15 @@ var (
 	}, []string{"name"})
 	MetricTotalAccountCRsFailed = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "aws_account_operator_total_accounts_crs_failed",
-		Help: "Report how many account  CRs are failed",
+		Help: "Report how many account CRs are failed",
 	}, []string{"name"})
 	MetricTotalAccountClaimCRs = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "aws_account_operator_total_aws_account_claim_crs",
 		Help: "Report how many account claim CRs have been created",
+	}, []string{"name"})
+	MetricTotalAccountCRsReady = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "aws_account_operator_total_aws_accounts_crs_ready",
+		Help: "Report how many account CRs are ready",
 	}, []string{"name"})
 	MetricPoolSizeVsUnclaimed = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "aws_account_operator_pool_size_vs_unclaimed",
@@ -62,6 +66,7 @@ var (
 		MetricTotalAccountCRsClaimed,
 		MetricTotalAccountCRsFailed,
 		MetricTotalAccountClaimCRs,
+		MetricTotalAccountCRsReady,
 		MetricPoolSizeVsUnclaimed,
 		MetricTotalAccountPendingVerification,
 	}
@@ -79,10 +84,13 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	claimedAccountCount := 0
 	failedAccountCount := 0
 	pendingVerificationAccountCount := 0
+	readyAccountCount := 0
 	for _, account := range accountList.Items {
 		if account.Status.Claimed == false {
 			if account.Status.State != "Failed" {
 				unclaimedAccountCount++
+			} else if account.Status.State == "Ready" {
+				readyAccountCount++
 			}
 		} else {
 			claimedAccountCount++
@@ -99,6 +107,7 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	MetricTotalAccountCRsClaimed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(claimedAccountCount))
 	MetricTotalAccountPendingVerification.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(pendingVerificationAccountCount))
 	MetricTotalAccountCRsFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(failedAccountCount))
+	MetricTotalAccountCRsReady.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(readyAccountCount))
 }
 
 // UpdateAccountClaimMetrics updates all metrics related to AccountClaim CRs
