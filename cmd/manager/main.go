@@ -114,6 +114,7 @@ func main() {
 		WithCollectors(localmetrics.MetricTotalAccountCRsUnclaimed).
 		WithCollectors(localmetrics.MetricTotalAccountCRsClaimed).
 		WithCollectors(localmetrics.MetricTotalAccountCRsFailed).
+		WithCollectors(localmetrics.MetricTotalAccountCRsReady).
 		WithCollectors(localmetrics.MetricTotalAccountClaimCRs).
 		WithCollectors(localmetrics.MetricPoolSizeVsUnclaimed).
 		WithCollectors(localmetrics.MetricTotalAccountPendingVerification).
