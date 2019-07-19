@@ -117,6 +117,9 @@ var ErrAwsSupportCaseIDNotFound = errors.New("SupportCaseIdNotfound")
 // ErrAwsFailedDescribeSupportCase indicates that the support case describe failed
 var ErrAwsFailedDescribeSupportCase = errors.New("FailedDescribeSupportCase")
 
+// ErrCreateEC2Instance indicates that the CreateEC2Instance function timed out
+var ErrCreateEC2Instance = errors.New("EC2CreationTimeout")
+
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
 * business logic.  Delete these comments after modifying this file.*
@@ -828,12 +831,10 @@ func formatAccountEmail(name string) string {
 	return email
 }
 
-//CreateEC2Instance creates ec2 instance and returns its instance ID
+//CreateEC2Instance creates ec2 instance and returns its instance ID.
 func CreateEC2Instance(client awsclient.Client) (string, error) {
-	// Create EC2 service client
 
-	var instanceID string
-	var runErr error
+	// Loop until an EC2 instance is created or timeout.
 	attempt := 1
 	for i := 0; i < 300; i++ {
 		time.Sleep(time.Duration(attempt*5) * time.Second)
@@ -843,24 +844,28 @@ func CreateEC2Instance(client awsclient.Client) (string, error) {
 		}
 		// Specify the details of the instance that you want to create.
 		runResult, runErr := client.RunInstances(&ec2.RunInstancesInput{
-			// An Amazon Linux AMI ID for t2.micro instances in the us-west-2 region
+			// An Amazon Linux AMI ID for t2.micro instances in the us-west-2 region:
 			ImageId:      aws.String(awsAMI),
 			InstanceType: aws.String(awsInstanceType),
 			MinCount:     aws.Int64(1),
 			MaxCount:     aws.Int64(1),
 		})
-		if runErr == nil {
-			instanceID = *runResult.Instances[0].InstanceId
-			break
+
+		// Return on unexpected errors:
+		if runErr != nil {
+			aerr, ok := runErr.(awserr.Error)
+			if ok && ((aerr.Code() != "PendingVerification") || (aerr.Code() != "OptInRequired")) {
+				return "", runErr
+			}
+			continue
 		}
+
+		// No error was found, save instance id and return
+		return *runResult.Instances[0].InstanceId, nil
 	}
 
-	if runErr != nil {
-		return "", runErr
-	}
-
-	return instanceID, nil
-
+	// Timeout occurred
+	return "", ErrCreateEC2Instance
 }
 
 //DescribeEC2Instances returns the InstanceState code
