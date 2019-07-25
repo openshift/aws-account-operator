@@ -72,7 +72,6 @@ const (
 )
 
 var awsAccountID string
-var desiredInstanceType = "m5.xlarge"
 var coveredRegions = []string{
 	"us-east-1",
 	"us-east-2",
@@ -89,6 +88,19 @@ var coveredRegions = []string{
 	"ap-southeast-1",
 	"ap-southeast-2",
 	"sa-east-1",
+}
+
+// Instance types UHC supports
+var coveredInstanceTypes = []string{
+	"c5.xlarge",
+	"c5.2xlarge",
+	"c5.4xlarge",
+	"m5.xlarge",
+	"m5.2xlarge",
+	"m5.4xlarge",
+	"r5.xlarge",
+	"r5.2xlarge",
+	"r5.4xlarge",
 }
 
 // Custom errors
@@ -949,9 +961,12 @@ func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client
 	caseCommunicationBody := fmt.Sprintf("Hi AWS, please add this account to Enterprise Support: %s\n\nAlso please apply the following limit increases:\n\n", accountID)
 	caseSubject := fmt.Sprintf("Add account %s to Enterprise Support and increase limits", accountID)
 
+	// Create list with supported EC2 instance types
+	instanceTypeList := strings.Join(coveredInstanceTypes, ", ")
+
 	// For each supported AWS region append to the communication a request of limit increase
 	for index, region := range coveredRegions {
-		caseLimitIncreaseBody := fmt.Sprintf("Limit increase request %d\nService: EC2 Instances\nRegion: %s\nPrimary Instance Type: %s\nLimit name: Instance Limit\nNew limit value: %d\n------------\n", index+1, region, desiredInstanceType, caseDesiredInstanceLimit)
+		caseLimitIncreaseBody := fmt.Sprintf("Limit increase request %d\nService: EC2 Instances\nRegion: %s\nInstance Types: %s\nLimit name: Instance Limit\nNew limit value: %d\n------------\n", index+1, region, instanceTypeList, caseDesiredInstanceLimit)
 		caseCommunicationBody += caseLimitIncreaseBody
 	}
 
