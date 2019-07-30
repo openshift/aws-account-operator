@@ -44,7 +44,7 @@ func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, Durat
 	if err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
 			// Get error details
-			reqLogger.Error(err, fmt.Sprintf("Error: %s, %s", awsErr.Code(), awsErr.Message()))
+			reqLogger.Error(err, fmt.Sprintf("Error: Failed to get Federation Token %s, %s", awsErr.Code(), awsErr.Message()))
 			return "", err
 		}
 
