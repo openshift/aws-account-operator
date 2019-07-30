@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"encoding/json"
+
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -23,7 +24,7 @@ type awsSigninTokenResponse struct {
 }
 
 // RequestSigninToken makes a HTTP request to retrieve a Signin Token from the federation end point
-func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, DurationSeconds *int64, FederatedUserName *string, PolicyArns []*sts.PolicyDescriptorType, STSCredentials *sts.AssumeRoleOutput) (string, error) {
+func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, DurationSeconds *int64, FederatedUserName *string, Policy *string, PolicyArns []*sts.PolicyDescriptorType, STSCredentials *sts.AssumeRoleOutput) (string, error) {
 
 	// // URLs for building Federated Signin queries
 	federationEndPointURL := "https://signin.aws.amazon.com/federation"
@@ -33,6 +34,7 @@ func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, Durat
 	GetFederationTokenInput := sts.GetFederationTokenInput{
 		DurationSeconds: DurationSeconds,
 		Name:            FederatedUserName,
+		Policy:          Policy,
 		PolicyArns:      PolicyArns,
 	}
 

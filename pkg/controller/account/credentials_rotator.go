@@ -51,7 +51,7 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 
 	// Set IAM policy for Web Console login, this policy cannot grant more permissions than the IAM user has which creates it
 
-	SREConsoleLoginURL, err := RequestSigninToken(reqLogger, SREAWSClient, &SigninTokenDuration, &STSUserName, IAMPolicyDescriptors, STSCredentials)
+	SREConsoleLoginURL, err := RequestSigninToken(reqLogger, SREAWSClient, &SigninTokenDuration, &STSUserName, &IAMAdministratorPolicy, IAMPolicyDescriptors, STSCredentials)
 	if err != nil {
 		reqLogger.Error(err, "RotateCredentials: Unable to create AWS signin token")
 		return err
