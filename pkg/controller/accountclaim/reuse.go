@@ -17,8 +17,8 @@ import (
 const (
 	// AccountReady indicates account creation is ready
 	AccountReady = "Ready"
-	// DummySupportCaseID dummy value for SupportCaseID field
-	DummySupportCaseID = "reused-account"
+	// AccountFailed indicates account reuse has failed
+	AccountFailed = "Failed"
 )
 
 func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
@@ -37,7 +37,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		return err
 	}
 
-	err = r.resetAccountSpecStatus(reqLogger, reusedAccount, accountClaim)
+	err = r.resetAccountSpecStatus(reqLogger, reusedAccount, accountClaim, awsv1alpha1.AccountReused, "Ready")
 	if err != nil {
 		reqLogger.Error(err, "Failed to reset account entity")
 		return err
@@ -47,7 +47,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 	return nil
 }
 
-func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, reusedAccount *awsv1alpha1.Account, deletedAccountClaim *awsv1alpha1.AccountClaim) error {
+func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, reusedAccount *awsv1alpha1.Account, deletedAccountClaim *awsv1alpha1.AccountClaim, accountState awsv1alpha1.AccountConditionType, conditionStatus string) error {
 
 	// Reset claimlink and carry over legal entity from deleted claim
 	reusedAccount.Spec.ClaimLink = ""
@@ -66,10 +66,11 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 	}
 
 	// Update account status and add conditions indicating account reuse
-	reusedAccount.Status.State = AccountReady
+	reusedAccount.Status.State = conditionStatus
 	reusedAccount.Status.Claimed = false
 	reusedAccount.Status.Reused = true
-	account.SetAccountStatus(reqLogger, reusedAccount, "Account has been reused after AccountClaim deletion", awsv1alpha1.AccountReady, "Ready")
+	conditionMsg := fmt.Sprintf("Account Reuse - %s", conditionStatus)
+	account.SetAccountStatus(reqLogger, reusedAccount, conditionMsg, accountState, conditionStatus)
 	err = r.accountStatusUpdate(reqLogger, reusedAccount)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update account status for reuse")
@@ -104,7 +105,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, account
 	// Declare un array of cleanup functions
 	cleanUpFunctions := []func(logr.Logger, awsclient.Client, chan string, chan string) error{
 		r.cleanUpAwsAccountSnapshots,
-		r.cleanUpAwsAccountEbs,
+		r.cleanUpAwsAccountEbsVolumes,
 		r.cleanUpAwsAccountS3,
 	}
 
@@ -119,7 +120,9 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, account
 		case msg := <-awsNotifications:
 			reqLogger.Info(msg)
 		case errMsg := <-awsErrors:
-			reqLogger.Error(errors.New(errMsg), errMsg)
+			err = errors.New(errMsg)
+			reqLogger.Error(err, errMsg)
+			return err
 		}
 	}
 
@@ -130,7 +133,18 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, account
 
 func (r *ReconcileAccountClaim) cleanUpAwsAccountSnapshots(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
 
-	describeSnapshotsInput := ec2.DescribeSnapshotsInput{}
+	// Filter only for snapshots owned by the account
+	selfOwnerFilter := ec2.Filter{
+		Name: aws.String("owner-alias"),
+		Values: []*string{
+			aws.String("self"),
+		},
+	}
+	describeSnapshotsInput := ec2.DescribeSnapshotsInput{
+		Filters: []*ec2.Filter{
+			&selfOwnerFilter,
+		},
+	}
 	ebsSnapshots, err := awsClient.DescribeSnapshots(&describeSnapshotsInput)
 	if err != nil {
 		descError := "Failed describing EBS snapshots"
@@ -152,15 +166,14 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountSnapshots(reqLogger logr.Logger
 			awsErrors <- delError
 			return err
 		}
-
 	}
 
-	successMsg := fmt.Sprintf("EBS cleanup finished successfully")
+	successMsg := fmt.Sprintf("Snapshot cleanup finished successfully")
 	awsNotifications <- successMsg
 	return nil
 }
 
-func (r *ReconcileAccountClaim) cleanUpAwsAccountEbs(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
+func (r *ReconcileAccountClaim) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
 
 	describeVolumesInput := ec2.DescribeVolumesInput{}
 	ebsVolumes, err := awsClient.DescribeVolumes(&describeVolumesInput)
@@ -187,7 +200,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountEbs(reqLogger logr.Logger, awsC
 
 	}
 
-	successMsg := fmt.Sprintf("EBS cleanup finished successfully")
+	successMsg := fmt.Sprintf("EBS Volume cleanup finished successfully")
 	awsNotifications <- successMsg
 	return nil
 }

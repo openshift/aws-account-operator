@@ -256,7 +256,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// Test PendingVerification state creating support case and checking for case status
 	if currentAcctInstance.Status.State == AccountPendingVerification {
-		reqLogger.Info("Account in PendingVerification state", "AccountID", currentAcctInstance.Spec.AwsAccountID)
+		// reqLogger.Info("Account in PendingVerification state", "AccountID", currentAcctInstance.Spec.AwsAccountID)
 
 		// If the supportCaseID is blank and Account State = PendingVerification, create a case
 		if currentAcctInstance.Status.SupportCaseID == "" {
@@ -961,7 +961,7 @@ func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.
 		return true, nil
 	}
 
-	reqLogger.Info(fmt.Sprintf("Case [%s] not yet Resolved, waiting. Current Status: %s", caseID, *caseResult.Cases[0].Status))
+	// reqLogger.Info(fmt.Sprintf("Case [%s] not yet Resolved, waiting. Current Status: %s", caseID, *caseResult.Cases[0].Status))
 	return false, nil
 
 }

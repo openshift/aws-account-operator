@@ -58,6 +58,14 @@ var (
 		Name: "aws_account_operator_total_aws_account_pending_verification",
 		Help: "Report the number of accounts waiting for enterprise support and EC2 limit increases in AWS",
 	}, []string{"name"})
+	MetricTotalAccountReusedAvailable = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "aws_account_operator_total_aws_account_reused_available",
+		Help: "Report the number of reused accounts available for claiming",
+	}, []string{"name"})
+	MetricTotalAccountReuseFailed = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "aws_account_operator_total_aws_account_reused_failed",
+		Help: "Report the number of accounts that failed during account reuse",
+	}, []string{"name"})
 
 	MetricsList = []prometheus.Collector{
 		MetricTotalAWSAccounts,
@@ -69,6 +77,8 @@ var (
 		MetricTotalAccountCRsReady,
 		MetricPoolSizeVsUnclaimed,
 		MetricTotalAccountPendingVerification,
+		MetricTotalAccountReusedAvailable,
+		MetricTotalAccountReuseFailed,
 	}
 )
 
@@ -83,20 +93,33 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	unclaimedAccountCount := 0
 	claimedAccountCount := 0
 	failedAccountCount := 0
+	reusedAccountAvailableCount := 0
+	reuseAccountFailedCount := 0
 	pendingVerificationAccountCount := 0
 	readyAccountCount := 0
 	for _, account := range accountList.Items {
 		if account.Status.Claimed == false {
-			if account.Status.State != "Failed" {
-				unclaimedAccountCount++
-			} else if account.Status.State == "Ready" {
-				readyAccountCount++
+			// Ignore unclaimed accounts in Failed and PendingVerification status
+			if account.Status.State != "Failed" && account.Status.State != "PendingVerification" {
+				if account.Status.Reused == true {
+					// Reused account available for claiming
+					reusedAccountAvailableCount++
+				} else {
+					// New account available for claiming
+					unclaimedAccountCount++
+				}
 			}
 		} else {
 			claimedAccountCount++
 		}
 		if account.Status.State == "Failed" {
-			failedAccountCount++
+			if account.Status.Reused == true {
+				// Account failed during reuse process
+				reuseAccountFailedCount++
+			} else {
+				// Other types of failed account
+				failedAccountCount++
+			}
 		} else if account.Status.State == "PendingVerification" {
 			pendingVerificationAccountCount++
 		}
@@ -108,6 +131,8 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	MetricTotalAccountPendingVerification.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(pendingVerificationAccountCount))
 	MetricTotalAccountCRsFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(failedAccountCount))
 	MetricTotalAccountCRsReady.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(readyAccountCount))
+	MetricTotalAccountReusedAvailable.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(reusedAccountAvailableCount))
+	MetricTotalAccountReuseFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(reuseAccountFailedCount))
 }
 
 // UpdateAccountClaimMetrics updates all metrics related to AccountClaim CRs

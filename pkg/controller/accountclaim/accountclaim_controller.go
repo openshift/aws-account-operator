@@ -109,6 +109,8 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+
+		return reconcile.Result{}, nil
 	}
 
 	// Check if accountClaim is being deleted, this will trigger the account reuse workflow
@@ -116,9 +118,24 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		if contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
 			err := r.finalizeAccountClaim(reqLogger, accountClaim)
 			if err != nil {
-				return reconcile.Result{}, err
+				// If the finalize/cleanup process fails for an account we don't want to return
+				// we will flag the account with the Failed Reuse condition, and with state = Failed
+
+				// Get account claimed by deleted accountclaim
+				failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+				if accountErr != nil {
+					reqLogger.Error(accountErr, "Failed to get claimed account")
+					return reconcile.Result{}, err
+				}
+				// Update account status and add "Reuse Failed" condition
+				accountErr = r.resetAccountSpecStatus(reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed")
+				if accountErr != nil {
+					reqLogger.Error(accountErr, "Failed updating account status for failed reuse")
+					return reconcile.Result{}, err
+				}
 			}
 
+			// Remove finalizer to unlock deletion of the accountClaim
 			err = r.removeFinalizer(reqLogger, accountClaim, accountClaimFinalizer)
 			if err != nil {
 				return reconcile.Result{}, err
@@ -226,37 +243,46 @@ func (r *ReconcileAccountClaim) getClaimedAccount(accountLink string, namespace 
 
 func getUnclaimedAccount(reqLogger logr.Logger, accountList *awsv1alpha1.AccountList, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
 	var unclaimedAccount awsv1alpha1.Account
+	var reusedAccount awsv1alpha1.Account
 	var unclaimedAccountFound = false
 	var reusedAccountFound = false
 	time.Sleep(1000 * time.Millisecond)
 
-	// Prior to assigning new accounts to the claim, try to match with a reused account, matching by legalEntity
-	for _, account := range accountList.Items {
-		if matchAccountForReuse(&account, accountClaim) && account.Status.Claimed == false && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
-			reuseMsg := fmt.Sprintf("Reusing account: %s", account.ObjectMeta.Name)
-			reqLogger.Info(reuseMsg)
-			unclaimedAccount = account
-			reusedAccountFound = true
-			break
-		}
-	}
-
 	// Range through accounts and select the first one that doesn't have a claim link
 	for _, account := range accountList.Items {
+
 		if account.Status.Claimed == false && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
-			claimMsg := fmt.Sprintf("Claiming account: %s", account.ObjectMeta.Name)
-			reqLogger.Info(claimMsg)
-			unclaimedAccount = account
-			unclaimedAccountFound = true
-			break
+			// Check for a reused account with matching legalEntity
+			if account.Status.Reused == true {
+				if matchAccountForReuse(&account, accountClaim) {
+					reusedAccountFound = true
+					reusedAccount = account
+					// if available we break the loop, reused account takes priority
+					break
+				}
+			} else {
+				// If account is not reused, and we didn't claim one yet, do it
+				if !unclaimedAccountFound {
+					unclaimedAccount = account
+					unclaimedAccountFound = true
+				}
+			}
 		}
 	}
 
-	if !reusedAccountFound && !unclaimedAccountFound {
-		return &unclaimedAccount, fmt.Errorf("can't find a ready account to claim")
+	// Give priority to reusing accounts instead of claiming
+	if reusedAccountFound {
+		reqLogger.Info(fmt.Sprintf("Reusing account: %s", reusedAccount.ObjectMeta.Name))
+		return &reusedAccount, nil
+	}
+	// Go for unclaimed accounts
+	if unclaimedAccountFound {
+		reqLogger.Info(fmt.Sprintf("Claiming account: %s", unclaimedAccount.ObjectMeta.Name))
+		return &unclaimedAccount, nil
 	}
 
-	return &unclaimedAccount, nil
+	// Neither unclaimed nor reused accounts found
+	return nil, fmt.Errorf("can't find a ready account to claim")
 }
 
 func (r *ReconcileAccountClaim) createIAMSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {

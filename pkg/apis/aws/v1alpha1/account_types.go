@@ -89,6 +89,8 @@ const (
 	AccountPending AccountConditionType = "Pending"
 	// AccountPendingVerification is set when account creation is pending
 	AccountPendingVerification AccountConditionType = "PendingVerification"
+	// AccountReused is set when account is reused
+	AccountReused AccountConditionType = "Reused"
 )
 
 // +genclient
