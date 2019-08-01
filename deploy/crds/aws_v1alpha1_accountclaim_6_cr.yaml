@@ -5,8 +5,8 @@ metadata:
   namespace: corp-org-ns
 spec:
   legalEntity:
-    name: Red Hat OpenShift Online
-    id: 2HELaFOf2YHWwwvt3XMbT5Mja7M
+    name: Corp-2
+    id: 789xyz
   awsCredentialSecret:
     name: iam-credentials
     namespace: corp-org-ns
