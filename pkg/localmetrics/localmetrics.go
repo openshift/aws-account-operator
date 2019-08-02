@@ -99,14 +99,19 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	readyAccountCount := 0
 	for _, account := range accountList.Items {
 		if account.Status.Claimed == false {
-			// Ignore unclaimed accounts in Failed and PendingVerification status
-			if account.Status.State != "Failed" && account.Status.State != "PendingVerification" {
-				if account.Status.Reused == true {
-					// Reused account available for claiming
-					reusedAccountAvailableCount++
-				} else {
-					// New account available for claiming
+			// Ignore unclaimed accounts in Failed status
+			if account.Status.State != "Failed" {
+				// Accounts in Ready or PendingVerification status, that have not been reused
+				if account.Status.Reused != true {
 					unclaimedAccountCount++
+				}
+				if account.Status.State == "Ready" {
+					// Reused accounts in Ready state are counted in separate metric
+					if account.Status.Reused == true {
+						reusedAccountAvailableCount++
+					} else {
+						readyAccountCount++
+					}
 				}
 			}
 		} else {
