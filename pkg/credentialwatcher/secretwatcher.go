@@ -86,7 +86,8 @@ func (s *secretWatcher) ScanSecrets(log logr.Logger) error {
 
 				accountInstance, err := s.GetAccount(accountName)
 				if err != nil {
-					log.Error(err, "Unable to rerieve account CR %s", accountName)
+					getAccountErrMsg := fmt.Sprintf("Unable to retrieve account CR %s", accountName)
+					log.Error(err, getAccountErrMsg)
 				}
 
 				if accountInstance.Status.RotateCredentials != true {
