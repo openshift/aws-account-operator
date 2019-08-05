@@ -118,3 +118,11 @@ type AccountList struct {
 func init() {
 	SchemeBuilder.Register(&Account{}, &AccountList{})
 }
+
+// AWSSupportCaseState contains info on the aws case status
+type AWSSupportCaseState struct {
+	ID        string
+	Message   string
+	Condition string
+	Resolved  bool
+}

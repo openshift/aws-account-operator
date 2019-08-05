@@ -256,7 +256,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// Test PendingVerification state creating support case and checking for case status
 	if currentAcctInstance.Status.State == AccountPendingVerification {
-		// reqLogger.Info("Account in PendingVerification state", "AccountID", currentAcctInstance.Spec.AwsAccountID)
 
 		// If the supportCaseID is blank and Account State = PendingVerification, create a case
 		if currentAcctInstance.Status.SupportCaseID == "" {
@@ -283,14 +282,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{RequeueAfter: time.Duration(intervalAfterCaseCreationSecs+randomInterval) * time.Second}, nil
 		}
 
-		resolved, err := checkCaseResolution(reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
+		awsSupportCase, err := checkCaseResolution(reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
 		if err != nil {
 			reqLogger.Error(err, "Error checking for Case Resolution")
 			return reconcile.Result{}, err
 		}
 
 		// Case Resolved, account is Ready
-		if resolved {
+		if awsSupportCase.Resolved {
 			reqLogger.Info(fmt.Sprintf("Case %s resolved", currentAcctInstance.Status.SupportCaseID))
 
 			SetAccountStatus(reqLogger, currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, "Ready")
@@ -301,7 +300,8 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, nil
 		}
 
-		// Case not Resolved, try again in pre-defined interval
+		// Case not Resolved, update condition and try again in pre-defined interval
+		SetAccountStatus(reqLogger, currentAcctInstance, awsSupportCase.Message, awsv1alpha1.AccountReady, AccountPendingVerification)
 		return reconcile.Result{RequeueAfter: intervalBetweenChecksSecs * time.Second}, nil
 	}
 
@@ -853,6 +853,7 @@ func TotalAwsAccounts(client awsclient.Client) (int, error) {
 	return len(awsAccounts), nil
 }
 
+// SetAccountStatus changes the status of an existing account
 func SetAccountStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string, ctype awsv1alpha1.AccountConditionType, state string) {
 	awsAccount.Status.Conditions = controllerutils.SetAccountCondition(
 		awsAccount.Status.Conditions,
@@ -928,11 +929,15 @@ func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client
 	return *caseResult.CaseId, nil
 }
 
-func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.Client) (bool, error) {
+func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.Client) (awsv1alpha1.AWSSupportCaseState, error) {
+	awsSupportCase := awsv1alpha1.AWSSupportCaseState{
+		ID:       caseID,
+		Resolved: false,
+	}
 	// Look for the case using the unique ID provided
 	describeCasesInput := support.DescribeCasesInput{
 		CaseIdList: []*string{
-			aws.String(caseID),
+			aws.String(awsSupportCase.ID),
 		},
 	}
 
@@ -951,17 +956,23 @@ func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.
 			}
 		}
 
-		reqLogger.Error(returnErr, fmt.Sprintf("Failed to describe case %s", caseID))
-		return false, returnErr
+		reqLogger.Error(returnErr, fmt.Sprintf("Failed to describe case %s", awsSupportCase.ID))
+		return awsSupportCase, returnErr
 	}
+
+	// Populate AWS case condition
+	awsSupportCase.Condition = *caseResult.Cases[0].Status
+	awsSupportCase.Message = fmt.Sprintf("AWS account status: %s", *caseResult.Cases[0].Status)
 
 	// Since we are describing cases based on the unique ID, this list will have only 1 element
-	if *caseResult.Cases[0].Status == caseStatusResolved {
-		reqLogger.Info(fmt.Sprintf("Case Resolved: %s", caseID))
-		return true, nil
+	if awsSupportCase.Condition == caseStatusResolved {
+		// Set support case struct to resolved
+		awsSupportCase.Resolved = true
+		reqLogger.Info(fmt.Sprintf("Case Resolved: %s", awsSupportCase.ID))
+		return awsSupportCase, nil
 	}
 
-	// reqLogger.Info(fmt.Sprintf("Case [%s] not yet Resolved, waiting. Current Status: %s", caseID, *caseResult.Cases[0].Status))
-	return false, nil
+	reqLogger.Info(fmt.Sprintf("Case [%s] not yet Resolved, waiting. Current Status: %s", caseID, *caseResult.Cases[0].Status))
+	return awsSupportCase, nil
 
 }
