@@ -159,6 +159,9 @@ var ErrAwsSupportCaseIDNotFound = errors.New("SupportCaseIdNotfound")
 // ErrAwsFailedDescribeSupportCase indicates that the support case describe failed
 var ErrAwsFailedDescribeSupportCase = errors.New("FailedDescribeSupportCase")
 
+// ErrFederationTokenOutputNil indicates that getting a federation token from AWS failed
+var ErrFederationTokenOutputNil = errors.New("FederationTokenOutputNil")
+
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
 * business logic.  Delete these comments after modifying this file.*
