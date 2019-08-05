@@ -78,7 +78,7 @@ Permissions to allow the user to interact with the support center:
 First, an AcccountPool must be created to specify the number of desired accounts to be ready. The operator then goes and creates that number of accounts. 
 When a [Hive](https://github.com/openshift/hive) cluster has a new cluster request, an AccountClaim is created with the desired name of the cluster in a unique namespace. The operator links the AccountClaim to an Account in the pool, and creates the required k8s secrets, placing them in the AccountClaim's unique namespace. The AccountPool is then filled up again by the operator.  Hive then uses the secrets to create the AWS resources for the new cluster. 
 
-For more information on how this process is done look at the controllers section.  
+For more information on how this process is done, please refer to the controllers section.  
 
 
 ## 1.4. Testing your AWS account credentials with the CLI
@@ -93,7 +93,7 @@ The below commands can be used to test payer account credentials where we create
 
 ## 2.1. AccountPool CR 
 
-The AccountPool CR holds the information about the available number of accounts that can be claimed for cluster provisioning
+The AccountPool CR holds the information about the available number of accounts that can be claimed for cluster provisioning.
 
 ```yaml
 apiVersion: aws.managed.openshift.io/v1alpha1
