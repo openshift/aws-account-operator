@@ -192,7 +192,7 @@ It looks at the accountpool CR *spec.poolSize* and it ensures that the number of
 ### Constants and Globals
 ```
 emailID = "osd-creds-mgmt"
-````
+```
 
 ### Status
 
@@ -222,7 +222,7 @@ MetricTotalAccountClaimCRs
 
 ```
 
-#### Account Controller
+## Account Controller
 
 The account-controller is triggered by an account CR. It is responsible for following behaviors
 
@@ -237,7 +237,7 @@ If the *awsLimit* set in the constants is not exceeded
 4. Creates and Destroys EC2 instances
 5. Creates aws support case to increase account limits
 
-##### Additional Functionailty 
+### Additional Functionailty 
 
 * If `status.RotateCredentials == true` the account-controller will refresh the STS Cli Credentials
 * If the account `status.State == "Creating"` and the account is older then the *createPendTime* constant the account will be put into a `failed` state
@@ -346,7 +346,7 @@ Update in the account-controller
 MetricTotalAWSAccounts
 ```
 
-#### AccountClaim Controller
+## AccountClaim Controller
 
 The accountClaim-controller is triggered when an accountClaim is created in any namespace.It is responsible for following behaviors
 
