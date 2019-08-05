@@ -189,7 +189,7 @@ spec:
     regions:
     - name: us-east-1
   awsCredentialSecret:
-	  name: aws
+    name: aws
     namespace: {NameSpace cluster is being built in}
   legalEntity:
     id: 00000000000000
