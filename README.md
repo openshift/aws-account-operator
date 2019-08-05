@@ -1,13 +1,42 @@
-# AWS-ACCOUNT-OPERATOR
+Table Of Contents
+==================
+- [1. AWS-ACCOUNT-OPERATOR](#1-aws-account-operator)
+    - [1.1. General Overview](#11-general-overview)
+    - [1.2. Requirements](#12-requirements)
+    - [1.3. Workflow](#13-workflow)
+    - [1.4. Testing your AWS account credentials with the CLI](#14-testing-your-aws-account-credentials-with-the-cli)
+- [2. The Custom Resources](#2-the-custom-resources)
+    - [2.1. AccountPool CR](#21-accountpool-cr)   
+    - [2.2. Account CR](#22-account-cr)
+    - [2.3. AccountClaim CR](#23-accountclaim-cr)
+- [3. The controllers](#3-the-controllers)   
+    - [3.1. AccountPool Controller](#31-accountpool-controller)        
+      - [3.1.1. Constants and Globals](#311-constants-and-globals)       
+      - [3.1.2. Status](#312-status)       
+      - [3.1.3. Metrics](#313-metrics)    
+    - [3.2. Account Controller](#32-account-controller)      
+      - [3.2.1. Additional Functionailty](#321-additional-functionailty)      
+      - [3.2.2. Constants and Globals](#322-constants-and-globals)        
+      - [3.2.3. Spec](#323-spec)        
+      - [3.2.4. Status](#324-status) 
+      - [3.2.5. Metrics](#325-metrics)  
+    - [3.3. AccountClaim Controller](#33-accountclaim-controller)        
+      - [3.3.1. Constants and Globals](#331-constants-and-globals)        
+      - [3.3.2. Spec](#332-spec)        
+      - [3.3.3. Status](#333-status)        
+      - [3.3.4. Metrics](#334-metrics)
+    - [4. Special Items in main.go](#4-special-items-in-maingo)        
+      - [4.1 Constants](#41-constants)
 
+# 1. AWS-ACCOUNT-OPERATOR
 
-## General Overview
+## 1.1. General Overview
 
 The operator is responsible for creating and maintaining a pool of AWS accounts and assigning accounts to AccountClaims. The operator creates the account in AWS, does initial setup and configuration of the those accounts, creates IAM resources and expose credentials for a IAM user with enough permissions to provision an OpenShift 4.x cluster.
 
 The operator is deployed to an OpenShift cluster in the `aws-account-operator` namespace. 
 
-## Requirements
+## 1.2. Requirements
 
 The operator requires a secret named `aws-account-operator-credentials` in the `aws-account-operator` namespacce, containing credentials to the AWS payer account you wish to create accounts in. The secret should contain credentials for an IAM user in the payer account with the data fields `aws_access_key_id` and `aws_secret_access_key`. The user should have the following IAM permissions:
 
@@ -44,7 +73,7 @@ Permissions to allow the user to interact with the support center:
 ```
 
 
-## Workflow
+## 1.3. Workflow
 
 First, an AcccountPool must be created to specify the number of desired accounts to be ready. The operator then goes and creates that number of accounts. 
 When a [Hive](https://github.com/openshift/hive) cluster has a new cluster request, an AccountClaim is created with the desired name of the cluster in a unique namespace. The operator links the AccountClaim to an Account in the pool, and creates the required k8s secrets, placing them in the AccountClaim's unique namespace. The AccountPool is then filled up again by the operator.  Hive then uses the secrets to create the AWS resources for the new cluster. 
@@ -52,7 +81,7 @@ When a [Hive](https://github.com/openshift/hive) cluster has a new cluster reque
 For more information on how this process is done look at the controllers section.  
 
 
-## Testing your AWS account credentials with the CLI
+## 1.4. Testing your AWS account credentials with the CLI
 
 The below commands can be used to test payer account credentials where we create new accounts inside the payer accounts organization. Once the account is created in the first step we wait until the account is created with step 2 and retrieve its account ID. Using the account ID we can then test our IAM user has sts:AssumeRole permissions to Assume the OrganizationAccountAccessRole in the new account. The OrganizationAccountAccessRole is created automatically when a new account is created under the organization.
 
@@ -60,9 +89,9 @@ The below commands can be used to test payer account credentials where we create
 2. `aws organizations list-accounts --profile=orgtest | jq '.[][] | select(.Name=="username-cli-test")'`
 3. `aws sts assume-role --role-arn arn:aws:iam::<ID>:role/OrganizationAccountAccessRole --role-session-name username-cli-test --profile=orgtest`
 
-# The Custom Resources
+# 2. The Custom Resources
 
-## AccountPool CR 
+## 2.1. AccountPool CR 
 
 The AccountPool CR holds the information about the available number of accounts that can be claimed for cluster provisioning
 
@@ -82,7 +111,7 @@ status:
   unclaimedAccounts: 50
 ```
 
-## Account CR
+## 2.2. Account CR
 
 The Account CR holds the details about the account that was created , whether it is ready to be claimed, and whether it has been claimed
 
@@ -136,7 +165,7 @@ status:
 ```
 
 
-## AccountClaim CR
+## 2.3. AccountClaim CR
 
 The AccountClaim CR holds the required data for cluster provisioning to build the cluster 
 
@@ -181,20 +210,20 @@ status:
 	type: Claimed
   state: Ready
 ```
-# The controllers
+# 3. The controllers
 
-## AccountPool Controller
+## 3.1. AccountPool Controller
 
 The accountpool-controller is triggered by an accountpool CR or an account CR. It is responsible for generating new account CRs. 
 
 It looks at the accountpool CR *spec.poolSize* and it ensures that the number of unclaimed accounts matchs the number of the poolsize. If the number of unclaimed accounts is less then the poolsize it creates a new account CR for the account-controller to process.
 
-### Constants and Globals
+### 3.1.1. Constants and Globals
 ```
 emailID = "osd-creds-mgmt"
 ```
 
-### Status
+### 3.1.2. Status
 
 Updates accountPool cr 
 ```
@@ -207,7 +236,7 @@ Updates accountPool cr
 *unclaimedAccounts* are any accounts with `status.Claimed=false` and `status.State!="Failed"`
 *poolSize* is the poolsize from the accountPool spec
 
-### Metrics
+### 3.1.3. Metrics
 
 Updated in the accountPool-controller
 
@@ -222,7 +251,7 @@ MetricTotalAccountClaimCRs
 
 ```
 
-## Account Controller
+## 3.2. Account Controller
 
 The account-controller is triggered by an account CR. It is responsible for following behaviors
 
@@ -237,13 +266,13 @@ If the *awsLimit* set in the constants is not exceeded
 4. Creates and Destroys EC2 instances
 5. Creates aws support case to increase account limits
 
-### Additional Functionailty 
+### 3.2.1. Additional Functionailty 
 
 * If `status.RotateCredentials == true` the account-controller will refresh the STS Cli Credentials
 * If the account `status.State == "Creating"` and the account is older then the *createPendTime* constant the account will be put into a `failed` state
 * if the account `status.State == AccountReady && spec.ClaimLink != ""` it sets `status.Claimed = true`
 
-### Constants and Globals
+### 3.2.2. Constants and Globals
 
 ```
 awsLimit                = 2000
@@ -301,7 +330,7 @@ var coveredRegions = []string{
 }
 ```
 
-### Spec
+### 3.2.3. Spec
 
 Updates the Account CR
 
@@ -316,7 +345,7 @@ spec:
 *claimLink* holds the name of the accountClaim that has claimed this accountCR
 *iamUserSecret* holds the iam user credentials that is created by the account controller
 
-### Status
+### 3.2.4. Status
 
 Updates the Account CR
 ```
@@ -339,14 +368,14 @@ supportCaseID: "00000000"
 *supportCaseID* is the ID of the aws support case to increase limits
 *conditions* indicates the last state the account had and supporting details
 
-### Metrics
+### 3.2.5. Metrics
 
 Update in the account-controller
 ```
 MetricTotalAWSAccounts
 ```
 
-## AccountClaim Controller
+## 3.3. AccountClaim Controller
 
 The accountClaim-controller is triggered when an accountClaim is created in any namespace.It is responsible for following behaviors
 
@@ -355,7 +384,7 @@ The accountClaim-controller is triggered when an accountClaim is created in any 
 3. Creates a secret in the accountClaim namespace that contains the credentials tied to the aws account in the accountCR
 4. Sets accountClaim `status.State = "Ready"` 
 
-### Constants and Globals
+### 3.3.1. Constants and Globals
 ```
 AccountClaimed          = "AccountClaimed"
 AccountUnclaimed        = "AccountUnclaimed"
@@ -364,7 +393,7 @@ awsCredsAccessKeyId     = "aws_access_key_id"
 awsCredsSecretAccessKey = "aws_secret_access_key"
 ```
 
-### Spec
+### 3.3.2. Spec
 
 Updates the accountClaim CR
 ```
@@ -383,7 +412,7 @@ spec:
 
 *awsCredentialSecret* holds the name and namespace of the credentials created for the accountClaim
 
-### Status
+### 3.3.3. Status
 
 Updates the accountClaim CR
 ```
@@ -406,19 +435,19 @@ conditions:
 *state* can be any of the ClaimStatus strings defined in accountclaim_types.go
 *conditions* indicates the last state the account had and supporting details
 
-### Metrics
+### 3.3.4. Metrics
 
 Updated in the accountClaim-controller
 ```
 MetricTotalAccountClaimCRs
 ```
 
-# Special Items in main.go
+# 4. Special Items in main.go
 
 * Initailzes a watcher that will look at all the secrets in the accountCRNamespace and if it exceeds the const `secretWatcherScanInterval` it will set the corresponsing accountCR `status.rotateCredentials = true`
 * Starts a metric server with custom metrics defined in `localmetrics` pkg
 
-### Constants
+### 4.1 Constants
 
 ```
 metricsPort               = "8080"
