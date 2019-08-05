@@ -128,9 +128,9 @@ metadata:
   ownerReferences:
   - apiVersion: aws.managed.openshift.io/v1alpha1
     blockOwnerDeletion: true
-	  controller: true
-	  kind: AccountPool
-	  name: example-accountpool
+    controller: true
+    kind: AccountPool
+    name: example-accountpool
     uid: 9979786a-a8cb-11e9-a2a3-2a2ae2dbcce4
   resourceVersion: "49984188"
   selfLink: /apis/aws.managed.openshift.io/v1alpha1/namespaces/aws-account-operator/accounts/osd-{accountName}
@@ -187,13 +187,13 @@ spec:
   accountLink: osd-{accountName} (From AccountClaim)
   aws:
     regions:
-	  - name: us-east-1
+    - name: us-east-1
   awsCredentialSecret:
-	 name: aws
-   namespace: {NameSpace cluster is being built in}
+	  name: aws
+    namespace: {NameSpace cluster is being built in}
   legalEntity:
-	 id: 00000000000000
-	 name: {Legal Entity Name}
+    id: 00000000000000
+    name: {Legal Entity Name}
 status:
   conditions:
   - lastProbeTime: 2019-07-16T13:52:02Z
