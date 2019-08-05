@@ -48,6 +48,14 @@ func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, Durat
 
 		return "", err
 	}
+
+	if GetFederationTokenOutput == nil {
+
+		reqLogger.Error(ErrFederationTokenOutputNil, fmt.Sprintf("Federation Token Output: %+v", GetFederationTokenOutput))
+		return "", ErrFederationTokenOutputNil
+
+	}
+
 	// Build JSON credentials for federation requets
 	federationCredentials := map[string]string{
 		"sessionId":    *GetFederationTokenOutput.Credentials.AccessKeyId,
