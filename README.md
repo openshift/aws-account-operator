@@ -5,27 +5,11 @@
 
 The operator is responsible for creating and maintaining a pool of AWS accounts and assigning accounts to AccountClaims. The operator creates the account in AWS, does initial setup and configuration of the those accounts, creates IAM resources and expose credentials for a IAM user with enough permissions to provision an OpenShift 4.x cluster.
 
-
 The operator is deployed to an OpenShift cluster in the `aws-account-operator` namespace. 
-
-
-
-
-## Workflow
-First, an AcccountPool must be created to specify the number of desired accounts to be ready. The operator then goes and creates that number of accounts. 
-When a [Hive](https://github.com/openshift/hive) cluster has a new cluster request, an AccountClaim is created with the desired name of the cluster in a unique namespace. The operator links the AccountClaim to an Account in the pool, and creates the required k8s secrets, placing them in the AccountClaim's unique namespace. The AccountPool is then filled up again by the operator.  Hive then uses the secrets to create the AWS resources for the new cluster. 
-
-
-For more information on how this process is done look at the controllers section. 
-
-
-
 
 ## Requirements
 
 The operator requires a secret named `aws-account-operator-credentials` in the `aws-account-operator` namespacce, containing credentials to the AWS payer account you wish to create accounts in. The secret should contain credentials for an IAM user in the payer account with the data fields `aws_access_key_id` and `aws_secret_access_key`. The user should have the following IAM permissions:
-
-
 
 Permissions to allow the user to assume the `OrganizationAccountAccessRole` role in any account created:
 
@@ -40,7 +24,6 @@ Permissions to allow the user to assume the `OrganizationAccountAccessRole` role
 }
 
 ```
-
 
 Permissions to allow the user to interact with the support center:
 
@@ -61,9 +44,15 @@ Permissions to allow the user to interact with the support center:
 ```
 
 
+## Workflow
+
+First, an AcccountPool must be created to specify the number of desired accounts to be ready. The operator then goes and creates that number of accounts. 
+When a [Hive](https://github.com/openshift/hive) cluster has a new cluster request, an AccountClaim is created with the desired name of the cluster in a unique namespace. The operator links the AccountClaim to an Account in the pool, and creates the required k8s secrets, placing them in the AccountClaim's unique namespace. The AccountPool is then filled up again by the operator.  Hive then uses the secrets to create the AWS resources for the new cluster. 
+
+For more information on how this process is done look at the controllers section.  
+
 
 ## Testing your AWS account credentials with the CLI
-
 
 The below commands can be used to test payer account credentials where we create new accounts inside the payer accounts organization. Once the account is created in the first step we wait until the account is created with step 2 and retrieve its account ID. Using the account ID we can then test our IAM user has sts:AssumeRole permissions to Assume the OrganizationAccountAccessRole in the new account. The OrganizationAccountAccessRole is created automatically when a new account is created under the organization.
 
