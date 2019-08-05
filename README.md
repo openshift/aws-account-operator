@@ -128,9 +128,9 @@ metadata:
   ownerReferences:
   - apiVersion: aws.managed.openshift.io/v1alpha1
     blockOwnerDeletion: true
-	controller: true
-	kind: AccountPool
-	name: example-accountpool
+	  controller: true
+	  kind: AccountPool
+	  name: example-accountpool
     uid: 9979786a-a8cb-11e9-a2a3-2a2ae2dbcce4
   resourceVersion: "49984188"
   selfLink: /apis/aws.managed.openshift.io/v1alpha1/namespaces/aws-account-operator/accounts/osd-{accountName}
@@ -145,21 +145,21 @@ status:
   - lastProbeTime: 2019-07-03T16:14:50Z
     lastTransitioNTime: 2019-07-03T16:14:50Z
   	message: Attempting to create account
- 	reason: Creating
- 	status: "True"
- 	type: Creating
+ 	  reason: Creating
+ 	  status: "True"
+ 	  type: Creating
   - lastProbeTime: 2019-07-03T16:18:55Z
     lastTransitioNTime: 2019-07-03T16:18:55Z
- 	message: Account pending AWS limits verification
-	reason: PendingVerification
-	status: "True"
-	type: PendingVerification
+    message: Account pending AWS limits verification
+    reason: PendingVerification
+    status: "True"
+    type: PendingVerification
   - lastProbeTime: 2019-07-05T13:19:32Z
     lastTransitioNTime: 2019-07-05T13:19:32Z
-	message: Account ready to be claimed
-	reason: Ready
-	status: "True"
-	type: Ready
+    message: Account ready to be claimed
+    reason: Ready
+    status: "True"
+    type: Ready
   state: Ready
   supportCaseID: case-000000000-muen-2019-000000000000
 ```
@@ -187,27 +187,27 @@ spec:
   accountLink: osd-{accountName} (From AccountClaim)
   aws:
     regions:
-	- name: us-east-1
+	  - name: us-east-1
   awsCredentialSecret:
 	 name: aws
-     namespace: {NameSpace cluster is being built in}
-   legalEntity:
+   namespace: {NameSpace cluster is being built in}
+  legalEntity:
 	 id: 00000000000000
 	 name: {Legal Entity Name}
 status:
   conditions:
   - lastProbeTime: 2019-07-16T13:52:02Z
     lastTransitionTime: 2019-07-16T13:52:02Z
-	message: Attempting to claim account
-	reason: AccountClaimed
-	status: "True"
-	type: Unclaimed
+    message: Attempting to claim account
+    reason: AccountClaimed
+    status: "True"
+    type: Unclaimed
   - lastProbeTime: 2019-07-16T13:52:03Z
     lastTransitionTime: 2019-07-16T13:52:03Z
-	message: Account claimed by osd-creds-mgmt-fhq2d2
-	reason: AccountClaimed
-	status: "True"
-	type: Claimed
+    message: Account claimed by osd-creds-mgmt-fhq2d2
+    reason: AccountClaimed
+    status: "True"
+    type: Claimed
   state: Ready
 ```
 # 3. The controllers
