@@ -256,7 +256,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// Test PendingVerification state creating support case and checking for case status
 	if currentAcctInstance.Status.State == AccountPendingVerification {
-		reqLogger.Info("Account in PendingVerification state", "AccountID", currentAcctInstance.Spec.AwsAccountID)
+		// reqLogger.Info("Account in PendingVerification state", "AccountID", currentAcctInstance.Spec.AwsAccountID)
 
 		// If the supportCaseID is blank and Account State = PendingVerification, create a case
 		if currentAcctInstance.Status.SupportCaseID == "" {
@@ -268,7 +268,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 			// Update supportCaseId in CR
 			currentAcctInstance.Status.SupportCaseID = caseID
-			setAccountStatus(reqLogger, currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, "PendingVerification")
+			SetAccountStatus(reqLogger, currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, "PendingVerification")
 			err = r.statusUpdate(reqLogger, currentAcctInstance)
 			if err != nil {
 				return reconcile.Result{}, err
@@ -293,7 +293,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		if resolved {
 			reqLogger.Info(fmt.Sprintf("Case %s resolved", currentAcctInstance.Status.SupportCaseID))
 
-			setAccountStatus(reqLogger, currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, "Ready")
+			SetAccountStatus(reqLogger, currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, "Ready")
 			err = r.statusUpdate(reqLogger, currentAcctInstance)
 			if err != nil {
 				return reconcile.Result{}, err
@@ -342,7 +342,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// set state creating if the account was able to create
-		setAccountStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, "Creating")
+		SetAccountStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, "Creating")
 		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -360,7 +360,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		if credsErr != nil {
 			stsErrMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s", awsAccountID)
 			reqLogger.Info(stsErrMsg, "Error", credsErr.Error())
-			setAccountStatus(reqLogger, currentAcctInstance, stsErrMsg, awsv1alpha1.AccountFailed, "Failed")
+			SetAccountStatus(reqLogger, currentAcctInstance, stsErrMsg, awsv1alpha1.AccountFailed, "Failed")
 			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to get sts credentials")
 			return reconcile.Result{}, credsErr
 		}
@@ -421,7 +421,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		setAccountStatus(reqLogger, currentAcctInstance, "Account pending AWS limits verification", awsv1alpha1.AccountPendingVerification, "PendingVerification")
+		SetAccountStatus(reqLogger, currentAcctInstance, "Account pending AWS limits verification", awsv1alpha1.AccountPendingVerification, "PendingVerification")
 		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -504,7 +504,7 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 	if orgErr != nil {
 		switch orgErr {
 		case ErrAwsFailedCreateAccount:
-			setAccountStatus(reqLogger, account, "Failed to create AWS Account", awsv1alpha1.AccountFailed, "Failed")
+			SetAccountStatus(reqLogger, account, "Failed to create AWS Account", awsv1alpha1.AccountFailed, "Failed")
 			err := r.Client.Status().Update(context.TODO(), account)
 			if err != nil {
 				return "", err
@@ -545,7 +545,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	// TODO: better error handling but for now scrap account
 	if userErr != nil {
 		failedToCreateIAMUserMsg := fmt.Sprintf("Failed to create IAM user %s", iamUserName)
-		setAccountStatus(reqLogger, account, failedToCreateIAMUserMsg, awsv1alpha1.AccountFailed, "Failed")
+		SetAccountStatus(reqLogger, account, failedToCreateIAMUserMsg, awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
@@ -559,7 +559,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	_, policyErr := AttachAdminUserPolicy(awsClient, iamUserName)
 	if policyErr != nil {
 		failedToAttachUserPolicyMsg := fmt.Sprintf("Failed to attach admin policy to IAM user %s", iamUserName)
-		setAccountStatus(reqLogger, account, failedToAttachUserPolicyMsg, awsv1alpha1.AccountFailed, "Failed")
+		SetAccountStatus(reqLogger, account, failedToAttachUserPolicyMsg, awsv1alpha1.AccountFailed, "Failed")
 		r.setStatusFailed(reqLogger, account, failedToAttachUserPolicyMsg)
 		return "", policyErr
 	}
@@ -569,7 +569,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	userSecretInfo, userSecretErr := CreateUserAccessKey(awsClient, iamUserName)
 	if userSecretErr != nil {
 		failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s", iamUserName)
-		setAccountStatus(reqLogger, account, failedToCreateUserAccessKeyMsg, awsv1alpha1.AccountFailed, "Failed")
+		SetAccountStatus(reqLogger, account, failedToCreateUserAccessKeyMsg, awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
@@ -596,7 +596,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	createErr := r.Client.Create(context.TODO(), userSecret)
 	if createErr != nil {
 		failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret for IAM user %s", iamUserName)
-		setAccountStatus(reqLogger, account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
+		SetAccountStatus(reqLogger, account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return "", err
@@ -853,7 +853,7 @@ func TotalAwsAccounts(client awsclient.Client) (int, error) {
 	return len(awsAccounts), nil
 }
 
-func setAccountStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string, ctype awsv1alpha1.AccountConditionType, state string) {
+func SetAccountStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string, ctype awsv1alpha1.AccountConditionType, state string) {
 	awsAccount.Status.Conditions = controllerutils.SetAccountCondition(
 		awsAccount.Status.Conditions,
 		ctype,
@@ -961,7 +961,7 @@ func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.
 		return true, nil
 	}
 
-	reqLogger.Info(fmt.Sprintf("Case [%s] not yet Resolved, waiting. Current Status: %s", caseID, *caseResult.Cases[0].Status))
+	// reqLogger.Info(fmt.Sprintf("Case [%s] not yet Resolved, waiting. Current Status: %s", caseID, *caseResult.Cases[0].Status))
 	return false, nil
 
 }

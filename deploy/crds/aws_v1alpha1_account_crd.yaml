@@ -52,6 +52,14 @@ spec:
               type: string
             iamUserSecret:
               type: string
+            legalEntity:
+              description: 'Legal entity info populated at claim time, carried over from account claim'
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+              type: object
           required:
           - awsAccountID
           - iamUserSecret
@@ -64,6 +72,9 @@ spec:
                 of cluster Important: Run "operator-sdk generate k8s" to regenerate
                 code after modifying this file Add custom validation using kubebuilder
                 tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
+              type: boolean
+            reused:
+              description: 'Field will be populated by the accountclaim controller indicating the account has been reused' 
               type: boolean
             supportCaseID:
               description: 'Field will be populated by the account controller when the account gets in PendingVerification status'

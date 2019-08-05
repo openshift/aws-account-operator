@@ -1,0 +1,17 @@
+apiVersion: aws.managed.openshift.io/v1alpha1
+kind: AccountClaim
+metadata:
+  name: corp-org
+  namespace: corp-org-ns
+spec:
+  legalEntity:
+    name: Corp-1
+    id: 1234abc
+  awsCredentialSecret:
+    name: iam-credentials
+    namespace: corp-org-ns
+  aws:
+    regions:
+    - name: us-east-1
+  # Blank by default, the claim controller will populate this
+  accountLink: ""

@@ -29,6 +29,7 @@ const (
 	awsCredsUserName        = "aws_user_name"
 	awsCredsAccessKeyId     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
+	accountClaimFinalizer   = "finalizer.aws.managed.openshift.io"
 )
 
 var log = logf.Log.WithName("controller_accountclaim")
@@ -46,7 +47,10 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileAccountClaim{client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	return &ReconcileAccountClaim{
+		client: mgr.GetClient(),
+		scheme: mgr.GetScheme(),
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -99,6 +103,47 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	// Add finalizer to the CR in case it's not present (e.g. old accounts)
+	if !contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
+		err := r.addFinalizer(reqLogger, accountClaim)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		return reconcile.Result{}, nil
+	}
+
+	// Check if accountClaim is being deleted, this will trigger the account reuse workflow
+	if accountClaim.DeletionTimestamp != nil {
+		if contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
+			err := r.finalizeAccountClaim(reqLogger, accountClaim)
+			if err != nil {
+				// If the finalize/cleanup process fails for an account we don't want to return
+				// we will flag the account with the Failed Reuse condition, and with state = Failed
+
+				// Get account claimed by deleted accountclaim
+				failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+				if accountErr != nil {
+					reqLogger.Error(accountErr, "Failed to get claimed account")
+					return reconcile.Result{}, err
+				}
+				// Update account status and add "Reuse Failed" condition
+				accountErr = r.resetAccountSpecStatus(reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed")
+				if accountErr != nil {
+					reqLogger.Error(accountErr, "Failed updating account status for failed reuse")
+					return reconcile.Result{}, err
+				}
+			}
+
+			// Remove finalizer to unlock deletion of the accountClaim
+			err = r.removeFinalizer(reqLogger, accountClaim, accountClaimFinalizer)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+		}
+	}
+
 	// Return if this claim has been satisfied
 	if accountClaim.Spec.AccountLink != "" && accountClaim.Status.State == awsv1alpha1.ClaimStatusReady {
 		reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.ObjectMeta.Name))
@@ -131,7 +176,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 	// Get an unclaimed account from the pool
 	if accountClaim.Spec.AccountLink == "" {
-		unclaimedAccount, err = getUnclaimedAccount(accountList)
+		unclaimedAccount, err = getUnclaimedAccount(reqLogger, accountList, accountClaim)
 		if err != nil {
 			reqLogger.Error(err, "Unable to select an unclaimed account from the pool")
 			return reconcile.Result{}, err
@@ -146,7 +191,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	// Set Account.Spec.ClaimLink
 	// This will trigger the reconcile loop for the account which will mark the account as claimed in its status
 	if unclaimedAccount.Spec.ClaimLink == "" {
-		setAccountClaimLinkOnAccount(reqLogger, unclaimedAccount, accountClaim)
+		updateClaimedAccountFields(reqLogger, unclaimedAccount, accountClaim)
 		err := r.accountSpecUpdate(reqLogger, unclaimedAccount)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -196,25 +241,48 @@ func (r *ReconcileAccountClaim) getClaimedAccount(accountLink string, namespace 
 	return account, nil
 }
 
-func getUnclaimedAccount(accountList *awsv1alpha1.AccountList) (*awsv1alpha1.Account, error) {
+func getUnclaimedAccount(reqLogger logr.Logger, accountList *awsv1alpha1.AccountList, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
 	var unclaimedAccount awsv1alpha1.Account
+	var reusedAccount awsv1alpha1.Account
 	var unclaimedAccountFound = false
+	var reusedAccountFound = false
 	time.Sleep(1000 * time.Millisecond)
+
 	// Range through accounts and select the first one that doesn't have a claim link
 	for _, account := range accountList.Items {
+
 		if account.Status.Claimed == false && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
-			fmt.Printf("Claiming account: %s", account.ObjectMeta.Name)
-			unclaimedAccount = account
-			unclaimedAccountFound = true
-			break
+			// Check for a reused account with matching legalEntity
+			if account.Status.Reused == true {
+				if matchAccountForReuse(&account, accountClaim) {
+					reusedAccountFound = true
+					reusedAccount = account
+					// if available we break the loop, reused account takes priority
+					break
+				}
+			} else {
+				// If account is not reused, and we didn't claim one yet, do it
+				if !unclaimedAccountFound {
+					unclaimedAccount = account
+					unclaimedAccountFound = true
+				}
+			}
 		}
 	}
 
-	if !unclaimedAccountFound {
-		return &unclaimedAccount, fmt.Errorf("can't find a ready account to claim")
+	// Give priority to reusing accounts instead of claiming
+	if reusedAccountFound {
+		reqLogger.Info(fmt.Sprintf("Reusing account: %s", reusedAccount.ObjectMeta.Name))
+		return &reusedAccount, nil
+	}
+	// Go for unclaimed accounts
+	if unclaimedAccountFound {
+		reqLogger.Info(fmt.Sprintf("Claiming account: %s", unclaimedAccount.ObjectMeta.Name))
+		return &unclaimedAccount, nil
 	}
 
-	return &unclaimedAccount, nil
+	// Neither unclaimed nor reused accounts found
+	return nil, fmt.Errorf("can't find a ready account to claim")
 }
 
 func (r *ReconcileAccountClaim) createIAMSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {
@@ -284,11 +352,16 @@ func (r *ReconcileAccountClaim) accountSpecUpdate(reqLogger logr.Logger, account
 	return err
 }
 
-// setAccountClaimLinkOnAccount sets Account.Spec.ClaimLink to AccountClaim.ObjectMetadata.Name
-func setAccountClaimLinkOnAccount(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
+// updateClaimedAccountFields sets Account.Spec.ClaimLink to AccountClaim.ObjectMetadata.Name
+func updateClaimedAccountFields(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
 	// Set link on Account
 	awsAccount.Spec.ClaimLink = awsAccountClaim.ObjectMeta.Name
-	reqLogger.Info(fmt.Sprintf("Account %s ClaimLink set to AccountClaim %s", awsAccount.Name, awsAccountClaim.Name))
+
+	// Carry over LegalEntity data from the claim to the account
+	awsAccount.Spec.LegalEntity.ID = awsAccountClaim.Spec.LegalEntity.ID
+	awsAccount.Spec.LegalEntity.Name = awsAccountClaim.Spec.LegalEntity.Name
+
+	reqLogger.Info(fmt.Sprintf("Account %s ClaimLink set to AccountClaim %s and carried over LegalEntity ID %s", awsAccount.Name, awsAccountClaim.Name, awsAccount.Spec.LegalEntity.ID))
 }
 
 func setAccountClaimStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
@@ -332,4 +405,48 @@ func newSecretforCR(secretName string, secretNameSpace string, awsAccessKeyID []
 		},
 	}
 
+}
+
+func (r *ReconcileAccountClaim) addFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+	reqLogger.Info("Adding Finalizer for the AccountClaim")
+	accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), accountClaimFinalizer))
+
+	// Update CR
+	err := r.client.Update(context.TODO(), accountClaim)
+	if err != nil {
+		reqLogger.Error(err, "Failed to update AccountClaim with finalizer")
+		return err
+	}
+	return nil
+}
+
+func (r *ReconcileAccountClaim) removeFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, finalizerName string) error {
+	reqLogger.Info("Removing Finalizer for the AccountClaim")
+	accountClaim.SetFinalizers(remove(accountClaim.GetFinalizers(), finalizerName))
+
+	// Update CR
+	err := r.client.Update(context.TODO(), accountClaim)
+	if err != nil {
+		reqLogger.Error(err, "Failed to remove AccountClaim finalizer")
+		return err
+	}
+	return nil
+}
+
+func contains(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func remove(list []string, s string) []string {
+	for i, v := range list {
+		if v == s {
+			list = append(list[:i], list[i+1:]...)
+		}
+	}
+	return list
 }
