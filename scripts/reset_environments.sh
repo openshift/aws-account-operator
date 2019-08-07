@@ -14,7 +14,7 @@ echo "Running.."
 # echo "2"
 ./scripts/remove_cluster_aws_account_secrets.sh "$AWS_ACCOUNT_NAME"
 # echo "3"
-./scripts/delete_cluster_aws_accounts.sh "$AWS_ACCOUNT_NAME"
+./scripts/delete_cluster_aws_account.sh "$AWS_ACCOUNT_NAME"
 # echo "4"
 oc apply -f "$AWS_ACCOUNT_NAME".json
 # echo "5"

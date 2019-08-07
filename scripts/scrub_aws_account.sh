@@ -9,8 +9,9 @@ if [ -z "$AWS_ACCOUNT_NAME" ]; then
 fi
 
 echo "Assuming role in account ${AWS_ACCOUNT_NAME}"
-AWS_ACCOUNT_ID=$(oc get account "${AWS_ACCOUNT_NAME}" -n aws-account-operator | jq '.spec.awsAccountID')
-AWS_ACCOUNT_CREDENTIALS=$(./scripts/aws_assume_role_cli.sh "${AWS_ACCOUNT_ID}")
+
+AWS_ACCOUNT_ID=$(oc get account "${AWS_ACCOUNT_NAME}" -n aws-account-operator -o json | jq -r '.spec.awsAccountID')
+AWS_ACCOUNT_CREDENTIALS=$(./scripts/aws_assume_role_cli.sh -a "${AWS_ACCOUNT_ID}")
 
 echo "Done"
 
@@ -43,5 +44,5 @@ for IAM_USER in $(echo "osdManagedAdmin osdManagedAdminSRE"); do
     done
 
     # Delete IAM user
-    aws iam delete-user --user-name "$IAM_USER" 
+    aws iam delete-user --user-name "$IAM_USER"
 done
