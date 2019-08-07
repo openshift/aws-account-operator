@@ -116,22 +116,25 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	// Check if accountClaim is being deleted, this will trigger the account reuse workflow
 	if accountClaim.DeletionTimestamp != nil {
 		if contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
-			err := r.finalizeAccountClaim(reqLogger, accountClaim)
-			if err != nil {
-				// If the finalize/cleanup process fails for an account we don't want to return
-				// we will flag the account with the Failed Reuse condition, and with state = Failed
+			// Only do AWS cleanup and account reset if accountLink is not empty
+			if accountClaim.Spec.AccountLink != "" {
+				err := r.finalizeAccountClaim(reqLogger, accountClaim)
+				if err != nil {
+					// If the finalize/cleanup process fails for an account we don't want to return
+					// we will flag the account with the Failed Reuse condition, and with state = Failed
 
-				// Get account claimed by deleted accountclaim
-				failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
-				if accountErr != nil {
-					reqLogger.Error(accountErr, "Failed to get claimed account")
-					return reconcile.Result{}, err
-				}
-				// Update account status and add "Reuse Failed" condition
-				accountErr = r.resetAccountSpecStatus(reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed")
-				if accountErr != nil {
-					reqLogger.Error(accountErr, "Failed updating account status for failed reuse")
-					return reconcile.Result{}, err
+					// Get account claimed by deleted accountclaim
+					failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+					if accountErr != nil {
+						reqLogger.Error(accountErr, "Failed to get claimed account")
+						return reconcile.Result{}, err
+					}
+					// Update account status and add "Reuse Failed" condition
+					accountErr = r.resetAccountSpecStatus(reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed")
+					if accountErr != nil {
+						reqLogger.Error(accountErr, "Failed updating account status for failed reuse")
+						return reconcile.Result{}, err
+					}
 				}
 			}
 
