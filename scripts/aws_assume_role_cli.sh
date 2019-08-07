@@ -6,7 +6,7 @@ usage() {
     Options
     -a         AWS Account ID (10 digit int)
     -p         AWS Profile, leave blank for none
-    -p         AWS Region leave blank for default us-east-1
+    -r         AWS Region leave blank for default us-east-1
 EOF
 }
 
@@ -59,14 +59,4 @@ if [ -z "$AWS_DEFAULT_REGION" ]; then
 fi
 
 # Assume role
-AWS_ASSUME_ROLE=$(aws sts assume-role --role-arn arn:aws:iam::"${AWS_ACCOUNT_ID}":role/OrganizationAccountAccessRole --role-session-name ${AWS_STS_SESSION_NAME} --profile="${AWS_DEFAULT_PROFILE}")
-
-AWS_ACCESS_KEY_ID=$(echo "$AWS_ASSUME_ROLE" | jq -r '.Credentials.AccessKeyId')
-AWS_SECRET_ACCESS_KEY=$(echo "$AWS_ASSUME_ROLE" | jq -r '.Credentials.SecretAccessKey')
-AWS_SESSION_TOKEN=$(echo "$AWS_ASSUME_ROLE" | jq -r '.Credentials.SessionToken')
-
-export AWS_ACCESS_KEY_ID
-export AWS_SECRET_ACCESS_KEY
-export AWS_SESSION_TOKEN
-
-aws sts get-caller-identity
+aws sts assume-role --role-arn arn:aws:iam::"${AWS_ACCOUNT_ID}":role/OrganizationAccountAccessRole --role-session-name ${AWS_STS_SESSION_NAME} --profile="${AWS_DEFAULT_PROFILE}"

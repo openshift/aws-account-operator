@@ -9,7 +9,8 @@ if [ -z "$AWS_ACCOUNT_NAME" ]; then
 fi
 
 echo "Assuming role in account ${AWS_ACCOUNT_NAME}"
-AWS_ACCOUNT_CREDENTIALS=$(./scripts/aws_assume_role_cli.sh "${AWS_ACCOUNT_NAME}")
+AWS_ACCOUNT_ID=$(oc get account "${AWS_ACCOUNT_NAME}" -n aws-account-operator | jq '.spec.awsAccountID')
+AWS_ACCOUNT_CREDENTIALS=$(./scripts/aws_assume_role_cli.sh "${AWS_ACCOUNT_ID}")
 
 echo "Done"
 
@@ -20,8 +21,6 @@ AWS_SESSION_TOKEN=$(echo "${AWS_ACCOUNT_CREDENTIALS}" | jq -r '.Credentials.Sess
 export AWS_ACCESS_KEY_ID
 export AWS_SECRET_ACCESS_KEY
 export AWS_SESSION_TOKEN
-
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity | jq -r '.Account')
 
 echo "Cleaning AWS account ID: $AWS_ACCOUNT_ID"
 
