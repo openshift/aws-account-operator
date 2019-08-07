@@ -162,6 +162,12 @@ var ErrAwsFailedDescribeSupportCase = errors.New("FailedDescribeSupportCase")
 // ErrFederationTokenOutputNil indicates that getting a federation token from AWS failed
 var ErrFederationTokenOutputNil = errors.New("FederationTokenOutputNil")
 
+// ErrCreateEC2Instance indicates that the CreateEC2Instance function timed out
+var ErrCreateEC2Instance = errors.New("EC2CreationTimeout")
+
+// ErrFailedAWSTypecast indicates that there was a failure while typecasting to aws error
+var ErrFailedAWSTypecast = errors.New("FailedToTypecastAWSError")
+
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
 * business logic.  Delete these comments after modifying this file.*
