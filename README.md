@@ -113,7 +113,7 @@ status:
 
 ## 2.2. Account CR
 
-The Account CR holds the details about the account that was created , whether it is ready to be claimed, and whether it has been claimed
+The Account CR holds the details about the AWS account that was created, where the account is in the process of becoming ready, and whether its linked to an AccountClaime, i.e. claimed. 
 
 ```yaml
 apiVersion: aws.managed.openshift.io/v1alpha1
@@ -167,7 +167,7 @@ status:
 
 ## 2.3. AccountClaim CR
 
-The AccountClaim CR holds the required data for cluster provisioning to build the cluster 
+The AccountClaim CR links to an available account and stores the name of the associated secret with AWS credentials fort that account.. 
 
 ```yaml
 apiVersion: aws.managed.openshift.io/v1alpha1
@@ -214,7 +214,7 @@ status:
 
 ## 3.1. AccountPool Controller
 
-The accountpool-controller is triggered by an accountpool CR or an account CR. It is responsible for generating new account CRs. 
+The accountpool-controller is triggered by an accountpool CR or an account CR. It is responsible for filling the Acccount Pool by generating new account CRs. 
 
 It looks at the accountpool CR *spec.poolSize* and it ensures that the number of unclaimed accounts matchs the number of the poolsize. If the number of unclaimed accounts is less then the poolsize it creates a new account CR for the account-controller to process.
 
@@ -253,7 +253,7 @@ MetricTotalAccountClaimCRs
 
 ## 3.2. Account Controller
 
-The account-controller is triggered by an account CR. It is responsible for following behaviors
+The account-controller is triggered by an account CR. It is responsible for following behaviours:
 
 If the *awsLimit* set in the constants is not exceeded
 1. Creates a new account in the organization belonging to credentials in secret `aws-account-operator-credentials` 
@@ -269,8 +269,8 @@ If the *awsLimit* set in the constants is not exceeded
 ### 3.2.1. Additional Functionailty 
 
 * If `status.RotateCredentials == true` the account-controller will refresh the STS Cli Credentials
-* If the account `status.State == "Creating"` and the account is older then the *createPendTime* constant the account will be put into a `failed` state
-* if the account `status.State == AccountReady && spec.ClaimLink != ""` it sets `status.Claimed = true`
+* If the account's `status.State == "Creating"` and the account is older then the *createPendTime* constant the account will be put into a `failed` state
+* If the account's `status.State == AccountReady && spec.ClaimLink != ""` it sets `status.Claimed = true`
 
 ### 3.2.2. Constants and Globals
 
@@ -342,8 +342,8 @@ spec:
 ```
 
 *awsAccountID* is updated with the account ID of the aws account that is created by the account controller
-*claimLink* holds the name of the accountClaim that has claimed this accountCR
-*iamUserSecret* holds the iam user credentials that is created by the account controller
+*claimLink* holds the name of the accountClaim that has claimed this account CR
+*iamUserSecret* holds the name of the secret containing IAM user credentials for the AWS account
 
 ### 3.2.4. Status
 
@@ -377,7 +377,7 @@ MetricTotalAWSAccounts
 
 ## 3.3. AccountClaim Controller
 
-The accountClaim-controller is triggered when an accountClaim is created in any namespace.It is responsible for following behaviors
+The accountClaim-controller is triggered when an accountClaim is created in any namespace. It is responsible for following behaviours:
 
 1. Sets account `spec.ClaimLink` to the name of the accountClaim
 2. Sets accountClaim `spec.AccountLink` to the name of an unclaimed Account 
@@ -410,7 +410,7 @@ spec:
 	 name:{Legal Entity Name}
 ```
 
-*awsCredentialSecret* holds the name and namespace of the credentials created for the accountClaim
+*awsCredentialSecret* holds the name and namespace of the secret with the credentials created for the accountClaim
 
 ### 3.3.3. Status
 
