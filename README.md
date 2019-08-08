@@ -101,14 +101,8 @@ kind: AccountPool
 metadata:
   name: example-accountpool
   namespace: aws-account-operator
-  selfLink: /apis/aws.managed.openshift.io/v1alpha1/namespaces/aws-account-operator/accountpools/example-accountpool
-  uid: 9979786a-a8cb-11e9-a2a3-2a2ae2dbcce4
 spec:
   poolSize: 50
-status:
-  claimedAccounts: 1946
-  poolSize: 50
-  unclaimedAccounts: 50
 ```
 
 ## 2.2. Account CR
@@ -193,18 +187,23 @@ MetricTotalAccountClaimCRs
 
 ## 3.2. Account Controller
 
-The account-controller is triggered by an account CR. It is responsible for following behaviours:
+The account-controller is triggered by creating or changing an account CR. It is responsible for following behaviours:
 
 If the *awsLimit* set in the constants is not exceeded
 1. Creates a new account in the organization belonging to credentials in secret `aws-account-operator-credentials` 
-2. Configure Users from *iamUserNameUHC* and *iamUserNameSRE*
+2. Configures two AWS IAM users from *iamUserNameUHC* and *iamUserNameSRE* as thier respective usernames
     * Creates IAM user in new account 
     * Attaches Admin policy
     * Generates a secret access key for the user 
     * Stores user secret in a AWS secret
-3. Creates STS CLI Credentials for SRE
+3. Creates STS CLI tokens
+    * Creates Federated webconsole URL using the iamUserNameSRE user
 4. Creates and Destroys EC2 instances
 5. Creates aws support case to increase account limits
+
+**note**
+*amUserNameUHC* is used by Hive to provision clusters
+*iamUserNameSRE* is used to generate Federated console URL
 
 ### 3.2.1. Additional Functionailty 
 
@@ -289,20 +288,27 @@ spec:
 
 Updates the Account CR
 ```
-claimed: false
-conditions:
-- lastProbeTime: 2019-07-18T22:04:38Z
-  lastTransitioNTime: 2019-07-18T22:04:38Z
-  message: Attempting to create account
-  reason: Creating
-  status: "True"
-  type: Creating
-rotateCredentials: false
-state: Failed
-supportCaseID: "00000000"
+status: {
+  claimed: false
+  conditions:
+  - lastProbeTime: 2019-07-18T22:04:38Z
+    lastTransitioNTime: 2019-07-18T22:04:38Z
+    message: Attempting to create account
+    reason: Creating
+    status: "True"
+    type: Creating
+  rotateCredentials: false
+  state: Failed
+  supportCaseID: "00000000"
+}
 ```
 
-*state* can be any of the account states defined in the constants
+*state* can be any of the account states defined in the constants below
+  * AccountPending indicates an account is pending
+  * AccountCreating indicates an account is being created
+  * AccountFailed indicates account creation has failed
+  * AccountReady indicates account creation is ready
+  * AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
 *claimed* is true if `currentAcctInstance.Status.State == AccountReady && currentAcctInstance.Spec.ClaimLink != "`
 *rotateCredentials* updated by the secretwatcher pkg which will set the bool to true triggering an reconcile of this controller to rotate the STS credentials
 *supportCaseID* is the ID of the aws support case to increase limits
