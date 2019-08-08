@@ -17,9 +17,9 @@ const (
 	// STSCredentialsSuffix is the suffix applied to account.Name to create STS Secret
 	STSCredentialsSuffix = "-sre-credentials"
 	// STSCredentialsDuration Duration of STS token and Console signin URL
-	STSCredentialsDuration = 43200
+	STSCredentialsDuration = 3600
 	// STSCredentialsThreshold Time before STS credentials are recreated
-	STSCredentialsThreshold = 7200
+	STSCredentialsThreshold = 60
 )
 
 // SecretWatcher global var for SecretWatcher
