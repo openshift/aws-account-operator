@@ -118,6 +118,8 @@ func main() {
 		WithCollectors(localmetrics.MetricTotalAccountClaimCRs).
 		WithCollectors(localmetrics.MetricPoolSizeVsUnclaimed).
 		WithCollectors(localmetrics.MetricTotalAccountPendingVerification).
+		WithCollectors(localmetrics.MetricTotalAccountReusedAvailable).
+		WithCollectors(localmetrics.MetricTotalAccountReuseFailed).
 		GetConfig()
 
 	// Configure metrics if it errors log the error but continue
