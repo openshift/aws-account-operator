@@ -76,7 +76,7 @@ Permissions to allow the user to interact with the support center:
 ## 1.3. Workflow
 
 First, an AcccountPool must be created to specify the number of desired accounts to be ready. The operator then goes and creates that number of accounts. 
-When a [Hive](https://github.com/openshift/hive) cluster has a new cluster request, an AccountClaim is created with the desired name of the cluster in a unique namespace. The operator links the AccountClaim to an Account in the pool, and creates the required k8s secrets, placing them in the AccountClaim's unique namespace. The AccountPool is then filled up again by the operator.  Hive then uses the secrets to create the AWS resources for the new cluster. 
+When a [Hive](https://github.com/openshift/hive) cluster has a new cluster request, an AccountClaim is created with the name equal to the desired name of the cluster in a unique workspace. The operator links the AccountClaim to an Account in the pool, and creates the required k8s secrets, placing them in the AccountClaim's unique namespace. The AccountPool is then filled up again by the operator.  Hive then uses the secrets to create the AWS resources for the new cluster. 
 
 For more information on how this process is done, please refer to the controllers section.  
 
@@ -119,49 +119,12 @@ The Account CR holds the details about the AWS account that was created, where t
 apiVersion: aws.managed.openshift.io/v1alpha1
 kind: Account
 metadata:
-  creationTimestamp: 2019-07-03T16:07:16Z
-  finalizers:
-  - finalizer.aws.managed.openshift.io
-  generation: 4
   name: osd-{accountName}
   namespace: aws-account-operator
-  ownerReferences:
-  - apiVersion: aws.managed.openshift.io/v1alpha1
-    blockOwnerDeletion: true
-    controller: true
-    kind: AccountPool
-    name: example-accountpool
-    uid: 9979786a-a8cb-11e9-a2a3-2a2ae2dbcce4
-  resourceVersion: "49984188"
-  selfLink: /apis/aws.managed.openshift.io/v1alpha1/namespaces/aws-account-operator/accounts/osd-{accountName}
-  uid: a07a6867-9dac-11e9-b4bb-0e6ed767b7c0
 spec:
   awsAccountID: "0000000000"
   claimLink: example-link
   iamUserSecret: osd-{accountName}-secret
-status:
-  claimed: true
-  conditions:
-  - lastProbeTime: 2019-07-03T16:14:50Z
-    lastTransitioNTime: 2019-07-03T16:14:50Z
-  	message: Attempting to create account
- 	  reason: Creating
- 	  status: "True"
- 	  type: Creating
-  - lastProbeTime: 2019-07-03T16:18:55Z
-    lastTransitioNTime: 2019-07-03T16:18:55Z
-    message: Account pending AWS limits verification
-    reason: PendingVerification
-    status: "True"
-    type: PendingVerification
-  - lastProbeTime: 2019-07-05T13:19:32Z
-    lastTransitioNTime: 2019-07-05T13:19:32Z
-    message: Account ready to be claimed
-    reason: Ready
-    status: "True"
-    type: Ready
-  state: Ready
-  supportCaseID: case-000000000-muen-2019-000000000000
 ```
 
 
@@ -173,16 +136,8 @@ The AccountClaim CR links to an available account and stores the name of the ass
 apiVersion: aws.managed.openshift.io/v1alpha1
 kind: AccountClaim
 metadata:
-  creationTimestamp: 2019-07-16T13:52:02Z
-  generation: 2
-  labels:
-    api.openshift.com/id: 00000000000000000000
-    api.openshift.com/name: example-link
   name: example-link
   namespace: {NameSpace cluster is being built in}
-  resourceVersion: "54324077"
-  selfLink: /apis/aws.managed.openshift.io/v1alpha1/namespaces/uhc-staging-16toh05i9h8ook5d7ej4al7ejec17rug/accountclaims/razevedo-test2
-  uid: b7113d4a-a8cb-11e9-a2a3-2a2ae2dbcce4
 spec:
   accountLink: osd-{accountName} (From AccountClaim)
   aws:
@@ -194,27 +149,12 @@ spec:
   legalEntity:
     id: 00000000000000
     name: {Legal Entity Name}
-status:
-  conditions:
-  - lastProbeTime: 2019-07-16T13:52:02Z
-    lastTransitionTime: 2019-07-16T13:52:02Z
-    message: Attempting to claim account
-    reason: AccountClaimed
-    status: "True"
-    type: Unclaimed
-  - lastProbeTime: 2019-07-16T13:52:03Z
-    lastTransitionTime: 2019-07-16T13:52:03Z
-    message: Account claimed by osd-creds-mgmt-fhq2d2
-    reason: AccountClaimed
-    status: "True"
-    type: Claimed
-  state: Ready
 ```
 # 3. The controllers
 
 ## 3.1. AccountPool Controller
 
-The accountpool-controller is triggered by an accountpool CR or an account CR. It is responsible for filling the Acccount Pool by generating new account CRs. 
+The accountpool-controller is triggered by a create or change to an accountpool CR or an account CR. It is responsible for filling the Acccount Pool by generating new account CRs. 
 
 It looks at the accountpool CR *spec.poolSize* and it ensures that the number of unclaimed accounts matchs the number of the poolsize. If the number of unclaimed accounts is less then the poolsize it creates a new account CR for the account-controller to process.
 
@@ -364,7 +304,7 @@ supportCaseID: "00000000"
 
 *state* can be any of the account states defined in the constants
 *claimed* is true if `currentAcctInstance.Status.State == AccountReady && currentAcctInstance.Spec.ClaimLink != "`
-*rotateCredentials* when true rotates the temporary credentials on the next run
+*rotateCredentials* updated by the secretwatcher pkg which will set the bool to true triggering an reconcile of this controller to rotate the STS credentials
 *supportCaseID* is the ID of the aws support case to increase limits
 *conditions* indicates the last state the account had and supporting details
 
@@ -416,20 +356,22 @@ spec:
 
 Updates the accountClaim CR
 ```
-conditions:
-  - lastProbeTime: 2019-07-16T13:52:02Z
-    lastTransitionTime: 2019-07-16T13:52:02Z
-	message: Attempting to claim account
-	reason: AccountClaimed
-	status: "True"
-	type: Unclaimed
-  - lastProbeTime: 2019-07-16T13:52:03Z
-    lastTransitionTime: 2019-07-16T13:52:03Z
-	message: Account claimed by osd-creds-mgmt-fhq2d2
-	reason: AccountClaimed
-	status: "True"
-	type: Claimed
-  state: Ready
+status: {
+  conditions:
+    - lastProbeTime: 2019-07-16T13:52:02Z
+      lastTransitionTime: 2019-07-16T13:52:02Z
+    message: Attempting to claim account
+    reason: AccountClaimed
+    status: "True"
+    type: Unclaimed
+    - lastProbeTime: 2019-07-16T13:52:03Z
+      lastTransitionTime: 2019-07-16T13:52:03Z
+    message: Account claimed by osd-creds-mgmt-fhq2d2
+    reason: AccountClaimed
+    status: "True"
+    type: Claimed
+    state: Ready
+}  
 ```
 
 *state* can be any of the ClaimStatus strings defined in accountclaim_types.go
@@ -444,7 +386,6 @@ MetricTotalAccountClaimCRs
 
 # 4. Special Items in main.go
 
-* Initailzes a watcher that will look at all the secrets in the accountCRNamespace and if it exceeds the const `secretWatcherScanInterval` it will set the corresponsing accountCR `status.rotateCredentials = true`
 * Starts a metric server with custom metrics defined in `localmetrics` pkg
 
 ### 4.1 Constants
@@ -458,4 +399,4 @@ secretWatcherScanInterval = time.Duration(10) * time.Minute
 
 *metricsPort* is the port used to start the metrics port
 *metricsPath* it the path used as the metrics endpoint
-*secretWatcherScanInterval* the interval used for the secrets watcher
+*secretWatcherScanInterval* sets the interval at which the secret watcher will look for secrets that are expiring
