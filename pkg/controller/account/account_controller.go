@@ -54,7 +54,7 @@ const (
 	caseDesiredInstanceLimit      = 25
 	caseStatusResolved            = "resolved"
 	intervalAfterCaseCreationSecs = 30
-	intervalBetweenChecksSecs     = 30
+	intervalBetweenChecksMinutes  = 10
 
 	// AccountPending indicates an account is pending
 	AccountPending = "Pending"
@@ -304,8 +304,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, nil
 		}
 
-		// Case not Resolved, try again in pre-defined interval
-		return reconcile.Result{RequeueAfter: intervalBetweenChecksSecs * time.Second}, nil
+		// Case not Resolved, log info and try again in pre-defined interval
+		reqLogger.Info(fmt.Sprintf(`Case %s not resolved, 
+			trying again in %d minutes`,
+			currentAcctInstance.Status.SupportCaseID,
+			intervalBetweenChecksMinutes))
+		return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
 	}
 
 	// Update account Status.Claimed to true if the account is ready and the claim link is not empty
