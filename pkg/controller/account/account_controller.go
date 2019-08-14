@@ -36,7 +36,7 @@ import (
 var log = logf.Log.WithName("controller_account")
 
 const (
-	awsLimit                = 4000
+	awsLimit                = 4300
 	awsCredsUserName        = "aws_user_name"
 	awsCredsSecretIDKey     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
@@ -54,7 +54,7 @@ const (
 	caseDesiredInstanceLimit      = 25
 	caseStatusResolved            = "resolved"
 	intervalAfterCaseCreationSecs = 30
-	intervalBetweenChecksSecs     = 30
+	intervalBetweenChecksMinutes  = 10
 
 	// AccountPending indicates an account is pending
 	AccountPending = "Pending"
@@ -158,6 +158,15 @@ var ErrAwsSupportCaseIDNotFound = errors.New("SupportCaseIdNotfound")
 
 // ErrAwsFailedDescribeSupportCase indicates that the support case describe failed
 var ErrAwsFailedDescribeSupportCase = errors.New("FailedDescribeSupportCase")
+
+// ErrFederationTokenOutputNil indicates that getting a federation token from AWS failed
+var ErrFederationTokenOutputNil = errors.New("FederationTokenOutputNil")
+
+// ErrCreateEC2Instance indicates that the CreateEC2Instance function timed out
+var ErrCreateEC2Instance = errors.New("EC2CreationTimeout")
+
+// ErrFailedAWSTypecast indicates that there was a failure while typecasting to aws error
+var ErrFailedAWSTypecast = errors.New("FailedToTypecastAWSError")
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -302,7 +311,11 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		// Case not Resolved, update condition and try again in pre-defined interval
 		SetAccountStatus(reqLogger, currentAcctInstance, awsSupportCase.Message, awsv1alpha1.AccountReady, AccountPendingVerification)
-		return reconcile.Result{RequeueAfter: intervalBetweenChecksSecs * time.Second}, nil
+		reqLogger.Info(fmt.Sprintf(`Case %s not resolved, 
+			trying again in %d minutes`,
+			currentAcctInstance.Status.SupportCaseID,
+			intervalBetweenChecksMinutes))
+		return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
 	}
 
 	// Update account Status.Claimed to true if the account is ready and the claim link is not empty

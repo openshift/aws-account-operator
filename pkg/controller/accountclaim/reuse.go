@@ -23,17 +23,17 @@ const (
 
 func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 
-	// Perform account clean up in AWS
-	err := r.cleanUpAwsAccount(reqLogger, accountClaim)
-	if err != nil {
-		reqLogger.Error(err, "Failed to clean up AWS account")
-		return err
-	}
-
 	// Get account claimed by deleted accountclaim
 	reusedAccount, err := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
 	if err != nil {
 		reqLogger.Error(err, "Failed to get claimed account")
+		return err
+	}
+
+	// Perform account clean up in AWS
+	err = r.cleanUpAwsAccount(reqLogger, accountClaim, reusedAccount)
+	if err != nil {
+		reqLogger.Error(err, "Failed to clean up AWS account")
 		return err
 	}
 
@@ -80,17 +80,19 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 	return nil
 }
 
-func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
 	// Channels to track clean up functions
 	awsNotifications, awsErrors := make(chan string), make(chan string)
 
 	defer close(awsNotifications)
 	defer close(awsErrors)
 
+	// Region comes from accountClaim
 	clusterAwsRegion := accountClaim.Spec.Aws.Regions[0].Name
+	// AWS credential comes from account object
 	awsClientInput := awsclient.NewAwsClientInput{
-		SecretName: accountClaim.Spec.AwsCredentialSecret.Name,
-		NameSpace:  accountClaim.Spec.AwsCredentialSecret.Namespace,
+		SecretName: account.Spec.IAMUserSecret,
+		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  clusterAwsRegion,
 	}
 

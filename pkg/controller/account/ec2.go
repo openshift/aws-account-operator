@@ -86,6 +86,17 @@ func (r *ReconcileAccount) BuildandDestroyEC2Instances(reqLogger logr.Logger, aw
 
 	instanceID, err := CreateEC2Instance(reqLogger, awsClient, ami)
 	if err != nil {
+		// Terminate instance id if it exists
+		if instanceID != "" {
+			// Log instance id of instance that will be terminated
+			reqLogger.Error(err, fmt.Sprintf(`Early termination of instance with ID: %s`, instanceID))
+			termErr := TerminateEC2Instance(reqLogger, awsClient, instanceID)
+			if termErr != nil {
+				if aerr, ok := termErr.(awserr.Error); ok {
+					reqLogger.Error(aerr, fmt.Sprintf(`AWS error while attempting to terminate instace, AWS Error Code: %s, AWS Error Message: %s`, aerr.Code(), aerr.Message()))
+				}
+			}
+		}
 		return err
 	}
 
@@ -129,10 +140,11 @@ func (r *ReconcileAccount) BuildandDestroyEC2Instances(reqLogger logr.Logger, aw
 
 // CreateEC2Instance creates ec2 instance and returns its instance ID
 func CreateEC2Instance(reqLogger logr.Logger, client awsclient.Client, ami string) (string, error) {
-	// Create EC2 service client
 
-	var instanceID string
-	var runErr error
+	// Retain instance id
+	var timeoutInstanceID string
+
+	// Loop until an EC2 instance is created or timeout.
 	attempt := 1
 	for i := 0; i < 300; i++ {
 		time.Sleep(time.Duration(attempt*5) * time.Second)
@@ -142,25 +154,39 @@ func CreateEC2Instance(reqLogger logr.Logger, client awsclient.Client, ami strin
 		}
 		// Specify the details of the instance that you want to create.
 		runResult, runErr := client.RunInstances(&ec2.RunInstancesInput{
-			// An Amazon Linux AMI ID for t2.micro instances in the us-west-2 region
 			ImageId:      aws.String(ami),
 			InstanceType: aws.String(awsInstanceType),
 			MinCount:     aws.Int64(1),
 			MaxCount:     aws.Int64(1),
 		})
-		if runErr == nil {
-			instanceID = *runResult.Instances[0].InstanceId
-			break
+
+		// Return on unexpected errors:
+		if runErr != nil {
+			if aerr, ok := runErr.(awserr.Error); ok {
+				switch aerr.Code() {
+				case "PendingVerification", "OptInRequired":
+					// Assign instance id
+					timeoutInstanceID = *runResult.Instances[0].InstanceId
+					continue
+				default:
+					reqLogger.Error(runErr,
+						fmt.Sprintf(`Failed while trying to create EC2 instance, 
+							AWS Error Code: %s, 
+							AWS Error Message: %s`,
+							aerr.Code(),
+							aerr.Message()))
+					return "", runErr
+				}
+			}
+			return "", ErrFailedAWSTypecast
 		}
 
+		// No error was found, instance is running, return instance id
+		return *runResult.Instances[0].InstanceId, nil
 	}
 
-	if runErr != nil {
-		return "", runErr
-	}
-
-	return instanceID, nil
-
+	// Timeout occurred, return instance id and timeout error
+	return timeoutInstanceID, ErrCreateEC2Instance
 }
 
 // DescribeEC2Instances returns the InstanceState code
