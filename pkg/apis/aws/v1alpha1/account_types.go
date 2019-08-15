@@ -52,20 +52,21 @@ type AccountStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	Claimed           bool               `json:"claimed"`
-	SupportCaseID     string             `json:"supportCaseID"`
-	Conditions        []AccountCondition `json:"conditions"`
-	State             string             `json:"state"`
-	RotateCredentials bool               `json:"rotateCredentials"`
-	Reused            bool               `json:"reused"`
+	Claimed                  bool               `json:"claimed,omitempty"`
+	SupportCaseID            string             `json:"supportCaseID,omitempty"`
+	Conditions               []AccountCondition `json:"conditions,omitempty"`
+	State                    string             `json:"state,omitempty"`
+	RotateCredentials        bool               `json:"rotateCredentials,omitempty"`
+	RotateConsoleCredentials bool               `json:"rotateConsoleCredentials,omitempty"`
+	Reused                   bool               `json:"reused,omitempty"`
 }
 
 // AccountCondition contains details for the current condition of a AWS account
 type AccountCondition struct {
 	// Type is the type of the condition.
-	Type AccountConditionType `json:"type"`
+	Type AccountConditionType `json:"type,omitempty"`
 	// Status is the status of the condition
-	Status corev1.ConditionStatus `json:"status"`
+	Status corev1.ConditionStatus `json:"status,omitempty"`
 	// LastProbeTime is the last time we probed the condition.
 	// +optional
 	LastProbeTime metav1.Time `json:"lastProbeTime,omitempty"`

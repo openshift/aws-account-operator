@@ -9,13 +9,18 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
 	// STSCredentialsSuffix is the suffix applied to account.Name to create STS Secret
-	STSCredentialsSuffix = "-sre-credentials"
+	STSCredentialsSuffix = "-sre-cli-credentials"
+	// STSCredentialsConsoleSuffix is the suffix applied to account.Name to create STS Secret
+	STSCredentialsConsoleSuffix = "-sre-console-url"
+	// STSConsoleCredentialsDuration Duration of STS token and Console signin URL
+	STSConsoleCredentialsDuration = 900
 	// STSCredentialsDuration Duration of STS token and Console signin URL
 	STSCredentialsDuration = 3600
 	// STSCredentialsThreshold Time before STS credentials are recreated
@@ -62,6 +67,17 @@ func (s *secretWatcher) Start(log logr.Logger, stopCh <-chan struct{}) {
 	}
 }
 
+// timeSinceCreation takes a creationTimestamp from a kubernetes object and returns the sime in seconds
+// since creation
+func (s *secretWatcher) timeSinceCreation(creationTimestamp metav1.Time) int {
+	unixTime := time.Unix(creationTimestamp.Unix(), 0)
+	return int(time.Since(unixTime).Seconds())
+}
+
+func (s *secretWatcher) timeToInt(time time.Duration) int {
+	return int(time.Seconds())
+}
+
 // CredentialsRotator will list all secrets with the `STSCredentialsSuffix` and mark the account CR `status.rotateCredentials` true
 // if the credentials CreationTimeStamp is within `STSCredentialsRefreshThreshold` of `STSCredentialsDuration`
 func (s *secretWatcher) ScanSecrets(log logr.Logger) error {
@@ -76,35 +92,53 @@ func (s *secretWatcher) ScanSecrets(log logr.Logger) error {
 
 	for _, secret := range secretList.Items {
 
-		accountName := strings.TrimSuffix(secret.ObjectMeta.Name, STSCredentialsSuffix)
-
 		if strings.HasSuffix(secret.ObjectMeta.Name, STSCredentialsSuffix) {
-			unixTime := time.Unix(secret.ObjectMeta.CreationTimestamp.Unix(), 0)
-			timeSinceCreation := int(time.Since(unixTime).Seconds())
+			accountName := strings.TrimSuffix(secret.ObjectMeta.Name, STSCredentialsSuffix)
+			timeSinceCreation := s.timeSinceCreation(secret.ObjectMeta.CreationTimestamp)
 
-			if STSCredentialsDuration-timeSinceCreation < STSCredentialsThreshold {
+			if STSCredentialsDuration-timeSinceCreation < s.timeToInt(SecretWatcher.watchInterval) {
+				s.updateAccountRotateCredentialsStatus(log, accountName, "cli")
+			}
+		}
 
-				accountInstance, err := s.GetAccount(accountName)
-				if err != nil {
-					getAccountErrMsg := fmt.Sprintf("Unable to retrieve account CR %s", accountName)
-					log.Error(err, getAccountErrMsg)
-				}
+		if strings.HasSuffix(secret.ObjectMeta.Name, STSCredentialsConsoleSuffix) {
+			accountName := strings.TrimSuffix(secret.ObjectMeta.Name, STSCredentialsConsoleSuffix)
+			timeSinceCreation := s.timeSinceCreation(secret.ObjectMeta.CreationTimestamp)
 
-				if accountInstance.Status.RotateCredentials != true {
-
-					log.Info(fmt.Sprintf("AWS credentials secret %s was created %s ago requeing to be refreshed", secret.ObjectMeta.Name, time.Since(unixTime)))
-
-					accountInstance.Status.RotateCredentials = true
-
-					err = s.UpdateAccount(accountInstance)
-					if err != nil {
-						log.Error(err, fmt.Sprintf("Error updating account %s", accountName))
-					}
-				}
+			if STSConsoleCredentialsDuration-timeSinceCreation < s.timeToInt(SecretWatcher.watchInterval) {
+				s.updateAccountRotateCredentialsStatus(log, accountName, "console")
 			}
 		}
 	}
 	return nil
+}
+
+// updateAccountRotateCredentialsStatus
+func (s *secretWatcher) updateAccountRotateCredentialsStatus(log logr.Logger, accountName, credentialType string) {
+
+	accountInstance, err := s.GetAccount(accountName)
+	if err != nil {
+		getAccountErrMsg := fmt.Sprintf("Unable to retrieve account CR %s", accountName)
+		log.Error(err, getAccountErrMsg)
+	}
+
+	if accountInstance.Status.RotateCredentials != true {
+
+		//log.Info(fmt.Sprintf("AWS credentials secret %s was created %s ago requeing to be refreshed", secret.ObjectMeta.Name, time.Since(unixTime)))
+
+		if credentialType == "console" {
+			accountInstance.Status.RotateConsoleCredentials = true
+			log.Info(fmt.Sprintf("AWS console credentials secret was created ago requeing to be refreshed"))
+		} else if credentialType == "cli" {
+			accountInstance.Status.RotateCredentials = true
+			log.Info(fmt.Sprintf("AWS cli credentials secret was created ago requeing to be refreshed"))
+		}
+
+		err = s.UpdateAccount(accountInstance)
+		if err != nil {
+			log.Error(err, fmt.Sprintf("Error updating account %s", accountName))
+		}
+	}
 }
 
 // GetAccount retrieve account CR

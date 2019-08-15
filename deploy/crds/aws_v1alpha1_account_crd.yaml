@@ -107,14 +107,13 @@ spec:
                   type:
                     description: Type is the type of the condition.
                     type: string
-                required:
-                - type
-                - status
                 type: object
               type: array
             reused:
               type: boolean
               description: 'Field will be populated by the accountclaim controller indicating the account has been reused' 
+            rotateConsoleCredentials:
+              type: boolean
             rotateCredentials:
               type: boolean
             state:
@@ -122,13 +121,6 @@ spec:
             supportCaseID:
               type: string
               description: 'Field will be populated by the account controller when the account gets in PendingVerification status'
-          required:
-          - claimed
-          - supportCaseID
-          - conditions
-          - state
-          - rotateCredentials
-          - reused
           type: object
   version: v1alpha1
   versions:
