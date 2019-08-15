@@ -30,11 +30,11 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 	}
 
 	// Create new awsClient with SRE IAM credentials so we can generate STS and Federation tokens from it
-	SREAWSClient, err := r.getAWSClient(newAwsClientInput{
-		secretName: account.Name + "-" + strings.ToLower(iamUserNameSRE) + "-secret",
-		nameSpace:  awsv1alpha1.AccountCrNamespace,
-		awsRegion:  "us-east-1"})
-
+	SREAWSClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+		SecretName: account.Name + "-" + strings.ToLower(iamUserNameSRE) + "-secret",
+		NameSpace:  awsv1alpha1.AccountCrNamespace,
+		AwsRegion:  "us-east-1",
+	})
 	if err != nil {
 		reqLogger.Error(err, "RotateCredentials: Unable to create AWS conn with IAM user creds")
 	}

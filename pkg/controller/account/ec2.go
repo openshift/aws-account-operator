@@ -47,13 +47,12 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, reg
 func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, region string, ami string, ec2Notifications chan string, ec2Errors chan string, creds *sts.AssumeRoleOutput) error {
 	reqLogger.Info(fmt.Sprintf("Initializing region: %s", region))
 
-	awsClient, err := r.getAWSClient(newAwsClientInput{
-		awsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
-		awsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
-		awsToken:                *creds.Credentials.SessionToken,
-		awsRegion:               region,
+	awsClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
+		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
+		AwsToken:                *creds.Credentials.SessionToken,
+		AwsRegion:               region,
 	})
-
 	if err != nil {
 		connErr := fmt.Sprintf("Unable to connect to region: %s when attempting to initialize it", region)
 		reqLogger.Error(err, connErr)
