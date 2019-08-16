@@ -97,7 +97,15 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	reuseAccountFailedCount := 0
 	pendingVerificationAccountCount := 0
 	readyAccountCount := 0
+	idMap := make(map[string]int)
 	for _, account := range accountList.Items {
+		if idMap[account.Spec.LegalEntity.ID] == 0 {
+			idMap[account.Spec.LegalEntity.ID] = 1
+		} else {
+			iDCount := idMap[account.Spec.LegalEntity.ID]
+			iDCount++
+		}
+
 		if account.Status.Claimed == false {
 			// Ignore unclaimed accounts in Failed status
 			if account.Status.State != "Failed" {
@@ -136,8 +144,11 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	MetricTotalAccountPendingVerification.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(pendingVerificationAccountCount))
 	MetricTotalAccountCRsFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(failedAccountCount))
 	MetricTotalAccountCRsReady.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(readyAccountCount))
-	MetricTotalAccountReusedAvailable.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(reusedAccountAvailableCount))
 	MetricTotalAccountReuseFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(reuseAccountFailedCount))
+	for _, account := range accountList.Items {
+		MetricTotalAccountReusedAvailable.With(prometheus.Labels{"LegalID": account.Spec.LegalEntity.ID}).Set(float64(idMap[account.Spec.LegalEntity.ID]))
+	}
+
 }
 
 // UpdateAccountClaimMetrics updates all metrics related to AccountClaim CRs
