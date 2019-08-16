@@ -102,8 +102,7 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 		if idMap[account.Spec.LegalEntity.ID] == 0 {
 			idMap[account.Spec.LegalEntity.ID] = 1
 		} else {
-			iDCount := idMap[account.Spec.LegalEntity.ID]
-			iDCount++
+			idMap[account.Spec.LegalEntity.ID] = idMap[account.Spec.LegalEntity.ID] + 1
 		}
 
 		if account.Status.Claimed == false {
