@@ -59,9 +59,10 @@ var (
 		Help: "Report the number of accounts waiting for enterprise support and EC2 limit increases in AWS",
 	}, []string{"name"})
 	MetricTotalAccountReusedAvailable = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "aws_account_operator_total_aws_account_reused_available",
-		Help: "Report the number of reused accounts available for claiming grouped by legal ID",
-	}, []string{"name"})
+		Name:        "aws_account_operator_total_aws_account_reused_available",
+		Help:        "Report the number of reused accounts available for claiming grouped by legal ID",
+		ConstLabels: prometheus.Labels{"name": "aws-account-operator"},
+	}, []string{"LegalID"})
 	MetricTotalAccountReuseFailed = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "aws_account_operator_total_aws_account_reused_failed",
 		Help: "Report the number of accounts that failed during account reuse",
