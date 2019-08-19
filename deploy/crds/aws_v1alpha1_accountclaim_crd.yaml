@@ -7,7 +7,7 @@ spec:
   - JSONPath: .status.state
     name: State
     type: string
-  - JSONPath: .spec.accountlink
+  - JSONPath: .spec.accountLink
     name: Account
     type: string
   - JSONPath: .metadata.creationTimestamp
