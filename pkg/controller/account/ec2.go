@@ -163,10 +163,13 @@ func CreateEC2Instance(reqLogger logr.Logger, client awsclient.Client, ami strin
 		// Return on unexpected errors:
 		if runErr != nil {
 			if aerr, ok := runErr.(awserr.Error); ok {
+				// We want to ensure that we don't leave any instances around when there is an error
+				// possible that there is no instance here
+				if len(runResult.Instances) > 0 {
+					timeoutInstanceID = *runResult.Instances[0].InstanceId
+				}
 				switch aerr.Code() {
 				case "PendingVerification", "OptInRequired":
-					// Assign instance id
-					timeoutInstanceID = *runResult.Instances[0].InstanceId
 					continue
 				default:
 					reqLogger.Error(runErr,
@@ -175,10 +178,10 @@ func CreateEC2Instance(reqLogger logr.Logger, client awsclient.Client, ami strin
 							AWS Error Message: %s`,
 							aerr.Code(),
 							aerr.Message()))
-					return "", runErr
+					return timeoutInstanceID, runErr
 				}
 			}
-			return "", ErrFailedAWSTypecast
+			return timeoutInstanceID, ErrFailedAWSTypecast
 		}
 
 		// No error was found, instance is running, return instance id
