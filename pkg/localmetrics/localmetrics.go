@@ -60,7 +60,7 @@ var (
 	}, []string{"name"})
 	MetricTotalAccountReusedAvailable = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "aws_account_operator_total_aws_account_reused_available",
-		Help: "Report the number of reused accounts available for claiming",
+		Help: "Report the number of reused accounts available for claiming grouped by legal ID",
 	}, []string{"name"})
 	MetricTotalAccountReuseFailed = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "aws_account_operator_total_aws_account_reused_failed",
@@ -144,8 +144,8 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	MetricTotalAccountCRsFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(failedAccountCount))
 	MetricTotalAccountCRsReady.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(readyAccountCount))
 	MetricTotalAccountReuseFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(reuseAccountFailedCount))
-	for _, account := range accountList.Items {
-		MetricTotalAccountReusedAvailable.With(prometheus.Labels{"LegalID": account.Spec.LegalEntity.ID}).Set(float64(idMap[account.Spec.LegalEntity.ID]))
+	for id, val := range idMap {
+		MetricTotalAccountReusedAvailable.With(prometheus.Labels{"LegalID": id}).Set(float64(val))
 	}
 
 }
