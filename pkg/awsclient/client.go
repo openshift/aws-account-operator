@@ -201,7 +201,11 @@ func (c *awsClient) GetCallerIdentity(input *sts.GetCallerIdentityInput) (*sts.G
 }
 
 func (c *awsClient) GetFederationToken(input *sts.GetFederationTokenInput) (*sts.GetFederationTokenOutput, error) {
-	return c.stsClient.GetFederationToken(input)
+	GetFederationTokenOutput, err := c.stsClient.GetFederationToken(input)
+	if GetFederationTokenOutput != nil {
+		return GetFederationTokenOutput, err
+	}
+	return &sts.GetFederationTokenOutput{}, err
 }
 
 func (c *awsClient) ListBuckets(input *s3.ListBucketsInput) (*s3.ListBucketsOutput, error) {
@@ -213,7 +217,7 @@ func (c *awsClient) DeleteBucket(input *s3.DeleteBucketInput) (*s3.DeleteBucketO
 }
 
 // NewClient creates our client wrapper object for the actual AWS clients we use.
-func NewClient(kubeClient kubeclientpkg.Client, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
+func NewClient(awsAccessID, awsAccessSecret, token, region string) (Client, error) {
 	awsConfig := &aws.Config{Region: aws.String(region)}
 	awsConfig.Credentials = credentials.NewStaticCredentials(
 		awsAccessID, awsAccessSecret, token)
@@ -267,7 +271,7 @@ func GetAWSClient(kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Cli
 				input.SecretName, awsCredsSecretAccessKey)
 		}
 
-		awsClient, err := NewClient(kubeClient, string(accessKeyID), string(secretAccessKey), input.AwsToken, input.AwsRegion)
+		awsClient, err := NewClient(string(accessKeyID), string(secretAccessKey), input.AwsToken, input.AwsRegion)
 		if err != nil {
 			return nil, err
 		}
@@ -278,7 +282,7 @@ func GetAWSClient(kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Cli
 		return nil, fmt.Errorf("getAWSClient: NoAwsCredentials or Secret %v", input)
 	}
 
-	awsClient, err := NewClient(kubeClient, input.AwsCredsSecretIDKey, input.AwsCredsSecretAccessKey, input.AwsToken, input.AwsRegion)
+	awsClient, err := NewClient(input.AwsCredsSecretIDKey, input.AwsCredsSecretAccessKey, input.AwsToken, input.AwsRegion)
 	if err != nil {
 		return nil, err
 	}

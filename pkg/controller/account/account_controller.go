@@ -36,7 +36,7 @@ import (
 var log = logf.Log.WithName("controller_account")
 
 const (
-	awsLimit                = 4300
+	awsLimit                = 4400
 	awsCredsUserName        = "aws_user_name"
 	awsCredsSecretIDKey     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
@@ -213,7 +213,7 @@ type ReconcileAccount struct {
 	// that reads objects from the cache and writes to the apiserver
 	Client           client.Client
 	scheme           *runtime.Scheme
-	awsClientBuilder func(kubeClient client.Client, awsAccessID, awsAccessSecret, token, region string) (awsclient.Client, error)
+	awsClientBuilder func(awsAccessID, awsAccessSecret, token, region string) (awsclient.Client, error)
 }
 
 // secretInput is a struct that holds data required to create a new secret CR
@@ -418,6 +418,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			if aerr, ok := err.(awserr.Error); ok {
 				reqLogger.Error(returnErr, fmt.Sprintf("Unable to create AWS connection with SRE credentials, AWS Error Message: %s", aerr.Message()))
 			}
+			return reconcile.Result{}, err
 		}
 
 		// Create STS CLI Credentials for SRE
@@ -488,7 +489,7 @@ func (r *ReconcileAccount) getAWSClient(input newAwsClientInput) (awsclient.Clie
 				input.secretName, awsCredsSecretAccessKey)
 		}
 
-		awsClient, err := r.awsClientBuilder(r.Client, string(accessKeyID), string(secretAccessKey), input.awsToken, input.awsRegion)
+		awsClient, err := r.awsClientBuilder(string(accessKeyID), string(secretAccessKey), input.awsToken, input.awsRegion)
 		if err != nil {
 			return nil, err
 		}
@@ -499,7 +500,7 @@ func (r *ReconcileAccount) getAWSClient(input newAwsClientInput) (awsclient.Clie
 		return nil, fmt.Errorf("getAWSClient: NoAwsCredentials or Secret %v", input)
 	}
 
-	awsClient, err := r.awsClientBuilder(r.Client, input.awsCredsSecretIDKey, input.awsCredsSecretAccessKey, input.awsToken, input.awsRegion)
+	awsClient, err := r.awsClientBuilder(input.awsCredsSecretIDKey, input.awsCredsSecretAccessKey, input.awsToken, input.awsRegion)
 	if err != nil {
 		return nil, err
 	}
@@ -866,7 +867,7 @@ func TotalAwsAccounts(client awsclient.Client) (int, error) {
 	return len(awsAccounts), nil
 }
 
-// SetAccountStatus changes the status of an existing account
+// SetAccountStatus sets the status of an account
 func SetAccountStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string, ctype awsv1alpha1.AccountConditionType, state string) {
 	awsAccount.Status.Conditions = controllerutils.SetAccountCondition(
 		awsAccount.Status.Conditions,
