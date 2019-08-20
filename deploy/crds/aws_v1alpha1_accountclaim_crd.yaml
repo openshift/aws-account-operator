@@ -20,8 +20,6 @@ spec:
     plural: accountclaims
     singular: accountclaim
   scope: Namespaced
-  subresources:
-    status: {}
   validation:
     openAPIV3Schema:
       properties:

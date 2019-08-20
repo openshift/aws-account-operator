@@ -20,8 +20,6 @@ spec:
     plural: accountpools
     singular: accountpool
   scope: Namespaced
-  subresources:
-    status: {}
   validation:
     openAPIV3Schema:
       properties:

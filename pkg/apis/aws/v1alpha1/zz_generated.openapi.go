@@ -302,17 +302,17 @@ func schema_pkg_apis_aws_v1alpha1_AccountSpec(ref common.ReferenceCallback) comm
 							Format: "",
 						},
 					},
-					"supportCaseID": {
+					"legalEntity": {
 						SchemaProps: spec.SchemaProps{
-							Type:   []string{"string"},
-							Format: "",
+							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.LegalEntity"),
 						},
 					},
 				},
-				Required: []string{"awsAccountID", "iamUserSecret"},
+				Required: []string{"awsAccountID", "iamUserSecret", "legalEntity"},
 			},
 		},
-		Dependencies: []string{},
+		Dependencies: []string{
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.LegalEntity"},
 	}
 }
 
@@ -327,6 +327,12 @@ func schema_pkg_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) co
 							Description: "INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run \"operator-sdk generate k8s\" to regenerate code after modifying this file Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html",
 							Type:        []string{"boolean"},
 							Format:      "",
+						},
+					},
+					"supportCaseID": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
 						},
 					},
 					"conditions": {
@@ -353,8 +359,14 @@ func schema_pkg_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) co
 							Format: "",
 						},
 					},
+					"reused": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
 				},
-				Required: []string{"claimed", "conditions", "state", "rotateCredentials"},
+				Required: []string{"claimed", "supportCaseID", "conditions", "state", "rotateCredentials", "reused"},
 			},
 		},
 		Dependencies: []string{
