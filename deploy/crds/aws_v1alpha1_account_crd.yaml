@@ -115,7 +115,7 @@ spec:
               type: string
             supportCaseID:
               type: string
-               description: 'Field will be populated by the account controller when the account gets in PendingVerification status'              
+              description: 'Field will be populated by the account controller when the account gets in PendingVerification status'
           required:
           - claimed
           - supportCaseID
