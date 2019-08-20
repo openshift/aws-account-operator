@@ -418,6 +418,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			if aerr, ok := err.(awserr.Error); ok {
 				reqLogger.Error(returnErr, fmt.Sprintf("Unable to create AWS connection with SRE credentials, AWS Error Message: %s", aerr.Message()))
 			}
+			return reconcile.Result{}, err
 		}
 
 		// Create STS CLI Credentials for SRE
