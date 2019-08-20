@@ -23,8 +23,6 @@ spec:
     plural: accounts
     singular: account
   scope: Namespaced
-  subresources:
-    status: {}
   validation:
     openAPIV3Schema:
       properties:
@@ -59,11 +57,15 @@ spec:
                   type: string
                 name:
                   type: string
+              required:
+              - name
+              - id
               type: object
           required:
           - awsAccountID
           - iamUserSecret
           - claimLink
+          - legalEntity
           type: object
         status:
           properties:
@@ -73,12 +75,6 @@ spec:
                 code after modifying this file Add custom validation using kubebuilder
                 tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
               type: boolean
-            reused:
-              description: 'Field will be populated by the accountclaim controller indicating the account has been reused' 
-              type: boolean
-            supportCaseID:
-              description: 'Field will be populated by the account controller when the account gets in PendingVerification status'
-              type: string
             conditions:
               items:
                 properties:
@@ -110,15 +106,23 @@ spec:
                 - status
                 type: object
               type: array
+            reused:
+              type: boolean
+              description: 'Field will be populated by the accountclaim controller indicating the account has been reused' 
             rotateCredentials:
               type: boolean
             state:
               type: string
+            supportCaseID:
+              type: string
+               description: 'Field will be populated by the account controller when the account gets in PendingVerification status'              
           required:
           - claimed
+          - supportCaseID
           - conditions
           - state
           - rotateCredentials
+          - reused
           type: object
   version: v1alpha1
   versions:
