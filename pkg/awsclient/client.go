@@ -201,7 +201,11 @@ func (c *awsClient) GetCallerIdentity(input *sts.GetCallerIdentityInput) (*sts.G
 }
 
 func (c *awsClient) GetFederationToken(input *sts.GetFederationTokenInput) (*sts.GetFederationTokenOutput, error) {
-	return c.stsClient.GetFederationToken(input)
+	GetFederationTokenOutput, err := c.stsClient.GetFederationToken(input)
+	if GetFederationTokenOutput != nil {
+		return GetFederationTokenOutput, err
+	}
+	return &sts.GetFederationTokenOutput{}, err
 }
 
 func (c *awsClient) ListBuckets(input *s3.ListBucketsInput) (*s3.ListBucketsOutput, error) {
