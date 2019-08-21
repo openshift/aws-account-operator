@@ -114,6 +114,9 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 					} else {
 						idMap[account.Spec.LegalEntity.ID] = idMap[account.Spec.LegalEntity.ID] + 1
 					}
+				} else {
+					// Regular account (non-reused) in Ready state
+					readyAccountCount++
 				}
 			}
 		} else {
