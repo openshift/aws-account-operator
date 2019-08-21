@@ -90,21 +90,14 @@ func UpdateAWSMetrics(totalAccounts int) {
 
 // UpdateAccountCRMetrics updates all metrics related to Account CRs
 func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
-
 	unclaimedAccountCount := 0
 	claimedAccountCount := 0
 	failedAccountCount := 0
-	reusedAccountAvailableCount := 0
 	reuseAccountFailedCount := 0
 	pendingVerificationAccountCount := 0
 	readyAccountCount := 0
 	idMap := make(map[string]int)
 	for _, account := range accountList.Items {
-		if idMap[account.Spec.LegalEntity.ID] == 0 {
-			idMap[account.Spec.LegalEntity.ID] = 1
-		} else {
-			idMap[account.Spec.LegalEntity.ID] = idMap[account.Spec.LegalEntity.ID] + 1
-		}
 		if account.Status.Claimed == false {
 			// Ignore unclaimed accounts in Failed status
 			if account.Status.State != "Failed" {
@@ -112,18 +105,21 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 				if account.Status.Reused != true {
 					unclaimedAccountCount++
 				}
-				if account.Status.State == "Ready" {
-					// Reused accounts in Ready state are counted in separate metric
-					if account.Status.Reused == true {
-						reusedAccountAvailableCount++
+			}
+			if account.Status.State == "Ready" {
+				// Reused accounts in Ready state are counted in separate metric
+				if account.Status.Reused == true {
+					if idMap[account.Spec.LegalEntity.ID] == 0 {
+						idMap[account.Spec.LegalEntity.ID] = 1
 					} else {
-						readyAccountCount++
+						idMap[account.Spec.LegalEntity.ID] = idMap[account.Spec.LegalEntity.ID] + 1
 					}
 				}
 			}
 		} else {
 			claimedAccountCount++
 		}
+
 		if account.Status.State == "Failed" {
 			if account.Status.Reused == true {
 				// Account failed during reuse process
