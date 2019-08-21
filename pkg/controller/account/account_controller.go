@@ -23,8 +23,8 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -211,7 +211,7 @@ var _ reconcile.Reconciler = &ReconcileAccount{}
 type ReconcileAccount struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	Client           client.Client
+	Client           kubeclientpkg.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder func(awsAccessID, awsAccessSecret, token, region string) (awsclient.Client, error)
 }
@@ -243,10 +243,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	reqLogger.Info("Reconciling Account")
 
 	// We expect this secret to exist in the same namespace Account CR's are created
-	awsSetupClient, err := r.getAWSClient(newAwsClientInput{
-		secretName: awsSecretName,
-		nameSpace:  awsv1alpha1.AccountCrNamespace,
-		awsRegion:  "us-east-1",
+	awsSetupClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+		SecretName: awsSecretName,
+		NameSpace:  awsv1alpha1.AccountCrNamespace,
+		AwsRegion:  "us-east-1",
 	})
 	if err != nil {
 		reqLogger.Error(err, "Failed to get AWS client")
@@ -378,11 +378,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, credsErr
 		}
 
-		awsAssumedRoleClient, err := r.getAWSClient(newAwsClientInput{
-			awsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
-			awsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
-			awsToken:                *creds.Credentials.SessionToken,
-			awsRegion:               "us-east-1"})
+		awsAssumedRoleClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+			AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
+			AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
+			AwsToken:                *creds.Credentials.SessionToken,
+			AwsRegion:               "us-east-1",
+		})
 		if err != nil {
 			reqLogger.Info(err.Error())
 			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to assume role")
@@ -408,10 +409,11 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Create new awsClient with SRE IAM credentials so we can generate STS and Federation tokens from it
-		SREAWSClient, err := r.getAWSClient(newAwsClientInput{
-			secretName: SREIAMUserSecret,
-			nameSpace:  awsv1alpha1.AccountCrNamespace,
-			awsRegion:  "us-east-1"})
+		SREAWSClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+			SecretName: SREIAMUserSecret,
+			NameSpace:  awsv1alpha1.AccountCrNamespace,
+			AwsRegion:  "us-east-1",
+		})
 
 		if err != nil {
 			var returnErr error
@@ -453,58 +455,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	return reconcile.Result{}, nil
-}
-
-// getAWSClient generates an awsclient
-// function must include region
-// Pass in token if sessions requires a token
-// if it includes a secretName and nameSpace it will create credentials from that secret data
-// If it includes awsCredsSecretIDKey and awsCredsSecretAccessKey it will build credentials from those
-func (r *ReconcileAccount) getAWSClient(input newAwsClientInput) (awsclient.Client, error) {
-
-	// error if region is not included
-	if input.awsRegion == "" {
-		return nil, fmt.Errorf("getAWSClient:NoRegion: %v", input.awsRegion)
-	}
-
-	if input.secretName != "" && input.nameSpace != "" {
-		secret := &corev1.Secret{}
-		err := r.Client.Get(context.TODO(),
-			types.NamespacedName{
-				Name:      input.secretName,
-				Namespace: input.nameSpace,
-			},
-			secret)
-		if err != nil {
-			return nil, err
-		}
-		accessKeyID, ok := secret.Data[awsCredsSecretIDKey]
-		if !ok {
-			return nil, fmt.Errorf("AWS credentials secret %v did not contain key %v",
-				input.secretName, awsCredsSecretIDKey)
-		}
-		secretAccessKey, ok := secret.Data[awsCredsSecretAccessKey]
-		if !ok {
-			return nil, fmt.Errorf("AWS credentials secret %v did not contain key %v",
-				input.secretName, awsCredsSecretAccessKey)
-		}
-
-		awsClient, err := r.awsClientBuilder(string(accessKeyID), string(secretAccessKey), input.awsToken, input.awsRegion)
-		if err != nil {
-			return nil, err
-		}
-		return awsClient, nil
-	}
-
-	if input.awsCredsSecretIDKey == "" && input.awsCredsSecretAccessKey != "" {
-		return nil, fmt.Errorf("getAWSClient: NoAwsCredentials or Secret %v", input)
-	}
-
-	awsClient, err := r.awsClientBuilder(input.awsCredsSecretIDKey, input.awsCredsSecretAccessKey, input.awsToken, input.awsRegion)
-	if err != nil {
-		return nil, err
-	}
-	return awsClient, nil
 }
 
 // BuildAccount take all parameters required and uses those to make an aws call to CreateAccount. It returns an account ID and and error

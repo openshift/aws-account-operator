@@ -82,7 +82,7 @@ spec:
                     description: LastProbeTime is the last time we probed the condition.
                     format: date-time
                     type: string
-                  lastTransitioNTime:
+                  lastTransitionTime:
                     description: LastTransitionTime is the laste time the condition
                       transitioned from one status to another.
                     format: date-time
@@ -115,7 +115,7 @@ spec:
               type: string
             supportCaseID:
               type: string
-               description: 'Field will be populated by the account controller when the account gets in PendingVerification status'              
+              description: 'Field will be populated by the account controller when the account gets in PendingVerification status'
           required:
           - claimed
           - supportCaseID
