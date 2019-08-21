@@ -66,7 +66,7 @@ type AccountCondition struct {
 	LastProbeTime metav1.Time `json:"lastProbeTime,omitempty"`
 	// LastTransitionTime is the laste time the condition transitioned from one status to another.
 	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitioNTime,omitempty"`
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
 	// Reason is a unique, one-word, CamelCase reason for the condition's last transition.
 	// +optional
 	Reason string `json:"reason,omitempty"`
