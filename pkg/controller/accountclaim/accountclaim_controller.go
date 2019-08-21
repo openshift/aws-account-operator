@@ -145,6 +145,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			}
 
 		}
+		return reconcile.Result{}, nil
 	}
 
 	// Return if this claim has been satisfied
