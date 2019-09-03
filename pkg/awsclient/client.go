@@ -86,6 +86,7 @@ type Client interface {
 	ListBuckets(*s3.ListBucketsInput) (*s3.ListBucketsOutput, error)
 	DeleteBucket(*s3.DeleteBucketInput) (*s3.DeleteBucketOutput, error)
 	BatchDeleteBucketObjects(bucketName *string) error
+	ListObjectsV2(*s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, error)
 }
 
 type awsClient struct {
@@ -216,6 +217,10 @@ func (c *awsClient) ListBuckets(input *s3.ListBucketsInput) (*s3.ListBucketsOutp
 
 func (c *awsClient) DeleteBucket(input *s3.DeleteBucketInput) (*s3.DeleteBucketOutput, error) {
 	return c.s3Client.DeleteBucket(input)
+}
+
+func (c *awsClient) ListObjectsV2(input *s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, error) {
+	return c.s3Client.ListObjectsV2(input)
 }
 
 func (c *awsClient) BatchDeleteBucketObjects(bucketName *string) error {

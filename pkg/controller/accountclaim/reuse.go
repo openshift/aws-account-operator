@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/go-logr/logr"
@@ -224,43 +223,46 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 			Bucket: aws.String(*bucket.Name),
 		}
 
-		DelError := fmt.Sprintf("Failed deleting S3 bucket: %s", *bucket.Name)
+		// delete any content if any
+		err := DeleteBucketContent(awsClient, *bucket.Name)
+		if err != nil {
+			contentDelErr := fmt.Sprintf("Failed to delete bucket content: %s", *bucket.Name)
+			reqLogger.Error(err, contentDelErr)
+			return err
+		}
 		_, err = awsClient.DeleteBucket(&deleteBucketInput)
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				DelObjErr := fmt.Sprintf("Failed deleting items in S3 bucket: %s", *bucket.Name)
-				switch aerr.Code() {
-				// if bucket is not empty empty the bucket and attempt to delete again
-				case "BucketNotEmpty":
-					err := awsClient.BatchDeleteBucketObjects(aws.String(*bucket.Name))
-					if err != nil {
-						reqLogger.Error(err, DelObjErr)
-						awsErrors <- DelObjErr
-						return err
-					}
-					// try to delete the bucket again
-					_, err = awsClient.DeleteBucket(&deleteBucketInput)
-					if err != nil {
-						reqLogger.Error(err, DelError)
-						awsErrors <- DelError
-						return err
-					}
-				default:
-					reqLogger.Error(err, DelObjErr)
-					awsErrors <- DelObjErr
-					return err
-				}
-
-				reqLogger.Error(err, DelError)
-				awsErrors <- DelError
-				return err
-			}
+			delError := fmt.Sprintf("Failed deleting S3 bucket: %s", *bucket.Name)
+			reqLogger.Error(err, delError)
+			awsErrors <- delError
+			return err
 		}
 
 	}
 
 	successMsg := fmt.Sprintf("S3 cleanup finished successfully")
 	awsNotifications <- successMsg
+	return nil
+}
+
+// DeleteBucketContent deletes any content in a bucket if it is not empty
+func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
+	// check if objects exits
+	objects, err := awsClient.ListObjectsV2(&s3.ListObjectsV2Input{
+		Bucket: aws.String(bucketName),
+	})
+	if err != nil {
+		return err
+	}
+	if len((*objects).Contents) == 0 {
+		return nil
+	}
+
+	err = awsClient.BatchDeleteBucketObjects(aws.String(bucketName))
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
