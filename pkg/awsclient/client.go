@@ -16,6 +16,7 @@ package awsclient
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -84,6 +85,7 @@ type Client interface {
 	// S3
 	ListBuckets(*s3.ListBucketsInput) (*s3.ListBucketsOutput, error)
 	DeleteBucket(*s3.DeleteBucketInput) (*s3.DeleteBucketOutput, error)
+	BatchDeleteBucketObjects(bucketName *string) error
 }
 
 type awsClient struct {
@@ -214,6 +216,16 @@ func (c *awsClient) ListBuckets(input *s3.ListBucketsInput) (*s3.ListBucketsOutp
 
 func (c *awsClient) DeleteBucket(input *s3.DeleteBucketInput) (*s3.DeleteBucketOutput, error) {
 	return c.s3Client.DeleteBucket(input)
+}
+
+func (c *awsClient) BatchDeleteBucketObjects(bucketName *string) error {
+	// Setup BatchDeleteItrerator to iterate through a list of objects
+	iter := s3manager.NewDeleteListIterator(c.s3Client, &s3.ListObjectsInput{
+		Bucket: bucketName,
+	})
+
+	// Traverse iterator deleting each object
+	return s3manager.NewBatchDeleteWithClient(c.s3Client).Delete(aws.BackgroundContext(), iter)
 }
 
 // NewClient creates our client wrapper object for the actual AWS clients we use.
