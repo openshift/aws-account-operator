@@ -348,24 +348,41 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, ErrAwsAccountLimitExceeded
 		}
 
-		// Build Aws Account
-		awsAccountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
+		var awsAccountID string
 
-		// set state creating if the account was able to create
-		SetAccountStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, "Creating")
-		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
+		if currentAcctInstance.Spec.AwsAccountID == "" {
 
-		// update account cr with awsAccountID from aws
-		currentAcctInstance.Spec.AwsAccountID = awsAccountID
-		err = r.Client.Update(context.TODO(), currentAcctInstance)
-		if err != nil {
-			return reconcile.Result{}, err
+			// Build Aws Account
+			awsAccountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			// set state creating if the account was able to create
+			SetAccountStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, "Creating")
+			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			// update account cr with awsAccountID from aws
+			currentAcctInstance.Spec.AwsAccountID = awsAccountID
+			err = r.Client.Update(context.TODO(), currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+		} else {
+
+			awsAccountID = currentAcctInstance.Spec.AwsAccountID
+
+			// set state creating if the account was alredy created
+			SetAccountStatus(reqLogger, currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, "Creating")
+			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
 		}
 
 		// Get STS credentials so that we can create an aws client with
