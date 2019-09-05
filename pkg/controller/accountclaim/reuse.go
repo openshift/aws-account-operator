@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/go-logr/logr"
@@ -226,16 +227,31 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 		// delete any content if any
 		err := DeleteBucketContent(awsClient, *bucket.Name)
 		if err != nil {
-			contentDelErr := fmt.Sprintf("Failed to delete bucket content: %s", *bucket.Name)
-			reqLogger.Error(err, contentDelErr)
-			return err
+			ContentDelErr := fmt.Sprintf("Failed to delete bucket content: %s", *bucket.Name)
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				case s3.ErrCodeNoSuchBucket:
+					//ignore these errors
+				default:
+					reqLogger.Error(err, ContentDelErr)
+					awsErrors <- ContentDelErr
+					return err
+				}
+			}
 		}
 		_, err = awsClient.DeleteBucket(&deleteBucketInput)
 		if err != nil {
-			delError := fmt.Sprintf("Failed deleting S3 bucket: %s", *bucket.Name)
-			reqLogger.Error(err, delError)
-			awsErrors <- delError
-			return err
+			DelError := fmt.Sprintf("Failed deleting S3 bucket: %s", *bucket.Name)
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				case s3.ErrCodeNoSuchBucket:
+					//ignore these errors
+				default:
+					reqLogger.Error(err, DelError)
+					awsErrors <- DelError
+					return err
+				}
+			}
 		}
 
 	}
