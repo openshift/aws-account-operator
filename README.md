@@ -38,7 +38,7 @@ The operator is deployed to an OpenShift cluster in the `aws-account-operator` n
 
 ## 1.2. Requirements
 
-The operator requires a secret named `aws-account-operator-credentials` in the `aws-account-operator` namespacce, containing credentials to the AWS payer account you wish to create accounts in. The secret should contain credentials for an IAM user in the payer account with the data fields `aws_access_key_id` and `aws_secret_access_key`. The user should have the following IAM permissions:
+The operator requires a secret named `aws-account-operator-credentials` in the `aws-account-operator` namespace, containing credentials to the AWS payer account you wish to create accounts in. The secret should contain credentials for an IAM user in the payer account with the data fields `aws_access_key_id` and `aws_secret_access_key`. The user should have the following IAM permissions:
 
 Permissions to allow the user to assume the `OrganizationAccountAccessRole` role in any account created:
 
@@ -75,7 +75,7 @@ Permissions to allow the user to interact with the support center:
 
 ## 1.3. Workflow
 
-First, an AcccountPool must be created to specify the number of desired accounts to be ready. The operator then goes and creates that number of accounts. 
+First, an AccountPool must be created to specify the number of desired accounts to be ready. The operator then goes and creates that number of accounts. 
 When a [Hive](https://github.com/openshift/hive) cluster has a new cluster request, an AccountClaim is created with the name equal to the desired name of the cluster in a unique workspace. The operator links the AccountClaim to an Account in the pool, and creates the required k8s secrets, placing them in the AccountClaim's unique namespace. The AccountPool is then filled up again by the operator.  Hive then uses the secrets to create the AWS resources for the new cluster. 
 
 For more information on how this process is done, please refer to the controllers section.  
@@ -124,7 +124,7 @@ spec:
 
 ## 2.3. AccountClaim CR
 
-The AccountClaim CR links to an available account and stores the name of the associated secret with AWS credentials fort that account.. 
+The AccountClaim CR links to an available account and stores the name of the associated secret with AWS credentials for that account.
 
 ```yaml
 apiVersion: aws.managed.openshift.io/v1alpha1
@@ -150,7 +150,7 @@ spec:
 
 The accountpool-controller is triggered by a create or change to an accountpool CR or an account CR. It is responsible for filling the Acccount Pool by generating new account CRs. 
 
-It looks at the accountpool CR *spec.poolSize* and it ensures that the number of unclaimed accounts matchs the number of the poolsize. If the number of unclaimed accounts is less then the poolsize it creates a new account CR for the account-controller to process.
+It looks at the accountpool CR *spec.poolSize* and it ensures that the number of unclaimed accounts matches the number of the poolsize. If the number of unclaimed accounts is less then the poolsize it creates a new account CR for the account-controller to process.
 
 ### 3.1.1. Constants and Globals
 ```
@@ -159,7 +159,7 @@ emailID = "osd-creds-mgmt"
 
 ### 3.1.2. Status
 
-Updates accountPool cr 
+Updates accountPool CR 
 ```
   claimedAccounts: 4
   poolSize: 3
@@ -167,7 +167,9 @@ Updates accountPool cr
 ```
 
 *claimedAccounts* are any accounts with the `status.Claimed=true`
-*unclaimedAccounts* are any accounts with `status.Claimed=false` and `status.State!="Failed"`
+
+*unclaimedAccounts* are any accounts with `status.Claimed=false` and `status.State!="Failed"`.
+
 *poolSize* is the poolsize from the accountPool spec
 
 ### 3.1.3. Metrics
@@ -191,18 +193,18 @@ The account-controller is triggered by creating or changing an account CR. It is
 
 If the *awsLimit* set in the constants is not exceeded
 1. Creates a new account in the organization belonging to credentials in secret `aws-account-operator-credentials` 
-2. Configures two AWS IAM users from *iamUserNameUHC* and *iamUserNameSRE* as thier respective usernames
+2. Configures two AWS IAM users from *iamUserNameUHC* and *iamUserNameSRE* as their respective usernames
     * Creates IAM user in new account 
     * Attaches Admin policy
     * Generates a secret access key for the user 
     * Stores user secret in a AWS secret
 3. Creates STS CLI tokens
-    * Creates Federated webconsole URL using the iamUserNameSRE user
+    * Creates Federated webconsole URL using the *iamUserNameSRE* user
 4. Creates and Destroys EC2 instances
 5. Creates aws support case to increase account limits
 
 **note**
-*amUserNameUHC* is used by Hive to provision clusters
+*iamUserNameUHC* is used by Hive to provision clusters
 *iamUserNameSRE* is used to generate Federated console URL
 
 ### 3.2.1. Additional Functionailty 
@@ -281,7 +283,9 @@ spec:
 ```
 
 *awsAccountID* is updated with the account ID of the aws account that is created by the account controller
+
 *claimLink* holds the name of the accountClaim that has claimed this account CR
+
 *iamUserSecret* holds the name of the secret containing IAM user credentials for the AWS account
 
 ### 3.2.4. Status
@@ -400,9 +404,10 @@ MetricTotalAccountClaimCRs
 metricsPort               = "8080"
 metricsPath               = "/metrics"
 secretWatcherScanInterval = time.Duration(10) * time.Minute
-
 ```
 
 *metricsPort* is the port used to start the metrics port
+
 *metricsPath* it the path used as the metrics endpoint
+
 *secretWatcherScanInterval* sets the interval at which the secret watcher will look for secrets that are expiring
