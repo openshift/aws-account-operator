@@ -157,6 +157,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 		return reconcile.Result{}, err
 	}
 
+	reqLogger.Info(fmt.Sprintf("Creating account for accountpool. Unlaimed accounts: %d, poolsize%d", unclaimedAccountCount, poolSizeCount))
 	err = r.client.Create(context.TODO(), newAccount)
 	if err != nil {
 		return reconcile.Result{}, err
