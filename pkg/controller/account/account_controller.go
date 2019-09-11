@@ -588,10 +588,15 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	return userSecret.ObjectMeta.Name, nil
 }
 
-func (r *ReconcileAccount) setStatusFailed(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string) {
+func (r *ReconcileAccount) setStatusFailed(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string) error {
 	reqLogger.Info(message)
 	awsAccount.Status.State = "Failed"
-	_ = r.Client.Status().Update(context.TODO(), awsAccount)
+	err := r.Client.Status().Update(context.TODO(), awsAccount)
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Account %s status failed to update", awsAccount.Name))
+		return err
+	}
+	return nil
 }
 
 // CreateAccount creates an AWS account for the specified accountName and accountEmail in the orgnization
