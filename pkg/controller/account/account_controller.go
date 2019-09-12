@@ -71,7 +71,6 @@ const (
 )
 
 var awsAccountID string
-var desiredInstanceType = "m5.xlarge"
 var coveredRegions = map[string]map[string]string{
 	"us-east-1": {
 		"initializationAMI": "ami-000db10762d0c4c05",
