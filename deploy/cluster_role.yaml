@@ -44,6 +44,7 @@ rules:
   - '*'
   - accountclaims
   - accounts
+  - accountpools
   verbs:
   - '*'
 - apiGroups:
