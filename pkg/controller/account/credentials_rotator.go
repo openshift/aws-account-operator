@@ -62,7 +62,8 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: STSCredentialsSecretName, Namespace: awsv1alpha1.AccountCrNamespace}, STSSecret)
 
 	if err != nil {
-		reqLogger.Error(err, "Error retriving secret %s", STSCredentialsSecretName)
+		errMsg := fmt.Sprintf("Error retrieving secret %s", STSCredentialsSecretName)
+		reqLogger.Error(err, errMsg)
 		return err
 	}
 
