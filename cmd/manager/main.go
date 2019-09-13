@@ -27,9 +27,10 @@ import (
 
 // Change below variables to serve metrics on different host or port.
 var (
-	metricsPort               = "8080"
-	metricsPath               = "/metrics"
-	secretWatcherScanInterval = time.Duration(10) * time.Minute
+	metricsPort                   = "8080"
+	metricsPath                   = "/metrics"
+	secretWatcherScanInterval     = time.Duration(10) * time.Minute
+	hours                     int = 1
 )
 
 var log = logf.Log.WithName("cmd")
@@ -137,6 +138,8 @@ func main() {
 
 	// Start the secret watcher
 	go credentialwatcher.SecretWatcher.Start(log, stopCh)
+
+	go localmetrics.UpdateAWSMetrics(mgr.GetClient(), hours)
 
 	log.Info("Starting the Cmd.")
 

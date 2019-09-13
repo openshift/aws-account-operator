@@ -18,7 +18,6 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
-	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,7 +41,7 @@ const (
 	awsCredsSecretAccessKey = "aws_secret_access_key"
 	iamUserNameUHC          = "osdManagedAdmin"
 	iamUserNameSRE          = "osdManagedAdminSRE"
-	awsSecretName           = "aws-account-operator-credentials"
+	AwsSecretName           = "aws-account-operator-credentials"
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
 	createPendTime          = 10 * time.Minute
@@ -243,7 +242,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// We expect this secret to exist in the same namespace Account CR's are created
 	awsSetupClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
-		SecretName: awsSecretName,
+		SecretName: AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
 	})
@@ -339,8 +338,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			reqLogger.Info("Failed to get AWS account total from AWS api", "Error", err.Error())
 			return reconcile.Result{}, err
 		}
-
-		localmetrics.UpdateAWSMetrics(accountTotal)
 
 		if accountTotal >= awsLimit {
 			reqLogger.Error(ErrAwsAccountLimitExceeded, "AWS Account limit reached", "Account Total", accountTotal)
