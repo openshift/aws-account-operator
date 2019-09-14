@@ -82,6 +82,9 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 }
 
 func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
+	// Cleean up status, used to store an error if any of the cleanup functions recveived one
+	cleanUpStatusFailed := false
+
 	// Channels to track clean up functions
 	awsNotifications, awsErrors := make(chan string), make(chan string)
 
@@ -125,8 +128,15 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, account
 		case errMsg := <-awsErrors:
 			err = errors.New(errMsg)
 			reqLogger.Error(err, errMsg)
-			return err
+			cleanUpStatusFailed = true
 		}
+	}
+
+	// Return an error if we saw any errors on the awsErrors channel so we can make the reused account as failed
+	if cleanUpStatusFailed {
+		cleanUpStatusFailedMsg := "Failed to clean up AWS account"
+		err = errors.New(cleanUpStatusFailedMsg)
+		reqLogger.Error(err, cleanUpStatusFailedMsg)
 	}
 
 	reqLogger.Info("AWS account cleanup completed")
@@ -151,7 +161,6 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountSnapshots(reqLogger logr.Logger
 	ebsSnapshots, err := awsClient.DescribeSnapshots(&describeSnapshotsInput)
 	if err != nil {
 		descError := "Failed describing EBS snapshots"
-		reqLogger.Error(err, descError)
 		awsErrors <- descError
 		return err
 	}
@@ -165,7 +174,6 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountSnapshots(reqLogger logr.Logger
 		_, err = awsClient.DeleteSnapshot(&deleteSnapshotInput)
 		if err != nil {
 			delError := fmt.Sprintf("Failed deleting EBS snapshot: %s", *snapshot.SnapshotId)
-			reqLogger.Error(err, delError)
 			awsErrors <- delError
 			return err
 		}
@@ -182,7 +190,6 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logge
 	ebsVolumes, err := awsClient.DescribeVolumes(&describeVolumesInput)
 	if err != nil {
 		descError := "Failed describing EBS volumes"
-		reqLogger.Error(err, descError)
 		awsErrors <- descError
 		return err
 	}
@@ -196,7 +203,6 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logge
 		_, err = awsClient.DeleteVolume(&deleteVolumeInput)
 		if err != nil {
 			delError := fmt.Sprintf("Failed deleting EBS volume: %s", *volume.VolumeId)
-			reqLogger.Error(err, delError)
 			awsErrors <- delError
 			return err
 		}
@@ -213,7 +219,6 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 	s3Buckets, err := awsClient.ListBuckets(&listBucketsInput)
 	if err != nil {
 		listError := "Failed listing S3 buckets"
-		reqLogger.Error(err, listError)
 		awsErrors <- listError
 		return err
 	}
@@ -233,7 +238,6 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 				case s3.ErrCodeNoSuchBucket:
 					//ignore these errors
 				default:
-					reqLogger.Error(err, ContentDelErr)
 					awsErrors <- ContentDelErr
 					return err
 				}
@@ -247,7 +251,6 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 				case s3.ErrCodeNoSuchBucket:
 					//ignore these errors
 				default:
-					reqLogger.Error(err, DelError)
 					awsErrors <- DelError
 					return err
 				}
