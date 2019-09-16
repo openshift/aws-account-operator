@@ -56,17 +56,21 @@
     "aws/session",
     "aws/signer/v4",
     "internal/ini",
+    "internal/s3err",
     "internal/sdkio",
     "internal/sdkrand",
     "internal/sdkuri",
     "internal/shareddefaults",
     "private/protocol",
     "private/protocol/ec2query",
+    "private/protocol/eventstream",
+    "private/protocol/eventstream/eventstreamapi",
     "private/protocol/json/jsonutil",
     "private/protocol/jsonrpc",
     "private/protocol/query",
     "private/protocol/query/queryutil",
     "private/protocol/rest",
+    "private/protocol/restxml",
     "private/protocol/xml/xmlutil",
     "service/ec2",
     "service/ec2/ec2iface",
@@ -74,6 +78,8 @@
     "service/iam/iamiface",
     "service/organizations",
     "service/organizations/organizationsiface",
+    "service/s3",
+    "service/s3/s3iface",
     "service/sts",
     "service/sts/stsiface",
     "service/support",
@@ -120,6 +126,14 @@
   pruneopts = "NT"
   revision = "85d198d05a92d31823b852b4a5928114912e8949"
   version = "v2.9.0"
+
+[[projects]]
+  digest = "1:448bf60e9dce6d5fd9dfa8fd9eb9a23163424ff4e4f142456405781e942e3998"
+  name = "github.com/evanphx/json-patch"
+  packages = ["."]
+  pruneopts = "NT"
+  revision = "026c730a0dcc5d11f93f1cf1cc65b01247ea7b6f"
+  version = "v4.5.0"
 
 [[projects]]
   digest = "1:81466b4218bf6adddac2572a30ac733a9255919bc2f470b4827a317bd4ee1756"
@@ -211,6 +225,14 @@
   packages = ["lru"]
   pruneopts = "NT"
   revision = "5b532d6fd5efaf7fa130d4e859a2fde0fc3a9e1b"
+
+[[projects]]
+  digest = "1:e6eb1dec8cf5be2ac3fad30e00ce80c9f0e61239478d0ef6b5616f068590d8e8"
+  name = "github.com/golang/mock"
+  packages = ["gomock"]
+  pruneopts = "NT"
+  revision = "9fa652df1129bef0e734c9cf9bf6dbae9ef3b9fa"
+  version = "1.3.1"
 
 [[projects]]
   digest = "1:2bac1ab777481a7ef169837f0eeac25a1a6628ac93aef853168681dfec4a653c"
@@ -421,6 +443,14 @@
   version = "v0.8.1"
 
 [[projects]]
+  digest = "1:0028cb19b2e4c3112225cd871870f2d9cf49b9b4276531f03438a88e94be86fe"
+  name = "github.com/pmezard/go-difflib"
+  packages = ["difflib"]
+  pruneopts = "NT"
+  revision = "792786c7400a136282c1664665ae0a8db921c6c2"
+  version = "v1.0.0"
+
+[[projects]]
   digest = "1:ec2a29e3bd141038ae5c3d3a4f57db0c341fcc1d98055a607aedd683aed124ee"
   name = "github.com/prometheus/client_golang"
   packages = [
@@ -496,6 +526,14 @@
   pruneopts = "NT"
   revision = "298182f68c66c05229eb03ac171abe6e309ee79a"
   version = "v1.0.3"
+
+[[projects]]
+  digest = "1:b1eb7870c859801cf1b3d92ce7326dda6abb90e5ff4d6bcee3d0c54e8d6acfec"
+  name = "github.com/stretchr/testify"
+  packages = ["assert"]
+  pruneopts = "NT"
+  revision = "221dbe5ed46703ee255b1da0dec05086f5035f62"
+  version = "v1.4.0"
 
 [[projects]]
   digest = "1:22f696cee54865fb8e9ff91df7b633f6b8f22037a8015253c6b6a71ca82219c7"
@@ -816,6 +854,7 @@
     "rest",
     "rest/watch",
     "restmapper",
+    "testing",
     "third_party/forked/golang/template",
     "tools/auth",
     "tools/cache",
@@ -922,6 +961,7 @@
     "pkg/client",
     "pkg/client/apiutil",
     "pkg/client/config",
+    "pkg/client/fake",
     "pkg/controller",
     "pkg/controller/controllerutil",
     "pkg/event",
@@ -988,12 +1028,15 @@
     "github.com/aws/aws-sdk-go/service/iam/iamiface",
     "github.com/aws/aws-sdk-go/service/organizations",
     "github.com/aws/aws-sdk-go/service/organizations/organizationsiface",
+    "github.com/aws/aws-sdk-go/service/s3",
+    "github.com/aws/aws-sdk-go/service/s3/s3iface",
     "github.com/aws/aws-sdk-go/service/sts",
     "github.com/aws/aws-sdk-go/service/sts/stsiface",
     "github.com/aws/aws-sdk-go/service/support",
     "github.com/aws/aws-sdk-go/service/support/supportiface",
     "github.com/go-logr/logr",
     "github.com/go-openapi/spec",
+    "github.com/golang/mock/gomock",
     "github.com/openshift/api/route/v1",
     "github.com/openshift/operator-custom-metrics/pkg/metrics",
     "github.com/operator-framework/operator-sdk/pkg/leader",
@@ -1001,6 +1044,7 @@
     "github.com/operator-framework/operator-sdk/version",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/spf13/pflag",
+    "github.com/stretchr/testify/assert",
     "k8s.io/api/core/v1",
     "k8s.io/apimachinery/pkg/api/errors",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
@@ -1021,6 +1065,7 @@
     "k8s.io/kube-openapi/pkg/common",
     "sigs.k8s.io/controller-runtime/pkg/client",
     "sigs.k8s.io/controller-runtime/pkg/client/config",
+    "sigs.k8s.io/controller-runtime/pkg/client/fake",
     "sigs.k8s.io/controller-runtime/pkg/controller",
     "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil",
     "sigs.k8s.io/controller-runtime/pkg/handler",
