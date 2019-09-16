@@ -817,7 +817,11 @@ func TotalAwsAccounts(client awsclient.Client) (int, error) {
 	for {
 		awsAccountList, err := client.ListAccounts(&organizations.ListAccountsInput{NextToken: nextToken})
 		if err != nil {
-			return 0, errors.New("Error getting a list of accounts")
+			errMsg := "Error getting a list of accounts"
+			if aerr, ok := err.(awserr.Error); ok {
+				errMsg = fmt.Sprintf("Failed to get account list with error code %s", aerr.Message())
+			}
+			return 0, errors.New(errMsg)
 		}
 		awsAccounts = append(awsAccounts, awsAccountList.Accounts...)
 		if awsAccountList.NextToken != nil {
