@@ -98,6 +98,7 @@ const (
 
 // Account is the Schema for the accounts API
 // +k8s:openapi-gen=true
+// +kubebuilder:subresource:status
 type Account struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

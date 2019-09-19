@@ -23,6 +23,8 @@ spec:
     plural: accounts
     singular: account
   scope: Namespaced
+  subresources:
+    status: {}
   validation:
     openAPIV3Schema:
       properties:
