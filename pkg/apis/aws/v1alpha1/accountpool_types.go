@@ -32,6 +32,7 @@ type AccountPoolStatus struct {
 
 // AccountPool is the Schema for the accountpools API
 // +k8s:openapi-gen=true
+// +kubebuilder:subresource:status
 type AccountPool struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
