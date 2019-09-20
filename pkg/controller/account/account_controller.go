@@ -333,7 +333,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	if (currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false) {
 		// before doing anything make sure we are not over the limit if we are just error
-		accountTotal, err := TotalAwsAccounts(awsSetupClient)
+		accountTotal, err := TotalAwsAccounts(reqLogger, awsSetupClient)
 		if err != nil {
 			reqLogger.Info("Failed to get AWS account total from AWS api", "Error", err.Error())
 			return reconcile.Result{}, err
@@ -431,7 +431,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		if err != nil {
 			var returnErr error
 			if aerr, ok := err.(awserr.Error); ok {
-				reqLogger.Error(returnErr, fmt.Sprintf("Unable to create AWS connection with SRE credentials, AWS Error Message: %s", aerr.Message()))
+				reqLogger.Error(returnErr,
+					fmt.Sprintf(`Unable to create AWS connection with SRE credentials, 
+						AWS Error Code: %s, 
+						AWS Error Message: %s`,
+						aerr.Code(),
+						aerr.Message()))
 			}
 			return reconcile.Result{}, err
 		}
@@ -476,7 +481,7 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 	reqLogger.Info("Creating Account")
 
 	email := formatAccountEmail(account.Name)
-	orgOutput, orgErr := CreateAccount(awsClient, account.Name, email)
+	orgOutput, orgErr := CreateAccount(reqLogger, awsClient, account.Name, email)
 	// If it was an api or a limit issue don't modify account and exit if anything else set to failed
 	if orgErr != nil {
 		switch orgErr {
@@ -518,7 +523,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	reqLogger.Info("IAM User Created")
 
 	// Create IAM user
-	_, userErr := CreateIAMUser(awsClient, iamUserName)
+	_, userErr := CreateIAMUser(reqLogger, awsClient, iamUserName)
 	// TODO: better error handling but for now scrap account
 	if userErr != nil {
 		failedToCreateIAMUserMsg := fmt.Sprintf("Failed to create IAM user %s", iamUserName)
@@ -533,7 +538,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 
 	reqLogger.Info(fmt.Sprintf("Attaching Admin Policy to IAM user %s", iamUserName))
 	// Setting user access policy
-	_, policyErr := AttachAdminUserPolicy(awsClient, iamUserName)
+	_, policyErr := AttachAdminUserPolicy(reqLogger, awsClient, iamUserName)
 	if policyErr != nil {
 		failedToAttachUserPolicyMsg := fmt.Sprintf("Failed to attach admin policy to IAM user %s", iamUserName)
 		SetAccountStatus(reqLogger, account, failedToAttachUserPolicyMsg, awsv1alpha1.AccountFailed, "Failed")
@@ -543,7 +548,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 
 	reqLogger.Info(fmt.Sprintf("Creating Secrets for IAM user %s", iamUserName))
 	// create user secrets
-	userSecretInfo, userSecretErr := CreateUserAccessKey(awsClient, iamUserName)
+	userSecretInfo, userSecretErr := CreateUserAccessKey(reqLogger, awsClient, iamUserName)
 	if userSecretErr != nil {
 		failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s", iamUserName)
 		SetAccountStatus(reqLogger, account, failedToCreateUserAccessKeyMsg, awsv1alpha1.AccountFailed, "Failed")
@@ -596,7 +601,7 @@ func (r *ReconcileAccount) setStatusFailed(reqLogger logr.Logger, awsAccount *aw
 }
 
 // CreateAccount creates an AWS account for the specified accountName and accountEmail in the orgnization
-func CreateAccount(client awsclient.Client, accountName, accountEmail string) (*organizations.DescribeCreateAccountStatusOutput, error) {
+func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, accountEmail string) (*organizations.DescribeCreateAccountStatusOutput, error) {
 
 	createInput := organizations.CreateAccountInput{
 		AccountName: aws.String(accountName),
@@ -616,6 +621,13 @@ func CreateAccount(client awsclient.Client, accountName, accountEmail string) (*
 				returnErr = ErrAwsTooManyRequests
 			default:
 				returnErr = ErrAwsFailedCreateAccount
+				// Log AWS error
+				reqLogger.Error(aerr,
+					fmt.Sprintf(`New AWS Error during account creation, 
+						AWS Error Code: %s, 
+						AWS Error Message: %s`,
+						aerr.Code(),
+						aerr.Message()))
 			}
 
 		}
@@ -660,35 +672,51 @@ func CreateAccount(client awsclient.Client, accountName, accountEmail string) (*
 }
 
 // CreateIAMUser takes a client and string and creates a IAMuser
-func CreateIAMUser(client awsclient.Client, userName string) (*iam.CreateUserOutput, error) {
+func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.CreateUserOutput, error) {
 
 	// check if username exists for this account
 	_, err := client.GetUser(&iam.GetUserInput{
 		UserName: aws.String(userName),
 	})
 
-	awserr, ok := err.(awserr.Error)
-
-	if err != nil && awserr.Code() != iam.ErrCodeNoSuchEntityException {
-		return &iam.CreateUserOutput{}, err
-	}
-
 	var createUserOutput *iam.CreateUserOutput
-	if ok && awserr.Code() == iam.ErrCodeNoSuchEntityException {
-		createResult, err := client.CreateUser(&iam.CreateUserInput{
-			UserName: aws.String(userName),
-		})
-		if err != nil {
-			return &iam.CreateUserOutput{}, err
+	// handle errors
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case iam.ErrCodeNoSuchEntityException:
+				createResult, err := client.CreateUser(&iam.CreateUserInput{
+					UserName: aws.String(userName),
+				})
+				if err != nil {
+					// Log new AWS error
+					reqLogger.Error(aerr,
+						fmt.Sprintf(`New AWS Error during creation of IAM user (ErrCodeNoSuchEntityException), 
+							AWS Error Code: %s, 
+							AWS Error Message: %s`,
+							aerr.Code(),
+							aerr.Message()))
+					return &iam.CreateUserOutput{}, err
+				}
+				createUserOutput = createResult
+			default:
+				// Log new AWS error
+				reqLogger.Error(aerr,
+					fmt.Sprintf(`New AWS Error during creation of IAM user (not ErrCodeNoSuchEntityException), 
+						AWS Error Code: %s, 
+						AWS Error Message: %s`,
+						aerr.Code(),
+						aerr.Message()))
+				return &iam.CreateUserOutput{}, err
+			}
 		}
-		createUserOutput = createResult
+		return createUserOutput, errors.New("Failed to cast AWS error")
 	}
-
 	return createUserOutput, nil
 }
 
 // AttachAdminUserPolicy takes a client and string attaches the admin policy to the user
-func AttachAdminUserPolicy(client awsclient.Client, userName string) (*iam.AttachUserPolicyOutput, error) {
+func AttachAdminUserPolicy(reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.AttachUserPolicyOutput, error) {
 
 	attachPolicyOutput := &iam.AttachUserPolicyOutput{}
 	var err error
@@ -703,6 +731,14 @@ func AttachAdminUserPolicy(client awsclient.Client, userName string) (*iam.Attac
 		}
 	}
 	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			reqLogger.Error(aerr,
+				fmt.Sprintf(`New AWS Error while attaching admin user policy, 
+					AWS Error Code: %s, 
+					AWS Error Message: %s`,
+					aerr.Code(),
+					aerr.Message()))
+		}
 		return &iam.AttachUserPolicyOutput{}, err
 	}
 
@@ -710,14 +746,23 @@ func AttachAdminUserPolicy(client awsclient.Client, userName string) (*iam.Attac
 }
 
 // CreateUserAccessKey creates an IAM user's secret and returns the accesskey id and secret for that user in a aws.CreateAccessKeyOutput struct
-func CreateUserAccessKey(client awsclient.Client, userName string) (*iam.CreateAccessKeyOutput, error) {
+func CreateUserAccessKey(reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.CreateAccessKeyOutput, error) {
 
 	// Create new access key for user
 	result, err := client.CreateAccessKey(&iam.CreateAccessKeyInput{
 		UserName: aws.String(userName),
 	})
+
+	// Log AWS error
 	if err != nil {
-		return &iam.CreateAccessKeyOutput{}, errors.New("Error creating access key")
+		if aerr, ok := err.(awserr.Error); ok {
+			reqLogger.Error(aerr,
+				fmt.Sprintf(`New AWS Error while creating user access key, 
+					AWS Error Code: %s, 
+					AWS Error Message: %s`,
+					aerr.Code(),
+					aerr.Message()))
+		}
 	}
 
 	return result, nil
@@ -752,6 +797,15 @@ func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleNa
 		}
 	}
 	if err != nil {
+		// Log AWS error
+		if aerr, ok := err.(awserr.Error); ok {
+			reqLogger.Error(aerr,
+				fmt.Sprintf(`New AWS Error while getting STS credentials, 
+					AWS Error Code: %s, 
+					AWS Error Message: %s`,
+					aerr.Code(),
+					aerr.Message()))
+		}
 		return &sts.AssumeRoleOutput{}, err
 	}
 
@@ -813,7 +867,7 @@ func formatAccountEmail(name string) string {
 }
 
 // TotalAwsAccounts returns the total number of aws accounts in the aws org
-func TotalAwsAccounts(client awsclient.Client) (int, error) {
+func TotalAwsAccounts(reqLogger logr.Logger, client awsclient.Client) (int, error) {
 	var awsAccounts []*organizations.Account
 
 	var nextToken *string
@@ -822,6 +876,15 @@ func TotalAwsAccounts(client awsclient.Client) (int, error) {
 	for {
 		awsAccountList, err := client.ListAccounts(&organizations.ListAccountsInput{NextToken: nextToken})
 		if err != nil {
+			// Log AWS error
+			if aerr, ok := err.(awserr.Error); ok {
+				reqLogger.Error(aerr,
+					fmt.Sprintf(`New AWS Error while retrieving total number of accounts, 
+						AWS Error Code: %s, 
+						AWS Error Message: %s`,
+						aerr.Code(),
+						aerr.Message()))
+			}
 			return 0, errors.New("Error getting a list of accounts")
 		}
 		awsAccounts = append(awsAccounts, awsAccountList.Accounts...)
@@ -899,10 +962,13 @@ func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client
 			default:
 				returnErr = ErrAwsFailedCreateSupportCase
 			}
-			reqLogger.Error(returnErr, fmt.Sprintf("AWS Error Message: %s", aerr.Message()))
+			reqLogger.Error(aerr,
+				fmt.Sprintf(`New AWS Error while creating case, 
+					AWS Error Code: %s, 
+					AWS Error Message: %s`,
+					aerr.Code(),
+					aerr.Message()))
 		}
-
-		reqLogger.Error(returnErr, fmt.Sprintf("Failed to create support case for account %s", accountID))
 		return "", returnErr
 	}
 
@@ -932,9 +998,14 @@ func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.
 			default:
 				returnErr = ErrAwsFailedDescribeSupportCase
 			}
+			reqLogger.Error(aerr,
+				fmt.Sprintf(`New AWS Error while checking case resolution, 
+					AWS Error Code: %s, 
+					AWS Error Message: %s`,
+					aerr.Code(),
+					aerr.Message()))
 		}
 
-		reqLogger.Error(returnErr, fmt.Sprintf("Failed to describe case %s", caseID))
 		return false, returnErr
 	}
 
