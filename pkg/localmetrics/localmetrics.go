@@ -17,6 +17,7 @@ package localmetrics
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -118,9 +119,30 @@ func UpdateAWSMetrics(kubeClient kubeclientpkg.Client, hour int) {
 	}
 }
 
+// UpdateAccountCRUnclaimedMetric updates the unclaimed account metric
+func UpdateAccountCRUnclaimedMetric(accountList awsv1alpha1.AccountList, wg *sync.WaitGroup) {
+
+	wg.Add(1)
+	unclaimedAccountCount := 0
+
+	for _, account := range accountList.Items {
+		if account.Status.Claimed == false && account.Status.Reused == false {
+			if account.Status.State == "Ready" || account.Status.State == string(awsv1alpha1.AccountPendingVerification) {
+				unclaimedAccountCount++
+			}
+		}
+	}
+
+	MetricTotalAccountCRsUnclaimed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(unclaimedAccountCount))
+	wg.Done()
+}
+
 // UpdateAccountCRMetrics updates all metrics related to Account CRs
 func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
-	unclaimedAccountCount := 0
+
+	var wg sync.WaitGroup
+	go UpdateAccountCRUnclaimedMetric(*accountList, &wg)
+
 	claimedAccountCount := 0
 	failedAccountCount := 0
 	reuseAccountFailedCount := 0
@@ -129,13 +151,6 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	idMap := make(map[string]int)
 	for _, account := range accountList.Items {
 		if account.Status.Claimed == false {
-			// Ignore unclaimed accounts in Failed status
-			if account.Status.State != "Failed" {
-				// Accounts in Ready or PendingVerification status, that have not been reused
-				if account.Status.Reused != true {
-					unclaimedAccountCount++
-				}
-			}
 			if account.Status.State == "Ready" {
 				// Reused accounts in Ready state are counted in separate metric
 				if account.Status.Reused == true {
@@ -167,7 +182,6 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	}
 
 	MetricTotalAccountCRs.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(len(accountList.Items)))
-	MetricTotalAccountCRsUnclaimed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(unclaimedAccountCount))
 	MetricTotalAccountCRsClaimed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(claimedAccountCount))
 	MetricTotalAccountPendingVerification.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(pendingVerificationAccountCount))
 	MetricTotalAccountCRsFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(failedAccountCount))
@@ -176,6 +190,8 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 	for id, val := range idMap {
 		MetricTotalAccountReusedAvailable.With(prometheus.Labels{"LegalID": id}).Set(float64(val))
 	}
+
+	wg.Wait()
 }
 
 // UpdateAccountClaimMetrics updates all metrics related to AccountClaim CRs
