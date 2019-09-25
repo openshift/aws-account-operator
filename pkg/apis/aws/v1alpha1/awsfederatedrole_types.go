@@ -14,10 +14,10 @@ type AWSFederatedRoleState string
 const (
 	// AWSFederatedRoleStateInProgress const for InProgress status state
 	AWSFederatedRoleStateInProgress AWSFederatedAccountAccessState = "InProgress"
-	// AWSFederatedRoleStateVerified const for Requested status state
-	AWSFederatedRoleStateVerified AWSFederatedRoleState = "Valid"
-	// AWSFederatedRoleStateApplied const for Invliad status state
-	AWSFederatedRoleStateApplied AWSFederatedRoleState = "Invalid"
+	// AWSFederatedRoleStateValid const for Requested status state
+	AWSFederatedRoleStateValid AWSFederatedRoleState = "Valid"
+	// AWSFederatedRoleStateInvalid const for Invliad status state
+	AWSFederatedRoleStateInvalid AWSFederatedRoleState = "Invalid"
 )
 
 // AWSFederatedRoleSpec defines the desired state of AWSFederatedRole
