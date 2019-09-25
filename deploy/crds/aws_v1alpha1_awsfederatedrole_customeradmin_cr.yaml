@@ -10,38 +10,38 @@ spec:
     description: Description of CustomerAdministratorAccess
     # list of statements for the policy
     awsStatements:
-      - effect: allow
+      - effect: Allow
         action:
-          - '"ec2:AttachVpnGateway"'
-          - '"ec2:DescribeVpnConnections"'
-          - '"ec2:AcceptVpcPeeringConnection"'
-          - '"ec2:DeleteVpcPeeringConnection"'
-          - '"ec2:DescribeVpcPeeringConnections"'
-          - '"ec2:CreateVpnConnectionRoute"'
-          - '"ec2:RejectVpcPeeringConnection"'
-          - '"ec2:DetachVpnGateway"'
-          - '"ec2:DeleteVpnConnectionRoute"'
-          - '"ec2:DeleteVpnGateway"'
-          - '"ec2:DescribeVpcs"'
-          - '"ec2:CreateVpnGateway"'
-          - '"ec2:ModifyVpcPeeringConnectionOptions"'
-          - '"ec2:DeleteVpnConnection"'
-          - '"ec2:CreateVpcPeeringConnection"'
-          - '"ec2:DescribeVpnGateways"'
-          - '"ec2:CreateVpnConnection"'
-          - '"ec2:DescribeRouteTables"'
-          - '"ec2:CreateTags"'
-          - '"ec2:CreateRoute"'
-          - '"support:*"'
-          - '"directconnect:*"'
-        resource: '"*"'
+          - "ec2:AttachVpnGateway"
+          - "ec2:DescribeVpnConnections"
+          - "ec2:AcceptVpcPeeringConnection"
+          - "ec2:DeleteVpcPeeringConnection"
+          - "ec2:DescribeVpcPeeringConnections"
+          - "ec2:CreateVpnConnectionRoute"
+          - "ec2:RejectVpcPeeringConnection"
+          - "ec2:DetachVpnGateway"
+          - "ec2:DeleteVpnConnectionRoute"
+          - "ec2:DeleteVpnGateway"
+          - "ec2:DescribeVpcs"
+          - "ec2:CreateVpnGateway"
+          - "ec2:ModifyVpcPeeringConnectionOptions"
+          - "ec2:DeleteVpnConnection"
+          - "ec2:CreateVpcPeeringConnection"
+          - "ec2:DescribeVpnGateways"
+          - "ec2:CreateVpnConnection"
+          - "ec2:DescribeRouteTables"
+          - "ec2:CreateTags"
+          - "ec2:CreateRoute"
+          - "support:*"
+          - "directconnect:*"
+        resource: "*"
       # - effect: deny 
       #   action: []
       #   resources: '“*”'
   # list of  AWS managed
   awsManagedPolicies:
-    - '"AWSAccountUsageReportAccess"'
-    - '"AmazonEC2ReadOnlyAccess"'
-    - '"AmazonS3ReadOnlyAccess"'
-    - '"IAMReadOnlyAccess"'
-    - '"BillingReadOnlyAccess"'
+    - "AWSAccountUsageReportAccess"
+    - "AmazonEC2ReadOnlyAccess"
+    - "AmazonS3ReadOnlyAccess"
+    - "IAMReadOnlyAccess"
+    - "BillingReadOnlyAccess"

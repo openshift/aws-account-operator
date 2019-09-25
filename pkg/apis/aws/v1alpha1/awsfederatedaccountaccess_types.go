@@ -14,8 +14,8 @@ type AWSFederatedAccountAccessState string
 const (
 	// AWSFederatedAccountAccessStateInProgress const for InProgress status state
 	AWSFederatedAccountAccessStateInProgress AWSFederatedAccountAccessState = "InProgress"
-	// AWSFederatedAccountStateApplied const for Applied status state
-	AWSFederatedAccountStateApplied AWSFederatedAccountAccessState = "Applied"
+	// AWSFederatedAccountStateReady const for Applied status state
+	AWSFederatedAccountStateReady AWSFederatedAccountAccessState = "Ready"
 	// AWSFederatedAccountStateFailed cont for Failed status state
 	AWSFederatedAccountStateFailed AWSFederatedAccountAccessState = "Failed"
 )
@@ -63,8 +63,8 @@ type AWSFederatedAccountAccessConditionType string
 const (
 	// AWSFederatedAccountInProgress is set when an Account access is in progress
 	AWSFederatedAccountInProgress AWSFederatedAccountAccessConditionType = "InProgress"
-	// AWSFederatedAccountApplied is set when an Account access has been successfully applied
-	AWSFederatedAccountApplied AWSFederatedAccountAccessConditionType = "Applied"
+	// AWSFederatedAccountReady is set when an Account access has been successfully applied
+	AWSFederatedAccountReady AWSFederatedAccountAccessConditionType = "Ready"
 	// AWSFederatedAccountFailed is set when account access has failed to apply
 	AWSFederatedAccountFailed AWSFederatedAccountAccessConditionType = "Failed"
 )

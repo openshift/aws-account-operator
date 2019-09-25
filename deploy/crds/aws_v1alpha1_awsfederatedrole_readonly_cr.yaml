@@ -10,17 +10,17 @@ spec:
     description: Description of BillingReadOnlyAccess
     # list of statements for the policy
     awsStatements:
-      - effect: allow
+      - effect: Allow
         action:
-        - '"aws-portal:ViewAccount"'
-        - '"aws-portal:ViewBilling"'
+        - "aws-portal:ViewAccount"
+        - "aws-portal:ViewBilling"
         resource: "*"
       # - effect: deny    
       #   action: []
       #   resources: '"*"'
   # list of  AWS managed
   awsManagedPolicies:
-   - '"AWSAccountUsageReportAccess"'
-   - '"AmazonEC2ReadOnlyAccess"'
-   - '"AmazonS3ReadOnlyAccess"'
-   - '"IAMReadOnlyAccess"'
+   - "AWSAccountUsageReportAccess"
+   - "AmazonEC2ReadOnlyAccess"
+   - "AmazonS3ReadOnlyAccess"
+   - "IAMReadOnlyAccess"
