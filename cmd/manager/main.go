@@ -13,12 +13,14 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/controller"
 	"github.com/openshift/aws-account-operator/pkg/credentialwatcher"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
+	"github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 	"github.com/openshift/operator-custom-metrics/pkg/metrics"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
 	"github.com/spf13/pflag"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
@@ -31,6 +33,7 @@ var (
 	metricsPath                   = "/metrics"
 	secretWatcherScanInterval     = time.Duration(10) * time.Minute
 	hours                     int = 1
+	totalWatcherInterval          = time.Duration(15) * time.Minute
 )
 
 var log = logf.Log.WithName("cmd")
@@ -126,13 +129,20 @@ func main() {
 	// work
 	stopCh := signals.SetupSignalHandler()
 
+	accountWatcherClient, err := client.New(cfg, client.Options{})
+	if err != nil {
+		log.Error(err, "")
+	}
+
 	// Initialize the SecretWatcher
 	credentialwatcher.Initialize(mgr.GetClient(), secretWatcherScanInterval)
+
+	totalaccountwatcher.Initialize(accountWatcherClient, totalWatcherInterval)
 
 	// Start the secret watcher
 	go credentialwatcher.SecretWatcher.Start(log, stopCh)
 
-	go localmetrics.UpdateAWSMetrics(mgr.GetClient(), hours)
+	go totalaccountwatcher.TotalAccountWatcher.Start(log, stopCh)
 
 	log.Info("Starting the Cmd.")
 

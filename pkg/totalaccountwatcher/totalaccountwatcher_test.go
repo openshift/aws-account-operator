@@ -1,9 +1,10 @@
-package account
+package totalaccountwatcher
 
 import (
 	"errors"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/aws/aws-sdk-go/service/organizations"
 
@@ -12,6 +13,7 @@ import (
 	mockAWS "github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	fakekubeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -111,7 +113,9 @@ func TestTotalAwsAccounts(t *testing.T) {
 			defer mocks.mockCtrl.Finish()
 
 			// Act
-			total, err := TotalAwsAccounts(mocks.mockAWSClient)
+			TotalAccountWatcher = NewTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
+			TotalAccountWatcher.AwsClient = mocks.mockAWSClient
+			total, err := TotalAwsAccounts()
 
 			// Assert
 			if test.errorExpected {
@@ -130,12 +134,3 @@ func TestTotalAwsAccounts(t *testing.T) {
 		})
 	}
 }
-
-// used to create the reconcile
-// raws := &ReconcileAccount{
-// 	Client: mocks.fakeKubeClient,
-// 	scheme: scheme.Scheme,
-// 	awsClientBuilder: func(string, string, string, string) (awsclient.Client, error) {
-// 		return mocks.mockAWSClient, nil
-// 	},
-// }
