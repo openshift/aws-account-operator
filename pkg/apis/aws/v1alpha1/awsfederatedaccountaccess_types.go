@@ -40,7 +40,7 @@ type AWSFederatedAccountAccessStatus struct {
 
 type AWSFederatedAccountAccessCondition struct {
 	// Type is the type of the condition.
-	Type AccountConditionType `json:"type"`
+	Type AWSFederatedAccountAccessConditionType `json:"type"`
 	// Status is the status of the condition
 	Status corev1.ConditionStatus `json:"status"`
 	// LastProbeTime is the last time we probed the condition.

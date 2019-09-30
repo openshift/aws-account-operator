@@ -16,6 +16,7 @@ package awsclient
 import (
 	"context"
 	"fmt"
+
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -70,6 +71,8 @@ type Client interface {
 	ListPolicies(*iam.ListPoliciesInput) (*iam.ListPoliciesOutput, error)
 	CreatePolicy(*iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error)
 	DeletePolicy(input *iam.DeletePolicyInput) (*iam.DeletePolicyOutput, error)
+	AttachRolePolicy(*iam.AttachRolePolicyInput) (*iam.AttachRolePolicyOutput, error)
+	CreateRole(*iam.CreateRoleInput) (*iam.CreateRoleOutput, error)
 
 	//Organizations
 	ListAccounts(*organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error)
@@ -188,6 +191,14 @@ func (c *awsClient) CreatePolicy(input *iam.CreatePolicyInput) (*iam.CreatePolic
 
 func (c *awsClient) DeletePolicy(input *iam.DeletePolicyInput) (*iam.DeletePolicyOutput, error) {
 	return c.iamClient.DeletePolicy(input)
+}
+
+func (c *awsClient) AttachRolePolicy(input *iam.AttachRolePolicyInput) (*iam.AttachRolePolicyOutput, error) {
+	return c.iamClient.AttachRolePolicy(input)
+}
+
+func (c *awsClient) CreateRole(input *iam.CreateRoleInput) (*iam.CreateRoleOutput, error) {
+	return c.iamClient.CreateRole(input)
 }
 
 func (c *awsClient) ListAccounts(input *organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error) {

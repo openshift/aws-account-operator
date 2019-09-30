@@ -16,9 +16,6 @@ spec:
         - "aws-portal:ViewBilling"
         resource: 
         - "*"
-      # - effect: deny    
-      #   action: []
-      #   resources: '"*"'
   # list of  AWS managed
   awsManagedPolicies:
    - "AWSAccountUsageReportAccess"

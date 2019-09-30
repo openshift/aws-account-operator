@@ -201,3 +201,57 @@ func FindAWSFederatedRoleCondition(conditions []awsv1alpha1.AWSFederatedRoleCond
 	}
 	return nil
 }
+
+// SetAWSFederatedAccountAccessCondition sets a condition on a Account resource's status
+func SetAWSFederatedAccountAccessCondition(
+	conditions []awsv1alpha1.AWSFederatedAccountAccessCondition,
+	conditionType awsv1alpha1.AWSFederatedAccountAccessConditionType,
+	status corev1.ConditionStatus,
+	reason string,
+	message string,
+	updateConditionCheck UpdateConditionCheck,
+) []awsv1alpha1.AWSFederatedAccountAccessCondition {
+	now := metav1.Now()
+	existingCondition := FindAWSFederatedAccountAccessCondition(conditions, conditionType)
+	if existingCondition == nil {
+		if status == corev1.ConditionTrue {
+			conditions = append(
+				conditions,
+				awsv1alpha1.AWSFederatedAccountAccessCondition{
+					Type:               conditionType,
+					Status:             status,
+					Reason:             reason,
+					Message:            message,
+					LastTransitionTime: now,
+					LastProbeTime:      now,
+				},
+			)
+		}
+	} else {
+		if shouldUpdateCondition(
+			existingCondition.Status, existingCondition.Reason, existingCondition.Message,
+			status, reason, message,
+			updateConditionCheck,
+		) {
+			if existingCondition.Status != status {
+				existingCondition.LastTransitionTime = now
+			}
+			existingCondition.Status = status
+			existingCondition.Reason = reason
+			existingCondition.Message = message
+			existingCondition.LastProbeTime = now
+		}
+	}
+	return conditions
+}
+
+// FindAWSFederatedAccountAccessCondition Condition finds in the condition that has the
+// specified condition type in the given list. If none exists, then returns nil.
+func FindAWSFederatedAccountAccessCondition(conditions []awsv1alpha1.AWSFederatedAccountAccessCondition, conditionType awsv1alpha1.AWSFederatedAccountAccessConditionType) *awsv1alpha1.AWSFederatedAccountAccessCondition {
+	for i, condition := range conditions {
+		if condition.Type == conditionType {
+			return &conditions[i]
+		}
+	}
+	return nil
+}

@@ -113,7 +113,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 
 	log.Info("Validating Custom Policies")
 	// Build custom policy in AWS-valid JSON and converts to string
-	jsonPolicy, err := utils.YamlToJSONIAMPolicy(*instance)
+	jsonPolicy, err := utils.MarshalIAMPolicy(*instance)
 
 	// Attemps to create the policy to ensure its a valid policy
 	createOutput, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
