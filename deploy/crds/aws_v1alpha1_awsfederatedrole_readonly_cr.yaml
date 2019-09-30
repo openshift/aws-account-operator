@@ -1,0 +1,26 @@
+apiVersion: aws.managed.openshift.io/v1alpha1
+kind: AWSFederatedRole
+metadata:
+  name: read-only
+spec:
+  roleDescription: This is the description of read-only
+  # Custom Policy definition
+  awsCustomPolicy:
+    name:  BillingReadOnlyAccess
+    description: Description of BillingReadOnlyAccess
+    # list of statements for the policy
+    awsStatements:
+      - effect: Allow
+        action:
+        - "aws-portal:ViewAccount"
+        - "aws-portal:ViewBilling"
+        resource: "*"
+      # - effect: deny    
+      #   action: []
+      #   resources: '"*"'
+  # list of  AWS managed
+  awsManagedPolicies:
+   - "AWSAccountUsageReportAccess"
+   - "AmazonEC2ReadOnlyAccess"
+   - "AmazonS3ReadOnlyAccess"
+   - "IAMReadOnlyAccess"

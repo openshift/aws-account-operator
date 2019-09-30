@@ -1,0 +1,100 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: awsfederatedaccountaccesses.aws.managed.openshift.io
+spec:
+  group: aws.managed.openshift.io
+  names:
+    kind: AWSFederatedAccountAccess
+    listKind: AWSFederatedAccountAccessList
+    plural: awsfederatedaccountaccesses
+    singular: awsfederatedaccountaccess
+  scope: Namespaced
+  subresources:
+    status: {}
+  validation:
+    openAPIV3Schema:
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          properties:
+            awsCredentialSecret:
+              description: AwsCredentialSecret holds the credentials to the cluster
+                account where the role wil be created
+              properties:
+                name:
+                  type: string
+                namespace:
+                  type: string
+              required:
+              - name
+              - namespace
+              type: object
+            awsFederatedRoleName:
+              description: FederatedRoleName must be the name of a federatedrole cr
+                that currently exists
+              type: string
+            customerAccountID:
+              description: CustomerAccountID holds the account number associated with
+                the AWS account that will be used to access the associated role
+              type: string
+          required:
+          - customerAccountID
+          - awsCredentialSecret
+          - awsFederatedRoleName
+          type: object
+        status:
+          properties:
+            conditions:
+              items:
+                properties:
+                  lastProbeTime:
+                    description: LastProbeTime is the last time we probed the condition.
+                    format: date-time
+                    type: string
+                  lastTransitionTime:
+                    description: LastTransitionTime is the laste time the condition
+                      transitioned from one status to another.
+                    format: date-time
+                    type: string
+                  message:
+                    description: Message is a human-readable message indicating details
+                      about last transition.
+                    type: string
+                  reason:
+                    description: Reason is a unique, one-word, CamelCase reason for
+                      the condition's last transition.
+                    type: string
+                  status:
+                    description: Status is the status of the condition
+                    type: string
+                  type:
+                    description: Type is the type of the condition.
+                    type: string
+                required:
+                - type
+                - status
+                type: object
+              type: array
+            state:
+              type: string
+          required:
+          - conditions
+          - state
+          type: object
+  version: v1alpha1
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
