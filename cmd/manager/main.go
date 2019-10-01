@@ -110,22 +110,14 @@ func main() {
 
 	//Create metrics endpoint and register metrics
 	metricsServer := metrics.NewBuilder().WithPort(metricsPort).WithPath(metricsPath).
-		WithCollectors(localmetrics.MetricTotalAWSAccounts).
-		WithCollectors(localmetrics.MetricTotalAccountCRs).
-		WithCollectors(localmetrics.MetricTotalAccountCRsUnclaimed).
-		WithCollectors(localmetrics.MetricTotalAccountCRsClaimed).
-		WithCollectors(localmetrics.MetricTotalAccountCRsFailed).
-		WithCollectors(localmetrics.MetricTotalAccountCRsReady).
-		WithCollectors(localmetrics.MetricTotalAccountClaimCRs).
-		WithCollectors(localmetrics.MetricPoolSizeVsUnclaimed).
-		WithCollectors(localmetrics.MetricTotalAccountPendingVerification).
-		WithCollectors(localmetrics.MetricTotalAccountReusedAvailable).
-		WithCollectors(localmetrics.MetricTotalAccountReuseFailed).
+		WithCollectors(localmetrics.MetricsList).
+		WithRoute().
 		GetConfig()
 
 	// Configure metrics if it errors log the error but continue
 	if err := metrics.ConfigureMetrics(context.TODO(), *metricsServer); err != nil {
 		log.Error(err, "Failed to configure Metrics")
+		os.Exit(1)
 	}
 
 	// Define stopCh which we'll use to notify the secretWatcher (any any other routine)

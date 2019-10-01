@@ -80,6 +80,7 @@
     "service/organizations/organizationsiface",
     "service/s3",
     "service/s3/s3iface",
+    "service/s3/s3manager",
     "service/sts",
     "service/sts/stsiface",
     "service/support",
@@ -390,12 +391,12 @@
   version = "v3.9.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:eb16e059ec17378bcab2d67bff2dbe95dec98f151e496f4a29a6a34d25060129"
+  digest = "1:c67dd573eb0c047dc1036884e264e69dd44b9b07bab1482ea1cd7cb760e91599"
   name = "github.com/openshift/operator-custom-metrics"
   packages = ["pkg/metrics"]
   pruneopts = "NT"
-  revision = "b20490a1cf8bda14d129cfea17c1cf6781d9c3e6"
+  revision = "6a7c3bd8b210d68dac10a3130c19f64d40eb8556"
+  version = "v0.2.1"
 
 [[projects]]
   digest = "1:df8e741cd0f86087367f3bcfeb1cf237e96fada71194b6d4cee9412d221ec763"
@@ -1030,6 +1031,7 @@
     "github.com/aws/aws-sdk-go/service/organizations/organizationsiface",
     "github.com/aws/aws-sdk-go/service/s3",
     "github.com/aws/aws-sdk-go/service/s3/s3iface",
+    "github.com/aws/aws-sdk-go/service/s3/s3manager",
     "github.com/aws/aws-sdk-go/service/sts",
     "github.com/aws/aws-sdk-go/service/sts/stsiface",
     "github.com/aws/aws-sdk-go/service/support",
