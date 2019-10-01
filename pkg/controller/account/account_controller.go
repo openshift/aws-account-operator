@@ -52,6 +52,7 @@ const (
 	caseSeverity                  = "urgent"
 	caseDesiredInstanceLimit      = 25
 	caseStatusResolved            = "resolved"
+	caseLanguage                  = "en"
 	intervalAfterCaseCreationSecs = 30
 	intervalBetweenChecksMinutes  = 10
 
@@ -887,6 +888,7 @@ func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client
 		CommunicationBody: aws.String(caseCommunicationBody),
 		Subject:           aws.String(caseSubject),
 		SeverityCode:      aws.String(caseSeverity),
+		Language:          aws.String(caseLanguage),
 	}
 
 	reqLogger.Info("Creating the case", "CaseInput", createCaseInput)
