@@ -112,6 +112,7 @@ func main() {
 	metricsServer := metrics.NewBuilder().WithPort(metricsPort).WithPath(metricsPath).
 		WithCollectors(localmetrics.MetricsList).
 		WithRoute().
+		WithServiceName("aws-account-operator").
 		GetConfig()
 
 	// Configure metrics if it errors log the error but continue
