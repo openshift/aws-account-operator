@@ -5,8 +5,6 @@
 package mock
 
 import (
-	reflect "reflect"
-
 	ec2 "github.com/aws/aws-sdk-go/service/ec2"
 	iam "github.com/aws/aws-sdk-go/service/iam"
 	organizations "github.com/aws/aws-sdk-go/service/organizations"
@@ -14,6 +12,7 @@ import (
 	sts "github.com/aws/aws-sdk-go/service/sts"
 	support "github.com/aws/aws-sdk-go/service/support"
 	gomock "github.com/golang/mock/gomock"
+	reflect "reflect"
 )
 
 // MockClient is a mock of Client interface
@@ -292,6 +291,51 @@ func (m *MockClient) AttachUserPolicy(arg0 *iam.AttachUserPolicyInput) (*iam.Att
 func (mr *MockClientMockRecorder) AttachUserPolicy(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachUserPolicy", reflect.TypeOf((*MockClient)(nil).AttachUserPolicy), arg0)
+}
+
+// ListPolicies mocks base method
+func (m *MockClient) ListPolicies(arg0 *iam.ListPoliciesInput) (*iam.ListPoliciesOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPolicies", arg0)
+	ret0, _ := ret[0].(*iam.ListPoliciesOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPolicies indicates an expected call of ListPolicies
+func (mr *MockClientMockRecorder) ListPolicies(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPolicies", reflect.TypeOf((*MockClient)(nil).ListPolicies), arg0)
+}
+
+// CreatePolicy mocks base method
+func (m *MockClient) CreatePolicy(arg0 *iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreatePolicy", arg0)
+	ret0, _ := ret[0].(*iam.CreatePolicyOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreatePolicy indicates an expected call of CreatePolicy
+func (mr *MockClientMockRecorder) CreatePolicy(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePolicy", reflect.TypeOf((*MockClient)(nil).CreatePolicy), arg0)
+}
+
+// DeletePolicy mocks base method
+func (m *MockClient) DeletePolicy(input *iam.DeletePolicyInput) (*iam.DeletePolicyOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeletePolicy", input)
+	ret0, _ := ret[0].(*iam.DeletePolicyOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeletePolicy indicates an expected call of DeletePolicy
+func (mr *MockClientMockRecorder) DeletePolicy(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePolicy", reflect.TypeOf((*MockClient)(nil).DeletePolicy), input)
 }
 
 // ListAccounts mocks base method

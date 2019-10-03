@@ -43,7 +43,7 @@ type AWSCustomPolicy struct {
 type StatementEntry struct {
 	Effect    string     `json:"effect"`
 	Action    []string   `json:"action"`
-	Resource  []string   `json:"resourcce,omitempty"`
+	Resource  []string   `json:"resource,omitempty"`
 	Principal *Principal `json:"principal,omitempty"`
 }
 
@@ -56,10 +56,11 @@ type Principal struct {
 // AWSFederatedRoleStatus defines the observed state of AWSFederatedRole
 // +k8s:openapi-gen=true
 type AWSFederatedRoleStatus struct {
-	State AWSFederatedRoleState `json:"state"`
+	State      AWSFederatedRoleState       `json:"state"`
+	Conditions []AWSFederatedRoleCondition `json:"conditions"`
 }
 
-type AWSFederatedStateCondition struct {
+type AWSFederatedRoleCondition struct {
 	// Type is the type of the condition.
 	Type AWSFederatedRoleConditionType `json:"type"`
 	// Status is the status of the condition

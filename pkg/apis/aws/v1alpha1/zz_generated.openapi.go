@@ -238,11 +238,24 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleStatus(ref common.ReferenceCal
 							Format: "",
 						},
 					},
+					"conditions": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleCondition"),
+									},
+								},
+							},
+						},
+					},
 				},
-				Required: []string{"state"},
+				Required: []string{"state", "conditions"},
 			},
 		},
-		Dependencies: []string{},
+		Dependencies: []string{
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleCondition"},
 	}
 }
 
