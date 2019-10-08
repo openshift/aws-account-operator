@@ -67,6 +67,9 @@ type Client interface {
 	ListUserPolicies(*iam.ListUserPoliciesInput) (*iam.ListUserPoliciesOutput, error)
 	PutUserPolicy(*iam.PutUserPolicyInput) (*iam.PutUserPolicyOutput, error)
 	AttachUserPolicy(*iam.AttachUserPolicyInput) (*iam.AttachUserPolicyOutput, error)
+	ListPolicies(*iam.ListPoliciesInput) (*iam.ListPoliciesOutput, error)
+	CreatePolicy(*iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error)
+	DeletePolicy(input *iam.DeletePolicyInput) (*iam.DeletePolicyOutput, error)
 
 	//Organizations
 	ListAccounts(*organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error)
@@ -173,6 +176,18 @@ func (c *awsClient) PutUserPolicy(input *iam.PutUserPolicyInput) (*iam.PutUserPo
 
 func (c *awsClient) AttachUserPolicy(input *iam.AttachUserPolicyInput) (*iam.AttachUserPolicyOutput, error) {
 	return c.iamClient.AttachUserPolicy(input)
+}
+
+func (c *awsClient) ListPolicies(input *iam.ListPoliciesInput) (*iam.ListPoliciesOutput, error) {
+	return c.iamClient.ListPolicies(input)
+}
+
+func (c *awsClient) CreatePolicy(input *iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error) {
+	return c.iamClient.CreatePolicy(input)
+}
+
+func (c *awsClient) DeletePolicy(input *iam.DeletePolicyInput) (*iam.DeletePolicyOutput, error) {
+	return c.iamClient.DeletePolicy(input)
 }
 
 func (c *awsClient) ListAccounts(input *organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error) {

@@ -14,7 +14,8 @@ spec:
         action:
         - "aws-portal:ViewAccount"
         - "aws-portal:ViewBilling"
-        resource: "*"
+        resource: 
+        - "*"
       # - effect: deny    
       #   action: []
       #   resources: '"*"'

@@ -147,3 +147,57 @@ func FindAccountCondition(conditions []awsv1alpha1.AccountCondition, conditionTy
 	}
 	return nil
 }
+
+// SetAWSFederatedRoleCondition sets a condition on a AWSFederatedRole resource's status
+func SetAWSFederatedRoleCondition(
+	conditions []awsv1alpha1.AWSFederatedRoleCondition,
+	conditionType awsv1alpha1.AWSFederatedRoleConditionType,
+	status corev1.ConditionStatus,
+	reason string,
+	message string,
+	updateConditionCheck UpdateConditionCheck,
+) []awsv1alpha1.AWSFederatedRoleCondition {
+	now := metav1.Now()
+	existingCondition := FindAWSFederatedRoleCondition(conditions, conditionType)
+	if existingCondition == nil {
+		if status == corev1.ConditionTrue {
+			conditions = append(
+				conditions,
+				awsv1alpha1.AWSFederatedRoleCondition{
+					Type:               conditionType,
+					Status:             status,
+					Reason:             reason,
+					Message:            message,
+					LastTransitionTime: now,
+					LastProbeTime:      now,
+				},
+			)
+		}
+	} else {
+		if shouldUpdateCondition(
+			existingCondition.Status, existingCondition.Reason, existingCondition.Message,
+			status, reason, message,
+			updateConditionCheck,
+		) {
+			if existingCondition.Status != status {
+				existingCondition.LastTransitionTime = now
+			}
+			existingCondition.Status = status
+			existingCondition.Reason = reason
+			existingCondition.Message = message
+			existingCondition.LastProbeTime = now
+		}
+	}
+	return conditions
+}
+
+// FindAWSFederatedRoleCondition Condition finds in the condition that has the
+// specified condition type in the given list. If none exists, then returns nil.
+func FindAWSFederatedRoleCondition(conditions []awsv1alpha1.AWSFederatedRoleCondition, conditionType awsv1alpha1.AWSFederatedRoleConditionType) *awsv1alpha1.AWSFederatedRoleCondition {
+	for i, condition := range conditions {
+		if condition.Type == conditionType {
+			return &conditions[i]
+		}
+	}
+	return nil
+}
