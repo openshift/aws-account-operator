@@ -34,7 +34,8 @@ spec:
           - "ec2:CreateRoute"
           - "support:*"
           - "directconnect:*"
-        resource: "*"
+        resource: 
+          - "*"
       # - effect: deny 
       #   action: []
       #   resources: '“*”'
