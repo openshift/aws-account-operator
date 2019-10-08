@@ -3,6 +3,13 @@ kind: CustomResourceDefinition
 metadata:
   name: awsfederatedaccountaccesses.aws.managed.openshift.io
 spec:
+  additionalPrinterColumns:
+  - JSONPath: .status.state
+    name: State
+    type: string
+  - JSONPath: .metadata.creationTimestamp
+    name: Age
+    type: date
   group: aws.managed.openshift.io
   names:
     kind: AWSFederatedAccountAccess

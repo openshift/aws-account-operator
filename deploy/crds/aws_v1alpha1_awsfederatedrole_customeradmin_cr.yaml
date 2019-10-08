@@ -36,9 +36,6 @@ spec:
           - "directconnect:*"
         resource: 
           - "*"
-      # - effect: deny 
-      #   action: []
-      #   resources: '“*”'
   # list of  AWS managed
   awsManagedPolicies:
     - "AWSAccountUsageReportAccess"

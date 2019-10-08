@@ -2,10 +2,11 @@ package utils
 
 import (
 	"encoding/json"
+
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 )
 
-func YamlToJSONIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
+func MarshalIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
 	// The JSON tags as captials due to requirements for the policydoc
 	type awsStatement struct {
 		Effect    string                 `json:"Effect"`
