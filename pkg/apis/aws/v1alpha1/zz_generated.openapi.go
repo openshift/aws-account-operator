@@ -82,15 +82,16 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.Refer
 				Properties: map[string]spec.Schema{
 					"customerAccountID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "CustomerAccountID holds the account number associated with the AWS account that will be used to access the associated role",
+							Description: "CustomerAccountID holds the external AWS account ID",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
-					"awsCredentialSecret": {
+					"accountReference": {
 						SchemaProps: spec.SchemaProps{
-							Description: "AwsCredentialSecret holds the credentials to the cluster account where the role wil be created",
-							Ref:         ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSSecretReference"),
+							Description: "AccountReference holds the name of the associated Account CR to use",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 					"awsFederatedRoleName": {
@@ -101,11 +102,10 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.Refer
 						},
 					},
 				},
-				Required: []string{"customerAccountID", "awsCredentialSecret", "awsFederatedRoleName"},
+				Required: []string{"customerAccountID", "accountReference", "awsFederatedRoleName"},
 			},
 		},
-		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSSecretReference"},
+		Dependencies: []string{},
 	}
 }
 
