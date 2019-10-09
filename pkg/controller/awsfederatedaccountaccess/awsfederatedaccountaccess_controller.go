@@ -99,7 +99,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		return reconcile.Result{}, err
 	}
 
-	// If the state is ready don't do anything
+	// If the state or failed is ready don't do anything
 	if currentFAA.Status.State == awsv1alpha1.AWSFederatedAccountStateReady || currentFAA.Status.State == awsv1alpha1.AWSFederatedAccountStateFailed {
 		return reconcile.Result{}, nil
 	}
@@ -131,10 +131,13 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 
 	}
 
+	// Use the account name reference to get the correct secret name
+	secretName := currentFAA.Spec.AccountReference + "-secret"
+
 	// Get aws client
 	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
-		SecretName: currentFAA.Spec.AwsCredentialSecret.Name,
-		NameSpace:  currentFAA.Spec.AwsCredentialSecret.Namespace,
+		SecretName: secretName,
+		NameSpace:  "aws-account-operator",
 		AwsRegion:  "us-east-1",
 	})
 	if err != nil {

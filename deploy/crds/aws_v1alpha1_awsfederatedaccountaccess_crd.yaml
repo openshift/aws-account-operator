@@ -36,29 +36,19 @@ spec:
           type: object
         spec:
           properties:
-            awsCredentialSecret:
-              description: AwsCredentialSecret holds the credentials to the cluster
-                account where the role wil be created
-              properties:
-                name:
-                  type: string
-                namespace:
-                  type: string
-              required:
-              - name
-              - namespace
-              type: object
+            awsAccountID:
+              description: AWSAccountID holds the internal AWS account ID
+              type: string
             awsFederatedRoleName:
               description: FederatedRoleName must be the name of a federatedrole cr
                 that currently exists
               type: string
             customerAccountID:
-              description: CustomerAccountID holds the account number associated with
-                the AWS account that will be used to access the associated role
+              description: CustomerAccountID holds the external AWS account ID
               type: string
           required:
           - customerAccountID
-          - awsCredentialSecret
+          - awsAccountID
           - awsFederatedRoleName
           type: object
         status:
