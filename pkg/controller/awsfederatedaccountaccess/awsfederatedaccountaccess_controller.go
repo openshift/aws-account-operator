@@ -137,7 +137,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	// Get aws client
 	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
 		SecretName: secretName,
-		NameSpace:  "aws-account-operator",
+		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
 	})
 	if err != nil {
@@ -179,7 +179,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	}
 
 	accountCR := &awsv1alpha1.Account{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AccountReference, Namespace: "aws-account-operator"}, accountCR)
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AccountReference, Namespace: awsv1alpha1.AccountCrNamespace}, accountCR)
 	if err != nil {
 		return reconcile.Result{}, err
 	}

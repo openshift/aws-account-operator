@@ -80,9 +80,9 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.Refer
 			SchemaProps: spec.SchemaProps{
 				Description: "AWSFederatedAccountAccessSpec defines the desired state of AWSFederatedAccountAccess",
 				Properties: map[string]spec.Schema{
-					"customerAccountID": {
+					"externalCustomerAWSAccountID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "CustomerAccountID holds the external AWS account ID",
+							Description: "ExternalCustomerAwsAccountID holds the external AWS account ID",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -102,7 +102,7 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.Refer
 						},
 					},
 				},
-				Required: []string{"customerAccountID", "accountReference", "awsFederatedRoleName"},
+				Required: []string{"externalCustomerAWSAccountID", "accountReference", "awsFederatedRoleName"},
 			},
 		},
 		Dependencies: []string{},
