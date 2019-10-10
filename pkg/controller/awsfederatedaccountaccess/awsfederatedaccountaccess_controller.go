@@ -286,7 +286,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createIAMRole(awsClient awsclient.C
 			Effect: "Allow",
 			Action: []string{"sts:AssumeRole"},
 			Principal: &awsv1alpha1.Principal{
-				AWS: afaa.Spec.CustomerAccountID,
+				AWS: afaa.Spec.ExternalCustomerAWSAccountID,
 			},
 		}},
 	}
