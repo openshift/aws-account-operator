@@ -23,10 +23,10 @@ const (
 // AWSFederatedAccountAccessSpec defines the desired state of AWSFederatedAccountAccess
 // +k8s:openapi-gen=true
 type AWSFederatedAccountAccessSpec struct {
-	// CustomerAccountID holds the account number associated with the AWS account that will be used to access the associated role
-	CustomerAccountID string `json:"customerAccountID"`
-	// AwsCredentialSecret holds the credentials to the cluster account where the role wil be created
-	AwsCredentialSecret AWSSecretReference `json:"awsCredentialSecret"`
+	// ExternalCustomerAwsAccountID holds the external AWS account ID
+	ExternalCustomerAWSAccountID string `json:"externalCustomerAWSAccountID"`
+	// AccountReference holds the name of the associated Account CR to use
+	AccountReference string `json:"accountReference"`
 	// FederatedRoleName must be the name of a federatedrole cr that currently exists
 	AWSFederatedRoleName string `json:"awsFederatedRoleName"`
 }
