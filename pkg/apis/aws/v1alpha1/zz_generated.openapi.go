@@ -530,6 +530,12 @@ func schema_pkg_apis_aws_v1alpha1_AccountSpec(ref common.ReferenceCallback) comm
 							Format: "",
 						},
 					},
+					"byoc": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
 					"claimLink": {
 						SchemaProps: spec.SchemaProps{
 							Type:   []string{"string"},
