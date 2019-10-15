@@ -14,10 +14,13 @@ type AccountClaimSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	LegalEntity         LegalEntity         `json:"legalEntity"`
-	AwsCredentialSecret AwsCredentialSecret `json:"awsCredentialSecret"`
-	Aws                 Aws                 `json:"aws"`
-	AccountLink         string              `json:"accountLink"`
+	LegalEntity         LegalEntity `json:"legalEntity"`
+	AwsCredentialSecret SecretRef   `json:"awsCredentialSecret"`
+	Aws                 Aws         `json:"aws"`
+	AccountLink         string      `json:"accountLink"`
+	BYOC                bool        `json:"byoc,omitempty"`
+	BYOCSecretRef       SecretRef   `json:"byocSecretRef,omitempty"`
+	BYOCAWSAccountID    string      `json:"byocAWSAccountID,omitempty"`
 }
 
 // AccountClaimStatus defines the observed state of AccountClaim
@@ -99,9 +102,8 @@ type LegalEntity struct {
 	ID   string `json:"id"`
 }
 
-// AwsCredentialSecret contains the name of the secret and name of the namespace
-// where UHC would like the AWS credentials secret to be placed
-type AwsCredentialSecret struct {
+// SecretRef contains the name of a secret and its namespace
+type SecretRef struct {
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
 }
