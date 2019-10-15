@@ -36,6 +36,7 @@ type AccountSpec struct {
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
 	AwsAccountID  string `json:"awsAccountID"`
 	IAMUserSecret string `json:"iamUserSecret"`
+	BYOC          bool   `json:"byoc,omitempty"`
 	// +optional
 	ClaimLink   string      `json:"claimLink"`
 	LegalEntity LegalEntity `json:"legalEntity"`
