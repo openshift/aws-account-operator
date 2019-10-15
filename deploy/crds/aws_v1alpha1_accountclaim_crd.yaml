@@ -65,6 +65,20 @@ spec:
               - name
               - namespace
               type: object
+            byoc:
+              type: boolean
+            byocAWSAccountID:
+              type: string
+            byocSecretRef:
+              properties:
+                name:
+                  type: string
+                namespace:
+                  type: string
+              required:
+              - name
+              - namespace
+              type: object
             legalEntity:
               description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                 Important: Run "operator-sdk generate k8s" to regenerate code after

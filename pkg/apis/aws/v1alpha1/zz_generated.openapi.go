@@ -359,7 +359,7 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimSpec(ref common.ReferenceCallback)
 					},
 					"awsCredentialSecret": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AwsCredentialSecret"),
+							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.SecretRef"),
 						},
 					},
 					"aws": {
@@ -373,12 +373,29 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimSpec(ref common.ReferenceCallback)
 							Format: "",
 						},
 					},
+					"byoc": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"byocSecretRef": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.SecretRef"),
+						},
+					},
+					"byocAWSAccountID": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
 				},
 				Required: []string{"legalEntity", "awsCredentialSecret", "aws", "accountLink"},
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Aws", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AwsCredentialSecret", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.LegalEntity"},
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Aws", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.LegalEntity", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.SecretRef"},
 	}
 }
 
