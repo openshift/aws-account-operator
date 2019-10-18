@@ -4,6 +4,13 @@ import (
 	"encoding/json"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/apimachinery/pkg/util/sets"
+)
+
+const (
+	EmailID = "osd-creds-mgmt"
 )
 
 func MarshalIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
@@ -37,4 +44,30 @@ func MarshalIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
 	}
 
 	return string(jsonPolicyDoc), nil
+}
+
+// GenerateAccountCR returns new account CR struct
+func GenerateAccountCR(namespace string) *awsv1alpha1.Account {
+
+	uuid := rand.String(6)
+	accountName := EmailID + "-" + uuid
+
+	return &awsv1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      accountName,
+			Namespace: namespace,
+		},
+		Spec: awsv1alpha1.AccountSpec{
+			AwsAccountID:  "",
+			IAMUserSecret: "",
+			ClaimLink:     "",
+		},
+	}
+}
+
+// AddFinalizer adds a finalizer to an object
+func AddFinalizer(object metav1.Object, finalizer string) {
+	finalizers := sets.NewString(object.GetFinalizers()...)
+	finalizers.Insert(finalizer)
+	object.SetFinalizers(finalizers.List())
 }

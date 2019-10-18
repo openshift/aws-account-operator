@@ -8,7 +8,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes/scheme"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -286,58 +285,6 @@ func TestUpdateAccountPoolStatus(t *testing.T) {
 	//Expect false
 	if updateAccountPoolStatus(&testAccountPoolCR, 1, 1) {
 		t.Error("AccountPool status doesn't need updating, but function returns true")
-	}
-}
-
-func TestNewAccountForCR(t *testing.T) {
-
-	//Seed with a specific number to ensure output is predictable
-	rand.Seed(1)
-
-	//Generate CR with namespace "test"
-	testAccountCR := newAccountForCR("test")
-
-	//Create a CR with the expected output
-	expectedAccountCR := awsv1alpha1.Account{
-		ObjectMeta: metav1.ObjectMeta{
-			//The string is the expeted output of rand given the seed
-			Name:      emailID + "-xn8fgg",
-			Namespace: "test",
-		},
-		Spec: awsv1alpha1.AccountSpec{
-			AwsAccountID:  "",
-			IAMUserSecret: "",
-			ClaimLink:     "",
-		},
-	}
-
-	//Ensure the two are equal
-	if !reflect.DeepEqual(*testAccountCR, expectedAccountCR) {
-		t.Errorf("Generated Account CR does not match the expected output\n")
-		t.Errorf("\nExpected: %+v\n Actual: %+v\n", expectedAccountCR, testAccountCR)
-	}
-}
-
-func TestAddFinalizers(t *testing.T) {
-
-	//Create a CR with the expected output
-	testAccountCR := awsv1alpha1.Account{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      emailID,
-			Namespace: "test",
-		},
-		Spec: awsv1alpha1.AccountSpec{
-			AwsAccountID:  "",
-			IAMUserSecret: "",
-			ClaimLink:     "",
-		},
-	}
-
-	addFinalizer(&testAccountCR, "finalizer.aws.managed.openshift.io")
-	finalizers := testAccountCR.GetFinalizers()
-
-	if !stringInSlice("finalizer.aws.managed.openshift.io", finalizers) {
-		t.Error()
 	}
 }
 

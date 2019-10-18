@@ -5,13 +5,11 @@ import (
 	"fmt"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -23,10 +21,6 @@ import (
 )
 
 var log = logf.Log.WithName("controller_accountpool")
-
-const (
-	emailID = "osd-creds-mgmt"
-)
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -149,8 +143,8 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	}
 
 	// Create Account CR
-	newAccount := newAccountForCR(awsv1alpha1.AccountCrNamespace)
-	addFinalizer(newAccount, "finalizer.aws.managed.openshift.io")
+	newAccount := utils.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
+	utils.AddFinalizer(newAccount, "finalizer.aws.managed.openshift.io")
 
 	// Set AccountPool instance as the owner and controller
 	if err := controllerutil.SetControllerReference(currentAccountPool, newAccount, r.scheme); err != nil {
@@ -177,29 +171,4 @@ func updateAccountPoolStatus(currentAccountPool *awsv1alpha1.AccountPool, unclai
 		return false
 	}
 
-}
-
-// newAccountForCR returns a Pending, Unclaimed CR with a name of libra-ops-<generated-string>
-func newAccountForCR(namespace string) *awsv1alpha1.Account {
-
-	uuid := rand.String(6)
-	accountName := emailID + "-" + uuid
-
-	return &awsv1alpha1.Account{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      accountName,
-			Namespace: namespace,
-		},
-		Spec: awsv1alpha1.AccountSpec{
-			AwsAccountID:  "",
-			IAMUserSecret: "",
-			ClaimLink:     "",
-		},
-	}
-}
-
-func addFinalizer(object metav1.Object, finalizer string) {
-	finalizers := sets.NewString(object.GetFinalizers()...)
-	finalizers.Insert(finalizer)
-	object.SetFinalizers(finalizers.List())
 }
