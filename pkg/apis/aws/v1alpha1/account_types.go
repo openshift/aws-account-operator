@@ -38,8 +38,10 @@ type AccountSpec struct {
 	IAMUserSecret string `json:"iamUserSecret"`
 	BYOC          bool   `json:"byoc,omitempty"`
 	// +optional
-	ClaimLink   string      `json:"claimLink"`
-	LegalEntity LegalEntity `json:"legalEntity"`
+	ClaimLink string `json:"claimLink"`
+	// +optional
+	ClaimLinkNamespace string      `json:"claimLinkNamespace"`
+	LegalEntity        LegalEntity `json:"legalEntity"`
 }
 
 // AccountStatus defines the observed state of Account
