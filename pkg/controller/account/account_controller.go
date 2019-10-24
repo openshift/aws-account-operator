@@ -18,6 +18,8 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+	totalaccountwatcher "github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
+
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,13 +37,12 @@ import (
 var log = logf.Log.WithName("controller_account")
 
 const (
-	awsLimit                = 4700
+	AwsLimit                = 4700
 	awsCredsUserName        = "aws_user_name"
 	awsCredsSecretIDKey     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
 	iamUserNameUHC          = "osdManagedAdmin"
 	iamUserNameSRE          = "osdManagedAdminSRE"
-	AwsSecretName           = "aws-account-operator-credentials"
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
 	createPendTime          = 10 * time.Minute
@@ -243,7 +244,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// We expect this secret to exist in the same namespace Account CR's are created
 	awsSetupClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
-		SecretName: AwsSecretName,
+		SecretName: controllerutils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
 	})
@@ -333,27 +334,23 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	if (currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false) {
-		// before doing anything make sure we are not over the limit if we are just error
-		accountTotal, err := TotalAwsAccounts(awsSetupClient)
-		if err != nil {
-			reqLogger.Info("Failed to get AWS account total from AWS api", "Error", err.Error())
-			return reconcile.Result{}, err
-		}
-
-		if accountTotal >= awsLimit {
-			reqLogger.Error(ErrAwsAccountLimitExceeded, "AWS Account limit reached", "Account Total", accountTotal)
-			return reconcile.Result{}, ErrAwsAccountLimitExceeded
-		}
 
 		var awsAccountID string
 
 		if currentAcctInstance.Spec.AwsAccountID == "" {
+			// before doing anything make sure we are not over the limit if we are just error
+			if totalaccountwatcher.TotalAccountWatcher.Total >= AwsLimit {
+				reqLogger.Error(ErrAwsAccountLimitExceeded, "AWS Account limit reached", "Account Total", totalaccountwatcher.TotalAccountWatcher.Total)
+				return reconcile.Result{}, ErrAwsAccountLimitExceeded
+			}
 
 			// Build Aws Account
 			awsAccountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
 			if err != nil {
 				return reconcile.Result{}, err
 			}
+
+			totalaccountwatcher.TotalAccountWatcher.Total += 1
 
 			// set state creating if the account was able to create
 			SetAccountStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, "Creating")
@@ -373,7 +370,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 			awsAccountID = currentAcctInstance.Spec.AwsAccountID
 
-			// set state creating if the account was alredy created
+			// set state creating if the account was already created
 			SetAccountStatus(reqLogger, currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, "Creating")
 			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 			if err != nil {
@@ -811,33 +808,6 @@ func formatAccountEmail(name string) string {
 
 	email := prefix + "+" + splitString[len(splitString)-1] + "@redhat.com"
 	return email
-}
-
-// TotalAwsAccounts returns the total number of aws accounts in the aws org
-func TotalAwsAccounts(client awsclient.Client) (int, error) {
-	var awsAccounts []*organizations.Account
-
-	var nextToken *string
-
-	// Ensure we paginate through the account list
-	for {
-		awsAccountList, err := client.ListAccounts(&organizations.ListAccountsInput{NextToken: nextToken})
-		if err != nil {
-			errMsg := "Error getting a list of accounts"
-			if aerr, ok := err.(awserr.Error); ok {
-				errMsg = fmt.Sprintf("Failed to get account list with error code %s", aerr.Message())
-			}
-			return 0, errors.New(errMsg)
-		}
-		awsAccounts = append(awsAccounts, awsAccountList.Accounts...)
-		if awsAccountList.NextToken != nil {
-			nextToken = awsAccountList.NextToken
-		} else {
-			break
-		}
-	}
-
-	return len(awsAccounts), nil
 }
 
 // SetAccountStatus sets the status of an account

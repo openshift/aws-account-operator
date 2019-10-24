@@ -15,16 +15,11 @@
 package localmetrics
 
 import (
-	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
-	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/prometheus/client_golang/prometheus"
-	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
@@ -91,33 +86,6 @@ var (
 		MetricTotalAccountReuseFailed,
 	}
 )
-
-// UpdateAWSMetrics updates the total AWS Accounts metric every N hours
-func UpdateAWSMetrics(kubeClient kubeclientpkg.Client, hour int) {
-	metricLogger := log.WithValues("Namespace", "aws-account-operator-operator")
-
-	awsClient, err := awsclient.GetAWSClient(kubeClient, awsclient.NewAwsClientInput{
-		SecretName: account.AwsSecretName,
-		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
-	})
-
-	if err != nil {
-		metricLogger.Error(err, "Failed to get awsClient")
-		return
-	}
-
-	d := time.Duration(hour) * time.Hour
-	for range time.Tick(d) {
-		accountTotal, err := account.TotalAwsAccounts(awsClient)
-
-		if err != nil {
-			metricLogger.Error(err, fmt.Sprintf("Failed to get total number of AWS accounts: %s", err))
-		} else {
-			MetricTotalAWSAccounts.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(accountTotal))
-		}
-	}
-}
 
 // UpdateAccountCRUnclaimedMetric updates the unclaimed account metric
 func UpdateAccountCRUnclaimedMetric(accountList awsv1alpha1.AccountList, wg *sync.WaitGroup) {

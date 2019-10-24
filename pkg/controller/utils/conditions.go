@@ -255,3 +255,7 @@ func FindAWSFederatedAccountAccessCondition(conditions []awsv1alpha1.AWSFederate
 	}
 	return nil
 }
+
+const (
+	AwsSecretName = "aws-account-operator-credentials"
+)
