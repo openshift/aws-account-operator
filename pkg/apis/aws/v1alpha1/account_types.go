@@ -40,7 +40,7 @@ type AccountSpec struct {
 	// +optional
 	ClaimLink string `json:"claimLink"`
 	// +optional
-	ClaimLinkNamespace string      `json:"claimLinkNamespace"`
+	ClaimLinkNamespace string      `json:"claimLinkNamespace,omitempty"`
 	LegalEntity        LegalEntity `json:"legalEntity"`
 }
 
