@@ -559,6 +559,12 @@ func schema_pkg_apis_aws_v1alpha1_AccountSpec(ref common.ReferenceCallback) comm
 							Format: "",
 						},
 					},
+					"claimLinkNamespace": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
 					"legalEntity": {
 						SchemaProps: spec.SchemaProps{
 							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.LegalEntity"),
