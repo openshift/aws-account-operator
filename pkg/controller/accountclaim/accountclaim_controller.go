@@ -7,8 +7,10 @@ import (
 
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -67,6 +70,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	err = c.Watch(&source.Kind{Type: &awsv1alpha1.Account{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType:    &awsv1alpha1.AccountClaim{},
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -111,6 +122,61 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		}
 
 		return reconcile.Result{}, nil
+	}
+
+	if accountClaim.Spec.BYOC {
+
+		reqLogger.Info("Reconciling BYOC AccountClaim")
+
+		if accountClaim.Spec.AccountLink == "" {
+
+			//Create a new account with BYOC flag
+			newAccount := utils.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
+			populateBYOCSpec(newAccount, accountClaim)
+			utils.AddFinalizer(newAccount, "finalizer.aws.managed.openshift.io")
+
+			// Set AccountClaim instance as the owner and controller
+			if err := controllerutil.SetControllerReference(accountClaim, newAccount, r.scheme); err != nil {
+				return reconcile.Result{}, err
+			}
+
+			// Create the new account
+			err = r.client.Create(context.TODO(), newAccount)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			// Set the accountLink of the AccountClaim to the new account if create is successful
+			accountClaim.Spec.AccountLink = newAccount.Name
+			err = r.client.Update(context.TODO(), accountClaim)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			return reconcile.Result{}, nil
+		}
+
+		// Get the account and check if its Ready
+		byocAccount := &awsv1alpha1.Account{}
+		err = r.client.Get(context.TODO(), types.NamespacedName{Name: accountClaim.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, byocAccount)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		if byocAccount.Status.State == string(awsv1alpha1.AccountReady) {
+
+			message := "BYOC account ready"
+			accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
+				accountClaim.Status.Conditions,
+				awsv1alpha1.AccountClaimed,
+				corev1.ConditionTrue,
+				AccountClaimed,
+				message,
+				controllerutils.UpdateConditionNever)
+			// Update the Spec on AccountClaim
+			return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
+		}
+
+		return reconcile.Result{}, nil
+
 	}
 
 	// Check if accountClaim is being deleted, this will trigger the account reuse workflow
@@ -233,6 +299,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		setAccountClaimStatus(reqLogger, unclaimedAccount, accountClaim)
 		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 	}
+
 	return reconcile.Result{}, nil
 }
 
@@ -360,6 +427,7 @@ func (r *ReconcileAccountClaim) accountSpecUpdate(reqLogger logr.Logger, account
 func updateClaimedAccountFields(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
 	// Set link on Account
 	awsAccount.Spec.ClaimLink = awsAccountClaim.ObjectMeta.Name
+	awsAccount.Spec.ClaimLinkNamespace = awsAccountClaim.ObjectMeta.Namespace
 
 	// Carry over LegalEntity data from the claim to the account
 	awsAccount.Spec.LegalEntity.ID = awsAccountClaim.Spec.LegalEntity.ID
@@ -409,6 +477,15 @@ func newSecretforCR(secretName string, secretNameSpace string, awsAccessKeyID []
 		},
 	}
 
+}
+
+// Add BYOC data to an account CR
+func populateBYOCSpec(account *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) {
+
+	account.Spec.BYOC = true
+	account.Spec.AwsAccountID = accountClaim.Spec.BYOCAWSAccountID
+	account.Spec.ClaimLink = accountClaim.ObjectMeta.Name
+	account.Spec.ClaimLinkNamespace = accountClaim.ObjectMeta.Namespace
 }
 
 func (r *ReconcileAccountClaim) addFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {

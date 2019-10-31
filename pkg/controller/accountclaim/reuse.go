@@ -52,6 +52,7 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 
 	// Reset claimlink and carry over legal entity from deleted claim
 	reusedAccount.Spec.ClaimLink = ""
+	reusedAccount.Spec.ClaimLinkNamespace = ""
 
 	// LegalEntity is being carried over here to support older accounts, that were claimed
 	// prior to the introduction of reuse (their account's legalEntity will be blank )
