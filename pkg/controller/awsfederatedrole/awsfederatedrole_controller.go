@@ -115,6 +115,11 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	// Build custom policy in AWS-valid JSON and converts to string
 	jsonPolicy, err := utils.MarshalIAMPolicy(*instance)
 
+	// If AWSCustomPolicy and AWSManagedPolicies don't exist, exit reconcile
+	if len(instance.Spec.AWSManagedPolicies) == 0 && instance.Spec.AWSCustomPolicy.Name == "" {
+		return reconcile.Result{}, nil
+	}
+
 	// Attemps to create the policy to ensure its a valid policy
 	createOutput, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
 		Description:    &instance.Spec.AWSCustomPolicy.Description,
