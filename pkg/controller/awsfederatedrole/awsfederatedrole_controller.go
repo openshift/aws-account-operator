@@ -115,8 +115,23 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	// Build custom policy in AWS-valid JSON and converts to string
 	jsonPolicy, err := utils.MarshalIAMPolicy(*instance)
 
-	// If AWSCustomPolicy and AWSManagedPolicies don't exist, exit reconcile
+	// If AWSCustomPolicy and AWSManagedPolicies don't exist, update condition and exit
 	if len(instance.Spec.AWSManagedPolicies) == 0 && instance.Spec.AWSCustomPolicy.Name == "" {
+		instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
+			instance.Status.Conditions,
+			awsv1alpha1.AWSFederatedRoleInvalid,
+			"True",
+			"NoAWSCustomPolicyOrAWSManagedPolicies",
+			"AWSCustomPolicy and/or AWSManagedPolicies do not exist",
+			utils.UpdateConditionNever)
+		err = r.client.Status().Update(context.TODO(), instance)
+		if err != nil {
+			log.Error(err, "Error updating conditions")
+			return reconcile.Result{}, err
+		}
+
+		// Log the error
+		log.Error(err, fmt.Sprintf("AWSCustomPolicy %s and/or AWSManagedPolicies %+v empty", instance.Spec.AWSCustomPolicy.Name, instance.Spec.AWSManagedPolicies))
 		return reconcile.Result{}, nil
 	}
 
@@ -269,18 +284,4 @@ func policyInSlice(policy string, policyList []string) bool {
 		}
 	}
 	return false
-}
-
-func getActions(customPolicy *awsv1alpha1.AWSCustomPolicy) []*string {
-
-	var actions []*string
-
-	for _, statement := range customPolicy.Statements {
-		for _, action := range statement.Action {
-			// Need a new var for unique memory addresses
-			a := action
-			actions = append(actions, &a)
-		}
-	}
-	return actions
 }
