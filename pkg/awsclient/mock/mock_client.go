@@ -368,6 +368,21 @@ func (mr *MockClientMockRecorder) CreateRole(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRole", reflect.TypeOf((*MockClient)(nil).CreateRole), arg0)
 }
 
+// DeleteRole mocks base method
+func (m *MockClient) DeleteRole(arg0 *iam.DeleteRoleInput) (*iam.DeleteRoleOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteRole", arg0)
+	ret0, _ := ret[0].(*iam.DeleteRoleOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteRole indicates an expected call of DeleteRole
+func (mr *MockClientMockRecorder) DeleteRole(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRole", reflect.TypeOf((*MockClient)(nil).DeleteRole), arg0)
+}
+
 // ListAccounts mocks base method
 func (m *MockClient) ListAccounts(arg0 *organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error) {
 	m.ctrl.T.Helper()
