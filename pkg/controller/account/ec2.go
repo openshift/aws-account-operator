@@ -185,9 +185,17 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client) (int, 
 	// 64 : stopping
 	// 80 : stopped
 
-	result, err := ListEC2InstanceStatus(reqLogger, client)
-
+	result, err := client.DescribeInstanceStatus(nil)
 	if err != nil {
+		// Log AWS error
+		if aerr, ok := err.(awserr.Error); ok {
+			reqLogger.Error(aerr,
+				fmt.Sprintf(`New AWS Error while describing EC2 instance, 
+					AWS Error Code: %s, 
+					AWS Error Message: %s`,
+					aerr.Code(),
+					aerr.Message()))
+		}
 		return 0, err
 	}
 
@@ -207,13 +215,15 @@ func TerminateEC2Instance(reqLogger logr.Logger, client awsclient.Client, instan
 		InstanceIds: aws.StringSlice([]string{instanceID}),
 	})
 	if err != nil {
-
+		// Log AWS error
 		if aerr, ok := err.(awserr.Error); ok {
-			terminateErrMsg := fmt.Sprintf("Unable to terminate EC2 instance %s: %s", instanceID, aerr.Code())
-			reqLogger.Error(aerr, terminateErrMsg)
-			return err
+			reqLogger.Error(aerr,
+				fmt.Sprintf(`New AWS Error while describing EC2 instance, 
+					AWS Error Code: %s, 
+					AWS Error Message: %s`,
+					aerr.Code(),
+					aerr.Message()))
 		}
-
 		return err
 	}
 
@@ -226,8 +236,12 @@ func ListEC2InstanceStatus(reqLogger logr.Logger, client awsclient.Client) (*ec2
 
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
-			descErrMsg := fmt.Sprintf("Unable to describe EC2 instances %s", aerr.Code())
-			reqLogger.Error(aerr, descErrMsg)
+			reqLogger.Error(aerr,
+				fmt.Sprintf(`New AWS Error Listing EC2 instance status, 
+					AWS Error Code: %s, 
+					AWS Error Message: %s`,
+					aerr.Code(),
+					aerr.Message()))
 			return nil, err
 		}
 
