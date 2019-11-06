@@ -486,6 +486,7 @@ func populateBYOCSpec(account *awsv1alpha1.Account, accountClaim *awsv1alpha1.Ac
 	account.Spec.AwsAccountID = accountClaim.Spec.BYOCAWSAccountID
 	account.Spec.ClaimLink = accountClaim.ObjectMeta.Name
 	account.Spec.ClaimLinkNamespace = accountClaim.ObjectMeta.Namespace
+	account.Spec.LegalEntity = accountClaim.Spec.LegalEntity
 }
 
 func (r *ReconcileAccountClaim) addFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
