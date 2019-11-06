@@ -160,7 +160,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 				}
 				return reconcile.Result{}, nil
 			}
-			log.Error(err, fmt.Sprintf("AWS Error Code: %s, Message: %s", aerr.Code(), aerr.Message()))
+			utils.LogAwsError(log, "", nil, err)
 		} else {
 			log.Error(err, "Non-AWS Error while creating Policy")
 		}
@@ -180,11 +180,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	// List all policies from AWS
 	managedPolicies, err := getAllPolicies(awsClient)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			log.Error(err, fmt.Sprintf("AWS Error Code: %s, Message: %s", aerr.Code(), aerr.Message()))
-		} else {
-			log.Error(err, "Error listing managed AWS policies")
-		}
+		utils.LogAwsError(log, "Error listing managed AWS policies", err, err)
 		return reconcile.Result{}, err
 	}
 

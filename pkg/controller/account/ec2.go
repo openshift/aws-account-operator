@@ -9,6 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/go-logr/logr"
+	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 )
 
@@ -72,12 +74,10 @@ func (r *ReconcileAccount) BuildandDestroyEC2Instances(reqLogger logr.Logger, aw
 		// Terminate instance id if it exists
 		if instanceID != "" {
 			// Log instance id of instance that will be terminated
-			reqLogger.Error(err, fmt.Sprintf(`Early termination of instance with ID: %s`, instanceID))
+			reqLogger.Error(err, fmt.Sprintf("Early termination of instance with ID: %s", instanceID))
 			termErr := TerminateEC2Instance(reqLogger, awsClient, instanceID)
 			if termErr != nil {
-				if aerr, ok := termErr.(awserr.Error); ok {
-					reqLogger.Error(aerr, fmt.Sprintf(`AWS error while attempting to terminate instace, AWS Error Code: %s, AWS Error Message: %s`, aerr.Code(), aerr.Message()))
-				}
+				controllerutils.LogAwsError(reqLogger, "AWS error while attempting to terminate instance", nil, termErr)
 			}
 		}
 		return err
@@ -155,12 +155,7 @@ func CreateEC2Instance(reqLogger logr.Logger, client awsclient.Client, ami strin
 				case "PendingVerification", "OptInRequired":
 					continue
 				default:
-					reqLogger.Error(runErr,
-						fmt.Sprintf(`Failed while trying to create EC2 instance, 
-							AWS Error Code: %s, 
-							AWS Error Message: %s`,
-							aerr.Code(),
-							aerr.Message()))
+					controllerutils.LogAwsError(reqLogger, "Failed while trying to create EC2 instance", runErr, runErr)
 					return timeoutInstanceID, runErr
 				}
 			}
@@ -187,15 +182,7 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client) (int, 
 
 	result, err := client.DescribeInstanceStatus(nil)
 	if err != nil {
-		// Log AWS error
-		if aerr, ok := err.(awserr.Error); ok {
-			reqLogger.Error(aerr,
-				fmt.Sprintf(`New AWS Error while describing EC2 instance, 
-					AWS Error Code: %s, 
-					AWS Error Message: %s`,
-					aerr.Code(),
-					aerr.Message()))
-		}
+		controllerutils.LogAwsError(reqLogger, "New AWS Error while describing EC2 instance", nil, err)
 		return 0, err
 	}
 
@@ -215,15 +202,7 @@ func TerminateEC2Instance(reqLogger logr.Logger, client awsclient.Client, instan
 		InstanceIds: aws.StringSlice([]string{instanceID}),
 	})
 	if err != nil {
-		// Log AWS error
-		if aerr, ok := err.(awserr.Error); ok {
-			reqLogger.Error(aerr,
-				fmt.Sprintf(`New AWS Error while describing EC2 instance, 
-					AWS Error Code: %s, 
-					AWS Error Message: %s`,
-					aerr.Code(),
-					aerr.Message()))
-		}
+		controllerutils.LogAwsError(reqLogger, "New AWS Error while describing EC2 instance", nil, err)
 		return err
 	}
 
@@ -235,16 +214,7 @@ func ListEC2InstanceStatus(reqLogger logr.Logger, client awsclient.Client) (*ec2
 	result, err := client.DescribeInstanceStatus(nil)
 
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			reqLogger.Error(aerr,
-				fmt.Sprintf(`New AWS Error Listing EC2 instance status, 
-					AWS Error Code: %s, 
-					AWS Error Message: %s`,
-					aerr.Code(),
-					aerr.Message()))
-			return nil, err
-		}
-
+		controllerutils.LogAwsError(reqLogger, "New AWS Error Listing EC2 instance status", nil, err)
 		return nil, err
 	}
 

@@ -2,7 +2,11 @@ package utils
 
 import (
 	"encoding/json"
+	"fmt"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
+
+	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -70,4 +74,21 @@ func AddFinalizer(object metav1.Object, finalizer string) {
 	finalizers := sets.NewString(object.GetFinalizers()...)
 	finalizers.Insert(finalizer)
 	object.SetFinalizers(finalizers.List())
+}
+
+// LogAwsError formats and logs aws error and returns if err was an awserr
+func LogAwsError(logger logr.Logger, errMsg string, customError error, err error) {
+	if aerr, ok := err.(awserr.Error); ok {
+		if customError == nil {
+			customError = aerr
+		}
+
+		logger.Error(customError,
+			fmt.Sprintf(`%s,
+				AWS Error Code: %s, 
+				AWS Error Message: %s`,
+				errMsg,
+				aerr.Code(),
+				aerr.Message()))
+	}
 }
