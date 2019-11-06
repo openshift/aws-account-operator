@@ -104,7 +104,7 @@ func (r *ReconcileAccount) BuildandDestroyEC2Instances(reqLogger logr.Logger, aw
 	for i := 0; i < 300; i++ {
 		var code int
 		time.Sleep(1 * time.Second)
-		code, DescError = DescribeEC2Instances(reqLogger, awsClient)
+		code, DescError = DescribeEC2Instances(reqLogger, awsClient, instanceID)
 		if code == 16 {
 			reqLogger.Info(fmt.Sprintf("EC2 Instance: %s Running", instanceID))
 			break
@@ -187,7 +187,7 @@ func CreateEC2Instance(reqLogger logr.Logger, client awsclient.Client, ami strin
 }
 
 // DescribeEC2Instances returns the InstanceState code
-func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client) (int, error) {
+func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instanceId string) (int, error) {
 	// States and codes
 	// 0 : pending
 	// 16 : running
@@ -196,7 +196,10 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client) (int, 
 	// 64 : stopping
 	// 80 : stopped
 
-	result, err := client.DescribeInstanceStatus(nil)
+	result, err := client.DescribeInstanceStatus(&ec2.DescribeInstanceStatusInput{
+		InstanceIds: aws.StringSlice([]string{instanceId}),
+	})
+
 	if err != nil {
 		controllerutils.LogAwsError(reqLogger, "New AWS Error while describing EC2 instance", nil, err)
 		return 0, err
