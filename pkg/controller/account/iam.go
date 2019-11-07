@@ -135,7 +135,7 @@ func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, Durat
 }
 
 // BuildSTSUser takes all parameters required to create a user, user secret
-func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient awsclient.Client, awsClient awsclient.Client, account *awsv1alpha1.Account, nameSpace string) (string, error) {
+func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient awsclient.Client, awsClient awsclient.Client, account *awsv1alpha1.Account, nameSpace string, iamRole string) (string, error) {
 	reqLogger.Info("Creating IAM STS User")
 
 	// If IAM user was just created we cannot immediately create STS credentials due to an issue
@@ -143,7 +143,7 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 	time.Sleep(10 * time.Second)
 
 	// Create STS user for SRE admins
-	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsClient, "", account.Spec.AwsAccountID)
+	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsClient, iamRole, account.Spec.AwsAccountID)
 	if STSCredentialsErr != nil {
 		reqLogger.Info("Failed to get SRE admin STSCredentials from AWS api ", "Error", STSCredentialsErr.Error())
 		return "", STSCredentialsErr
@@ -190,4 +190,48 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 	}
 	reqLogger.Info("Created IAM STS User")
 	return userSecret.ObjectMeta.Name, nil
+}
+
+// getStsCredentials returns sts credentials for the specified account ARN
+func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleName string, awsAccountID string) (*sts.AssumeRoleOutput, error) {
+	// Use the role session name to uniquely identify a session when the same role
+	// is assumed by different principals or for different reasons.
+	var roleSessionName = "awsAccountOperator"
+	// Default duration in seconds of the session token 3600. We need to have the roles policy
+	// changed if we want it to be longer than 3600 seconds
+	var roleSessionDuration int64 = 3600
+	// The role ARN made up of the account number and the role which is the default role name
+	// created in child accounts
+	var roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", awsAccountID, iamRoleName)
+	reqLogger.Info(fmt.Sprintf("Creating STS credentials for AWS ARN: %s", roleArn))
+	// Build input for AssumeRole
+	assumeRoleInput := sts.AssumeRoleInput{
+		DurationSeconds: &roleSessionDuration,
+		RoleArn:         &roleArn,
+		RoleSessionName: &roleSessionName,
+	}
+
+	assumeRoleOutput := &sts.AssumeRoleOutput{}
+	var err error
+	for i := 0; i < 100; i++ {
+		time.Sleep(500 * time.Millisecond)
+		assumeRoleOutput, err = client.AssumeRole(&assumeRoleInput)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		// Log AWS error
+		if aerr, ok := err.(awserr.Error); ok {
+			reqLogger.Error(aerr,
+				fmt.Sprintf(`New AWS Error while getting STS credentials, 
+					AWS Error Code: %s, 
+					AWS Error Message: %s`,
+					aerr.Code(),
+					aerr.Message()))
+		}
+		return &sts.AssumeRoleOutput{}, err
+	}
+
+	return assumeRoleOutput, nil
 }
