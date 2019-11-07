@@ -696,6 +696,8 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 					return &iam.CreateUserOutput{}, err
 				}
 				createUserOutput = createResult
+				return createUserOutput, nil
+
 			default:
 				// Log new AWS error
 				reqLogger.Error(aerr,
@@ -709,7 +711,6 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 		} else {
 			return &iam.CreateUserOutput{}, err
 		}
-		return createUserOutput, errors.New("Failed to cast AWS error")
 	}
 	return createUserOutput, nil
 }
