@@ -440,7 +440,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Create STS CLI Credentials for SRE
-		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace)
+		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace, "OrganizationAccountAccessRole")
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build SRE STS credentials: %s", iamUserNameSRE))
 			return reconcile.Result{}, err
@@ -778,7 +778,7 @@ func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleNa
 	var roleSessionDuration int64 = 3600
 	// The role ARN made up of the account number and the role which is the default role name
 	// created in child accounts
-	var roleArn = fmt.Sprintf("arn:aws:iam::%s:role/OrganizationAccountAccessRole", awsAccountID)
+	var roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", awsAccountID, iamRoleName)
 	reqLogger.Info(fmt.Sprintf("Creating STS credentials for AWS ARN: %s", roleArn))
 	// Build input for AssumeRole
 	assumeRoleInput := sts.AssumeRoleInput{

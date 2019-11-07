@@ -135,7 +135,7 @@ func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, Durat
 }
 
 // BuildSTSUser takes all parameters required to create a user, user secret
-func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient awsclient.Client, awsClient awsclient.Client, account *awsv1alpha1.Account, nameSpace string) (string, error) {
+func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient awsclient.Client, awsClient awsclient.Client, account *awsv1alpha1.Account, nameSpace string, iamRole string) (string, error) {
 	reqLogger.Info("Creating IAM STS User")
 
 	// If IAM user was just created we cannot immediately create STS credentials due to an issue
@@ -143,7 +143,7 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 	time.Sleep(10 * time.Second)
 
 	// Create STS user for SRE admins
-	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsClient, "", account.Spec.AwsAccountID)
+	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsClient, iamRole, account.Spec.AwsAccountID)
 	if STSCredentialsErr != nil {
 		reqLogger.Info("Failed to get SRE admin STSCredentials from AWS api ", "Error", STSCredentialsErr.Error())
 		return "", STSCredentialsErr
