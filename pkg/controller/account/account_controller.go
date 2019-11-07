@@ -439,7 +439,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Create STS CLI Credentials for SRE
-		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace, "OrganizationAccountAccessRole")
+		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace, accountOperatorIAMRole)
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build SRE STS credentials: %s", iamUserNameSRE))
 			return reconcile.Result{}, err
