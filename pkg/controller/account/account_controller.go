@@ -427,14 +427,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		if err != nil {
 			var returnErr error
-			if aerr, ok := err.(awserr.Error); ok {
-				reqLogger.Error(returnErr,
-					fmt.Sprintf(`Unable to create AWS connection with SRE credentials, 
-						AWS Error Code: %s, 
-						AWS Error Message: %s`,
-						aerr.Code(),
-						aerr.Message()))
-			}
+			controllerutils.LogAwsError(reqLogger, "Unable to create AWS connection with SRE credentials", returnErr, err)
 			return reconcile.Result{}, err
 		}
 
@@ -618,13 +611,7 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 				returnErr = ErrAwsTooManyRequests
 			default:
 				returnErr = ErrAwsFailedCreateAccount
-				// Log AWS error
-				reqLogger.Error(aerr,
-					fmt.Sprintf(`New AWS Error during account creation, 
-						AWS Error Code: %s, 
-						AWS Error Message: %s`,
-						aerr.Code(),
-						aerr.Message()))
+				controllerutils.LogAwsError(reqLogger, "New AWS Error during account creation", returnErr, err)
 			}
 
 		}
@@ -686,24 +673,12 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 					UserName: aws.String(userName),
 				})
 				if err != nil {
-					// Log new AWS error
-					reqLogger.Error(aerr,
-						fmt.Sprintf(`New AWS Error during creation of IAM user (ErrCodeNoSuchEntityException), 
-							AWS Error Code: %s, 
-							AWS Error Message: %s`,
-							aerr.Code(),
-							aerr.Message()))
+					controllerutils.LogAwsError(reqLogger, "New AWS Error during creation of IAM user (ErrCodeNoSuchEntityException)", nil, err)
 					return &iam.CreateUserOutput{}, err
 				}
 				createUserOutput = createResult
 			default:
-				// Log new AWS error
-				reqLogger.Error(aerr,
-					fmt.Sprintf(`New AWS Error during creation of IAM user (not ErrCodeNoSuchEntityException), 
-						AWS Error Code: %s, 
-						AWS Error Message: %s`,
-						aerr.Code(),
-						aerr.Message()))
+				controllerutils.LogAwsError(reqLogger, "New AWS Error during creation of IAM user (not ErrCodeNoSuchEntityException)", nil, err)
 				return &iam.CreateUserOutput{}, err
 			}
 		} else {
@@ -730,14 +705,7 @@ func AttachAdminUserPolicy(reqLogger logr.Logger, client awsclient.Client, userN
 		}
 	}
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			reqLogger.Error(aerr,
-				fmt.Sprintf(`New AWS Error while attaching admin user policy, 
-					AWS Error Code: %s, 
-					AWS Error Message: %s`,
-					aerr.Code(),
-					aerr.Message()))
-		}
+		controllerutils.LogAwsError(reqLogger, "New AWS Error while attaching admin user policy", nil, err)
 		return &iam.AttachUserPolicyOutput{}, err
 	}
 
@@ -752,16 +720,8 @@ func CreateUserAccessKey(reqLogger logr.Logger, client awsclient.Client, userNam
 		UserName: aws.String(userName),
 	})
 
-	// Log AWS error
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			reqLogger.Error(aerr,
-				fmt.Sprintf(`New AWS Error while creating user access key, 
-					AWS Error Code: %s, 
-					AWS Error Message: %s`,
-					aerr.Code(),
-					aerr.Message()))
-		}
+		controllerutils.LogAwsError(reqLogger, "New AWS Error while creating user access key", nil, err)
 	}
 
 	return result, nil
@@ -886,12 +846,8 @@ func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client
 			default:
 				returnErr = ErrAwsFailedCreateSupportCase
 			}
-			reqLogger.Error(aerr,
-				fmt.Sprintf(`New AWS Error while creating case, 
-					AWS Error Code: %s, 
-					AWS Error Message: %s`,
-					aerr.Code(),
-					aerr.Message()))
+
+			controllerutils.LogAwsError(reqLogger, "New AWS Error while creating case", returnErr, caseErr)
 		}
 		return "", returnErr
 	}
@@ -922,12 +878,7 @@ func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.
 			default:
 				returnErr = ErrAwsFailedDescribeSupportCase
 			}
-			reqLogger.Error(aerr,
-				fmt.Sprintf(`New AWS Error while checking case resolution, 
-					AWS Error Code: %s, 
-					AWS Error Message: %s`,
-					aerr.Code(),
-					aerr.Message()))
+			controllerutils.LogAwsError(reqLogger, "New AWS Error while checking case resolution", returnErr, caseErr)
 		}
 
 		return false, returnErr
