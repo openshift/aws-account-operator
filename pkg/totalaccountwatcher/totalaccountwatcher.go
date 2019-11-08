@@ -49,7 +49,6 @@ func Initialize(client client.Client, watchInterval time.Duration) {
 	}
 
 	TotalAccountWatcher = NewTotalAccountWatcher(client, AwsClient, watchInterval)
-	TotalAccountWatcher.UpdateTotalAccounts(log)
 }
 
 // NewTotalAccountWatcher returns a new instance of the TotalAccountWatcher interface
