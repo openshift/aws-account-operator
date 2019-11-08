@@ -517,9 +517,6 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 
 // BuildIAMUser takes all parameters required to create a user, user secret
 func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUserName string, nameSpace string) (string, error) {
-	reqLogger.Info("IAM User Created")
-
-	// Create IAM user
 	_, userErr := CreateIAMUser(reqLogger, awsClient, iamUserName)
 	// TODO: better error handling but for now scrap account
 	if userErr != nil {
