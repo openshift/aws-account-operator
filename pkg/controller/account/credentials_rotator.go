@@ -11,6 +11,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/credentialwatcher"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -31,19 +32,25 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 
 	STSSecret := &corev1.Secret{}
 
+	// If this secret doesn't exist go don't delete and just create
 	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: STSCredentialsSecretName, Namespace: awsv1alpha1.AccountCrNamespace}, STSSecret)
 
+	// Return an error only if the error is not that the secret doesn't exist
 	if err != nil {
-		errMsg := fmt.Sprintf("Error retrieving secret %s", STSCredentialsSecretName)
-		reqLogger.Error(err, errMsg)
-		return err
-	}
+		if !apierrors.IsNotFound(err) {
+			errMsg := fmt.Sprintf("Error retrieving cli secret %s", STSCredentialsSecretName)
+			reqLogger.Error(err, errMsg)
+			return err
+		}
 
-	err = r.Client.Delete(context.TODO(), STSSecret)
+	} else {
+		// Delete the secret if there was no error
+		err = r.Client.Delete(context.TODO(), STSSecret)
 
-	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Error deleting secret %s", STSCredentialsSecretName))
-		return err
+		if err != nil {
+			reqLogger.Error(err, fmt.Sprintf("Error deleting cli secret %s", STSCredentialsSecretName))
+			return err
+		}
 	}
 
 	STSSecretInput := SRESecretInput{
@@ -125,19 +132,25 @@ func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSe
 
 	STSSecret := &corev1.Secret{}
 
+	// If this secret doesn't exist go don't delete and just create
 	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: STSCredentialsSecretName, Namespace: awsv1alpha1.AccountCrNamespace}, STSSecret)
 
+	// Return an error only if the error is not that the secret doesn't exist
 	if err != nil {
-		errMsg := fmt.Sprintf("Error retrieving secret %s", STSCredentialsSecretName)
-		reqLogger.Error(err, errMsg)
-		return err
-	}
+		if !apierrors.IsNotFound(err) {
+			errMsg := fmt.Sprintf("Error retrieving console secret %s", STSCredentialsSecretName)
+			reqLogger.Error(err, errMsg)
+			return err
+		}
 
-	err = r.Client.Delete(context.TODO(), STSSecret)
+	} else {
+		// Delete the secret if there was no error
+		err = r.Client.Delete(context.TODO(), STSSecret)
 
-	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Error deleting secret %s", STSCredentialsSecretName))
-		return err
+		if err != nil {
+			reqLogger.Error(err, fmt.Sprintf("Error deleting console secret %s", STSCredentialsSecretName))
+			return err
+		}
 	}
 
 	err = r.Client.Create(context.TODO(), userConsoleSecret)
