@@ -18,7 +18,6 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	totalaccountwatcher "github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
-
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -66,8 +65,6 @@ const (
 	AccountReady = "Ready"
 	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
 	AccountPendingVerification = "PendingVerification"
-	// IAM Role name for IAM user creating resources in account
-	accountOperatorIAMRole = "OrganizationAccountAccessRole"
 )
 
 var awsAccountID string
@@ -379,7 +376,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Get STS credentials so that we can create an aws client with
-		creds, credsErr := getStsCredentials(reqLogger, awsSetupClient, accountOperatorIAMRole, awsAccountID)
+		creds, credsErr := getStsCredentials(reqLogger, awsSetupClient, awsv1alpha1.AccountOperatorIAMRole, awsAccountID)
 		if credsErr != nil {
 			stsErrMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s", awsAccountID)
 			reqLogger.Info(stsErrMsg, "Error", credsErr.Error())
@@ -432,7 +429,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Create STS CLI Credentials for SRE
-		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace, accountOperatorIAMRole)
+		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace, awsv1alpha1.AccountOperatorIAMRole)
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build SRE STS credentials: %s", iamUserNameSRE))
 			return reconcile.Result{}, err

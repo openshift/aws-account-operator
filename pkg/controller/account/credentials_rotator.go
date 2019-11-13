@@ -22,7 +22,7 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 	reqLogger.Info(fmt.Sprintf("Rotating credentials for account %s secret %s", account.Name, STSCredentialsSecretName))
 
 	// Get STS user credentials
-	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsSetupClient, "", account.Spec.AwsAccountID)
+	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsSetupClient, awsv1alpha1.AccountOperatorIAMRole, account.Spec.AwsAccountID)
 
 	if STSCredentialsErr != nil {
 		reqLogger.Info("RotateCredentials: Failed to get SRE admin STSCredentials from AWS api ", "Error", STSCredentialsErr.Error())
