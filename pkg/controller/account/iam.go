@@ -15,6 +15,7 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/credentialwatcher"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // Type for JSON response from Federation end point
@@ -24,11 +25,34 @@ type awsSigninTokenResponse struct {
 
 // RequestSigninToken makes a HTTP request to retrieve a Signin Token from the federation end point
 func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, DurationSeconds *int64, FederatedUserName *string, PolicyArns []*sts.PolicyDescriptorType, STSCredentials *sts.AssumeRoleOutput) (string, error) {
+	// URL for building Federated Signin queries
+	federationEndpointURL := "https://signin.aws.amazon.com/federation"
 
-	// // URLs for building Federated Signin queries
-	federationEndPointURL := "https://signin.aws.amazon.com/federation"
-	awsConsoleURL := "https://console.aws.amazon.com/"
-	issuer := "Red Hat SRE"
+	// Get Federated token credentials to build console URL
+	GetFederationTokenOutput, err := getFederationToken(reqLogger, awsclient, DurationSeconds, FederatedUserName, PolicyArns)
+
+	if err != nil {
+		return "", err
+	}
+
+	signinTokenResponse, err := getSigninToken(reqLogger, federationEndpointURL, GetFederationTokenOutput)
+
+	if err != nil {
+		return "", err
+	}
+
+	signedFederationURL, err := formatSigninURL(reqLogger, federationEndpointURL, signinTokenResponse.SigninToken)
+
+	if err != nil {
+		return "", err
+	}
+
+	// Return Signin Token
+	return signedFederationURL.String(), nil
+
+}
+
+func getFederationToken(reqLogger logr.Logger, awsclient awsclient.Client, DurationSeconds *int64, FederatedUserName *string, PolicyArns []*sts.PolicyDescriptorType) (*sts.GetFederationTokenOutput, error) {
 
 	GetFederationTokenInput := sts.GetFederationTokenInput{
 		DurationSeconds: DurationSeconds,
@@ -43,81 +67,34 @@ func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, Durat
 		if awsErr, ok := err.(awserr.Error); ok {
 			// Get error details
 			reqLogger.Error(err, fmt.Sprintf("Error: %s, %s", awsErr.Code(), awsErr.Message()))
-			return "", err
+			return GetFederationTokenOutput, err
 		}
 
-		return "", err
+		return GetFederationTokenOutput, err
 	}
 
 	if GetFederationTokenOutput == nil {
 
 		reqLogger.Error(ErrFederationTokenOutputNil, fmt.Sprintf("Federation Token Output: %+v", GetFederationTokenOutput))
-		return "", ErrFederationTokenOutputNil
+		return GetFederationTokenOutput, ErrFederationTokenOutputNil
 
 	}
 
-	// Build JSON credentials for federation requets
-	federationCredentials := map[string]string{
-		"sessionId":    *GetFederationTokenOutput.Credentials.AccessKeyId,
-		"sessionKey":   *GetFederationTokenOutput.Credentials.SecretAccessKey,
-		"sessionToken": *GetFederationTokenOutput.Credentials.SessionToken,
-	}
+	return GetFederationTokenOutput, nil
 
-	jsonCredentials, err := json.Marshal(federationCredentials)
+}
 
-	// TODO better error here
-	if err != nil {
-		reqLogger.Error(err, "Error serializing json")
-		return "", err
-	}
+// formatSigninURL build and format the signin URL to be used in the secret
+func formatSigninURL(reqLogger logr.Logger, federationEndpointURL, signinToken string) (*url.URL, error) {
+	// URLs for building Federated Signin queries
+	awsConsoleURL := "https://console.aws.amazon.com/"
+	issuer := "Red Hat SRE"
 
-	// Build URL to request Signin Token via Federation end point
-	baseFederationURL, err := url.Parse(federationEndPointURL)
+	signinFederationURL, err := url.Parse(federationEndpointURL)
 
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Malformed URL: %s", err.Error()))
-		return "", err
-	}
-
-	federationParams := url.Values{}
-
-	federationParams.Add("Action", "getSigninToken")
-	federationParams.Add("SessionType", "json")
-	federationParams.Add("Session", string(jsonCredentials))
-
-	baseFederationURL.RawQuery = federationParams.Encode()
-
-	// Make HTTP request to retrieve Federated Signin Token
-	res, err := http.Get(baseFederationURL.String())
-
-	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Error requesting Signin Token from: %s\n", baseFederationURL.String()))
-		return "", err
-	}
-
-	defer res.Body.Close()
-
-	body, err := ioutil.ReadAll(res.Body)
-
-	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Unable to read response body: %s", baseFederationURL.String()))
-		return "", err
-	}
-
-	var SigninResponse awsSigninTokenResponse
-
-	// Unmarshal JSON response so we can extract the signin token
-	err = json.Unmarshal(body, &SigninResponse)
-
-	if err != nil {
-		reqLogger.Error(err, "Error unmarshalling Federated Signin Response JSON")
-		return "", err
-	}
-
-	signinFederationURL, err := url.Parse(federationEndPointURL)
-	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Malformed URL: %s", err.Error()))
-		return "", err
+		return signinFederationURL, err
 	}
 
 	signinParams := url.Values{}
@@ -125,13 +102,30 @@ func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, Durat
 	signinParams.Add("Action", "login")
 	signinParams.Add("Destination", awsConsoleURL)
 	signinParams.Add("Issuer", issuer)
-	signinParams.Add("SigninToken", SigninResponse.SigninToken)
+	signinParams.Add("SigninToken", signinToken)
 
 	signinFederationURL.RawQuery = signinParams.Encode()
 
-	// Return Signin Token
-	return signinFederationURL.String(), nil
+	return signinFederationURL, nil
 
+}
+
+// CreateSecret creates a secret
+func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, secretName string, account *awsv1alpha1.Account, secret *corev1.Secret) error {
+
+	createErr := r.Client.Create(context.TODO(), secret)
+	if createErr != nil {
+		failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret for STS user %s", secretName)
+		SetAccountStatus(reqLogger, account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
+		err := r.Client.Status().Update(context.TODO(), account)
+		if err != nil {
+			return err
+		}
+		reqLogger.Info(failedToCreateUserSecretMsg)
+		return createErr
+	}
+	reqLogger.Info("Created IAM STS User")
+	return nil
 }
 
 // BuildSTSUser takes all parameters required to create a user, user secret
@@ -168,27 +162,33 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 
 	secretName := account.Name
 
+	STSConsoleInput := SREConsoleInput{
+		SecretName:              fmt.Sprintf("%s-sre-console-url", secretName),
+		NameSpace:               nameSpace,
+		awsCredsConsoleLoginURL: SREConsoleLoginURL,
+	}
+
+	userConsoleSecret := STSConsoleInput.newConsoleSecret()
+
+	err = r.CreateSecret(reqLogger, secretName, account, userConsoleSecret)
+	if err != nil {
+		return "", err
+	}
+
 	STSSecretInput := SRESecretInput{
-		SecretName:              secretName,
+		SecretName:              fmt.Sprintf("%s-sre-cli-credentials", secretName),
 		NameSpace:               nameSpace,
 		awsCredsSecretIDKey:     *STSCredentials.Credentials.AccessKeyId,
 		awsCredsSecretAccessKey: *STSCredentials.Credentials.SecretAccessKey,
 		awsCredsSessionToken:    *STSCredentials.Credentials.SessionToken,
-		awsCredsConsoleLoginURL: SREConsoleLoginURL,
 	}
 	userSecret := STSSecretInput.newSTSSecret()
-	createErr := r.Client.Create(context.TODO(), userSecret)
-	if createErr != nil {
-		failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret for STS user %s", secretName)
-		SetAccountStatus(reqLogger, account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
-		err := r.Client.Status().Update(context.TODO(), account)
-		if err != nil {
-			return "", err
-		}
-		reqLogger.Info(failedToCreateUserSecretMsg)
-		return "", createErr
+
+	err = r.CreateSecret(reqLogger, secretName, account, userSecret)
+	if err != nil {
+		return "", err
 	}
-	reqLogger.Info("Created IAM STS User")
+
 	return userSecret.ObjectMeta.Name, nil
 }
 
@@ -234,4 +234,106 @@ func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleNa
 	}
 
 	return assumeRoleOutput, nil
+}
+
+// formatFederatedCredentails returns a JSON byte array containing federation credentials
+func formatFederatedCredentials(reqLogger logr.Logger, federatedTokenCredentials *sts.GetFederationTokenOutput) ([]byte, error) {
+	var jsonCredentials []byte
+
+	// Build JSON credentials for federation requets
+	federationCredentials := map[string]string{
+		"sessionId":    *federatedTokenCredentials.Credentials.AccessKeyId,
+		"sessionKey":   *federatedTokenCredentials.Credentials.SecretAccessKey,
+		"sessionToken": *federatedTokenCredentials.Credentials.SessionToken,
+	}
+
+	jsonCredentials, err := json.Marshal(federationCredentials)
+
+	if err != nil {
+		reqLogger.Error(err, "Error serializing federated URL as JSON")
+		return jsonCredentials, err
+	}
+
+	return jsonCredentials, nil
+
+}
+
+// formatSiginTokenURL take STS credentials and build a URL for signing
+func formatSigninTokenURL(reqLogger logr.Logger, federationEndpointURL string, jsonFederatedCredentials []byte) (*url.URL, error) {
+	// Build URL to request Signin Token via Federation end point
+	baseFederationURL, err := url.Parse(federationEndpointURL)
+
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Malformed URL: %s", err.Error()))
+		return baseFederationURL, err
+	}
+
+	federationParams := url.Values{}
+
+	federationParams.Add("Action", "getSigninToken")
+	federationParams.Add("SessionType", "json")
+	federationParams.Add("Session", string(jsonFederatedCredentials))
+
+	baseFederationURL.RawQuery = federationParams.Encode()
+
+	return baseFederationURL, nil
+
+}
+
+// requestSignedURL makes a HTTP call to the baseFederationURL to retrieve a signed federated URL for web console login
+func requestSignedURL(reqLogger logr.Logger, baseFederationURL string) ([]byte, error) {
+	// Make HTTP request to retrieve Federated Signin Token
+	res, err := http.Get(baseFederationURL)
+
+	if err != nil {
+		getErrMsg := fmt.Sprintf("Error requesting Signin Token from: %s\n", baseFederationURL)
+		reqLogger.Error(err, getErrMsg)
+		return nil, err
+	}
+
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+
+	if err != nil {
+		bodyReadErrMsg := fmt.Sprintf("Unable to read response body: %s", baseFederationURL)
+		reqLogger.Error(err, bodyReadErrMsg)
+		return body, err
+	}
+
+	return body, nil
+}
+
+// getSigninToken makes a request to the federation endpoint to sign signin token
+func getSigninToken(reqLogger logr.Logger, federationEndpointURL string, federatedTokenCredentials *sts.GetFederationTokenOutput) (awsSigninTokenResponse, error) {
+	var signinResponse awsSigninTokenResponse
+
+	jsonFederatedCredentials, err := formatFederatedCredentials(reqLogger, federatedTokenCredentials)
+
+	if err != nil {
+		return signinResponse, err
+	}
+
+	baseFederationURL, err := formatSigninTokenURL(reqLogger, federationEndpointURL, jsonFederatedCredentials)
+
+	if err != nil {
+		return signinResponse, err
+	}
+
+	signedFederatedURL, err := requestSignedURL(reqLogger, baseFederationURL.String())
+
+	if err != nil {
+		return signinResponse, err
+	}
+
+	// Unmarshal JSON response so we can extract the signin token
+	err = json.Unmarshal(signedFederatedURL, &signinResponse)
+
+	if err != nil {
+		reqLogger.Error(err, "Error unmarshalling Federated Signin Response JSON")
+		return signinResponse, err
+	}
+
+	return signinResponse, nil
+
 }

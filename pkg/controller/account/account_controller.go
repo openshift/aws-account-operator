@@ -222,6 +222,11 @@ type SRESecretInput struct {
 	SecretName, NameSpace, awsCredsSecretIDKey, awsCredsSecretAccessKey, awsCredsSessionToken, awsCredsConsoleLoginURL string
 }
 
+// SREConsoleInput is a struct that holds data required to create a new secret CR for SRE admins
+type SREConsoleInput struct {
+	SecretName, NameSpace, awsCredsConsoleLoginURL string
+}
+
 // input for new aws client
 type newAwsClientInput struct {
 	awsCredsSecretIDKey, awsCredsSecretAccessKey, awsToken, awsRegion, secretName, nameSpace string
@@ -453,7 +458,15 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	// If Account CR has `stats.rotateCredentials: true` we'll rotate the temporary credentials
 	// the secretWatcher is what updates this status field by comparing the STS credentials secret `creationTimestamp`
 	if currentAcctInstance.Status.RotateCredentials == true {
+		reqLogger.Info(fmt.Sprintf("rotating CLI credentials for %s", currentAcctInstance.Name))
 		err = r.RotateCredentials(reqLogger, awsSetupClient, currentAcctInstance)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+	if currentAcctInstance.Status.RotateConsoleCredentials == true {
+		reqLogger.Info(fmt.Sprintf("rotating console URL credentials for %s", currentAcctInstance.Name))
+		err = r.RotateConsoleCredentials(reqLogger, awsSetupClient, currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -552,7 +565,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	}
 
 	userSecretInput := secretInput{
-		SecretName:              secretName,
+		SecretName:              fmt.Sprintf("%s-secret", secretName),
 		NameSpace:               nameSpace,
 		awsCredsUserName:        *userSecretInfo.AccessKey.UserName,
 		awsCredsSecretIDKey:     *userSecretInfo.AccessKey.AccessKeyId,
@@ -730,13 +743,30 @@ func (input SRESecretInput) newSTSSecret() *corev1.Secret {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      input.SecretName + "-sre-credentials",
+			Name:      input.SecretName,
 			Namespace: input.NameSpace,
 		},
 		Data: map[string][]byte{
 			"aws_access_key_id":     []byte(input.awsCredsSecretIDKey),
 			"aws_secret_access_key": []byte(input.awsCredsSecretAccessKey),
 			"aws_session_token":     []byte(input.awsCredsSessionToken),
+		},
+	}
+
+}
+
+func (input SREConsoleInput) newConsoleSecret() *corev1.Secret {
+	return &corev1.Secret{
+		Type: "Opaque",
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Secret",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      input.SecretName,
+			Namespace: input.NameSpace,
+		},
+		Data: map[string][]byte{
 			"aws_console_login_url": []byte(input.awsCredsConsoleLoginURL),
 		},
 	}
@@ -751,7 +781,7 @@ func (input secretInput) newSecretforCR() *corev1.Secret {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      input.SecretName + "-secret",
+			Name:      input.SecretName,
 			Namespace: input.NameSpace,
 		},
 		Data: map[string][]byte{

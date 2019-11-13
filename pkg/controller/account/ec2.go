@@ -10,9 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
-	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
-
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
 
 // InitializeSupportedRegions concurrently calls InitalizeRegion to create instances in all supported regions
