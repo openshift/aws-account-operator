@@ -26,6 +26,8 @@ const (
 	accountStatusPendingVerification AccountStateStatus = "PendingVerification"
 	// AccountCrNamespace namespace where AWS accounts will be created
 	AccountCrNamespace = "aws-account-operator"
+	// IAM Role name for IAM user creating resources in account
+	AccountOperatorIAMRole = "OrganizationAccountAccessRole"
 )
 
 // AccountSpec defines the desired state of Account
