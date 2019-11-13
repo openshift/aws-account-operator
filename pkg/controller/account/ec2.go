@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 
@@ -16,7 +17,7 @@ import (
 
 // InitializeSupportedRegions concurrently calls InitalizeRegion to create instances in all supported regions
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
-func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, regions map[string]map[string]string, awsClient awsclient.Client) error {
+func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, regions map[string]map[string]string, creds *sts.AssumeRoleOutput) error {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
 	ec2Notifications, ec2Errors := make(chan string), make(chan string)
 
@@ -26,7 +27,7 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, reg
 
 	// Create go routines to initialize regions in parallel
 	for region := range regions {
-		go r.InitializeRegion(reqLogger, region, regions[region]["initializationAMI"], ec2Notifications, ec2Errors, awsClient)
+		go r.InitializeRegion(reqLogger, region, regions[region]["initializationAMI"], ec2Notifications, ec2Errors, creds)
 	}
 
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished
@@ -45,10 +46,25 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, reg
 }
 
 // InitializeRegion sets up a connection to the AWS `region` and then creates and terminates an EC2 instance
-func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, region string, ami string, ec2Notifications chan string, ec2Errors chan string, awsClient awsclient.Client) error {
+func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, region string, ami string, ec2Notifications chan string, ec2Errors chan string, creds *sts.AssumeRoleOutput) error {
 	reqLogger.Info(fmt.Sprintf("Initializing region: %s", region))
 
-	err := r.BuildandDestroyEC2Instances(reqLogger, awsClient, ami)
+	awsClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
+		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
+		AwsToken:                *creds.Credentials.SessionToken,
+		AwsRegion:               region,
+	})
+	if err != nil {
+		connErr := fmt.Sprintf("Unable to connect to region: %s when attempting to initialize it", region)
+		reqLogger.Error(err, connErr)
+		// Notify Error channel that this region has errored and to move on
+		ec2Errors <- connErr
+
+		return err
+	}
+
+	err = r.BuildandDestroyEC2Instances(reqLogger, awsClient, ami)
 
 	if err != nil {
 		createErr := fmt.Sprintf("Unable to create instance in region: %s", region)
