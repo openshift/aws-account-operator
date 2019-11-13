@@ -79,6 +79,9 @@ const (
 // AccountClaim is the Schema for the accountclaims API
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state",description="Status the account claim"
+// +kubebuilder:printcolumn:name="Account",type="string",JSONPath=".spec.accountLink",description="Account CR link for the account claim"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Age since the account claim was created"
 type AccountClaim struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

@@ -5,9 +5,11 @@ metadata:
 spec:
   additionalPrinterColumns:
   - JSONPath: .status.state
+    description: Status the federated account access user
     name: State
     type: string
   - JSONPath: .metadata.creationTimestamp
+    description: Age since federated account access user was created
     name: Age
     type: date
   group: aws.managed.openshift.io

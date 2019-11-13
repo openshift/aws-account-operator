@@ -5,15 +5,19 @@ metadata:
 spec:
   additionalPrinterColumns:
   - JSONPath: .status.state
+    description: Status the account
     name: State
     type: string
   - JSONPath: .status.claimed
+    description: True if the account has been claimed
     name: Claimed
     type: boolean
   - JSONPath: .spec.claimLink
-    name: CLAIM
+    description: Link to the account claim CR
+    name: Claim
     type: string
   - JSONPath: .metadata.creationTimestamp
+    description: Age since the account was created
     name: Age
     type: date
   group: aws.managed.openshift.io
@@ -57,7 +61,6 @@ spec:
             iamUserSecret:
               type: string
             legalEntity:
-              description: 'Legal entity info populated at claim time, carried over from account claim'
               properties:
                 id:
                   type: string
@@ -111,7 +114,6 @@ spec:
               type: array
             reused:
               type: boolean
-              description: 'Field will be populated by the accountclaim controller indicating the account has been reused' 
             rotateConsoleCredentials:
               type: boolean
             rotateCredentials:
@@ -120,7 +122,6 @@ spec:
               type: string
             supportCaseID:
               type: string
-              description: 'Field will be populated by the account controller when the account gets in PendingVerification status'
           type: object
   version: v1alpha1
   versions:

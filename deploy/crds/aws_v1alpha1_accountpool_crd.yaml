@@ -5,12 +5,15 @@ metadata:
 spec:
   additionalPrinterColumns:
   - JSONPath: .status.poolSize
+    description: Desired pool size
     name: Pool Size
     type: integer
   - JSONPath: .status.unclaimedAccounts
+    description: Number of unclaimed accounts
     name: Unclaimed Accounts
     type: integer
   - JSONPath: .status.claimedAccounts
+    description: Number of claimed accounts
     name: Claimed Accounts
     type: integer
   group: aws.managed.openshift.io
