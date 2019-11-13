@@ -3,8 +3,6 @@ kind: AWSFederatedAccountAccess
 metadata:
   name: clustername.customeraccountname.rolename
 spec:
-  customerAccountID: CustomerAccountID
-  awsCredentialSecret:
-    name: secretName
-    namespace: secretNamespace
-  awsFederatedRoleName: RoleName
+  AccountReference: accountreference
+  ExternalCustomerAWSAccountID: externalcustomerawsaccountid
+  awsFederatedRoleName: awsfederatedrolename
