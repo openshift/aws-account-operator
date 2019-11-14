@@ -5,12 +5,15 @@ metadata:
 spec:
   additionalPrinterColumns:
   - JSONPath: .status.state
+    description: Status the account claim
     name: State
     type: string
   - JSONPath: .spec.accountLink
+    description: Account CR link for the account claim
     name: Account
     type: string
   - JSONPath: .metadata.creationTimestamp
+    description: Age since the account claim was created
     name: Age
     type: date
   group: aws.managed.openshift.io

@@ -80,6 +80,8 @@ type AWSSecretReference struct {
 // AWSFederatedAccountAccess is the Schema for the awsfederatedaccountaccesses API
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state",description="Status the federated account access user"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Age since federated account access user was created"
 type AWSFederatedAccountAccess struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
