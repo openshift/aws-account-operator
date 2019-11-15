@@ -264,6 +264,11 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
+	// If conditions have LastTransitionTime as null update them
+	if controllerutils.CheckAccountConditions(currentAcctInstance) {
+		return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
+	}
+
 	// Test PendingVerification state creating support case and checking for case status
 	if currentAcctInstance.Status.State == AccountPendingVerification {
 		// reqLogger.Info("Account in PendingVerification state", "AccountID", currentAcctInstance.Spec.AwsAccountID)
