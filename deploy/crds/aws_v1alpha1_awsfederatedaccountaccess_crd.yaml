@@ -46,12 +46,11 @@ spec:
               description: FederatedRoleName must be the name of a federatedrole cr
                 that currently exists
               type: string
-            externalCustomerAWSAccountID:
-              description: ExternalCustomerAwsAccountID holds the external AWS account
-                ID
+            externalCustomerAWSIAMARN:
+              description: externalCustomerAWSIAMARN holds the external AWS IAM ARN
               type: string
           required:
-          - externalCustomerAWSAccountID
+          - externalCustomerAWSIAMARN
           - accountReference
           - awsFederatedRoleName
           type: object

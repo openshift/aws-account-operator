@@ -23,8 +23,8 @@ const (
 // AWSFederatedAccountAccessSpec defines the desired state of AWSFederatedAccountAccess
 // +k8s:openapi-gen=true
 type AWSFederatedAccountAccessSpec struct {
-	// ExternalCustomerAwsAccountID holds the external AWS account ID
-	ExternalCustomerAWSAccountID string `json:"externalCustomerAWSAccountID"`
+	// ExternalCustomerAWSARN holds the external AWS IAM ARN
+	ExternalCustomerAWSIAMARN string `json:"externalCustomerAWSIAMARN"`
 	// AccountReference holds the name of the associated Account CR to use
 	AccountReference string `json:"accountReference"`
 	// FederatedRoleName must be the name of a federatedrole cr that currently exists
