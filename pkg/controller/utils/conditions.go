@@ -140,10 +140,6 @@ func SetAccountCondition(
 			if existingCondition.Status != status {
 				existingCondition.LastTransitionTime = now
 			}
-
-			if existingCondition.LastTransitionTime != (metav1.Time{}) {
-				existingCondition.LastTransitionTime = existingCondition.LastProbeTime
-			}
 			existingCondition.Status = status
 			existingCondition.Reason = reason
 			existingCondition.Message = message
