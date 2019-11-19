@@ -23,6 +23,24 @@ type awsSigninTokenResponse struct {
 	SigninToken string
 }
 
+type awsStatement struct {
+	Effect    string                 `json:"Effect"`
+	Action    []string               `json:"Action"`
+	Resource  []string               `json:"Resource,omitempty"`
+	Principal *awsv1alpha1.Principal `json:"Principal,omitempty"`
+}
+
+type PolicyDocument struct {
+	Version   string
+	Statement []StatementEntry
+}
+
+type StatementEntry struct {
+	Effect   string
+	Action   []string
+	Resource string
+}
+
 // RequestSigninToken makes a HTTP request to retrieve a Signin Token from the federation end point
 func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, DurationSeconds *int64, FederatedUserName *string, PolicyArns []*sts.PolicyDescriptorType, STSCredentials *sts.AssumeRoleOutput) (string, error) {
 	// URL for building Federated Signin queries

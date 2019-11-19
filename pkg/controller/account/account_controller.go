@@ -22,6 +22,7 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -65,6 +66,9 @@ const (
 	AccountReady = "Ready"
 	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
 	AccountPendingVerification = "PendingVerification"
+	byocRole                   = "BYOCAdminAccess"
+
+	adminAccessArn = "arn:aws:iam::aws:policy/AdministratorAccess"
 )
 
 var awsAccountID string
@@ -243,20 +247,9 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling Account")
 
-	// We expect this secret to exist in the same namespace Account CR's are created
-	awsSetupClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
-		SecretName: controllerutils.AwsSecretName,
-		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
-	})
-	if err != nil {
-		reqLogger.Error(err, "Failed to get AWS client")
-		return reconcile.Result{}, err
-	}
-
 	// Fetch the Account instance
 	currentAcctInstance := &awsv1alpha1.Account{}
-	err = r.Client.Get(context.TODO(), request.NamespacedName, currentAcctInstance)
+	err := r.Client.Get(context.TODO(), request.NamespacedName, currentAcctInstance)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			return reconcile.Result{}, nil
@@ -269,124 +262,269 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
 	}
 
-	// Test PendingVerification state creating support case and checking for case status
-	if currentAcctInstance.Status.State == AccountPendingVerification {
-		// reqLogger.Info("Account in PendingVerification state", "AccountID", currentAcctInstance.Spec.AwsAccountID)
+	// We expect this secret to exist in the same namespace Account CR's are created
+	awsSetupClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+		SecretName: controllerutils.AwsSecretName,
+		NameSpace:  awsv1alpha1.AccountCrNamespace,
+		AwsRegion:  "us-east-1",
+	})
+	if err != nil {
+		reqLogger.Error(err, "Failed to get AWS client")
+		return reconcile.Result{}, err
+	}
 
-		// If the supportCaseID is blank and Account State = PendingVerification, create a case
-		if currentAcctInstance.Status.SupportCaseID == "" {
-			caseID, err := createCase(reqLogger, currentAcctInstance.Spec.AwsAccountID, awsSetupClient)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-			reqLogger.Info("Case created", "CaseID", caseID)
+	// If the account is BYOC, needs some different set up
+	if currentAcctInstance.Spec.BYOC {
 
-			// Update supportCaseId in CR
-			currentAcctInstance.Status.SupportCaseID = caseID
-			SetAccountStatus(reqLogger, currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, "PendingVerification")
-			err = r.statusUpdate(reqLogger, currentAcctInstance)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
+		reqLogger.Info("BYOC account")
 
-			// After creating the support case requeue the request. To avoid flooding and being blacklisted by AWS when
-			// starting the operator with a large AccountPool, add a randomInterval (between 0 and 30 secs) to the regular wait time
-			randomInterval, err := strconv.Atoi(currentAcctInstance.Spec.AwsAccountID)
-			randomInterval %= 30
+		//Set awsAccountID
+		awsAccountID = currentAcctInstance.Spec.AwsAccountID
 
-			// This will requeue verification for between 30 and 60 (30+30) seconds, depending on the account
-			return reconcile.Result{RequeueAfter: time.Duration(intervalAfterCaseCreationSecs+randomInterval) * time.Second}, nil
-		}
+		// Get associated AccountClaim
+		accountClaim := &awsv1alpha1.AccountClaim{}
 
-		resolved, err := checkCaseResolution(reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
+		err := r.Client.Get(context.TODO(),
+			types.NamespacedName{Name: currentAcctInstance.Spec.ClaimLink, Namespace: currentAcctInstance.Spec.ClaimLinkNamespace},
+			accountClaim)
 		if err != nil {
-			reqLogger.Error(err, "Error checking for Case Resolution")
+			if k8serr.IsNotFound(err) {
+				return reconcile.Result{}, nil
+			}
 			return reconcile.Result{}, err
 		}
 
-		// Case Resolved, account is Ready
-		if resolved {
-			reqLogger.Info(fmt.Sprintf("Case %s resolved", currentAcctInstance.Status.SupportCaseID))
+		// Get credentials
+		byocAWSClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+			SecretName: accountClaim.Spec.BYOCSecretRef.Name,
+			NameSpace:  accountClaim.Spec.BYOCSecretRef.Namespace,
+			AwsRegion:  "us-east-1",
+		})
 
-			SetAccountStatus(reqLogger, currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, "Ready")
-			err = r.statusUpdate(reqLogger, currentAcctInstance)
+		reqLogger.Info("Marking BYOC account claimed")
+		// Ensure the account is marked as claimed
+		if currentAcctInstance.Status.Claimed != true {
+			currentAcctInstance.Status.Claimed = true
+			return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
+		}
+
+		reqLogger.Info("Checking BYOC account state")
+		if currentAcctInstance.Status.State == "" {
+
+			// Get the username of the non-byoc IAM user
+			getUserOutput, err := awsSetupClient.GetUser(&iam.GetUserInput{})
+			if err != nil {
+				reqLogger.Error(err, "Failed to get non-BYOC IAM User info")
+				return reconcile.Result{}, err
+			}
+
+			getBYOCUserOutput, err := byocAWSClient.GetUser(&iam.GetUserInput{})
+			if err != nil {
+				reqLogger.Error(err, "Failed to get BYOC IAM User info")
+				return reconcile.Result{}, err
+			}
+
+			// Create BYOC role
+			err = createBYOCAdminAccessRole(reqLogger, byocAWSClient, *getUserOutput.User.Arn, adminAccessArn)
+			if err != nil {
+				reqLogger.Error(err, "Failed to create BYOC role")
+				return reconcile.Result{}, err
+			}
+
+			// Get the BYOC credentials secret to update
+			accountClaimSecret := &corev1.Secret{}
+
+			err = r.Client.Get(context.TODO(),
+				types.NamespacedName{Name: accountClaim.Spec.BYOCSecretRef.Name, Namespace: accountClaim.Spec.BYOCSecretRef.Namespace},
+				accountClaimSecret)
+
+			accessKeyID := string(accountClaimSecret.Data["aws_access_key_id"])
+
+			// List and delete any other access keys
+			accessKeyList, err := byocAWSClient.ListAccessKeys(&iam.ListAccessKeysInput{})
+
+			for _, accessKey := range accessKeyList.AccessKeyMetadata {
+				if *accessKey.AccessKeyId != accessKeyID {
+					_, err = byocAWSClient.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKey.AccessKeyId})
+					if err != nil {
+						reqLogger.Error(err, "Failed to delete BYOC access keys")
+						return reconcile.Result{}, err
+					}
+				}
+			}
+
+			// Create new BYOC access keys
+			userSecretInfo, err := CreateUserAccessKey(reqLogger, byocAWSClient, *getBYOCUserOutput.User.UserName)
+			if err != nil {
+				failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s", *getUserOutput.User.UserName)
+				reqLogger.Info(failedToCreateUserAccessKeyMsg)
+				return reconcile.Result{}, err
+			}
+
+			// Delete original BYOC access key
+			_, err = byocAWSClient.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: &accessKeyID})
+			if err != nil {
+				reqLogger.Error(err, "Failed to delete BYOC access keys")
+				return reconcile.Result{}, err
+			}
+
+			accountClaimSecret.Data =
+				map[string][]byte{
+					"aws_access_key_id":     []byte(*userSecretInfo.AccessKey.AccessKeyId),
+					"aws_secret_access_key": []byte(*userSecretInfo.AccessKey.SecretAccessKey),
+				}
+
+			reqLogger.Info("BYOC updating secret")
+			err = r.Client.Update(context.TODO(), accountClaimSecret)
+			if err != nil {
+				reqLogger.Error(err, "Failed to update BYOC access keys")
+				return reconcile.Result{}, err
+			}
+
+			reqLogger.Info("Updating BYOC to creating")
+			currentAcctInstance.Status.State = AccountCreating
+			SetAccountStatus(reqLogger, currentAcctInstance, "BYOC Account Creating", awsv1alpha1.AccountCreating, "Creating")
+			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 			if err != nil {
 				return reconcile.Result{}, err
 			}
 			return reconcile.Result{}, nil
 		}
 
-		// Case not Resolved, log info and try again in pre-defined interval
-		reqLogger.Info(fmt.Sprintf(`Case %s not resolved, 
-			trying again in %d minutes`,
-			currentAcctInstance.Status.SupportCaseID,
-			intervalBetweenChecksMinutes))
-		return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
-	}
+	} else {
+		// Normal account creation
 
-	// Update account Status.Claimed to true if the account is ready and the claim link is not empty
-	if currentAcctInstance.Status.State == AccountReady && currentAcctInstance.Spec.ClaimLink != "" {
-		if currentAcctInstance.Status.Claimed != true {
-			currentAcctInstance.Status.Claimed = true
-			return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
+		// Test PendingVerification state creating support case and checking for case status
+		if currentAcctInstance.Status.State == AccountPendingVerification {
+			// reqLogger.Info("Account in PendingVerification state", "AccountID", currentAcctInstance.Spec.AwsAccountID)
+
+			// If the supportCaseID is blank and Account State = PendingVerification, create a case
+			if currentAcctInstance.Status.SupportCaseID == "" {
+				caseID, err := createCase(reqLogger, currentAcctInstance.Spec.AwsAccountID, awsSetupClient)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+				reqLogger.Info("Case created", "CaseID", caseID)
+
+				// Update supportCaseId in CR
+				currentAcctInstance.Status.SupportCaseID = caseID
+				SetAccountStatus(reqLogger, currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, "PendingVerification")
+				err = r.statusUpdate(reqLogger, currentAcctInstance)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+
+				// After creating the support case requeue the request. To avoid flooding and being blacklisted by AWS when
+				// starting the operator with a large AccountPool, add a randomInterval (between 0 and 30 secs) to the regular wait time
+				randomInterval, err := strconv.Atoi(currentAcctInstance.Spec.AwsAccountID)
+				randomInterval %= 30
+
+				// This will requeue verification for between 30 and 60 (30+30) seconds, depending on the account
+				return reconcile.Result{RequeueAfter: time.Duration(intervalAfterCaseCreationSecs+randomInterval) * time.Second}, nil
+			}
+
+			resolved, err := checkCaseResolution(reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
+			if err != nil {
+				reqLogger.Error(err, "Error checking for Case Resolution")
+				return reconcile.Result{}, err
+			}
+
+			// Case Resolved, account is Ready
+			if resolved {
+				reqLogger.Info(fmt.Sprintf("Case %s resolved", currentAcctInstance.Status.SupportCaseID))
+
+				SetAccountStatus(reqLogger, currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, "Ready")
+				err = r.statusUpdate(reqLogger, currentAcctInstance)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+				return reconcile.Result{}, nil
+			}
+
+			// Case not Resolved, log info and try again in pre-defined interval
+			reqLogger.Info(fmt.Sprintf(`Case %s not resolved, 
+			trying again in %d minutes`,
+				currentAcctInstance.Status.SupportCaseID,
+				intervalBetweenChecksMinutes))
+			return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
+		}
+
+		// Update account Status.Claimed to true if the account is ready and the claim link is not empty
+		if currentAcctInstance.Status.State == AccountReady && currentAcctInstance.Spec.ClaimLink != "" {
+			if currentAcctInstance.Status.Claimed != true {
+				currentAcctInstance.Status.Claimed = true
+				return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
+			}
+		}
+
+		// see if in creating for longer then 10 minutes
+		now := time.Now()
+		diff := now.Sub(currentAcctInstance.ObjectMeta.CreationTimestamp.Time)
+		if currentAcctInstance.Status.State == "Creating" && diff > createPendTime {
+			r.setStatusFailed(reqLogger, currentAcctInstance, "Creation pending for longer then 10 minutes")
+		}
+
+		if (currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false) {
+
+			var awsAccountID string
+
+			if currentAcctInstance.Spec.AwsAccountID == "" {
+
+				// before doing anything make sure we are not over the limit if we are just error
+				if totalaccountwatcher.TotalAccountWatcher.Total >= AwsLimit {
+					reqLogger.Error(ErrAwsAccountLimitExceeded, "AWS Account limit reached", "Account Total", totalaccountwatcher.TotalAccountWatcher.Total)
+					return reconcile.Result{}, ErrAwsAccountLimitExceeded
+				}
+
+				// Build Aws Account
+				awsAccountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+
+				// set state creating if the account was able to create
+				SetAccountStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, "Creating")
+				err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+
+				// update account cr with awsAccountID from aws
+				currentAcctInstance.Spec.AwsAccountID = awsAccountID
+				err = r.Client.Update(context.TODO(), currentAcctInstance)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+
+			} else {
+
+				awsAccountID = currentAcctInstance.Spec.AwsAccountID
+
+				// set state creating if the account was alredy created
+				SetAccountStatus(reqLogger, currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, "Creating")
+				err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+
+			}
 		}
 	}
 
-	// see if in creating for longer then 10 minutes
-	now := time.Now()
-	diff := now.Sub(currentAcctInstance.ObjectMeta.CreationTimestamp.Time)
-	if currentAcctInstance.Status.State == "Creating" && diff > createPendTime {
-		r.setStatusFailed(reqLogger, currentAcctInstance, "Creation pending for longer then 10 minutes")
-	}
+	// Account init for both BYOC and Non-BYOC
+	if (currentAcctInstance.Spec.BYOC && currentAcctInstance.Status.State != "Ready") || ((currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false)) {
 
-	if (currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false) {
+		//var awsAssumedRoleClient awsclient.Client
+		var roleToAssume string
 
-		var awsAccountID string
-
-		if currentAcctInstance.Spec.AwsAccountID == "" {
-			// before doing anything make sure we are not over the limit if we are just error
-			if totalaccountwatcher.TotalAccountWatcher.Total >= AwsLimit {
-				reqLogger.Error(ErrAwsAccountLimitExceeded, "AWS Account limit reached", "Account Total", totalaccountwatcher.TotalAccountWatcher.Total)
-				return reconcile.Result{}, ErrAwsAccountLimitExceeded
-			}
-
-			// Build Aws Account
-			awsAccountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
-			totalaccountwatcher.TotalAccountWatcher.Total += 1
-
-			// set state creating if the account was able to create
-			SetAccountStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, "Creating")
-			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
-			// update account cr with awsAccountID from aws
-			currentAcctInstance.Spec.AwsAccountID = awsAccountID
-			err = r.Client.Update(context.TODO(), currentAcctInstance)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
+		if currentAcctInstance.Spec.BYOC {
+			roleToAssume = byocRole
 		} else {
-
-			awsAccountID = currentAcctInstance.Spec.AwsAccountID
-
-			// set state creating if the account was already created
-			SetAccountStatus(reqLogger, currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, "Creating")
-			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
+			roleToAssume = awsv1alpha1.AccountOperatorIAMRole
 		}
 
 		// Get STS credentials so that we can create an aws client with
-		creds, credsErr := getStsCredentials(reqLogger, awsSetupClient, awsv1alpha1.AccountOperatorIAMRole, awsAccountID)
+		creds, credsErr := getStsCredentials(reqLogger, awsSetupClient, roleToAssume, awsAccountID)
 		if credsErr != nil {
 			stsErrMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s", awsAccountID)
 			reqLogger.Info(stsErrMsg, "Error", credsErr.Error())
@@ -439,7 +577,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Create STS CLI Credentials for SRE
-		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace, awsv1alpha1.AccountOperatorIAMRole)
+		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace, roleToAssume)
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build SRE STS credentials: %s", iamUserNameSRE))
 			return reconcile.Result{}, err
@@ -452,12 +590,18 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		SetAccountStatus(reqLogger, currentAcctInstance, "Account pending AWS limits verification", awsv1alpha1.AccountPendingVerification, "PendingVerification")
+		if currentAcctInstance.Spec.BYOC {
+			SetAccountStatus(reqLogger, currentAcctInstance, "BYOC Account Ready", awsv1alpha1.AccountReady, "Ready")
+
+		} else {
+			SetAccountStatus(reqLogger, currentAcctInstance, "Account pending AWS limits verification", awsv1alpha1.AccountPendingVerification, "PendingVerification")
+			reqLogger.Info("Account pending AWS limits verification")
+		}
 		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		reqLogger.Info("Account pending AWS limits verification")
+
 	}
 
 	// If Account CR has `stats.rotateCredentials: true` we'll rotate the temporary credentials
@@ -552,7 +696,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	// create user secrets
 	userSecretInfo, userSecretErr := CreateUserAccessKey(reqLogger, awsClient, iamUserName)
 	if userSecretErr != nil {
-		failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s", iamUserName)
+		failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s, err: %+v", iamUserName, userSecretErr)
 		SetAccountStatus(reqLogger, account, failedToCreateUserAccessKeyMsg, awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
@@ -566,7 +710,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 
 	// Append to secret name if we're if its the SRE admin user secret
 	if iamUserName == iamUserNameSRE {
-		secretName = account.Name + "-" + strings.ToLower(iamUserNameSRE)
+		secretName = account.Name + "-" + strings.ToLower(iamUserName)
 	}
 
 	userSecretInput := secretInput{
@@ -729,9 +873,13 @@ func AttachAdminUserPolicy(reqLogger logr.Logger, client awsclient.Client, userN
 func CreateUserAccessKey(reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.CreateAccessKeyOutput, error) {
 
 	// Create new access key for user
-	result, err := client.CreateAccessKey(&iam.CreateAccessKeyInput{
-		UserName: aws.String(userName),
-	})
+	input := &iam.CreateAccessKeyInput{}
+	input.SetUserName(userName)
+
+	result, err := client.CreateAccessKey(input)
+	if err != nil {
+		return &iam.CreateAccessKeyOutput{}, errors.New("Error creating access key")
+	}
 
 	if err != nil {
 		controllerutils.LogAwsError(reqLogger, "New AWS Error while creating user access key", nil, err)
