@@ -43,7 +43,7 @@ type AccountSpec struct {
 	ClaimLink string `json:"claimLink"`
 	// +optional
 	ClaimLinkNamespace string      `json:"claimLinkNamespace,omitempty"`
-	LegalEntity        LegalEntity `json:"legalEntity"`
+	LegalEntity        LegalEntity `json:"legalEntity,omitempty"`
 }
 
 // AccountStatus defines the observed state of Account
