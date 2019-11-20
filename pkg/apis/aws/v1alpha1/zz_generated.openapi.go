@@ -571,7 +571,7 @@ func schema_pkg_apis_aws_v1alpha1_AccountSpec(ref common.ReferenceCallback) comm
 						},
 					},
 				},
-				Required: []string{"awsAccountID", "iamUserSecret", "legalEntity"},
+				Required: []string{"awsAccountID", "iamUserSecret"},
 			},
 		},
 		Dependencies: []string{
