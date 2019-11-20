@@ -62,9 +62,10 @@ func GenerateAccountCR(namespace string) *awsv1alpha1.Account {
 			Namespace: namespace,
 		},
 		Spec: awsv1alpha1.AccountSpec{
-			AwsAccountID:  "",
-			IAMUserSecret: "",
-			ClaimLink:     "",
+			AwsAccountID:       "",
+			IAMUserSecret:      "",
+			ClaimLink:          "",
+			ClaimLinkNamespace: "",
 		},
 	}
 }
