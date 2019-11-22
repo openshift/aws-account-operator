@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
@@ -29,6 +30,10 @@ import (
 )
 
 // Custom errors
+
+const (
+	AWSFederatedAccountAccessFinalizer = "finalizer.aws.managed.openshift.io"
+)
 
 // ErrFederatedAccessRoleNotFound indicates the role requested by AWSFederatedAccountAccess Cr was not found as a AWSFederatedRole Cr
 var ErrFederatedAccessRoleNotFound = errors.New("FederatedAccessRoleNotFound")
@@ -98,6 +103,38 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
+	}
+
+	// Add finalizer to the CR in case it's not present (e.g. old accounts)
+	if !contains(currentFAA.GetFinalizers(), AWSFederatedAccountAccessFinalizer) {
+		err := r.addFinalizer(reqLogger, currentFAA)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		return reconcile.Result{}, nil
+	}
+
+	if currentFAA.DeletionTimestamp != nil {
+		if contains(currentFAA.GetFinalizers(), AWSFederatedAccountAccessFinalizer) {
+			// Only remove roles and policies if the faa has an account reference
+			if currentFAA.Spec.AccountReference != "" {
+				err := r.finalizeAWSFederatedAccountAccess(reqLogger, currentFAA)
+				if err != nil {
+					// If the finalize/cleanup process fails for an account we don't want to return
+					// we will flag the faac with the Failed Reuse condition, and with state = Failed
+
+				}
+			}
+
+			// Remove finalizer to unlock deletion of the currentFAA
+			err = r.removeFinalizer(reqLogger, currentFAA, AWSFederatedAccountAccessFinalizer)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+		}
+		return reconcile.Result{}, nil
 	}
 
 	// If the state is ready or failed don't do anything
@@ -384,4 +421,48 @@ func SetStatuswithCondition(afaa *awsv1alpha1.AWSFederatedAccountAccess, message
 		message,
 		controllerutils.UpdateConditionNever)
 	afaa.Status.State = state
+}
+
+func (r *ReconcileAWSFederatedAccountAccess) addFinalizer(reqLogger logr.Logger, AWSFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess) error {
+	reqLogger.Info("Adding Finalizer for the AWSFederatedAccountAccess")
+	AWSFederatedAccountAccess.SetFinalizers(append(AWSFederatedAccountAccess.GetFinalizers(), AWSFederatedAccountAccessFinalizer))
+
+	// Update CR
+	err := r.client.Update(context.TODO(), AWSFederatedAccountAccess)
+	if err != nil {
+		reqLogger.Error(err, "Failed to update AWSFederatedAccountAccess with finalizer")
+		return err
+	}
+	return nil
+}
+
+func (r *ReconcileAWSFederatedAccountAccess) removeFinalizer(reqLogger logr.Logger, AWSFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess, finalizerName string) error {
+	reqLogger.Info("Removing Finalizer for the AWSFederatedAccountAccess")
+	AWSFederatedAccountAccess.SetFinalizers(remove(AWSFederatedAccountAccess.GetFinalizers(), finalizerName))
+
+	// Update CR
+	err := r.client.Update(context.TODO(), AWSFederatedAccountAccess)
+	if err != nil {
+		reqLogger.Error(err, "Failed to remove AWSFederatedAccountAccess finalizer")
+		return err
+	}
+	return nil
+}
+
+func contains(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func remove(list []string, s string) []string {
+	for i, v := range list {
+		if v == s {
+			list = append(list[:i], list[i+1:]...)
+		}
+	}
+	return list
 }
