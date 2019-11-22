@@ -59,14 +59,12 @@ for file_name in crd_files:
     # Update CSV template customresourcedefinitions key
     csv['spec']['customresourcedefinitions']['owned'].append(
         {
-            "description": "",
+            "description": crd["spec"]["names"]["kind"],
             "displayName": crd["spec"]["names"]["kind"],
             "kind": crd["spec"]["names"]["kind"],
             "version": crd["spec"]["version"]
         }
     )
-
-
 
 # Copy all prometheus yaml files over to the bundle output dir:
 prom_files = [ f for f in os.listdir('deploy/prometheus') if f.endswith('.yaml') ]
