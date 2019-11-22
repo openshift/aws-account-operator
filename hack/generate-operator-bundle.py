@@ -59,6 +59,7 @@ for file_name in crd_files:
     # Update CSV template customresourcedefinitions key
     csv['spec']['customresourcedefinitions']['owned'].append(
         {
+            "name": crd["metadata"]["name"],
             "description": crd["spec"]["names"]["kind"],
             "displayName": crd["spec"]["names"]["kind"],
             "kind": crd["spec"]["names"]["kind"],
