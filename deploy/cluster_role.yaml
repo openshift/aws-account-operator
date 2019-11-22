@@ -45,6 +45,8 @@ rules:
   - accountclaims
   - accounts
   - accountpools
+  - awsfederatedaccountaccesses
+  - awsfederatedroles
   verbs:
   - '*'
 - apiGroups:

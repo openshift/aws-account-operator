@@ -36,24 +36,10 @@ spec:
     spec:
       clusterPermissions:
       - serviceAccountName: aws-account-operator
-        # Rules will be added here by the generate-csv.py script.
+        # Rules will be added here by the generate-operator-bundle.py script.
       deployments:
       - name: aws-account-operator
-        # Deployment spec will be added here by the generate-csv.py script.
+        # Deployment spec will be added here by the generate-operator-bundle.py script.
   customresourcedefinitions:
     owned:
-    - description: Reconcile AWS accounts ready for use.
-      displayName: Account
-      kind: Account
-      name: accounts.aws.managed.openshift.io
-      version: v1alpha1
-    - description: Account Claims for reconciled AWS Accounts.
-      displayName: Account Claim
-      kind: AccountClaim
-      name: accountclaims.aws.managed.openshift.io
-      version: v1alpha1
-    - description: Pool of unclaimed AWS Accounts.
-      displayName: Account Pool
-      kind: AccountPool
-      name: accountpools.aws.managed.openshift.io
-      version: v1alpha1
+    # CRD's will be added here by the generate-operator-bundle.py
