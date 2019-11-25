@@ -14,15 +14,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/aws/aws-sdk-go/service/support"
 	"github.com/go-logr/logr"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
-	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
-	totalaccountwatcher "github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -31,6 +26,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+	totalaccountwatcher "github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 )
 
 var log = logf.Log.WithName("controller_account")
@@ -275,31 +275,15 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// If the account is BYOC, needs some different set up
 	if currentAcctInstance.Spec.BYOC {
-
 		reqLogger.Info("BYOC account")
-
 		//Set awsAccountID
 		awsAccountID = currentAcctInstance.Spec.AwsAccountID
 
-		// Get associated AccountClaim
-		accountClaim := &awsv1alpha1.AccountClaim{}
-
-		err := r.Client.Get(context.TODO(),
-			types.NamespacedName{Name: currentAcctInstance.Spec.ClaimLink, Namespace: currentAcctInstance.Spec.ClaimLinkNamespace},
-			accountClaim)
+		//Create client for BYOC account
+		byocAWSClient, accountClaim, err := r.getBYOCClient(currentAcctInstance)
 		if err != nil {
-			if k8serr.IsNotFound(err) {
-				return reconcile.Result{}, nil
-			}
 			return reconcile.Result{}, err
 		}
-
-		// Get credentials
-		byocAWSClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
-			SecretName: accountClaim.Spec.BYOCSecretRef.Name,
-			NameSpace:  accountClaim.Spec.BYOCSecretRef.Namespace,
-			AwsRegion:  "us-east-1",
-		})
 
 		reqLogger.Info("Marking BYOC account claimed")
 		// Ensure the account is marked as claimed
@@ -308,79 +292,19 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
 		}
 
-		reqLogger.Info("Checking BYOC account state")
+		// Create access key and role for BYOC account
 		if currentAcctInstance.Status.State == "" {
+			// Rotate access keys
+			err = r.byocRotateAccessKeys(reqLogger, byocAWSClient, accountClaim)
 
-			// Get the username of the non-byoc IAM user
-			getUserOutput, err := awsSetupClient.GetUser(&iam.GetUserInput{})
-			if err != nil {
-				reqLogger.Error(err, "Failed to get non-BYOC IAM User info")
-				return reconcile.Result{}, err
-			}
-
-			getBYOCUserOutput, err := byocAWSClient.GetUser(&iam.GetUserInput{})
-			if err != nil {
-				reqLogger.Error(err, "Failed to get BYOC IAM User info")
-				return reconcile.Result{}, err
-			}
-
-			// Create BYOC role
-			err = createBYOCAdminAccessRole(reqLogger, byocAWSClient, *getUserOutput.User.Arn, adminAccessArn)
+			// Create BYOC role to assume
+			err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, adminAccessArn)
 			if err != nil {
 				reqLogger.Error(err, "Failed to create BYOC role")
 				return reconcile.Result{}, err
 			}
 
-			// Get the BYOC credentials secret to update
-			accountClaimSecret := &corev1.Secret{}
-
-			err = r.Client.Get(context.TODO(),
-				types.NamespacedName{Name: accountClaim.Spec.BYOCSecretRef.Name, Namespace: accountClaim.Spec.BYOCSecretRef.Namespace},
-				accountClaimSecret)
-
-			accessKeyID := string(accountClaimSecret.Data["aws_access_key_id"])
-
-			// List and delete any other access keys
-			accessKeyList, err := byocAWSClient.ListAccessKeys(&iam.ListAccessKeysInput{})
-
-			for _, accessKey := range accessKeyList.AccessKeyMetadata {
-				if *accessKey.AccessKeyId != accessKeyID {
-					_, err = byocAWSClient.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKey.AccessKeyId})
-					if err != nil {
-						reqLogger.Error(err, "Failed to delete BYOC access keys")
-						return reconcile.Result{}, err
-					}
-				}
-			}
-
-			// Create new BYOC access keys
-			userSecretInfo, err := CreateUserAccessKey(reqLogger, byocAWSClient, *getBYOCUserOutput.User.UserName)
-			if err != nil {
-				failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s", *getUserOutput.User.UserName)
-				reqLogger.Info(failedToCreateUserAccessKeyMsg)
-				return reconcile.Result{}, err
-			}
-
-			// Delete original BYOC access key
-			_, err = byocAWSClient.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: &accessKeyID})
-			if err != nil {
-				reqLogger.Error(err, "Failed to delete BYOC access keys")
-				return reconcile.Result{}, err
-			}
-
-			accountClaimSecret.Data =
-				map[string][]byte{
-					"aws_access_key_id":     []byte(*userSecretInfo.AccessKey.AccessKeyId),
-					"aws_secret_access_key": []byte(*userSecretInfo.AccessKey.SecretAccessKey),
-				}
-
-			reqLogger.Info("BYOC updating secret")
-			err = r.Client.Update(context.TODO(), accountClaimSecret)
-			if err != nil {
-				reqLogger.Error(err, "Failed to update BYOC access keys")
-				return reconcile.Result{}, err
-			}
-
+			// Update the account CR to creating
 			reqLogger.Info("Updating BYOC to creating")
 			currentAcctInstance.Status.State = AccountCreating
 			SetAccountStatus(reqLogger, currentAcctInstance, "BYOC Account Creating", awsv1alpha1.AccountCreating, "Creating")
@@ -388,7 +312,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			return reconcile.Result{}, nil
 		}
 
 	} else {
