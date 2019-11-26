@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/go-logr/logr"
@@ -89,7 +91,12 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanUpAwsFederatedRole(reqLogger l
 
 	if err != nil {
 		descError := "Failed deleting Federated Account Role"
-		awsErrors <- descError
+		if awsErr, ok := err.(awserr.Error); ok {
+			// process SDK error
+
+			awsErrors <- descError
+			return awsErr
+		}
 		return err
 	}
 
