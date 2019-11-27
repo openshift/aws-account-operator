@@ -91,6 +91,9 @@ func (r *ReconcileAccount) getBYOCClient(currentAcct *awsv1alpha1.Account) (awsc
 		NameSpace:  accountClaim.Spec.BYOCSecretRef.Namespace,
 		AwsRegion:  "us-east-1",
 	})
+	if err != nil {
+		return nil, nil, err
+	}
 
 	return byocAWSClient, accountClaim, nil
 }
