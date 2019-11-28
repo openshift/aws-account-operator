@@ -2,8 +2,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: aws-account-operator-client
-groupNames:
-- aws-account-operator-client
 subjects:
 - kind: ServiceAccount
   namespace: aws-account-operator-client
