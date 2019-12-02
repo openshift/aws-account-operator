@@ -93,8 +93,8 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanUpAwsFederatedRole(reqLogger l
 		descError := "Failed deleting Federated Account Role"
 		if awsErr, ok := err.(awserr.Error); ok {
 			// process SDK error
-
 			awsErrors <- descError
+			reqLogger.Error(awsErr, "ERR CODE %d", awsErr.Code())
 			return awsErr
 		}
 		return err
