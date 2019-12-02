@@ -276,18 +276,28 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	// If the account is BYOC, needs some different set up
 	if currentAcctInstance.Spec.BYOC {
 		reqLogger.Info("BYOC account")
-		//Set awsAccountID
-		awsAccountID = currentAcctInstance.Spec.AwsAccountID
 
-		//Create client for BYOC account
+		// Create client for BYOC account
 		byocAWSClient, accountClaim, err := r.getBYOCClient(currentAcctInstance)
 		if err != nil {
+			if accountClaim != nil {
+				r.accountClaimBYOCError(reqLogger, accountClaim, err)
+			}
 			return reconcile.Result{}, err
 		}
 
-		reqLogger.Info("Marking BYOC account claimed")
+		err = validateBYOCClaim(accountClaim)
+		if err != nil {
+			r.accountClaimBYOCError(reqLogger, accountClaim, err)
+			return reconcile.Result{}, err
+		}
+
+		//Set awsAccountID
+		awsAccountID = currentAcctInstance.Spec.AwsAccountID
+
 		// Ensure the account is marked as claimed
 		if currentAcctInstance.Status.Claimed != true {
+			reqLogger.Info("Marking BYOC account claimed")
 			currentAcctInstance.Status.Claimed = true
 			return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
 		}
@@ -296,11 +306,17 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		if currentAcctInstance.Status.State == "" {
 			// Rotate access keys
 			err = r.byocRotateAccessKeys(reqLogger, byocAWSClient, accountClaim)
+			if err != nil {
+				reqLogger.Info("Failed to rotate BYOC access keys")
+				r.accountClaimBYOCError(reqLogger, accountClaim, err)
+				return reconcile.Result{}, err
+			}
 
 			// Create BYOC role to assume
 			err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, adminAccessArn)
 			if err != nil {
 				reqLogger.Error(err, "Failed to create BYOC role")
+				r.accountClaimBYOCError(reqLogger, accountClaim, err)
 				return reconcile.Result{}, err
 			}
 

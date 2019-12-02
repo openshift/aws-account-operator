@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -14,6 +15,7 @@ import (
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
 
 const (
@@ -21,6 +23,9 @@ const (
 	arnIAMPrefix      = "arn:aws:iam::"
 	byocUserArnSuffix = ":user/byocSetupUser"
 )
+
+var ErrBYOCAccountIDMissing = errors.New("BYOCAccountIDMissing")
+var ErrBYOCSecretRefMissing = errors.New("BYOCSecretRefMissing")
 
 // Create role for BYOC IAM user to assume
 func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.Client, byocAWSClient awsclient.Client, policyArn string) error {
@@ -92,7 +97,7 @@ func (r *ReconcileAccount) getBYOCClient(currentAcct *awsv1alpha1.Account) (awsc
 		AwsRegion:  "us-east-1",
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, accountClaim, err
 	}
 
 	return byocAWSClient, accountClaim, nil
@@ -154,6 +159,35 @@ func (r *ReconcileAccount) byocRotateAccessKeys(reqLogger logr.Logger, byocAWSCl
 	if err != nil {
 		reqLogger.Error(err, "Failed to update BYOC access keys")
 		return err
+	}
+
+	return nil
+}
+
+func (r *ReconcileAccount) accountClaimBYOCError(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, claimError error) {
+
+	message := fmt.Sprintf("BYOC Account Failed: %+v", claimError)
+	accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
+		accountClaim.Status.Conditions,
+		awsv1alpha1.AccountClaimed,
+		corev1.ConditionTrue,
+		"AccountFailed",
+		message,
+		controllerutils.UpdateConditionNever)
+	accountClaim.Status.State = awsv1alpha1.ClaimStatusError
+	err := r.Client.Status().Update(context.TODO(), accountClaim)
+	if err != nil {
+		reqLogger.Error(err, "Error updating BYOC Account Claim")
+	}
+}
+
+func validateBYOCClaim(accountClaim *awsv1alpha1.AccountClaim) error {
+
+	if accountClaim.Spec.BYOCAWSAccountID == "" {
+		return ErrBYOCAccountIDMissing
+	}
+	if accountClaim.Spec.BYOCSecretRef.Name == "" || accountClaim.Spec.BYOCSecretRef.Namespace == "" {
+		return ErrBYOCSecretRefMissing
 	}
 
 	return nil
