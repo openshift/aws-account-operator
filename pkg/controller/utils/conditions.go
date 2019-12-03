@@ -94,18 +94,6 @@ func FindAccountClaimCondition(conditions []awsv1alpha1.AccountClaimCondition, c
 	return nil
 }
 
-// CheckAccountConditions checks all conditions and resets LastTransitionTime to LastProbeTime if null
-func CheckAccountConditions(account *awsv1alpha1.Account) bool {
-	updated := false
-	for i, condition := range account.Status.Conditions {
-		if condition.LastTransitionTime == (metav1.Time{}) {
-			account.Status.Conditions[i].LastTransitionTime = condition.LastProbeTime
-			updated = true
-		}
-	}
-	return updated
-}
-
 // SetAccountCondition sets a condition on a Account resource's status
 func SetAccountCondition(
 	conditions []awsv1alpha1.AccountCondition,
