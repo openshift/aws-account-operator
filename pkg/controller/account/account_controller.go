@@ -257,11 +257,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
-	// If conditions have LastTransitionTime as null update them
-	if controllerutils.CheckAccountConditions(currentAcctInstance) {
-		return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
-	}
-
 	// We expect this secret to exist in the same namespace Account CR's are created
 	awsSetupClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
 		SecretName: controllerutils.AwsSecretName,
