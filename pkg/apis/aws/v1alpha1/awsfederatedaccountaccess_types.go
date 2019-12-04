@@ -25,8 +25,8 @@ const (
 type AWSFederatedAccountAccessSpec struct {
 	// ExternalCustomerAWSARN holds the external AWS IAM ARN
 	ExternalCustomerAWSIAMARN string `json:"externalCustomerAWSIAMARN"`
-	// AccountReference holds the name of the associated Account CR to use
-	AccountReference string `json:"accountReference"`
+	// AwsCredentialSecret holds the credentials to the cluster account where the role wil be created
+	AwsCredentialSecret AWSSecretReference `json:"awsCredentialSecret"`
 	// FederatedRoleName must be the name of a federatedrole cr that currently exists
 	AWSFederatedRoleName string `json:"awsFederatedRoleName"`
 }

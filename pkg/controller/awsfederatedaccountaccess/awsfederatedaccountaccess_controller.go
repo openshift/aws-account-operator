@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go/service/sts"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
@@ -17,7 +18,6 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
@@ -132,18 +132,30 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 
 	}
 
-	// Use the account name reference to get the correct secret name
-	secretName := currentFAA.Spec.AccountReference + "-secret"
-
 	// Get aws client
 	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
-		SecretName: secretName,
-		NameSpace:  awsv1alpha1.AccountCrNamespace,
+		SecretName: currentFAA.Spec.AwsCredentialSecret.Name,
+		NameSpace:  currentFAA.Spec.AwsCredentialSecret.Namespace,
 		AwsRegion:  "us-east-1",
 	})
 	if err != nil {
 		awsClientErr := fmt.Sprintf("Unable to create aws client for region ")
 		reqLogger.Error(err, awsClientErr)
+		return reconcile.Result{}, err
+	}
+
+	// Get account number of cluster account
+	gciOut, err := awsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
+	if err != nil {
+		SetStatuswithCondition(currentFAA, "Failed to get account ID information", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
+		reqLogger.Error(ErrFederatedAccessRoleFailedCreate, fmt.Sprintf("Unable to create role requested by '%s'", currentFAA.Name), "AWS ERROR: ", err)
+
+		err := r.client.Status().Update(context.TODO(), currentFAA)
+		if err != nil {
+			reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
+			return reconcile.Result{}, err
+		}
+
 		return reconcile.Result{}, err
 	}
 
@@ -178,14 +190,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		return reconcile.Result{}, nil
 	}
 
-	accountCR := &awsv1alpha1.Account{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AccountReference, Namespace: awsv1alpha1.AccountCrNamespace}, accountCR)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	accountID := accountCR.Spec.AwsAccountID
-	// Add requested aws managed policies to the role
+	accountID := *gciOut.Account // Add requested aws managed policies to the role
 	awsManagedPolicyNames := []string{}
 	// Add all aws managed policy names to a array
 	for _, policy := range roleMap[currentFAA.Spec.AWSFederatedRoleName].Spec.AWSManagedPolicies {
