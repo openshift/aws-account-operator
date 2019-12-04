@@ -353,6 +353,21 @@ func (mr *MockClientMockRecorder) AttachRolePolicy(arg0 interface{}) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachRolePolicy", reflect.TypeOf((*MockClient)(nil).AttachRolePolicy), arg0)
 }
 
+// DetachRolePolicy mocks base method
+func (m *MockClient) DetachRolePolicy(arg0 *iam.DetachRolePolicyInput) (*iam.DetachRolePolicyOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DetachRolePolicy", arg0)
+	ret0, _ := ret[0].(*iam.DetachRolePolicyOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DetachRolePolicy indicates an expected call of DetachRolePolicy
+func (mr *MockClientMockRecorder) DetachRolePolicy(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetachRolePolicy", reflect.TypeOf((*MockClient)(nil).DetachRolePolicy), arg0)
+}
+
 // CreateRole mocks base method
 func (m *MockClient) CreateRole(arg0 *iam.CreateRoleInput) (*iam.CreateRoleOutput, error) {
 	m.ctrl.T.Helper()

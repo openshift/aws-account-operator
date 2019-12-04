@@ -1,15 +1,19 @@
 package awsfederatedaccountaccess
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/go-logr/logr"
+
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 )
 
@@ -85,9 +89,46 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanUpAwsAccount(reqLogger logr.Lo
 	return nil
 }
 
-func (r *ReconcileAWSFederatedAccountAccess) cleanUpAwsFederatedRole(reqLogger logr.Logger, awsClient awsclient.Client, awsfederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess, awsNotifications chan string, awsErrors chan string) error {
+func (r *ReconcileAWSFederatedAccountAccess) cleanUpAwsFederatedRole(reqLogger logr.Logger, awsClient awsclient.Client, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, awsNotifications chan string, awsErrors chan string) error {
 
-	_, err := awsClient.DeleteRole(&iam.DeleteRoleInput{RoleName: aws.String(awsfederatedAccountAccess.Spec.AWSFederatedRoleName)})
+	currentFAARole, err := r.getAWSFederatedRole(reqLogger, currentFAA.Spec.AWSFederatedRoleName)
+
+	accountCR := &awsv1alpha1.Account{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AccountReference, Namespace: awsv1alpha1.AccountCrNamespace}, accountCR)
+	if err != nil {
+		return err
+	}
+
+	accountID := accountCR.Spec.AwsAccountID
+
+	// Add requested aws managed policies to the role
+	awsManagedPolicyNames := []string{}
+	// Add all aws managed policy names to a array
+	for _, policy := range currentFAARole.Spec.AWSManagedPolicies {
+		awsManagedPolicyNames = append(awsManagedPolicyNames, policy)
+	}
+	// Get policy arns for managed policies
+	policyArns := createPolicyArns(accountID, awsManagedPolicyNames, true)
+	// Get custom policy arns
+	customPolicy := []string{currentFAARole.Spec.AWSCustomPolicy.Name}
+	customerPolArns := createPolicyArns(accountID, customPolicy, false)
+	policyArns = append(policyArns, customerPolArns[0])
+
+	// Attach the requested policy to the newly created role
+	err = r.detachIAMPolices(awsClient, currentFAA.Spec.AWSFederatedRoleName, policyArns)
+	if err != nil {
+		SetStatuswithCondition(currentFAA, "Failed to detach policies from role", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
+		reqLogger.Error(err, fmt.Sprintf("Failed to attach policies to role requested by '%s'", currentFAA.Name))
+		err := r.client.Status().Update(context.TODO(), currentFAA)
+		if err != nil {
+			reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
+			return err
+		}
+
+		return nil
+	}
+
+	_, err = awsClient.DeleteRole(&iam.DeleteRoleInput{RoleName: aws.String(currentFAA.Spec.AWSFederatedRoleName)})
 
 	if err != nil {
 		descError := "Failed deleting Federated Account Role"
@@ -102,5 +143,19 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanUpAwsFederatedRole(reqLogger l
 
 	successMsg := fmt.Sprintf("Federated Account Role cleanup finished successfully")
 	awsNotifications <- successMsg
+	return nil
+}
+
+func (r *ReconcileAWSFederatedAccountAccess) detachIAMPolices(awsClient awsclient.Client, roleName string, policyArns []string) error {
+	for _, pol := range policyArns {
+		_, err := awsClient.DetachRolePolicy(&iam.DetachRolePolicyInput{
+			PolicyArn: aws.String(pol),
+			RoleName:  aws.String(roleName),
+		})
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

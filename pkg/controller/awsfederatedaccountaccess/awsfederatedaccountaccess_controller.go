@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/go-logr/logr"
+	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
@@ -142,20 +143,10 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		return reconcile.Result{}, nil
 	}
 
-	// Get a list of all available roles
-	federatedRoleList := &awsv1alpha1.AWSFederatedRoleList{}
-	if r.client.List(context.TODO(), &client.ListOptions{}, federatedRoleList); err != nil {
-		return reconcile.Result{}, err
-	}
-
-	// Create map to make finding role easier
-	roleMap := make(map[string]awsv1alpha1.AWSFederatedRole)
-	for _, role := range federatedRoleList.Items {
-		roleMap[role.Name] = role
-	}
+	currentFAARole, err := r.getAWSFederatedRole(reqLogger, currentFAA.Spec.AWSFederatedRoleName)
 
 	// See if requested role exists
-	if _, ok := roleMap[currentFAA.Spec.AWSFederatedRoleName]; !ok {
+	if err != nil {
 		SetStatuswithCondition(currentFAA, "Requested role does not exist", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
 		reqLogger.Error(ErrFederatedAccessRoleNotFound, fmt.Sprintf("Resquested role '%s' not found", currentFAA.Spec.AWSFederatedRoleName))
 
@@ -185,7 +176,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	}
 
 	// Here create the custom policy in the cluster account
-	err = r.createOrUpdateIAMPolicy(awsClient, roleMap[currentFAA.Spec.AWSFederatedRoleName], *currentFAA)
+	err = r.createOrUpdateIAMPolicy(awsClient, currentFAARole, *currentFAA)
 	if err != nil {
 		// if we were unable to create the policy fail this CR.
 		SetStatuswithCondition(currentFAA, "Failed to create custom policy", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
@@ -201,7 +192,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	}
 
 	// Create role and apply custom policys and awsmanagedpolicies
-	err = r.createOrUpdateIAMRole(awsClient, roleMap[currentFAA.Spec.AWSFederatedRoleName], *currentFAA)
+	err = r.createOrUpdateIAMRole(awsClient, currentFAARole, *currentFAA)
 	if err != nil {
 		SetStatuswithCondition(currentFAA, "Failed to create role", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
 		reqLogger.Error(ErrFederatedAccessRoleFailedCreate, fmt.Sprintf("Unable to create role requested by '%s'", currentFAA.Name), "AWS ERROR: ", err)
@@ -225,13 +216,13 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	// Add requested aws managed policies to the role
 	awsManagedPolicyNames := []string{}
 	// Add all aws managed policy names to a array
-	for _, policy := range roleMap[currentFAA.Spec.AWSFederatedRoleName].Spec.AWSManagedPolicies {
+	for _, policy := range currentFAARole.Spec.AWSManagedPolicies {
 		awsManagedPolicyNames = append(awsManagedPolicyNames, policy)
 	}
 	// Get policy arns for managed policies
 	policyArns := createPolicyArns(accountID, awsManagedPolicyNames, true)
 	// Get custom policy arns
-	customPolicy := []string{roleMap[currentFAA.Spec.AWSFederatedRoleName].Spec.AWSCustomPolicy.Name}
+	customPolicy := []string{currentFAARole.Spec.AWSCustomPolicy.Name}
 	customerPolArns := createPolicyArns(accountID, customPolicy, false)
 	policyArns = append(policyArns, customerPolArns[0])
 
@@ -447,6 +438,33 @@ func (r *ReconcileAWSFederatedAccountAccess) removeFinalizer(reqLogger logr.Logg
 		return err
 	}
 	return nil
+}
+
+func (r *ReconcileAWSFederatedAccountAccess) getAWSFederatedRole(reqLogger logr.Logger, AWSFederatedRoleName string) (v1alpha1.AWSFederatedRole, error) {
+
+	// Get a list of all available roles
+	federatedRoleList := &awsv1alpha1.AWSFederatedRoleList{}
+	federatedRole := awsv1alpha1.AWSFederatedRole{}
+
+	err := r.client.List(context.TODO(), &client.ListOptions{}, federatedRoleList)
+	if err != nil {
+		return federatedRole, err
+	}
+
+	// Create map to make finding role easier
+	roleMap := make(map[string]awsv1alpha1.AWSFederatedRole)
+	for _, role := range federatedRoleList.Items {
+		roleMap[role.Name] = role
+	}
+
+	// See if requested role exists
+	if _, ok := roleMap[AWSFederatedRoleName]; !ok {
+		return federatedRole, err
+	}
+
+	federatedRole = roleMap[AWSFederatedRoleName]
+	return federatedRole, nil
+
 }
 
 func contains(list []string, s string) bool {
