@@ -35,7 +35,8 @@ import (
 
 var log = logf.Log.WithName("controller_account")
 
-const (
+const
+	// Exported and used in cmd/manager/main.go
 	AwsLimit                = 4700
 	awsCredsUserName        = "aws_user_name"
 	awsCredsSecretIDKey     = "aws_access_key_id"
@@ -376,7 +377,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			}
 
 			// Case not Resolved, log info and try again in pre-defined interval
-			reqLogger.Info(fmt.Sprintf(`Case %s not resolved, 
+			reqLogger.Info(fmt.Sprintf(`Case %s not resolved,
 			trying again in %d minutes`,
 				currentAcctInstance.Status.SupportCaseID,
 				intervalBetweenChecksMinutes))
