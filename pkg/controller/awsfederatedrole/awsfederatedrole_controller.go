@@ -82,6 +82,7 @@ type ReconcileAWSFederatedRole struct {
 func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling AWSFederatedRole")
+	reqLogger.Info("DEBUG 1 AWSFederatedRole")
 
 	// Fetch the AWSFederatedRole instance
 	instance := &awsv1alpha1.AWSFederatedRole{}
@@ -96,6 +97,8 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
+
+	reqLogger.Info("DEBUG 2 AWSFederatedRole")
 
 	// If the CR is known to be Valid or Invalid, doesn't need to be reconciled.
 	if instance.Status.State == awsv1alpha1.AWSFederatedRoleStateValid || instance.Status.State == awsv1alpha1.AWSFederatedRoleStateInvalid {
@@ -134,6 +137,8 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		log.Error(err, fmt.Sprintf("AWSCustomPolicy %s and/or AWSManagedPolicies %+v empty", instance.Spec.AWSCustomPolicy.Name, instance.Spec.AWSManagedPolicies))
 		return reconcile.Result{}, nil
 	}
+
+	reqLogger.Info("DEBUG 3 AWSFederatedRole")
 
 	// Attemps to create the policy to ensure its a valid policy
 	createOutput, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
@@ -175,6 +180,8 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	}
 	log.Info("Valided Custom Policies")
 
+	reqLogger.Info("DEBUG 4 AWSFederatedRole")
+
 	// Ensures the managed IAM Polcies exist
 	log.Info("Validating Managed Policies")
 	// List all policies from AWS
@@ -191,6 +198,8 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	for _, policy := range instance.Spec.AWSManagedPolicies {
 		// Check if policy is in the list of managed policies
 		if !policyInSlice(policy, managedPolicyNameList) {
+			reqLogger.Info("DEBUG 5 AWSFederatedRole")
+
 			// Update condition to Invalid
 			instance.Status.State = awsv1alpha1.AWSFederatedRoleStateInvalid
 			instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
@@ -210,6 +219,8 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		}
 	}
 	log.Info("Validated Managed Policies")
+
+	reqLogger.Info("DEBUG 6 AWSFederatedRole")
 
 	// Update Condition to Valid
 	instance.Status.State = awsv1alpha1.AWSFederatedRoleStateValid
