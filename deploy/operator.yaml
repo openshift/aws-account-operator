@@ -17,7 +17,7 @@ spec:
         - name: aws-account-operator
           # Replace this with the built image name
           # This will get replaced on deploy by /hack/generate-operator-bundle.py
-          image: quay.io/lpieri/aws-account-operator:faa-finalizer 
+          image: quay.io/razevedo/aws-account-operator:secret-ref
           command:
           - aws-account-operator
           imagePullPolicy: Always

@@ -274,7 +274,10 @@ func buildPolicyNameSlice(policies []iam.Policy) []string {
 
 // Check if a policy name is in a list of policy names
 func policyInSlice(policy string, policyList []string) bool {
+	reqLogger := log.WithValues("Request.Namespace", "Test")
+
 	for _, namedPolicy := range policyList {
+		reqLogger.Info("DEBUG - namedPolicy: %s, policy: %s", namedPolicy, policy)
 		if namedPolicy == policy {
 			return true
 		}
