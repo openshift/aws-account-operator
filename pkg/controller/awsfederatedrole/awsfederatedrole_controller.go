@@ -169,6 +169,8 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		} else {
 			log.Error(err, "Non-AWS Error while creating Policy")
 		}
+		reqLogger.Info("DEBUG 3.1 AWSFederatedRole")
+
 		return reconcile.Result{}, err
 	}
 
