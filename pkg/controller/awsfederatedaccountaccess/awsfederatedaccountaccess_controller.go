@@ -346,6 +346,10 @@ func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMPolicy(awsClient a
 
 				// If the Role already exists, delete it and recreate it
 				_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: policy.Arn})
+
+				if err != nil {
+					return err
+				}
 				_, err = r.createIAMPolicy(awsClient, afr, afaa)
 			}
 		}

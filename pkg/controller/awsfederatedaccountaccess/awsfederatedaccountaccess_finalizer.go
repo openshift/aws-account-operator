@@ -118,7 +118,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanUpAwsFederatedRole(reqLogger l
 	err = r.detachIAMPolices(awsClient, currentFAA.Spec.AWSFederatedRoleName, policyArns)
 	if err != nil {
 		SetStatuswithCondition(currentFAA, "Failed to detach policies from role", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
-		reqLogger.Error(err, fmt.Sprintf("Failed to attach policies to role requested by '%s'", currentFAA.Name))
+		reqLogger.Error(err, fmt.Sprintf("Failed to detach policies to role requested by '%s'", currentFAA.Name))
 		err := r.client.Status().Update(context.TODO(), currentFAA)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
