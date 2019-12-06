@@ -5,12 +5,13 @@ import (
 	goerr "errors"
 	"fmt"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go/service/sts"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
-	"github.com/openshift/aws-account-operator/pkg/controller/utils"
-
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	awsfaa "github.com/openshift/aws-account-operator/pkg/controller/awsfederatedaccountaccess"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -109,12 +110,11 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		AwsRegion:  "us-east-1",
 	})
 
-	// Validates Custom IAM Policy
-
-	log.Info("Validating Custom Policies")
-	// Build custom policy in AWS-valid JSON and converts to string
-	jsonPolicy, err := utils.MarshalIAMPolicy(*instance)
-
+	if err != nil {
+		awsClientErr := fmt.Sprintf("Unable to create aws client")
+		reqLogger.Error(err, awsClientErr)
+		return reconcile.Result{}, err
+	}
 	// If AWSCustomPolicy and AWSManagedPolicies don't exist, update condition and exit
 	if len(instance.Spec.AWSManagedPolicies) == 0 && instance.Spec.AWSCustomPolicy.Name == "" {
 		instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
@@ -124,6 +124,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 			"NoAWSCustomPolicyOrAWSManagedPolicies",
 			"AWSCustomPolicy and/or AWSManagedPolicies do not exist",
 			utils.UpdateConditionNever)
+		instance.Status.State = awsv1alpha1.AWSFederatedRoleStateInvalid
 		err = r.client.Status().Update(context.TODO(), instance)
 		if err != nil {
 			log.Error(err, "Error updating conditions")
@@ -135,45 +136,45 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		return reconcile.Result{}, nil
 	}
 
-	// Attemps to create the policy to ensure its a valid policy
-	createOutput, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
-		Description:    &instance.Spec.AWSCustomPolicy.Description,
-		PolicyName:     &instance.Spec.AWSCustomPolicy.Name,
-		PolicyDocument: &jsonPolicy,
-	})
+	// Get aws id and create policy arn
+	gciOut, err := awsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			if aerr.Code() == "MalformedPolicyDocument" {
-				log.Error(err, "Malformed Policy Document")
-				instance.Status.State = awsv1alpha1.AWSFederatedRoleStateInvalid
-				instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
-					instance.Status.Conditions,
-					awsv1alpha1.AWSFederatedRoleInvalid,
-					"True",
-					"InvalidCustomerPolicy",
-					"Custom Policy is malformed",
-					utils.UpdateConditionNever)
-				err = r.client.Status().Update(context.TODO(), instance)
-				if err != nil {
-					log.Error(err, "Error updating conditions")
-					return reconcile.Result{}, err
-				}
-				return reconcile.Result{}, nil
-			}
-			utils.LogAwsError(log, "", nil, err)
-		} else {
-			log.Error(err, "Non-AWS Error while creating Policy")
-		}
+		reqLogger.Error(err, fmt.Sprintf("Unable to create account id requested"))
 		return reconcile.Result{}, err
 	}
 
+	// policy arn template
+	policyARN := fmt.Sprintf("arn:aws:iam::%s:policy/%s", *gciOut.Account, instance.Spec.AWSCustomPolicy.Name)
+
+	// Validates Custom IAM Policy
+	log.Info("Validating Custom Policies")
+	err = awsfaa.CreateOrUpdateIAMPolicy(awsClient, *instance, policyARN)
+	// Invalidates instance if unable not create policy
+	if err != nil {
+		log.Error(err, "Unable to create policy")
+		instance.Status.State = awsv1alpha1.AWSFederatedRoleStateInvalid
+		instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
+			instance.Status.Conditions,
+			awsv1alpha1.AWSFederatedRoleInvalid,
+			"True",
+			"InvalidCustomerPolicy",
+			"Unable to create custom policy",
+			utils.UpdateConditionNever)
+		err = r.client.Status().Update(context.TODO(), instance)
+		if err != nil {
+			log.Error(err, "Error updating conditions")
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{}, nil
+	}
+
 	// Cleanup the created policy since its only for validation
-	_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: createOutput.Policy.Arn})
+	_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: aws.String(policyARN)})
 	if err != nil {
 		log.Error(err, "Error deleting custom policy")
 		return reconcile.Result{}, err
 	}
-	log.Info("Valided Custom Policies")
+	log.Info("Validated Custom Policies")
 
 	// Ensures the managed IAM Polcies exist
 	log.Info("Validating Managed Policies")

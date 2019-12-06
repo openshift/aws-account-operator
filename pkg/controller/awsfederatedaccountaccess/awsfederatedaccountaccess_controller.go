@@ -147,8 +147,18 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		return reconcile.Result{}, err
 	}
 
+	//TODO() will be refactored in Rafs pr to use secret
+	// create policy arn
+	accountCR := &awsv1alpha1.Account{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AccountReference, Namespace: awsv1alpha1.AccountCrNamespace}, accountCR)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	accountID := accountCR.Spec.AwsAccountID
+	policyARN := fmt.Sprintf("arn:aws:iam::%s:policy/%s", accountID, roleMap[currentFAA.Spec.AWSFederatedRoleName].Spec.AWSCustomPolicy.Name)
+
 	// Here create the custom policy in the cluster account
-	err = r.createOrUpdateIAMPolicy(awsClient, roleMap[currentFAA.Spec.AWSFederatedRoleName], *currentFAA)
+	err = CreateOrUpdateIAMPolicy(awsClient, roleMap[currentFAA.Spec.AWSFederatedRoleName], policyARN)
 	if err != nil {
 		// if we were unable to create the policy fail this CR.
 		SetStatuswithCondition(currentFAA, "Failed to create custom policy", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
@@ -178,13 +188,6 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		return reconcile.Result{}, nil
 	}
 
-	accountCR := &awsv1alpha1.Account{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AccountReference, Namespace: awsv1alpha1.AccountCrNamespace}, accountCR)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	accountID := accountCR.Spec.AwsAccountID
 	// Add requested aws managed policies to the role
 	awsManagedPolicyNames := []string{}
 	// Add all aws managed policy names to a array
@@ -226,7 +229,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 }
 
 // createIAMPolicy creates the IAM policys in AWSFederatedRole inside of our cluster account
-func (r *ReconcileAWSFederatedAccountAccess) createIAMPolicy(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) (*iam.Policy, error) {
+func createIAMPolicy(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole) (*iam.Policy, error) {
 	// Same struct from the afr.Spec.AWSCustomPolicy.Statements , but with json tags as captials due to requirements for the policydoc
 	type awsStatement struct {
 		Effect    string                 `json:"Effect"`
@@ -263,7 +266,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createIAMPolicy(awsClient awsclient
 		PolicyDocument: aws.String(string(jsonPolicyDoc)),
 	})
 	if err != nil {
-		return output.Policy, fmt.Errorf("Error creating awsCustomPolicy %s for AWSFederatedRole %s \n AWS Error %s", afr.Spec.AWSCustomPolicy.Name, afr.Name, err.Error())
+		return output.Policy, err
 	}
 
 	return output.Policy, nil
@@ -309,25 +312,34 @@ func (r *ReconcileAWSFederatedAccountAccess) createIAMRole(awsClient awsclient.C
 	return nil
 }
 
-func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMPolicy(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) error {
-
-	policy, err := r.createIAMPolicy(awsClient, afr, afaa)
+// TODO() this will need to be moved to a different package because it's shared across controller
+func CreateOrUpdateIAMPolicy(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, policyARN string) error {
+	_, err := createIAMPolicy(awsClient, afr)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
-			if aerr.Code() == "EntityAlreadyExists" {
-
-				// If the Role already exists, delete it and recreate it
-				_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: policy.Arn})
-				_, err = r.createIAMPolicy(awsClient, afr, afaa)
+			switch aerr.Code() {
+			case iam.ErrCodeEntityAlreadyExistsException:
+				_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: aws.String(policyARN)})
+				if err != nil {
+					return err
+				}
+				_, err = createIAMPolicy(awsClient, afr)
+				if err != nil {
+					return err
+				}
+				return nil
+			default:
+				return err
 			}
 		}
+		// catches non aws err
+		return err
 	}
 
-	return err
+	return nil
 }
 
 func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMRole(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) error {
-
 	err := r.createIAMRole(awsClient, afr, afaa)
 	if err != nil {
 
