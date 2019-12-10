@@ -812,11 +812,8 @@ func CreateUserAccessKey(reqLogger logr.Logger, client awsclient.Client, userNam
 
 	result, err := client.CreateAccessKey(input)
 	if err != nil {
-		return &iam.CreateAccessKeyOutput{}, errors.New("Error creating access key")
-	}
-
-	if err != nil {
 		controllerutils.LogAwsError(reqLogger, "New AWS Error while creating user access key", nil, err)
+		return &iam.CreateAccessKeyOutput{}, fmt.Errorf("Error creating access key: %v", err)
 	}
 
 	return result, nil
