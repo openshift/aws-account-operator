@@ -33,6 +33,7 @@ const (
 	awsCredsAccessKeyId     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
 	accountClaimFinalizer   = "finalizer.aws.managed.openshift.io"
+	waitPeriod              = 30
 )
 
 var log = logf.Log.WithName("controller_accountclaim")
@@ -152,7 +153,9 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			return reconcile.Result{}, nil
+			// Requeue this claim request in 30 seconds as we need to check to see if the account is ready
+			// so we can update the AccountClaim `status.state` to `true`
+			return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
 		}
 
 		// Get the account and check if its Ready
@@ -161,8 +164,16 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		if byocAccount.Status.State == string(awsv1alpha1.AccountReady) {
 
+		// Check account status requeue if we are not ready
+		if byocAccount.Status.State != string(awsv1alpha1.AccountReady) {
+			waitMsg := fmt.Sprintf("%s is not Ready yet requing in %d seconds", byocAccount.Name, waitPeriod)
+			reqLogger.Info(waitMsg)
+			return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
+		}
+
+		if byocAccount.Status.State == string(awsv1alpha1.AccountReady) && accountClaim.Status.State != awsv1alpha1.ClaimStatusReady {
+			accountClaim.Status.State = awsv1alpha1.ClaimStatusReady
 			message := "BYOC account ready"
 			accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
 				accountClaim.Status.Conditions,
@@ -171,7 +182,21 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 				AccountClaimed,
 				message,
 				controllerutils.UpdateConditionNever)
-			// Update the Spec on AccountClaim
+			// Update the status on AccountClaim
+			return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
+		}
+
+		if byocAccount.Status.State == string(awsv1alpha1.AccountFailed) {
+			accountClaim.Status.State = awsv1alpha1.ClaimStatusError
+			message := "BYOC account errored"
+			accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
+				accountClaim.Status.Conditions,
+				awsv1alpha1.AccountClaimed,
+				corev1.ConditionTrue,
+				AccountClaimed,
+				message,
+				controllerutils.UpdateConditionNever)
+			// Update the status on AccountClaim
 			return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 		}
 

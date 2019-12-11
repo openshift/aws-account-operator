@@ -22,8 +22,17 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 
 	reqLogger.Info(fmt.Sprintf("Rotating credentials for account %s secret %s", account.Name, STSCredentialsSecretName))
 
+	//var awsAssumedRoleClient awsclient.Client
+	var roleToAssume string
+
+	if account.Spec.BYOC {
+		roleToAssume = byocRole
+	} else {
+		roleToAssume = awsv1alpha1.AccountOperatorIAMRole
+	}
+
 	// Get STS user credentials
-	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsSetupClient, awsv1alpha1.AccountOperatorIAMRole, account.Spec.AwsAccountID)
+	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsSetupClient, roleToAssume, account.Spec.AwsAccountID)
 
 	if STSCredentialsErr != nil {
 		reqLogger.Info("RotateCredentials: Failed to get SRE admin STSCredentials from AWS api ", "Error", STSCredentialsErr.Error())
@@ -86,8 +95,17 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSetupClient awsclient.Client, account *awsv1alpha1.Account) error {
 	STSCredentialsSecretName := account.Name + credentialwatcher.STSCredentialsConsoleSuffix
 
+	//var awsAssumedRoleClient awsclient.Client
+	var roleToAssume string
+
+	if account.Spec.BYOC {
+		roleToAssume = byocRole
+	} else {
+		roleToAssume = awsv1alpha1.AccountOperatorIAMRole
+	}
+
 	// Get STS user credentials
-	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsSetupClient, awsv1alpha1.AccountOperatorIAMRole, account.Spec.AwsAccountID)
+	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsSetupClient, roleToAssume, account.Spec.AwsAccountID)
 
 	if STSCredentialsErr != nil {
 		reqLogger.Info("RotateCredentials: Failed to get SRE admin STSCredentials from AWS api ", "Error", STSCredentialsErr.Error())

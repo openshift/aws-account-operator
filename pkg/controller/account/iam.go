@@ -237,6 +237,9 @@ func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleNa
 		if err == nil {
 			break
 		}
+		if i == 99 {
+			reqLogger.Info(fmt.Sprintf("Timed out while assuming role %s", roleArn))
+		}
 	}
 	if err != nil {
 		// Log AWS error
