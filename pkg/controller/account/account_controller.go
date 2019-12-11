@@ -745,38 +745,98 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 	return accountStatus, nil
 }
 
+func checkIAMUserExists(reqLogger logr.Logger, client awsclient.Client, userName string) (bool, error) {
+	// Retry when getting IAM user information
+	// Sometimes we see a delay before credentials are ready to be user resulting in the AWS API returning 404's
+	attempt := 1
+	for i := 0; i < 10; i++ {
+		// check if username exists for this account
+		_, err := client.GetUser(&iam.GetUserInput{
+			UserName: aws.String(userName),
+		})
+
+		attempt++
+		// handle errors
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				case iam.ErrCodeNoSuchEntityException:
+					return false, nil
+				case "InvalidClientTokenId":
+					invalidTokenMsg := fmt.Sprintf("Invalid Token error from AWS when attempting get IAM user %s, trying again", userName)
+					reqLogger.Info(invalidTokenMsg)
+					if attempt == 10 {
+						return false, err
+					}
+				case "AccessDenied":
+					checkUserMsg := fmt.Sprintf("AWS Error while checking IAM user %s exists, trying again", userName)
+					controllerutils.LogAwsError(reqLogger, checkUserMsg, nil, err)
+					// We may have bad credentials so return an error if so
+					if attempt == 10 {
+						return false, err
+					}
+				default:
+					controllerutils.LogAwsError(reqLogger, "Unexpected AWS Error when checking IAM user exists", nil, err)
+					return false, err
+				}
+				time.Sleep(time.Duration(time.Duration(attempt*5) * time.Second))
+			} else {
+				return false, fmt.Errorf("Unable to check if user %s exists error: %s", userName, err)
+			}
+		}
+	}
+
+	// User exists return
+	return true, nil
+}
+
 // CreateIAMUser takes a client and string and creates a IAMuser
 func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.CreateUserOutput, error) {
 
 	// check if username exists for this account
-	_, err := client.GetUser(&iam.GetUserInput{
-		UserName: aws.String(userName),
-	})
-
-	var createUserOutput *iam.CreateUserOutput
-	// handle errors
+	userExists, err := checkIAMUserExists(reqLogger, client, userName)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case iam.ErrCodeNoSuchEntityException:
-				createResult, err := client.CreateUser(&iam.CreateUserInput{
-					UserName: aws.String(userName),
-				})
-				if err != nil {
-					controllerutils.LogAwsError(reqLogger, "New AWS Error during creation of IAM user (ErrCodeNoSuchEntityException)", nil, err)
+		return &iam.CreateUserOutput{}, err
+	}
+
+	// return an error if the IAM user already exists
+	if userExists {
+		return &iam.CreateUserOutput{}, fmt.Errorf("IAM User with the same name already exists cannot create IAM User %s", userName)
+	}
+
+	var createUserOutput = &iam.CreateUserOutput{}
+
+	attempt := 1
+	for i := 0; i < 10; i++ {
+
+		createUserOutput, err = client.CreateUser(&iam.CreateUserInput{
+			UserName: aws.String(userName),
+		})
+
+		attempt++
+		// handle errors
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				// Since we're using the same credentials to create the user as we did to check if the user exists
+				// we can continue to try without returning, also the outer loop will eventually return
+				case "InvalidClientTokenId":
+					invalidTokenMsg := fmt.Sprintf("Invalid Token error from AWS when attempting to create user %s, trying again", userName)
+					reqLogger.Info(invalidTokenMsg)
+					if attempt == 10 {
+						return &iam.CreateUserOutput{}, err
+					}
+				default:
+					controllerutils.LogAwsError(reqLogger, "Unexpect AWS Error during creation of IAM user", nil, err)
 					return &iam.CreateUserOutput{}, err
 				}
-				createUserOutput = createResult
-				return createUserOutput, nil
-
-			default:
-				controllerutils.LogAwsError(reqLogger, "New AWS Error during creation of IAM user (not ErrCodeNoSuchEntityException)", nil, err)
-				return &iam.CreateUserOutput{}, err
 			}
+			time.Sleep(time.Duration(time.Duration(attempt*5) * time.Second))
 		} else {
 			return &iam.CreateUserOutput{}, err
 		}
 	}
+
 	return createUserOutput, nil
 }
 
@@ -812,11 +872,12 @@ func CreateUserAccessKey(reqLogger logr.Logger, client awsclient.Client, userNam
 
 	result, err := client.CreateAccessKey(input)
 	if err != nil {
-		return &iam.CreateAccessKeyOutput{}, errors.New("Error creating access key")
-	}
+		if _, ok := err.(awserr.Error); ok {
+			controllerutils.LogAwsError(reqLogger, "New AWS Error during creation of IAM user access key", nil, err)
+			return &iam.CreateAccessKeyOutput{}, err
+		}
 
-	if err != nil {
-		controllerutils.LogAwsError(reqLogger, "New AWS Error while creating user access key", nil, err)
+		return &iam.CreateAccessKeyOutput{}, errors.New("Error creating access key")
 	}
 
 	return result, nil
