@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 
 	corev1 "k8s.io/api/core/v1"
@@ -134,8 +135,8 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 
 	// Get aws client
 	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
-		SecretName: currentFAA.Spec.AwsCredentialSecret.Name,
-		NameSpace:  currentFAA.Spec.AwsCredentialSecret.Namespace,
+		SecretName: currentFAA.Spec.AWSCustomerCredentialSecret.Name,
+		NameSpace:  currentFAA.Spec.AWSCustomerCredentialSecret.Namespace,
 		AwsRegion:  "us-east-1",
 	})
 	if err != nil {
@@ -148,8 +149,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	gciOut, err := awsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
 	if err != nil {
 		SetStatuswithCondition(currentFAA, "Failed to get account ID information", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
-		reqLogger.Error(ErrFederatedAccessRoleFailedCreate, fmt.Sprintf("Unable to create role requested by '%s'", currentFAA.Name), "AWS ERROR: ", err)
-
+		utils.LogAwsError(log, fmt.Sprintf("Unable to create role requested by '%s'", currentFAA.Name), err, err)
 		err := r.client.Status().Update(context.TODO(), currentFAA)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))

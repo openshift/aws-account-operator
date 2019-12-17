@@ -87,9 +87,9 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.Refer
 							Format:      "",
 						},
 					},
-					"awsCredentialSecret": {
+					"awsCustomerCredentialSecret": {
 						SchemaProps: spec.SchemaProps{
-							Description: "AwsCredentialSecret holds the credentials to the cluster account where the role wil be created",
+							Description: "AWSCustomerCredentialSecret holds the credentials to the cluster account where the role wil be created",
 							Ref:         ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSSecretReference"),
 						},
 					},
@@ -101,7 +101,7 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.Refer
 						},
 					},
 				},
-				Required: []string{"externalCustomerAWSIAMARN", "awsCredentialSecret", "awsFederatedRoleName"},
+				Required: []string{"externalCustomerAWSIAMARN", "awsCustomerCredentialSecret", "awsFederatedRoleName"},
 			},
 		},
 		Dependencies: []string{

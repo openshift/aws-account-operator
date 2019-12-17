@@ -38,9 +38,9 @@ spec:
           type: object
         spec:
           properties:
-            awsCredentialSecret:
-              description: AwsCredentialSecret holds the credentials to the cluster
-                account where the role wil be created
+            awsCustomerCredentialSecret:
+              description: AWSCustomerCredentialSecret holds the credentials to the
+                cluster account where the role wil be created
               properties:
                 name:
                   type: string
@@ -59,7 +59,7 @@ spec:
               type: string
           required:
           - externalCustomerAWSIAMARN
-          - awsCredentialSecret
+          - awsCustomerCredentialSecret
           - awsFederatedRoleName
           type: object
         status:
