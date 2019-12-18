@@ -50,17 +50,25 @@ spec:
               - name
               - namespace
               type: object
-            awsFederatedRoleName:
+            awsFederatedRole:
               description: FederatedRoleName must be the name of a federatedrole cr
                 that currently exists
-              type: string
+              properties:
+                name:
+                  type: string
+                namespace:
+                  type: string
+              required:
+              - name
+              - namespace
+              type: object
             externalCustomerAWSIAMARN:
               description: ExternalCustomerAWSARN holds the external AWS IAM ARN
               type: string
           required:
           - externalCustomerAWSIAMARN
           - awsCustomerCredentialSecret
-          - awsFederatedRoleName
+          - awsFederatedRole
           type: object
         status:
           properties:

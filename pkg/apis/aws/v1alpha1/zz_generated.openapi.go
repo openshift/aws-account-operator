@@ -93,19 +93,18 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.Refer
 							Ref:         ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSSecretReference"),
 						},
 					},
-					"awsFederatedRoleName": {
+					"awsFederatedRole": {
 						SchemaProps: spec.SchemaProps{
 							Description: "FederatedRoleName must be the name of a federatedrole cr that currently exists",
-							Type:        []string{"string"},
-							Format:      "",
+							Ref:         ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleRef"),
 						},
 					},
 				},
-				Required: []string{"externalCustomerAWSIAMARN", "awsCustomerCredentialSecret", "awsFederatedRoleName"},
+				Required: []string{"externalCustomerAWSIAMARN", "awsCustomerCredentialSecret", "awsFederatedRole"},
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSSecretReference"},
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleRef", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSSecretReference"},
 	}
 }
 

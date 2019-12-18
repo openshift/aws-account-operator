@@ -10,6 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"k8s.io/apimachinery/pkg/types"
+
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
@@ -106,31 +108,24 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		return reconcile.Result{}, nil
 	}
 
-	// Get a list of all available roles
-	federatedRoleList := &awsv1alpha1.AWSFederatedRoleList{}
-	if r.client.List(context.TODO(), &client.ListOptions{}, federatedRoleList); err != nil {
-		return reconcile.Result{}, err
-	}
+	requestedRole := &awsv1alpha1.AWSFederatedRole{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AWSFederatedRole.Name, Namespace: currentFAA.Spec.AWSFederatedRole.Namespace}, requestedRole)
+	if err != nil {
+		if k8serr.IsNotFound(err) {
+			SetStatuswithCondition(currentFAA, "Requested role does not exist", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
+			reqLogger.Error(ErrFederatedAccessRoleNotFound, fmt.Sprintf("Resquested role '%s' not found", currentFAA.Spec.AWSFederatedRole.Name))
 
-	// Create map to make finding role easier
-	roleMap := make(map[string]awsv1alpha1.AWSFederatedRole)
-	for _, role := range federatedRoleList.Items {
-		roleMap[role.Name] = role
-	}
+			err := r.client.Status().Update(context.TODO(), currentFAA)
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
+				return reconcile.Result{}, err
+			}
 
-	// See if requested role exists
-	if _, ok := roleMap[currentFAA.Spec.AWSFederatedRoleName]; !ok {
-		SetStatuswithCondition(currentFAA, "Requested role does not exist", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
-		reqLogger.Error(ErrFederatedAccessRoleNotFound, fmt.Sprintf("Resquested role '%s' not found", currentFAA.Spec.AWSFederatedRoleName))
+			return reconcile.Result{}, nil
 
-		err := r.client.Status().Update(context.TODO(), currentFAA)
-		if err != nil {
-			reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
-			return reconcile.Result{}, err
 		}
-
-		return reconcile.Result{}, nil
-
+		// Error reading the object - requeue the request.
+		return reconcile.Result{}, err
 	}
 
 	// Get aws client
@@ -160,7 +155,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	}
 
 	// Here create the custom policy in the cluster account
-	err = r.createOrUpdateIAMPolicy(awsClient, roleMap[currentFAA.Spec.AWSFederatedRoleName], *currentFAA)
+	err = r.createOrUpdateIAMPolicy(awsClient, *requestedRole, *currentFAA)
 	if err != nil {
 		// if we were unable to create the policy fail this CR.
 		SetStatuswithCondition(currentFAA, "Failed to create custom policy", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
@@ -176,7 +171,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	}
 
 	// Create role and apply custom policys and awsmanagedpolicies
-	err = r.createOrUpdateIAMRole(awsClient, roleMap[currentFAA.Spec.AWSFederatedRoleName], *currentFAA)
+	err = r.createOrUpdateIAMRole(awsClient, *requestedRole, *currentFAA)
 	if err != nil {
 		SetStatuswithCondition(currentFAA, "Failed to create role", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
 		reqLogger.Error(ErrFederatedAccessRoleFailedCreate, fmt.Sprintf("Unable to create role requested by '%s'", currentFAA.Name), "AWS ERROR: ", err)
@@ -193,18 +188,18 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	accountID := *gciOut.Account // Add requested aws managed policies to the role
 	awsManagedPolicyNames := []string{}
 	// Add all aws managed policy names to a array
-	for _, policy := range roleMap[currentFAA.Spec.AWSFederatedRoleName].Spec.AWSManagedPolicies {
+	for _, policy := range requestedRole.Spec.AWSManagedPolicies {
 		awsManagedPolicyNames = append(awsManagedPolicyNames, policy)
 	}
 	// Get policy arns for managed policies
 	policyArns := createPolicyArns(accountID, awsManagedPolicyNames, true)
 	// Get custom policy arns
-	customPolicy := []string{roleMap[currentFAA.Spec.AWSFederatedRoleName].Spec.AWSCustomPolicy.Name}
+	customPolicy := []string{requestedRole.Spec.AWSCustomPolicy.Name}
 	customerPolArns := createPolicyArns(accountID, customPolicy, false)
 	policyArns = append(policyArns, customerPolArns[0])
 
 	// Attach the requested policy to the newly created role
-	err = r.attachIAMPolices(awsClient, currentFAA.Spec.AWSFederatedRoleName, policyArns)
+	err = r.attachIAMPolices(awsClient, currentFAA.Spec.AWSFederatedRole.Name, policyArns)
 	if err != nil {
 		//TODO() role should be deleted here so that we leave nothing behind.
 
