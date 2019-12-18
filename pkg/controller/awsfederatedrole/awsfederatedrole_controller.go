@@ -102,6 +102,27 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		return reconcile.Result{}, nil
 	}
 
+	// Set CR state to invalid if the namespace is not awsv1alpha1.AccountCrNamespace
+	if instance.Namespace != awsv1alpha1.AccountCrNamespace {
+		instance.Status.State = awsv1alpha1.AWSFederatedRoleStateInvalid
+		instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
+			instance.Status.Conditions,
+			awsv1alpha1.AWSFederatedRoleInvalid,
+			"True",
+			"UnsupportedNamespace",
+			"Not in supported namesapace",
+			utils.UpdateConditionNever)
+		err = r.client.Status().Update(context.TODO(), instance)
+		if err != nil {
+			log.Error(err, "Error updating conditions")
+			return reconcile.Result{}, err
+		}
+
+		// Log the error
+		log.Error(err, fmt.Sprintf("AWSFederatedRole is in an un supported namespace. Requested Namespace: %s, Supported Namespace: %s", instance.Namespace, awsv1alpha1.AccountCrNamespace))
+		return reconcile.Result{}, nil
+	}
+
 	// Setup AWS client
 	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
 		SecretName: awsSecretName,
@@ -117,6 +138,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 
 	// If AWSCustomPolicy and AWSManagedPolicies don't exist, update condition and exit
 	if len(instance.Spec.AWSManagedPolicies) == 0 && instance.Spec.AWSCustomPolicy.Name == "" {
+		instance.Status.State = awsv1alpha1.AWSFederatedRoleStateInvalid
 		instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
 			instance.Status.Conditions,
 			awsv1alpha1.AWSFederatedRoleInvalid,

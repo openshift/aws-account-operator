@@ -107,7 +107,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 
 	// Get a list of all available roles
 	federatedRoleList := &awsv1alpha1.AWSFederatedRoleList{}
-	if r.client.List(context.TODO(), &client.ListOptions{}, federatedRoleList); err != nil {
+	if r.client.List(context.TODO(), &client.ListOptions{Namespace: awsv1alpha1.AccountCrNamespace}, federatedRoleList); err != nil {
 		return reconcile.Result{}, err
 	}
 
