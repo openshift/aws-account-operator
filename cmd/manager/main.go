@@ -29,12 +29,15 @@ import (
 
 // Change below variables to serve metrics on different host or port.
 var (
-	metricsPort                   = "8080"
-	metricsPath                   = "/metrics"
-	secretWatcherScanInterval     = time.Duration(10) * time.Minute
-	hours                     int = 1
-	totalWatcherInterval          = time.Duration(15) * time.Minute
+	metricsPort               = "8080"
+	metricsPath               = "/metrics"
+	secretWatcherScanInterval = time.Duration(10) * time.Minute
+	hours                     = 1
+	totalWatcherInterval      = time.Duration(15) * time.Minute
 )
+
+// Set Local evn "FORCE_DEV_MODE = local" in order to run locally
+const envDevMode = "FORCE_DEV_MODE"
 
 var log = logf.Log.WithName("cmd")
 
@@ -111,17 +114,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	//Create metrics endpoint and register metrics
-	metricsServer := metrics.NewBuilder().WithPort(metricsPort).WithPath(metricsPath).
-		WithCollectors(localmetrics.MetricsList).
-		WithRoute().
-		WithServiceName("aws-account-operator").
-		GetConfig()
+	detectDevMode := os.Getenv(envDevMode)
 
-	// Configure metrics if it errors log the error but continue
-	if err := metrics.ConfigureMetrics(context.TODO(), *metricsServer); err != nil {
-		log.Error(err, "Failed to configure Metrics")
-		os.Exit(1)
+	switch detectDevMode {
+	case "local":
+		log.Info("Running Locally, Skiping metrics configuration")
+	default:
+		//Create metrics endpoint and register metrics
+		metricsServer := metrics.NewBuilder().WithPort(metricsPort).WithPath(metricsPath).
+			WithCollectors(localmetrics.MetricsList).
+			WithRoute().
+			WithServiceName("aws-account-operator").
+			GetConfig()
+
+		// Configure metrics if it errors log the error but continue
+		if err := metrics.ConfigureMetrics(context.TODO(), *metricsServer); err != nil {
+			log.Error(err, "Failed to configure Metrics")
+			os.Exit(1)
+		}
 	}
 
 	// Define stopCh which we'll use to notify the secretWatcher (any any other routine)
