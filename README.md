@@ -5,6 +5,7 @@ Table Of Contents
     - [1.2. Requirements](#12-requirements)
     - [1.3. Workflow](#13-workflow)
     - [1.4. Testing your AWS account credentials with the CLI](#14-testing-your-aws-account-credentials-with-the-cli)
+    - [1.5. Local Development](#15-local-development)
 - [2. The Custom Resources](#2-the-custom-resources)
     - [2.1. AccountPool CR](#21-accountpool-cr)   
     - [2.2. Account CR](#22-account-cr)
@@ -80,7 +81,6 @@ When a [Hive](https://github.com/openshift/hive) cluster has a new cluster reque
 
 For more information on how this process is done, please refer to the controllers section.  
 
-
 ## 1.4. Testing your AWS account credentials with the CLI
 
 The below commands can be used to test payer account credentials where we create new accounts inside the payer accounts organization. Once the account is created in the first step we wait until the account is created with step 2 and retrieve its account ID. Using the account ID we can then test our IAM user has sts:AssumeRole permissions to Assume the OrganizationAccountAccessRole in the new account. The OrganizationAccountAccessRole is created automatically when a new account is created under the organization.
@@ -88,6 +88,12 @@ The below commands can be used to test payer account credentials where we create
 1. `aws organizations create-account --email "username+cli-test@redhat.com" --account-name "username-cli-test" --profile=orgtest`
 2. `aws organizations list-accounts --profile=orgtest | jq '.[][] | select(.Name=="username-cli-test")'`
 3. `aws sts assume-role --role-arn arn:aws:iam::<ID>:role/OrganizationAccountAccessRole --role-session-name username-cli-test --profile=orgtest`
+
+## 1.5. Local Development
+
+When developing locally using operator-sdk you may not have a metrics service running and other stages of the code may not want to be run.  We have introduced the ability to set the environment variable `FORCE_DEV_MODE` to account for these edge cases. Set the dev mode to `local` when running locally.
+
+ex: `FORCE_DEV_MODE=local operator-sdk up local`
 
 # 2. The Custom Resources
 

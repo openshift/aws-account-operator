@@ -11,6 +11,7 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	"github.com/openshift/aws-account-operator/pkg/controller"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/credentialwatcher"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
@@ -79,7 +80,6 @@ func main() {
 	// Become the leader before proceeding
 	err = leader.Become(ctx, "aws-account-operator-lock")
 	if err != nil {
-		log.Error(err, "")
 		os.Exit(1)
 	}
 
@@ -111,17 +111,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	//Create metrics endpoint and register metrics
-	metricsServer := metrics.NewBuilder().WithPort(metricsPort).WithPath(metricsPath).
-		WithCollectors(localmetrics.MetricsList).
-		WithRoute().
-		WithServiceName("aws-account-operator").
-		GetConfig()
+	switch utils.DetectDevMode {
+	case "local":
+		log.Info("Running Locally, Skiping metrics configuration")
+	default:
+		//Create metrics endpoint and register metrics
+		metricsServer := metrics.NewBuilder().WithPort(metricsPort).WithPath(metricsPath).
+			WithCollectors(localmetrics.MetricsList).
+			WithRoute().
+			WithServiceName("aws-account-operator").
+			GetConfig()
 
-	// Configure metrics if it errors log the error but continue
-	if err := metrics.ConfigureMetrics(context.TODO(), *metricsServer); err != nil {
-		log.Error(err, "Failed to configure Metrics")
-		os.Exit(1)
+		// Configure metrics if it errors log the error but continue
+		if err := metrics.ConfigureMetrics(context.TODO(), *metricsServer); err != nil {
+			log.Error(err, "Failed to configure Metrics")
+			os.Exit(1)
+		}
 	}
 
 	// Define stopCh which we'll use to notify the secretWatcher (any any other routine)

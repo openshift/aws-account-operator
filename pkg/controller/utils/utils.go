@@ -3,6 +3,8 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 
@@ -17,6 +19,11 @@ const (
 	EmailID   = "osd-creds-mgmt"
 	Finalizer = "finalizer.aws.managed.openshift.io"
 	WaitTime  = 25
+
+	// EnvDevMode is the name of the env var we set to run locally and to skip
+	// initialization procedures that will error out and exit the operator.
+	// ex: `FORCE_DEV_MODE=local operatorsdk up local`
+	EnvDevMode = "FORCE_DEV_MODE"
 )
 
 // The JSON tags as captials due to requirements for the policydoc
@@ -27,6 +34,10 @@ type awsStatement struct {
 	Condition *awsv1alpha1.Condition `json:"Condition,omitempty"`
 	Principal *awsv1alpha1.Principal `json:"Principal,omitempty"`
 }
+
+// DetectDevMode gets the environment variable to detect if we are running
+// locally or (future) have some other environment-specific conditions.
+var DetectDevMode string = strings.ToLower(os.Getenv(EnvDevMode))
 
 type awsPolicy struct {
 	Version   string

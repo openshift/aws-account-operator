@@ -325,33 +325,47 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 			// If the supportCaseID is blank and Account State = PendingVerification, create a case
 			if currentAcctInstance.Status.SupportCaseID == "" {
-				caseID, err := createCase(reqLogger, currentAcctInstance.Spec.AwsAccountID, awsSetupClient)
-				if err != nil {
-					return reconcile.Result{}, err
+				switch utils.DetectDevMode {
+				case "local":
+					log.Info("Running Locally, Skipping Support Case Creation.")
+				default:
+					caseID, err := createCase(reqLogger, currentAcctInstance.Spec.AwsAccountID, awsSetupClient)
+					if err != nil {
+						return reconcile.Result{}, err
+					}
+					reqLogger.Info("Case created", "CaseID", caseID)
+
+					// Update supportCaseId in CR
+					currentAcctInstance.Status.SupportCaseID = caseID
+					SetAccountStatus(reqLogger, currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
+					err = r.statusUpdate(reqLogger, currentAcctInstance)
+					if err != nil {
+						return reconcile.Result{}, err
+					}
+
+					// After creating the support case requeue the request. To avoid flooding and being blacklisted by AWS when
+					// starting the operator with a large AccountPool, add a randomInterval (between 0 and 30 secs) to the regular wait time
+					randomInterval, err := strconv.Atoi(currentAcctInstance.Spec.AwsAccountID)
+					randomInterval %= 30
+
+					// This will requeue verification for between 30 and 60 (30+30) seconds, depending on the account
+					return reconcile.Result{RequeueAfter: time.Duration(intervalAfterCaseCreationSecs+randomInterval) * time.Second}, nil
 				}
-				reqLogger.Info("Case created", "CaseID", caseID)
-
-				// Update supportCaseId in CR
-				currentAcctInstance.Status.SupportCaseID = caseID
-				SetAccountStatus(reqLogger, currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
-				err = r.statusUpdate(reqLogger, currentAcctInstance)
-				if err != nil {
-					return reconcile.Result{}, err
-				}
-
-				// After creating the support case requeue the request. To avoid flooding and being blacklisted by AWS when
-				// starting the operator with a large AccountPool, add a randomInterval (between 0 and 30 secs) to the regular wait time
-				randomInterval, err := strconv.Atoi(currentAcctInstance.Spec.AwsAccountID)
-				randomInterval %= 30
-
-				// This will requeue verification for between 30 and 60 (30+30) seconds, depending on the account
-				return reconcile.Result{RequeueAfter: time.Duration(intervalAfterCaseCreationSecs+randomInterval) * time.Second}, nil
 			}
 
-			resolved, err := checkCaseResolution(reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
-			if err != nil {
-				reqLogger.Error(err, "Error checking for Case Resolution")
-				return reconcile.Result{}, err
+			var resolved bool
+
+			switch utils.DetectDevMode {
+			case "local":
+				log.Info("Running Locally, Skipping case resolution check")
+				resolved = true
+			default:
+				resolvedScoped, err := checkCaseResolution(reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
+				if err != nil {
+					reqLogger.Error(err, "Error checking for Case Resolution")
+					return reconcile.Result{}, err
+				}
+				resolved = resolvedScoped
 			}
 
 			// Case Resolved, account is Ready
@@ -411,6 +425,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				// set state creating if the account was able to create
 				SetAccountStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, AccountCreating)
 				err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
+
+				switch utils.DetectDevMode {
+				case "local":
+					log.Info("Running Locally, manually creating a case ID number: 11111111")
+					currentAcctInstance.Status.SupportCaseID = "11111111"
+				}
 
 				if err != nil {
 					return reconcile.Result{}, err
