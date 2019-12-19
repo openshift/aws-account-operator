@@ -72,7 +72,6 @@ const (
 	adminAccessArn = "arn:aws:iam::aws:policy/AdministratorAccess"
 )
 
-var awsAccountID string
 var coveredRegions = map[string]map[string]string{
 	"us-east-1": {
 		"initializationAMI": "ami-000db10762d0c4c05",
@@ -288,9 +287,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		//Set awsAccountID
-		awsAccountID = currentAcctInstance.Spec.AwsAccountID
-
 		// Ensure the account is marked as claimed
 		if currentAcctInstance.Status.Claimed != true {
 			reqLogger.Info("Marking BYOC account claimed")
@@ -401,6 +397,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		if (currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false) {
 
+			// Initialize the awsAccountID var here since we only use it now inside this condition
 			var awsAccountID string
 
 			if currentAcctInstance.Spec.AwsAccountID == "" {
@@ -433,8 +430,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 			} else {
 
-				awsAccountID = currentAcctInstance.Spec.AwsAccountID
-
 				// set state creating if the account was alredy created
 				SetAccountStatus(reqLogger, currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, "Creating")
 				err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
@@ -447,7 +442,8 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	// Account init for both BYOC and Non-BYOC
-	if (currentAcctInstance.Spec.BYOC && currentAcctInstance.Status.State != "Ready") || ((currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false)) {
+	if (currentAcctInstance.Spec.BYOC && currentAcctInstance.Status.State != "Ready") || ((currentAcctInstance.Status.State == string(awsv1alpha1.AccountCreating)) && (currentAcctInstance.Status.Claimed == false)) {
+		reqLogger.Info(fmt.Sprintf("Initalizing account: %s AWS ID: %s", currentAcctInstance.Name, currentAcctInstance.Spec.AwsAccountID))
 
 		//var awsAssumedRoleClient awsclient.Client
 		var roleToAssume string
@@ -459,9 +455,9 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Get STS credentials so that we can create an aws client with
-		creds, credsErr := getStsCredentials(reqLogger, awsSetupClient, roleToAssume, awsAccountID)
+		creds, credsErr := getStsCredentials(reqLogger, awsSetupClient, roleToAssume, currentAcctInstance.Spec.AwsAccountID)
 		if credsErr != nil {
-			stsErrMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s", awsAccountID)
+			stsErrMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s", currentAcctInstance.Spec.AwsAccountID)
 			reqLogger.Info(stsErrMsg, "Error", credsErr.Error())
 			SetAccountStatus(reqLogger, currentAcctInstance, stsErrMsg, awsv1alpha1.AccountFailed, "Failed")
 			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to get sts credentials")
