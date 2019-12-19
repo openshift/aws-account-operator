@@ -82,16 +82,15 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.Refer
 				Properties: map[string]spec.Schema{
 					"externalCustomerAWSIAMARN": {
 						SchemaProps: spec.SchemaProps{
-							Description: "externalCustomerAWSIAMARN holds the external AWS IAM ARN",
+							Description: "ExternalCustomerAWSARN holds the external AWS IAM ARN",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
-					"accountReference": {
+					"awsCustomerCredentialSecret": {
 						SchemaProps: spec.SchemaProps{
-							Description: "AccountReference holds the name of the associated Account CR to use",
-							Type:        []string{"string"},
-							Format:      "",
+							Description: "AWSCustomerCredentialSecret holds the credentials to the cluster account where the role wil be created",
+							Ref:         ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSSecretReference"),
 						},
 					},
 					"awsFederatedRoleName": {
@@ -102,10 +101,11 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.Refer
 						},
 					},
 				},
-				Required: []string{"externalCustomerAWSIAMARN", "accountReference", "awsFederatedRoleName"},
+				Required: []string{"externalCustomerAWSIAMARN", "awsCustomerCredentialSecret", "awsFederatedRoleName"},
 			},
 		},
-		Dependencies: []string{},
+		Dependencies: []string{
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSSecretReference"},
 	}
 }
 

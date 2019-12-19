@@ -4,5 +4,7 @@ metadata:
   name: clustername.customeraccountname.rolename
 spec:
   accountReference: accountreference
-  externalCustomerAWSIAMARN: externalCustomerAWSIAMARN
+  awsCredentialSecret:
+      name: secretName
+      namespace: secretNamespace
   awsFederatedRoleName: awsfederatedrolename
