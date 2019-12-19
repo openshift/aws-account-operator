@@ -144,7 +144,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 
 	// Create Account CR
 	newAccount := utils.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
-	utils.AddFinalizer(newAccount, "finalizer.aws.managed.openshift.io")
+	utils.AddFinalizer(newAccount, awsv1alpha1.AccountFinalizer)
 
 	// Set AccountPool instance as the owner and controller
 	if err := controllerutil.SetControllerReference(currentAccountPool, newAccount, r.scheme); err != nil {

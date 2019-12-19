@@ -28,6 +28,8 @@ const (
 	AccountCrNamespace = "aws-account-operator"
 	// IAM Role name for IAM user creating resources in account
 	AccountOperatorIAMRole = "OrganizationAccountAccessRole"
+	// AccountFinalizer is the string finalizer name
+	AccountFinalizer = "finalizer.aws.managed.openshift.io"
 )
 
 // AccountSpec defines the desired state of Account
