@@ -2,6 +2,7 @@ apiVersion: aws.managed.openshift.io/v1alpha1
 kind: AWSFederatedRole
 metadata:
   name: read-only
+  namespace: aws-account-operator
 spec:
   roleDescription: This is the description of read-only
   # Custom Policy definition
