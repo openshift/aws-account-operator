@@ -28,7 +28,7 @@ type AWSFederatedAccountAccessSpec struct {
 	// AWSCustomerCredentialSecret holds the credentials to the cluster account where the role wil be created
 	AWSCustomerCredentialSecret AWSSecretReference `json:"awsCustomerCredentialSecret"`
 	// FederatedRoleName must be the name of a federatedrole cr that currently exists
-	AWSFederatedRoleName string `json:"awsFederatedRoleName"`
+	AWSFederatedRole AWSFederatedRoleRef `json:"awsFederatedRole"`
 }
 
 // AWSFederatedAccountAccessStatus defines the observed state of AWSFederatedAccountAccess
@@ -71,6 +71,12 @@ const (
 
 // AWSSecretReference holds the name and namespace of an secret containing credentials to cluster account
 type AWSSecretReference struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+}
+
+// AWSFederatedRoleRef holds the name and namespace to reference an AWSFederatedRole CR
+type AWSFederatedRoleRef struct {
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
 }
