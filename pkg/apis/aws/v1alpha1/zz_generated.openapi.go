@@ -191,10 +191,18 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleSpec(ref common.ReferenceCallb
 			SchemaProps: spec.SchemaProps{
 				Description: "AWSFederatedRoleSpec defines the desired state of AWSFederatedRole",
 				Properties: map[string]spec.Schema{
+					"roleDisplayName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "RoleDisplayName is a user friendly display name for the OCM user interface",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"roleDescription": {
 						SchemaProps: spec.SchemaProps{
-							Type:   []string{"string"},
-							Format: "",
+							Description: "RoleDescription is a user friendly description of the role, this discription will be displayed in the OCM user interface",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 					"awsCustomPolicy": {
@@ -218,7 +226,7 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleSpec(ref common.ReferenceCallb
 						},
 					},
 				},
-				Required: []string{"roleDescription"},
+				Required: []string{"roleDisplayName", "roleDescription"},
 			},
 		},
 		Dependencies: []string{

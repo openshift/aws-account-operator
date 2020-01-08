@@ -23,6 +23,9 @@ const (
 // AWSFederatedRoleSpec defines the desired state of AWSFederatedRole
 // +k8s:openapi-gen=true
 type AWSFederatedRoleSpec struct {
+	// RoleDisplayName is a user friendly display name for the OCM user interface
+	RoleDisplayName string `json:"roleDisplayName"`
+	// RoleDescription is a user friendly description of the role, this discription will be displayed in the OCM user interface
 	RoleDescription string `json:"roleDescription"`
 	// AWSCustomPolicy is the defenition of a custom aws permission policy that will be associated with this role
 	// +optional

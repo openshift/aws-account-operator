@@ -84,8 +84,15 @@ spec:
                 type: string
               type: array
             roleDescription:
+              description: RoleDescription is a user friendly description of the role,
+                this discription will be displayed in the OCM user interface
+              type: string
+            roleDisplayName:
+              description: RoleDisplayName is a user friendly display name for the
+                OCM user interface
               type: string
           required:
+          - roleDisplayName
           - roleDescription
           type: object
         status:
