@@ -1022,22 +1022,8 @@ func (r *ReconcileAccount) statusUpdate(reqLogger logr.Logger, account *awsv1alp
 
 func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client) (string, error) {
 	// Initialize basic communication body and case subject
-	caseCommunicationBody := fmt.Sprintf("Hi AWS, please add this account to Enterprise Support: %s\n\nAlso please apply the following limit increases:\n\n", accountID)
-	caseSubject := fmt.Sprintf("Add account %s to Enterprise Support and increase limits", accountID)
-
-	// Create list with supported EC2 instance types
-	instanceTypeList := strings.Join(coveredInstanceTypes, ", ")
-
-	// For each supported AWS region append to the communication a request of limit increase
-	var i = 0
-	for region := range coveredRegions {
-		i++
-		caseLimitIncreaseBody := fmt.Sprintf("Limit increase request %d\nService: EC2 Instances\nRegion: %s\nPrimary Instance Type: %s\nLimit name: Instance Limit\nNew limit value: %d\n------------\n", i, region, instanceTypeList, caseDesiredInstanceLimit)
-		caseCommunicationBody += caseLimitIncreaseBody
-	}
-
-	// Per AWS suggestion add final msg to case body
-	caseCommunicationBody += "\n\n**Once this is completed please resolve this case, do not set this case to Pending Customer Action.**"
+	caseCommunicationBody := fmt.Sprintf("Hello AWS,\n\nPlease enable Enterprise Support on AWS account %s\n\nOnce this has been completed and the default EC2 limits are ready for use, please resolve this support case. Please do not set the case to Pending Customer Action\n\nThanks", accountID)
+	caseSubject := fmt.Sprintf("Add account %s to Enterprise Support", accountID)
 
 	createCaseInput := support.CreateCaseInput{
 		CategoryCode:      aws.String(caseCategoryCode),
