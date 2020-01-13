@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/organizations"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/aws/aws-sdk-go/service/support"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -282,6 +284,8 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
+	var byocRoleID string
+
 	// If the account is BYOC, needs some different set up
 	if currentAcctInstance.Spec.BYOC {
 		reqLogger.Info("BYOC account")
@@ -319,7 +323,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				}
 
 				// Create BYOC role to assume
-				err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, adminAccessArn)
+				byocRoleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, adminAccessArn)
 				if err != nil {
 					reqLogger.Error(err, "Failed to create BYOC role")
 					r.accountClaimBYOCError(reqLogger, accountClaim, err)
@@ -431,6 +435,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				// set state creating if the account was able to create
 				SetAccountStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, "Creating")
 				err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
+
 				if err != nil {
 					return reconcile.Result{}, err
 				}
@@ -468,14 +473,31 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			roleToAssume = awsv1alpha1.AccountOperatorIAMRole
 		}
 
-		// Get STS credentials so that we can create an aws client with
-		creds, credsErr := getStsCredentials(reqLogger, awsSetupClient, roleToAssume, currentAcctInstance.Spec.AwsAccountID)
-		if credsErr != nil {
-			stsErrMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s", currentAcctInstance.Spec.AwsAccountID)
-			reqLogger.Info(stsErrMsg, "Error", credsErr.Error())
-			SetAccountStatus(reqLogger, currentAcctInstance, stsErrMsg, awsv1alpha1.AccountFailed, "Failed")
-			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to get sts credentials")
-			return reconcile.Result{}, credsErr
+		var creds *sts.AssumeRoleOutput
+		var credsErr error
+
+		for i := 0; i < 10; i++ {
+			// Get STS credentials so that we can create an aws client with
+			creds, credsErr = getStsCredentials(reqLogger, awsSetupClient, roleToAssume, currentAcctInstance.Spec.AwsAccountID)
+			if credsErr != nil {
+				stsErrMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s", currentAcctInstance.Spec.AwsAccountID)
+				reqLogger.Info(stsErrMsg, "Error", credsErr.Error())
+				SetAccountStatus(reqLogger, currentAcctInstance, stsErrMsg, awsv1alpha1.AccountFailed, "Failed")
+				r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to get sts credentials")
+				return reconcile.Result{}, credsErr
+			}
+
+			// If this is a BYOC account, check that BYOCAdminAccess role
+			// was the one used in the AssumedRole
+			// RoleID must exist in the AssumeRoleID string
+			match, _ := matchSubstring(byocRoleID, *creds.AssumedRoleUser.AssumedRoleId)
+			if byocRoleID != "" && match == false {
+				reqLogger.Info(fmt.Sprintf("Assumed RoleID:Session string does not match new RoleID: %s, %s", *creds.AssumedRoleUser.AssumedRoleId, byocRoleID))
+				reqLogger.Info(fmt.Sprintf("Sleeping %d seconds", i))
+				time.Sleep(time.Duration(i) * time.Second)
+			} else {
+				break
+			}
 		}
 
 		awsAssumedRoleClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
@@ -1095,5 +1117,11 @@ func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.
 
 	// reqLogger.Info(fmt.Sprintf("Case [%s] not yet Resolved, waiting. Current Status: %s", caseID, *caseResult.Cases[0].Status))
 	return false, nil
+
+}
+
+func matchSubstring(roleID, role string) (bool, error) {
+	matched, err := regexp.MatchString(roleID, role)
+	return matched, err
 
 }
