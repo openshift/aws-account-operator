@@ -7,9 +7,18 @@ rules:
   - "aws.managed.openshift.io"
   resources:
   - accountclaims
+  - awsfederatedaccountaccesses
   verbs:
   - create
   - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - "aws.managed.openshift.io"
+  resources:
+  - awsfederatedroles
+  verbs:
   - get
   - list
   - watch
