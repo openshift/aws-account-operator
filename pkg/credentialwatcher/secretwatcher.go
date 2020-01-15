@@ -120,6 +120,7 @@ func (s *secretWatcher) updateAccountRotateCredentialsStatus(log logr.Logger, ac
 	if err != nil {
 		getAccountErrMsg := fmt.Sprintf("Unable to retrieve account CR %s", accountName)
 		log.Error(err, getAccountErrMsg)
+		return
 	}
 
 	if accountInstance.Status.RotateCredentials != true {
