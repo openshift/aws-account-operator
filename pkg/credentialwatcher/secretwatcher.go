@@ -3,12 +3,12 @@ package credentialwatcher
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -81,86 +81,68 @@ func (s *secretWatcher) timeToInt(time time.Duration) int {
 // CredentialsRotator will list all secrets with the `STSCredentialsSuffix` and mark the account CR `status.rotateCredentials` true
 // if the credentials CreationTimeStamp is within `STSCredentialsRefreshThreshold` of `STSCredentialsDuration`
 func (s *secretWatcher) ScanSecrets(log logr.Logger) error {
-	// List STS secrets and check their expiry
-	secretList := &corev1.SecretList{}
+	// List accounts and check if they are ready
+	accountList := &awsv1alpha1.AccountList{}
 
 	listOps := &client.ListOptions{Namespace: awsv1alpha1.AccountCrNamespace}
-	if err := s.client.List(context.TODO(), listOps, secretList); err != nil {
-		log.Error(err, fmt.Sprintf("Unable to list secrets in namespace %s", awsv1alpha1.AccountCrNamespace))
+	if err := s.client.List(context.TODO(), listOps, accountList); err != nil {
+		log.Error(err, fmt.Sprintf("Unable to list accounts in namespace %s", awsv1alpha1.AccountCrNamespace))
 		return err
 	}
-
-	for _, secret := range secretList.Items {
-
-		if strings.HasSuffix(secret.ObjectMeta.Name, STSCredentialsSuffix) {
-			accountName := strings.TrimSuffix(secret.ObjectMeta.Name, STSCredentialsSuffix)
-			timeSinceCreation := s.timeSinceCreation(secret.ObjectMeta.CreationTimestamp)
-
-			if STSCredentialsDuration-timeSinceCreation < s.timeToInt(SecretWatcher.watchInterval) {
-				s.updateAccountRotateCredentialsStatus(log, accountName, "cli")
+	for _, account := range accountList.Items {
+		if account.Status.State == "Ready" {
+			// Checks if the STSCredentials secret is expired
+			expiredCLICreds, err := s.checkSecretExpired(fmt.Sprintf("%s%s", account.GetName(), STSCredentialsSuffix), STSCredentialsDuration)
+			if err != nil {
+				log.Error(err, fmt.Sprintf("unable to get secret %s in namespace %s", fmt.Sprintf("%s%s", account.GetName(), STSCredentialsSuffix), awsv1alpha1.AccountCrNamespace))
 			}
-		}
 
-		if strings.HasSuffix(secret.ObjectMeta.Name, STSCredentialsConsoleSuffix) {
-			accountName := strings.TrimSuffix(secret.ObjectMeta.Name, STSCredentialsConsoleSuffix)
-			timeSinceCreation := s.timeSinceCreation(secret.ObjectMeta.CreationTimestamp)
+			// Checks if the STSCredentialsConsole secret is expired
+			expiredConsoleCreds, err := s.checkSecretExpired(fmt.Sprintf("%s%s", account.GetName(), STSCredentialsConsoleSuffix), STSConsoleCredentialsDuration)
+			if err != nil {
+				log.Error(err, fmt.Sprintf("unable to get secret %s in namespace %s", fmt.Sprintf("%s%s", account.GetName(), STSCredentialsConsoleSuffix), awsv1alpha1.AccountCrNamespace))
+			}
 
-			if STSConsoleCredentialsDuration-timeSinceCreation < s.timeToInt(SecretWatcher.watchInterval) {
-				s.updateAccountRotateCredentialsStatus(log, accountName, "console")
+			// if either secret need rotation update the account status
+			if expiredCLICreds || expiredConsoleCreds {
+				account.Status.RotateCredentials = expiredCLICreds
+				account.Status.RotateConsoleCredentials = expiredConsoleCreds
+				err := s.client.Status().Update(context.TODO(), &account)
+				if err != nil {
+					// If we continue to get the object has been modified errors here we may need to get a new account object.
+					log.Error(err, fmt.Sprintf("SecretWatcher: Error updating account %s", account.GetName()))
+				}
 			}
 		}
 	}
+
 	return nil
 }
 
-// updateAccountRotateCredentialsStatus
-func (s *secretWatcher) updateAccountRotateCredentialsStatus(log logr.Logger, accountName, credentialType string) {
+// Check credentials will check that the supplied secretName in the awsv1alpha1.AccountCrNamespace is not expired
+// It checks that the creations time of the secret does not exeed the ExpectedDuration
+func (s *secretWatcher) checkSecretExpired(secretName string, ExpectedDuration int) (bool, error) {
 
-	accountInstance, err := s.GetAccount(accountName)
+	secret := &corev1.Secret{}
+	err := s.client.Get(context.TODO(), types.NamespacedName{
+		Name:      secretName,
+		Namespace: awsv1alpha1.AccountCrNamespace,
+	}, secret)
 	if err != nil {
-		getAccountErrMsg := fmt.Sprintf("Unable to retrieve account CR %s", accountName)
-		log.Error(err, getAccountErrMsg)
-		return
-	}
-
-	if accountInstance.Status.RotateCredentials != true {
-
-		//log.Info(fmt.Sprintf("AWS credentials secret %s was created %s ago requeing to be refreshed", secret.ObjectMeta.Name, time.Since(unixTime)))
-
-		if credentialType == "console" {
-			accountInstance.Status.RotateConsoleCredentials = true
-			log.Info(fmt.Sprintf("AWS console credentials secret was created ago requeing to be refreshed"))
-		} else if credentialType == "cli" {
-			accountInstance.Status.RotateCredentials = true
-			log.Info(fmt.Sprintf("AWS cli credentials secret was created ago requeing to be refreshed"))
+		// if the error is not found return true so that they can be created
+		if k8serr.IsNotFound(err) {
+			return true, nil
 		}
-
-		err = s.UpdateAccount(accountInstance)
-		if err != nil {
-			log.Error(err, fmt.Sprintf("Error updating account %s", accountName))
-		}
-	}
-}
-
-// GetAccount retrieve account CR
-func (s *secretWatcher) GetAccount(accountName string) (*awsv1alpha1.Account, error) {
-	accountInstance := &awsv1alpha1.Account{}
-	accountNamespacedName := types.NamespacedName{Name: accountName, Namespace: awsv1alpha1.AccountCrNamespace}
-
-	err := s.client.Get(context.TODO(), accountNamespacedName, accountInstance)
-	if err != nil {
-		return nil, err
+		// if there are other errors return it back up so that the error is logged
+		return false, err
 	}
 
-	return accountInstance, nil
-}
-
-// UpdateAccount updates account CR
-func (s *secretWatcher) UpdateAccount(account *awsv1alpha1.Account) error {
-	err := s.client.Status().Update(context.TODO(), account)
-	if err != nil {
-		return err
+	timeSinceCreation := s.timeSinceCreation(secret.ObjectMeta.CreationTimestamp)
+	if ExpectedDuration-timeSinceCreation < s.timeToInt(SecretWatcher.watchInterval) {
+		// if the credentials are older then the expected duration return true
+		return true, nil
 	}
 
-	return nil
+	// returns false as default so no changes are made
+	return false, nil
 }

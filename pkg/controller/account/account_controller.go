@@ -551,14 +551,29 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// If Account CR has `stats.rotateCredentials: true` we'll rotate the temporary credentials
 	// the secretWatcher is what updates this status field by comparing the STS credentials secret `creationTimestamp`
-	if currentAcctInstance.Status.RotateCredentials == true {
+	if currentAcctInstance.Status.RotateCredentials {
 		reqLogger.Info(fmt.Sprintf("rotating CLI credentials for %s", currentAcctInstance.Name))
 		err = r.RotateCredentials(reqLogger, awsSetupClient, currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 	}
-	if currentAcctInstance.Status.RotateConsoleCredentials == true {
+
+	// Get latest version of the account since if it was changed and needs to be updated again.
+	if currentAcctInstance.Status.RotateCredentials && currentAcctInstance.Status.RotateConsoleCredentials {
+		// Get latest version of the account since it was just updated
+		accountObjectKey, err := client.ObjectKeyFromObject(currentAcctInstance)
+		if err != nil {
+			reqLogger.Error(err, "Unable to get name and namespace of Account object")
+		}
+
+		err = r.Client.Get(context.TODO(), accountObjectKey, currentAcctInstance)
+		if err != nil {
+			reqLogger.Error(err, "Unable to get updated Account object")
+		}
+	}
+
+	if currentAcctInstance.Status.RotateConsoleCredentials {
 		reqLogger.Info(fmt.Sprintf("rotating console URL credentials for %s", currentAcctInstance.Name))
 		err = r.RotateConsoleCredentials(reqLogger, awsSetupClient, currentAcctInstance)
 		if err != nil {
