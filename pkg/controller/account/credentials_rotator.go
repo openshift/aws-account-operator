@@ -132,6 +132,7 @@ func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSe
 	})
 	if err != nil {
 		reqLogger.Error(err, "RotateCredentials: Unable to create AWS conn with IAM user creds")
+		return err
 	}
 
 	SREConsoleLoginURL, err := RequestSigninToken(reqLogger, SREAWSClient, &SigninTokenDuration, &STSUserName, IAMPolicyDescriptors, STSCredentials)
