@@ -72,7 +72,10 @@ type Client interface {
 	CreatePolicy(*iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error)
 	DeletePolicy(input *iam.DeletePolicyInput) (*iam.DeletePolicyOutput, error)
 	AttachRolePolicy(*iam.AttachRolePolicyInput) (*iam.AttachRolePolicyOutput, error)
+	DetachRolePolicy(*iam.DetachRolePolicyInput) (*iam.DetachRolePolicyOutput, error)
+	ListAttachedRolePolicies(*iam.ListAttachedRolePoliciesInput) (*iam.ListAttachedRolePoliciesOutput, error)
 	CreateRole(*iam.CreateRoleInput) (*iam.CreateRoleOutput, error)
+	GetRole(*iam.GetRoleInput) (*iam.GetRoleOutput, error)
 	DeleteRole(*iam.DeleteRoleInput) (*iam.DeleteRoleOutput, error)
 
 	//Organizations
@@ -198,8 +201,20 @@ func (c *awsClient) AttachRolePolicy(input *iam.AttachRolePolicyInput) (*iam.Att
 	return c.iamClient.AttachRolePolicy(input)
 }
 
+func (c *awsClient) DetachRolePolicy(input *iam.DetachRolePolicyInput) (*iam.DetachRolePolicyOutput, error) {
+	return c.iamClient.DetachRolePolicy(input)
+}
+
+func (c *awsClient) ListAttachedRolePolicies(input *iam.ListAttachedRolePoliciesInput) (*iam.ListAttachedRolePoliciesOutput, error) {
+	return c.iamClient.ListAttachedRolePolicies(input)
+}
+
 func (c *awsClient) CreateRole(input *iam.CreateRoleInput) (*iam.CreateRoleOutput, error) {
 	return c.iamClient.CreateRole(input)
+}
+
+func (c *awsClient) GetRole(input *iam.GetRoleInput) (*iam.GetRoleOutput, error) {
+	return c.iamClient.GetRole(input)
 }
 
 func (c *awsClient) DeleteRole(input *iam.DeleteRoleInput) (*iam.DeleteRoleOutput, error) {
