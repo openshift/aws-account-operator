@@ -1,10 +1,12 @@
 apiVersion: aws.managed.openshift.io/v1alpha1
 kind: AWSFederatedAccountAccess
 metadata:
-  name: clustername.customeraccountname.rolename
+  name: accountaccess-example
 spec:
-  accountReference: accountreference
-  awsCredentialSecret:
-      name: secretName
-      namespace: secretNamespace
-  awsFederatedRoleName: awsfederatedrolename
+  awsFederatedRole:
+      name: rolename
+      namespace: rolenamespace
+  externalCustomerAWSIAMARN: arn:aws:iam::AWSACCOUNTID:user/IAMUSERNAME
+  awsCustomerCredentialSecret:
+      name: secretname
+      namespace: secretnamespace
