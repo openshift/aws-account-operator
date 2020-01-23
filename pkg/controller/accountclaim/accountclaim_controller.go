@@ -143,7 +143,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 						return reconcile.Result{}, err
 					}
 					// Update account status and add "Reuse Failed" condition
-					accountErr = r.resetAccountSpecStatus(reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed")
+					accountErr = r.resetAccountSpecStatus(reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.FAILED, "Failed")
 					if accountErr != nil {
 						reqLogger.Error(accountErr, "Failed updating account status for failed reuse")
 						return reconcile.Result{}, err
@@ -202,13 +202,13 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		}
 
 		// Check account status requeue if we are not ready
-		if byocAccount.Status.State != string(awsv1alpha1.AccountReady) {
+		if byocAccount.Status.State != string(awsv1alpha1.READY) {
 			waitMsg := fmt.Sprintf("%s is not Ready yet requing in %d seconds", byocAccount.Name, waitPeriod)
 			reqLogger.Info(waitMsg)
 			return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
 		}
 
-		if byocAccount.Status.State == string(awsv1alpha1.AccountReady) && accountClaim.Status.State != awsv1alpha1.ClaimStatusReady {
+		if byocAccount.Status.State == string(awsv1alpha1.READY) && accountClaim.Status.State != awsv1alpha1.ClaimStatusReady {
 			accountClaim.Status.State = awsv1alpha1.ClaimStatusReady
 			message := "BYOC account ready"
 			accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
@@ -222,7 +222,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 		}
 
-		if byocAccount.Status.State == string(awsv1alpha1.AccountFailed) {
+		if byocAccount.Status.State == string(awsv1alpha1.FAILED) {
 			accountClaim.Status.State = awsv1alpha1.ClaimStatusError
 			message := "BYOC account errored"
 			accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(

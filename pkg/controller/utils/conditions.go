@@ -97,7 +97,7 @@ func FindAccountClaimCondition(conditions []awsv1alpha1.AccountClaimCondition, c
 // SetAccountCondition sets a condition on a Account resource's status
 func SetAccountCondition(
 	conditions []awsv1alpha1.AccountCondition,
-	conditionType awsv1alpha1.AccountConditionType,
+	conditionType awsv1alpha1.AccountStatus,
 	status corev1.ConditionStatus,
 	reason string,
 	message string,
@@ -139,7 +139,7 @@ func SetAccountCondition(
 
 // FindAccountCondition finds in the condition that has the
 // specified condition type in the given list. If none exists, then returns nil.
-func FindAccountCondition(conditions []awsv1alpha1.AccountCondition, conditionType awsv1alpha1.AccountConditionType) *awsv1alpha1.AccountCondition {
+func FindAccountCondition(conditions []awsv1alpha1.AccountCondition, conditionType awsv1alpha1.AccountStatus) *awsv1alpha1.AccountCondition {
 	for i, condition := range conditions {
 		if condition.Type == conditionType {
 			return &conditions[i]

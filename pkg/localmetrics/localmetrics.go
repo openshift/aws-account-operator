@@ -95,7 +95,7 @@ func UpdateAccountCRUnclaimedMetric(accountList awsv1alpha1.AccountList, wg *syn
 
 	for _, account := range accountList.Items {
 		if account.Status.Claimed == false && account.Status.Reused == false {
-			if account.Status.State == "Ready" || account.Status.State == string(awsv1alpha1.AccountPendingVerification) {
+			if account.Status.State == "Ready" || account.Status.State == string(awsv1alpha1.PENDINGVERIFICATION) {
 				unclaimedAccountCount++
 			}
 		}

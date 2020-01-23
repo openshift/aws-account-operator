@@ -38,7 +38,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		return err
 	}
 
-	err = r.resetAccountSpecStatus(reqLogger, reusedAccount, accountClaim, awsv1alpha1.AccountReused, "Ready")
+	err = r.resetAccountSpecStatus(reqLogger, reusedAccount, accountClaim, awsv1alpha1.REUSED, "Ready")
 	if err != nil {
 		reqLogger.Error(err, "Failed to reset account entity")
 		return err

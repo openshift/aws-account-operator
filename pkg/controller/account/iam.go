@@ -134,7 +134,7 @@ func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, secretName string
 	createErr := r.Client.Create(context.TODO(), secret)
 	if createErr != nil {
 		failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret for STS user %s", secretName)
-		SetAccountStatus(reqLogger, account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
+		SetAccountStatus(reqLogger, account, failedToCreateUserSecretMsg, awsv1alpha1.FAILED)
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return err
