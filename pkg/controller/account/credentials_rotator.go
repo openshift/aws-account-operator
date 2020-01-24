@@ -78,7 +78,7 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 		return err
 	}
 
-	// Set `status.RotateCredentials` to false now that they have been updated
+	// Set `status.RotateCredentials` to false now that they ahve been updated
 	account.Status.RotateCredentials = false
 
 	err = r.Client.Status().Update(context.TODO(), account)
@@ -94,8 +94,6 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 
 func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSetupClient awsclient.Client, account *awsv1alpha1.Account) error {
 	STSCredentialsSecretName := account.Name + credentialwatcher.STSCredentialsConsoleSuffix
-
-	reqLogger.Info(fmt.Sprintf("Rotating consolde credentials for account %s secret %s", account.Name, STSCredentialsSecretName))
 
 	//var awsAssumedRoleClient awsclient.Client
 	var roleToAssume string
@@ -181,12 +179,12 @@ func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSe
 		return err
 	}
 
-	// Set `status.RotateCredentials` to false now that they have been updated
+	// Set `status.RotateCredentials` to false now that they ahve been updated
 	account.Status.RotateConsoleCredentials = false
 
 	err = r.Client.Status().Update(context.TODO(), account)
 	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("RotateConsoleCredentials: Error updating account %s", account.Name))
+		reqLogger.Error(err, fmt.Sprintf("RotateCredentials: Error updating account %s", account.Name))
 		return err
 	}
 

@@ -29,11 +29,11 @@ import (
 
 // Change below variables to serve metrics on different host or port.
 var (
-	metricsPort               = "8080"
-	metricsPath               = "/metrics"
-	secretWatcherScanInterval = time.Duration(10) * time.Minute
-	hours                     = 1
-	totalWatcherInterval      = time.Duration(15) * time.Minute
+	metricsPort                   = "8080"
+	metricsPath                   = "/metrics"
+	secretWatcherScanInterval     = time.Duration(10) * time.Minute
+	hours                     int = 1
+	totalWatcherInterval          = time.Duration(15) * time.Minute
 )
 
 var log = logf.Log.WithName("cmd")
@@ -129,15 +129,15 @@ func main() {
 	// work
 	stopCh := signals.SetupSignalHandler()
 
-	goRoutineClient, err := client.New(cfg, client.Options{})
+	accountWatcherClient, err := client.New(cfg, client.Options{})
 	if err != nil {
 		log.Error(err, "")
 	}
 
 	// Initialize the SecretWatcher
-	credentialwatcher.Initialize(goRoutineClient, secretWatcherScanInterval)
+	credentialwatcher.Initialize(mgr.GetClient(), secretWatcherScanInterval)
 
-	totalaccountwatcher.Initialize(goRoutineClient, totalWatcherInterval)
+	totalaccountwatcher.Initialize(accountWatcherClient, totalWatcherInterval)
 
 	// Start the secret watcher
 	go credentialwatcher.SecretWatcher.Start(log, stopCh)
