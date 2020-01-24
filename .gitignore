@@ -73,6 +73,7 @@ Session.vim
 tags
 ### VisualStudioCode ###
 .vscode/*
+### Goland ###
 .idea/*
 .history
 # End of https://www.gitignore.io/api/go,vim,emacs,visualstudiocode
