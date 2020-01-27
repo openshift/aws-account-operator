@@ -842,7 +842,7 @@ func checkIAMUserExists(reqLogger logr.Logger, client awsclient.Client, userName
 						return false, err
 					}
 				default:
-					controllerutils.LogAwsError(reqLogger, "Unexpected AWS Error when checking IAM user exists", nil, err)
+					controllerutils.LogAwsError(reqLogger, "checkIAMUserExists: Unexpected AWS Error when checking IAM user exists", nil, err)
 					return false, err
 				}
 				time.Sleep(time.Duration(time.Duration(attempt*5) * time.Second))
@@ -892,18 +892,25 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 					if attempt == 10 {
 						return &iam.CreateUserOutput{}, err
 					}
+				// createUserOutput inconsistently returns "InvalidClientTokenId" if that happens then the next call to
+				// create the user will fail with EntitiyAlreadyExists. Since we verity the user doesn't exist before this
+				// loop we can safely assume we created the user on our first loop.
+				case iam.ErrCodeEntityAlreadyExistsException:
+					invalidTokenMsg := fmt.Sprintf("IAM User %s was created", userName)
+					reqLogger.Info(invalidTokenMsg)
+					return &iam.CreateUserOutput{}, nil
 				default:
-					controllerutils.LogAwsError(reqLogger, "Unexpect AWS Error during creation of IAM user", nil, err)
+					controllerutils.LogAwsError(reqLogger, "CreateIAMUser: Unexpect AWS Error during creation of IAM user", nil, err)
 					return &iam.CreateUserOutput{}, err
 				}
+				time.Sleep(time.Duration(time.Duration(attempt*5) * time.Second))
+			} else {
+				return &iam.CreateUserOutput{}, err
 			}
-			time.Sleep(time.Duration(time.Duration(attempt*5) * time.Second))
-		} else {
-			return &iam.CreateUserOutput{}, err
 		}
 	}
 
-	return createUserOutput, nil
+	return createUserOutput, err
 }
 
 // AttachAdminUserPolicy takes a client and string attaches the admin policy to the user
