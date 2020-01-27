@@ -872,14 +872,12 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 
 	var createUserOutput = &iam.CreateUserOutput{}
 
-	attempt := 1
 	for i := 0; i < 10; i++ {
 
 		createUserOutput, err = client.CreateUser(&iam.CreateUserInput{
 			UserName: aws.String(userName),
 		})
 
-		attempt++
 		// handle errors
 		if err != nil {
 			if aerr, ok := err.(awserr.Error); ok {
@@ -889,17 +887,17 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 				case "InvalidClientTokenId":
 					invalidTokenMsg := fmt.Sprintf("Invalid Token error from AWS when attempting to create user %s, trying again", userName)
 					reqLogger.Info(invalidTokenMsg)
-					if attempt == 10 {
+					if i+1 == 10 {
 						return &iam.CreateUserOutput{}, err
 					}
 				default:
 					controllerutils.LogAwsError(reqLogger, "Unexpect AWS Error during creation of IAM user", nil, err)
 					return &iam.CreateUserOutput{}, err
 				}
+				time.Sleep(time.Duration(time.Duration((i+1)*5) * time.Second))
+			} else {
+				return &iam.CreateUserOutput{}, err
 			}
-			time.Sleep(time.Duration(time.Duration(attempt*5) * time.Second))
-		} else {
-			return &iam.CreateUserOutput{}, err
 		}
 	}
 
