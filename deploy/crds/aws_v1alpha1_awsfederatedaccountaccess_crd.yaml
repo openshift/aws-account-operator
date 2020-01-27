@@ -103,11 +103,14 @@ spec:
                 - status
                 type: object
               type: array
+            consoleURL:
+              type: string
             state:
               type: string
           required:
           - conditions
           - state
+          - consoleURL
           type: object
   version: v1alpha1
   versions:
