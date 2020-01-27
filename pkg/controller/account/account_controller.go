@@ -20,6 +20,7 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -528,6 +529,22 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build IAM SRE user: %s", iamUserNameSRE))
 			return reconcile.Result{}, err
+		}
+
+		// Intermittently our secret wont be ready before the next call, lets ensure it exists
+		for i := 0; i < 10; i++ {
+			secret := &corev1.Secret{}
+			err := r.Client.Get(context.TODO(), types.NamespacedName{Name: SREIAMUserSecret, Namespace: request.Namespace}, secret)
+			if err != nil {
+				if k8serr.IsNotFound(err) {
+					reqLogger.Info("SREIAMUserSecret not ready, trying again")
+					time.Sleep(time.Duration(time.Duration(i*1) * time.Second))
+				} else {
+					reqLogger.Error(err, "unable to retrive SREIAMUserSecret secret")
+					return reconcile.Result{}, err
+				}
+			}
+
 		}
 
 		// Create new awsClient with SRE IAM credentials so we can generate STS and Federation tokens from it
