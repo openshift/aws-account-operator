@@ -59,6 +59,8 @@ const (
 	AccountClaimed AccountClaimConditionType = "Claimed"
 	// AccountUnclaimed is set when an Account is not claimed
 	AccountUnclaimed AccountClaimConditionType = "Unclaimed"
+	// BYOCAWSAccountInUse is set when a BYOC AWS Account is in use
+	BYOCAWSAccountInUse AccountClaimConditionType = "BYOCAWSAccountInUse"
 )
 
 // ClaimStatus is a valid value from AccountClaim.Status
