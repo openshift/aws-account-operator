@@ -9,13 +9,16 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/credentialwatcher"
-	corev1 "k8s.io/api/core/v1"
 )
 
 // Type for JSON response from Federation end point
@@ -357,4 +360,20 @@ func getSigninToken(reqLogger logr.Logger, federationEndpointURL string, federat
 
 	return signinResponse, nil
 
+}
+
+func deleteAllAccessKeys(reqLogger logr.Logger, client awsclient.Client, userName string) error {
+
+	accessKeyList, err := client.ListAccessKeys(&iam.ListAccessKeysInput{UserName: aws.String(userName)})
+	if err != nil {
+		return err
+	}
+	for index := range accessKeyList.AccessKeyMetadata {
+		_, err = client.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKeyList.AccessKeyMetadata[index].AccessKeyId, UserName: aws.String(userName)})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
