@@ -167,6 +167,28 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 		if accountClaim.Spec.AccountLink == "" {
 
+			// Check that their are now other accountClaims with this AWS account ID as we
+			// don't support multiple clusters in a BYOC account
+			accountClaimList, err := r.getAccountClaimList(reqLogger)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			// We need to ignore our own accountClaim
+			if AWSAccountIDClaimed(accountClaim, accountClaimList) {
+				reqLogger.Info(fmt.Sprintf("BYOC AWS Account ID %s already in use", accountClaim.Spec.BYOCAWSAccountID))
+				// We should update status only if the condition doesn't exist so we don't hot loop
+				condition := utils.FindAccountClaimCondition(accountClaim.Status.Conditions, awsv1alpha1.BYOCAWSAccountInUse)
+				if condition == nil {
+					utils.SetBYOCAccountClaimStatusAWSAccountInUse(reqLogger, accountClaim)
+					// Since we are returing with the result of statusUpdate we will requeue if the status update fails
+					return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
+				}
+				// We don't want to requeue here since we'll just loop on this error
+				return reconcile.Result{}, nil
+			}
+			reqLogger.Info(fmt.Sprintf("BYOC AWS Account ID %s not in use", accountClaim.Spec.BYOCAWSAccountID))
+
 			//Create a new account with BYOC flag
 			newAccount := utils.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
 			populateBYOCSpec(newAccount, accountClaim)
@@ -329,6 +351,19 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	return reconcile.Result{}, nil
 }
 
+func (r *ReconcileAccountClaim) getAccountClaimList(reqLogger logr.Logger) (*awsv1alpha1.AccountClaimList, error) {
+	accountClaimList := &awsv1alpha1.AccountClaimList{}
+
+	listOps := &client.ListOptions{}
+	if err := r.client.List(context.TODO(), listOps, accountClaimList); err != nil {
+		reqLogger.Error(err, "unable to list account claims")
+		return accountClaimList, err
+	}
+
+	return accountClaimList, nil
+
+}
+
 func (r *ReconcileAccountClaim) getClaimedAccount(accountLink string, namespace string) (*awsv1alpha1.Account, error) {
 	account := &awsv1alpha1.Account{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: accountLink, Namespace: namespace}, account)
@@ -336,6 +371,17 @@ func (r *ReconcileAccountClaim) getClaimedAccount(accountLink string, namespace 
 		return nil, err
 	}
 	return account, nil
+}
+
+func AWSAccountIDClaimed(accountClaim *awsv1alpha1.AccountClaim, accountClaimList *awsv1alpha1.AccountClaimList) bool {
+	match := false
+	for _, ac := range accountClaimList.Items {
+		// We don't check AccountClaim names since they could be identical, namespaces are unique though
+		if ac.Spec.BYOCAWSAccountID == accountClaim.Spec.BYOCAWSAccountID && ac.Namespace != accountClaim.Namespace {
+			match = true
+		}
+	}
+	return match
 }
 
 func getUnclaimedAccount(reqLogger logr.Logger, accountList *awsv1alpha1.AccountList, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
