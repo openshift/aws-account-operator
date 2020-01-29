@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -103,11 +104,6 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		return reconcile.Result{}, err
 	}
 
-	// If the state is ready or failed don't do anything
-	if currentFAA.Status.State == awsv1alpha1.AWSFederatedAccountStateReady || currentFAA.Status.State == awsv1alpha1.AWSFederatedAccountStateFailed {
-		return reconcile.Result{}, nil
-	}
-
 	requestedRole := &awsv1alpha1.AWSFederatedRole{}
 	err = r.client.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AWSFederatedRole.Name, Namespace: currentFAA.Spec.AWSFederatedRole.Namespace}, requestedRole)
 	if err != nil {
@@ -126,6 +122,39 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
+	}
+
+	// Add finalizer to the CR in case it's not present (e.g. old accounts)
+	if !controllerutils.Contains(currentFAA.GetFinalizers(), controllerutils.Finalizer) {
+
+		err := r.addFinalizer(reqLogger, currentFAA)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{}, nil
+	}
+
+	if currentFAA.DeletionTimestamp != nil {
+
+		if controllerutils.Contains(currentFAA.GetFinalizers(), controllerutils.Finalizer) {
+
+			reqLogger.Info("Cleaning up FederatedAccountAccess Roles")
+			err = r.cleanFederatedRoles(reqLogger, currentFAA, requestedRole)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			reqLogger.Info("Removing Finalizer")
+			err = r.removeFinalizer(reqLogger, currentFAA, controllerutils.Finalizer)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+	}
+
+	// If the state is ready or failed don't do anything
+	if currentFAA.Status.State == awsv1alpha1.AWSFederatedAccountStateReady || currentFAA.Status.State == awsv1alpha1.AWSFederatedAccountStateFailed {
+		return reconcile.Result{}, nil
 	}
 
 	// Get aws client
@@ -387,4 +416,137 @@ func SetStatuswithCondition(afaa *awsv1alpha1.AWSFederatedAccountAccess, message
 		message,
 		controllerutils.UpdateConditionNever)
 	afaa.Status.State = state
+}
+
+func (r *ReconcileAWSFederatedAccountAccess) addFinalizer(reqLogger logr.Logger, awsFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess) error {
+	reqLogger.Info("Adding Finalizer for the AccountClaim")
+	awsFederatedAccountAccess.SetFinalizers(append(awsFederatedAccountAccess.GetFinalizers(), controllerutils.Finalizer))
+
+	// Update CR
+	err := r.client.Update(context.TODO(), awsFederatedAccountAccess)
+	if err != nil {
+		reqLogger.Error(err, "Failed to update AccountClaim with finalizer")
+		return err
+	}
+	return nil
+}
+
+func (r *ReconcileAWSFederatedAccountAccess) removeFinalizer(reqLogger logr.Logger, AWSFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess, finalizerName string) error {
+	reqLogger.Info("Removing Finalizer for the AWSFederatedAccountAccess")
+	AWSFederatedAccountAccess.SetFinalizers(controllerutils.Remove(AWSFederatedAccountAccess.GetFinalizers(), finalizerName))
+
+	// Update CR
+	err := r.client.Update(context.TODO(), AWSFederatedAccountAccess)
+	if err != nil {
+		reqLogger.Error(err, "Failed to remove AWSFederatedAccountAccess finalizer")
+		return err
+	}
+	return nil
+}
+
+func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.Logger, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, federatedRoleCR *awsv1alpha1.AWSFederatedRole) error {
+
+	// Get the associated Role
+
+	// Build AWS client
+	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
+		SecretName: currentFAA.Spec.AWSCustomerCredentialSecret.Name,
+		NameSpace:  currentFAA.Spec.AWSCustomerCredentialSecret.Namespace,
+		AwsRegion:  "us-east-1",
+	})
+	if err != nil {
+		awsClientErr := fmt.Sprintf("Unable to create aws client for region ")
+		reqLogger.Error(err, awsClientErr)
+		return err
+	}
+
+	var nextMarker *string
+
+	// Paginate through attached policies and attempt to remove them
+	reqLogger.Info("Detaching Policies")
+	for {
+		attachedPolicyOutput, err := awsClient.ListAttachedRolePolicies(&iam.ListAttachedRolePoliciesInput{RoleName: aws.String(currentFAA.Spec.AWSFederatedRole.Name), Marker: nextMarker})
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				default:
+					reqLogger.Error(
+						aerr,
+						fmt.Sprintf(aerr.Error()),
+					)
+					reqLogger.Error(err, fmt.Sprintf("%v", err))
+					return err
+				}
+			} else {
+				reqLogger.Error(err, "NOther error while trying to list policies")
+				return err
+			}
+		}
+		for _, policy := range attachedPolicyOutput.AttachedPolicies {
+			_, err = awsClient.DetachRolePolicy(&iam.DetachRolePolicyInput{RoleName: aws.String(currentFAA.Spec.AWSFederatedRole.Name), PolicyArn: policy.PolicyArn})
+			if err != nil {
+				if aerr, ok := err.(awserr.Error); ok {
+					switch aerr.Code() {
+					default:
+						reqLogger.Error(
+							aerr,
+							fmt.Sprintf(aerr.Error()),
+						)
+						reqLogger.Error(err, fmt.Sprintf("%v", err))
+						return err
+					}
+				} else {
+					reqLogger.Error(err, "NOther error while trying to detach policies")
+					return err
+				}
+			}
+			if *policy.PolicyName == federatedRoleCR.Spec.AWSCustomPolicy.Name {
+				_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: policy.PolicyArn})
+				if err != nil {
+					if aerr, ok := err.(awserr.Error); ok {
+						switch aerr.Code() {
+						default:
+							reqLogger.Error(
+								aerr,
+								fmt.Sprintf(aerr.Error()),
+							)
+							reqLogger.Error(err, fmt.Sprintf("%v", err))
+							return err
+						}
+					} else {
+						reqLogger.Error(err, "NOther error while trying to detach policies")
+						return err
+					}
+				}
+			}
+		}
+
+		if *attachedPolicyOutput.IsTruncated {
+			nextMarker = attachedPolicyOutput.Marker
+		} else {
+			break
+		}
+	}
+
+	// Delete the role
+	reqLogger.Info("Deleting Role")
+	_, err = awsClient.DeleteRole(&iam.DeleteRoleInput{RoleName: aws.String(currentFAA.Spec.AWSFederatedRole.Name)})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			default:
+				reqLogger.Error(
+					aerr,
+					fmt.Sprintf(aerr.Error()),
+				)
+				reqLogger.Error(err, fmt.Sprintf("%v", err))
+				return err
+			}
+		} else {
+			reqLogger.Error(err, "NOther error while trying to detach policies")
+			return err
+		}
+	}
+
+	return nil
 }

@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	EmailID = "osd-creds-mgmt"
+	EmailID   = "osd-creds-mgmt"
+	Finalizer = "finalizer.aws.managed.openshift.io"
 )
 
 func MarshalIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
@@ -92,4 +93,22 @@ func LogAwsError(logger logr.Logger, errMsg string, customError error, err error
 				aerr.Code(),
 				aerr.Message()))
 	}
+}
+
+func Contains(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func Remove(list []string, s string) []string {
+	for i, v := range list {
+		if v == s {
+			list = append(list[:i], list[i+1:]...)
+		}
+	}
+	return list
 }
