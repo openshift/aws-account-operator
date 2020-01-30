@@ -36,8 +36,10 @@ type AWSFederatedAccountAccessSpec struct {
 type AWSFederatedAccountAccessStatus struct {
 	Conditions []AWSFederatedAccountAccessCondition `json:"conditions"`
 	State      AWSFederatedAccountAccessState       `json:"state"`
+	ConsoleURL string                               `json:"consoleURL"`
 }
 
+// AWSFederatedAccountAccessCondition defines a current condition state of the account
 type AWSFederatedAccountAccessCondition struct {
 	// Type is the type of the condition.
 	Type AWSFederatedAccountAccessConditionType `json:"type"`
