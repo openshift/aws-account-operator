@@ -139,7 +139,7 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessStatus(ref common.Ref
 						},
 					},
 				},
-				Required: []string{"conditions", "state", "consoleURL"},
+				Required: []string{"conditions", "state"},
 			},
 		},
 		Dependencies: []string{

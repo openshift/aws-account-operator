@@ -110,7 +110,6 @@ spec:
           required:
           - conditions
           - state
-          - consoleURL
           type: object
   version: v1alpha1
   versions:
