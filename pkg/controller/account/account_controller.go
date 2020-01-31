@@ -578,8 +578,13 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			SetAccountStatus(reqLogger, currentAcctInstance, "BYOC Account Ready", awsv1alpha1.AccountReady, "Ready")
 
 		} else {
-			SetAccountStatus(reqLogger, currentAcctInstance, "Account pending AWS limits verification", awsv1alpha1.AccountPendingVerification, "PendingVerification")
-			reqLogger.Info("Account pending AWS limits verification")
+			if utils.FindAccountCondition(currentAcctInstance.Status.Conditions, awsv1alpha1.AccountReady) != nil {
+				SetAccountStatus(reqLogger, currentAcctInstance, "Account support case already resolved, Account Ready", awsv1alpha1.AccountReady, "Ready")
+				reqLogger.Info("Account support case already resolved, Account Ready")
+			} else {
+				SetAccountStatus(reqLogger, currentAcctInstance, "Account pending AWS limits verification", awsv1alpha1.AccountPendingVerification, "PendingVerification")
+				reqLogger.Info("Account pending AWS limits verification")
+			}
 		}
 		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 		if err != nil {
