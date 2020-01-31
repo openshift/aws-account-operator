@@ -40,7 +40,7 @@ var log = logf.Log.WithName("controller_account")
 
 const (
 	// AwsLimit tracks the hard limit to the number of accounts; exported for use in cmd/manager/main.go
-	AwsLimit                = 4800
+	AwsLimit                = 5000
 	awsCredsUserName        = "aws_user_name"
 	awsCredsSecretIDKey     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
