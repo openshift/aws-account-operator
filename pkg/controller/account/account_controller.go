@@ -463,7 +463,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	// Account init for both BYOC and Non-BYOC
-	if (currentAcctInstance.Spec.BYOC && currentAcctInstance.Status.State != AccountReady) || ((currentAcctInstance.Status.State == AccountReady) && (currentAcctInstance.Status.Claimed == false)) {
+	if (currentAcctInstance.Spec.BYOC && currentAcctInstance.Status.State != AccountReady) || ((currentAcctInstance.Status.State == AccountCreating) && (currentAcctInstance.Status.Claimed == false)) {
 		reqLogger.Info(fmt.Sprintf("Initalizing account: %s AWS ID: %s", currentAcctInstance.Name, currentAcctInstance.Spec.AwsAccountID))
 
 		//var awsAssumedRoleClient awsclient.Client
