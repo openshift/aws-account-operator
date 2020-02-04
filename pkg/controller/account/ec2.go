@@ -100,9 +100,17 @@ func (r *ReconcileAccount) BuildandDestroyEC2Instances(reqLogger logr.Logger, aw
 
 	// Wait till instance is running
 	var DescError error
-	for i := 0; i < 300; i++ {
+	totalWait := controllerutils.WaitTime * 60
+	currentWait := 1
+	// Double the wait time until we reach totalWait seconds
+	for totalWait > 0 {
+		currentWait = currentWait * 2
+		if currentWait > totalWait {
+			currentWait = totalWait
+		}
+		totalWait -= currentWait
+		time.Sleep(time.Duration(currentWait) * time.Second)
 		var code int
-		time.Sleep(1 * time.Second)
 		code, DescError = DescribeEC2Instances(reqLogger, awsClient, instanceID)
 		if code == 16 {
 			reqLogger.Info(fmt.Sprintf("EC2 Instance: %s Running", instanceID))
@@ -143,13 +151,15 @@ func CreateEC2Instance(reqLogger logr.Logger, client awsclient.Client, ami strin
 	var timeoutInstanceID string
 
 	// Loop until an EC2 instance is created or timeout.
-	attempt := 1
-	for i := 0; i < 300; i++ {
-		time.Sleep(time.Duration(attempt*5) * time.Second)
-		attempt++
-		if attempt%5 == 0 {
-			attempt = attempt * 2
+	totalWait := controllerutils.WaitTime * 60
+	currentWait := 1
+	for totalWait > 0 {
+		currentWait = currentWait * 2
+		if currentWait > totalWait {
+			currentWait = totalWait
 		}
+		totalWait -= currentWait
+		time.Sleep(time.Duration(currentWait) * time.Second)
 		// Specify the details of the instance that you want to create.
 		runResult, runErr := client.RunInstances(&ec2.RunInstancesInput{
 			ImageId:      aws.String(ami),
