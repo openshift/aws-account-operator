@@ -49,7 +49,7 @@ const (
 	iamUserNameSRE          = "osdManagedAdminSRE"
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
-	createPendTime          = controllerutils.WaitTime * time.Minute
+	createPendTime          = 30 * time.Minute
 	// Fields used to create/monitor AWS case
 	caseCategoryCode              = "other-account-issues"
 	caseServiceCode               = "customer-account"
