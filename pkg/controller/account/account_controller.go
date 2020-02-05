@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -784,6 +785,12 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 
 		//Create new secret
 		userSecret := userSecretInput.newSecretforCR()
+
+		// Set controller as owner of secret
+		if err := controllerutil.SetControllerReference(account, userSecret, r.scheme); err != nil {
+			return "", err
+		}
+
 		createErr := r.Client.Create(context.TODO(), userSecret)
 		if createErr != nil {
 			failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret for IAM user %s", iamUserName)
