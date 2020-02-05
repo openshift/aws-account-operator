@@ -699,6 +699,71 @@ func (r *ReconcileAccount) setStatusFailed(reqLogger logr.Logger, awsAccount *aw
 	return nil
 }
 
+// CreateAccount creates an AWS account for the specified accountName and accountEmail in the orgnization
+func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, accountEmail string) (*organizations.DescribeCreateAccountStatusOutput, error) {
+
+	createInput := organizations.CreateAccountInput{
+		AccountName: aws.String(accountName),
+		Email:       aws.String(accountEmail),
+	}
+
+	createOutput, err := client.CreateAccount(&createInput)
+	if err != nil {
+		var returnErr error
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case organizations.ErrCodeConstraintViolationException:
+				returnErr = ErrAwsAccountLimitExceeded
+			case organizations.ErrCodeServiceException:
+				returnErr = ErrAwsInternalFailure
+			case organizations.ErrCodeTooManyRequestsException:
+				returnErr = ErrAwsTooManyRequests
+			default:
+				returnErr = ErrAwsFailedCreateAccount
+				utils.LogAwsError(reqLogger, "New AWS Error during account creation", returnErr, err)
+			}
+
+		}
+		return &organizations.DescribeCreateAccountStatusOutput{}, returnErr
+	}
+
+	describeStatusInput := organizations.DescribeCreateAccountStatusInput{
+		CreateAccountRequestId: createOutput.CreateAccountStatus.Id,
+	}
+
+	var accountStatus *organizations.DescribeCreateAccountStatusOutput
+	for {
+		status, err := client.DescribeCreateAccountStatus(&describeStatusInput)
+		if err != nil {
+			return &organizations.DescribeCreateAccountStatusOutput{}, err
+		}
+
+		accountStatus = status
+		createStatus := *status.CreateAccountStatus.State
+
+		if createStatus == "FAILED" {
+			var returnErr error
+			switch *status.CreateAccountStatus.FailureReason {
+			case "ACCOUNT_LIMIT_EXCEEDED":
+				returnErr = ErrAwsAccountLimitExceeded
+			case "INTERNAL_FAILURE":
+				returnErr = ErrAwsInternalFailure
+			default:
+				returnErr = ErrAwsFailedCreateAccount
+			}
+
+			return &organizations.DescribeCreateAccountStatusOutput{}, returnErr
+		}
+
+		if createStatus != "IN_PROGRESS" {
+			break
+		}
+
+	}
+
+	return accountStatus, nil
+}
+
 func (input SRESecretInput) newSTSSecret() *corev1.Secret {
 	return &corev1.Secret{
 		Type: "Opaque",
@@ -795,69 +860,4 @@ func (r *ReconcileAccount) statusUpdate(reqLogger logr.Logger, account *awsv1alp
 func matchSubstring(roleID, role string) (bool, error) {
 	matched, err := regexp.MatchString(roleID, role)
 	return matched, err
-}
-
-// CreateAccount creates an AWS account for the specified accountName and accountEmail in the orgnization
-func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, accountEmail string) (*organizations.DescribeCreateAccountStatusOutput, error) {
-
-	createInput := organizations.CreateAccountInput{
-		AccountName: aws.String(accountName),
-		Email:       aws.String(accountEmail),
-	}
-
-	createOutput, err := client.CreateAccount(&createInput)
-	if err != nil {
-		var returnErr error
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case organizations.ErrCodeConstraintViolationException:
-				returnErr = ErrAwsAccountLimitExceeded
-			case organizations.ErrCodeServiceException:
-				returnErr = ErrAwsInternalFailure
-			case organizations.ErrCodeTooManyRequestsException:
-				returnErr = ErrAwsTooManyRequests
-			default:
-				returnErr = ErrAwsFailedCreateAccount
-				utils.LogAwsError(reqLogger, "New AWS Error during account creation", returnErr, err)
-			}
-
-		}
-		return &organizations.DescribeCreateAccountStatusOutput{}, returnErr
-	}
-
-	describeStatusInput := organizations.DescribeCreateAccountStatusInput{
-		CreateAccountRequestId: createOutput.CreateAccountStatus.Id,
-	}
-
-	var accountStatus *organizations.DescribeCreateAccountStatusOutput
-	for {
-		status, err := client.DescribeCreateAccountStatus(&describeStatusInput)
-		if err != nil {
-			return &organizations.DescribeCreateAccountStatusOutput{}, err
-		}
-
-		accountStatus = status
-		createStatus := *status.CreateAccountStatus.State
-
-		if createStatus == "FAILED" {
-			var returnErr error
-			switch *status.CreateAccountStatus.FailureReason {
-			case "ACCOUNT_LIMIT_EXCEEDED":
-				returnErr = ErrAwsAccountLimitExceeded
-			case "INTERNAL_FAILURE":
-				returnErr = ErrAwsInternalFailure
-			default:
-				returnErr = ErrAwsFailedCreateAccount
-			}
-
-			return &organizations.DescribeCreateAccountStatusOutput{}, returnErr
-		}
-
-		if createStatus != "IN_PROGRESS" {
-			break
-		}
-
-	}
-
-	return accountStatus, nil
 }
