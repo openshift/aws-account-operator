@@ -47,7 +47,7 @@ const (
 	iamUserNameSRE          = "osdManagedAdminSRE"
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
-	createPendTime          = controllerutils.WaitTime * time.Minute
+	createPendTime          = utils.WaitTime * time.Minute
 	// Fields used to create/monitor AWS case
 	caseCategoryCode              = "other-account-issues"
 	caseServiceCode               = "customer-account"
@@ -410,7 +410,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		now := time.Now()
 		diff := now.Sub(currentAcctInstance.ObjectMeta.CreationTimestamp.Time)
 		if currentAcctInstance.Status.State == AccountCreating && diff > createPendTime {
-			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Creation pending for longer then %d minutes", controllerutils.WaitTime))
+			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Creation pending for longer then %d minutes", utils.WaitTime))
 		}
 
 		if (currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false) {
