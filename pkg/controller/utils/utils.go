@@ -16,6 +16,7 @@ import (
 const (
 	EmailID   = "osd-creds-mgmt"
 	Finalizer = "finalizer.aws.managed.openshift.io"
+	WaitTime  = 25
 )
 
 func MarshalIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
