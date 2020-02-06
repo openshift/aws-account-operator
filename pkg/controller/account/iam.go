@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
@@ -133,6 +134,11 @@ func formatSigninURL(reqLogger logr.Logger, federationEndpointURL, signinToken s
 
 // CreateSecret creates a secret
 func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, secretName string, account *awsv1alpha1.Account, secret *corev1.Secret) error {
+
+	// Set controller as owner of secret
+	if err := controllerutil.SetControllerReference(account, secret, r.scheme); err != nil {
+		return err
+	}
 
 	createErr := r.Client.Create(context.TODO(), secret)
 	if createErr != nil {
