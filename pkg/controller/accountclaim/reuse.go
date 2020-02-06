@@ -44,22 +44,6 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		return err
 	}
 
-	// Get latest version of the account
-	reusedAccount, err = r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
-	if err != nil {
-		reqLogger.Error(err, "Failed to get claimed account")
-		return err
-	}
-
-	reqLogger.Info(fmt.Sprintf("Setting RotateCredentials and RotateConsoleCredentials for account %s", reusedAccount.Spec.AwsAccountID))
-	reusedAccount.Status.RotateConsoleCredentials = true
-	reusedAccount.Status.RotateCredentials = true
-	err = r.accountStatusUpdate(reqLogger, reusedAccount)
-	if err != nil {
-		reqLogger.Error(err, "Failed to update account status for reuse")
-		return err
-	}
-
 	reqLogger.Info("Successfully finalized AccountClaim")
 	return nil
 }
