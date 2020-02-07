@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -114,6 +115,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, account
 		r.cleanUpAwsAccountSnapshots,
 		r.cleanUpAwsAccountEbsVolumes,
 		r.cleanUpAwsAccountS3,
+		r.cleanUpAwsRoute53,
 	}
 
 	// Call the clean up functions in parallel
@@ -265,6 +267,83 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 	return nil
 }
 
+func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
+
+	var nextZoneMarker *string
+
+	// Paginate through hosted zones
+	for {
+		// Get list of hosted zones by page
+		hostedZonesOutput, err := awsClient.ListHostedZones(&route53.ListHostedZonesInput{Marker: nextZoneMarker})
+		if err != nil {
+			listError := "Failed to list Hosted Zones"
+			awsErrors <- listError
+			return err
+		}
+
+		for _, zone := range hostedZonesOutput.HostedZones {
+
+			// List and delete all Record Sets for the current zone
+			var nextRecordName *string
+			// Pagination again!!!!!
+			for {
+				recordSet, listRecordsError := awsClient.ListResourceRecordSets(&route53.ListResourceRecordSetsInput{HostedZoneId: zone.Id, StartRecordName: nextRecordName})
+				if listRecordsError != nil {
+					recordSetListError := fmt.Sprintf("Failed to list Record sets for hosted zone %s", *zone.Name)
+					awsErrors <- recordSetListError
+					return listRecordsError
+				}
+
+				changeBatch := &route53.ChangeBatch{}
+				for _, record := range recordSet.ResourceRecordSets {
+					// Build ChangeBatch
+					// https://docs.aws.amazon.com/sdk-for-go/api/service/route53/#ChangeBatch
+					//https://docs.aws.amazon.com/sdk-for-go/api/service/route53/#Change
+					if *record.Type == "TXT" {
+						changeBatch.Changes = append(changeBatch.Changes, &route53.Change{
+							Action:            aws.String("DELETE"),
+							ResourceRecordSet: record,
+						})
+					}
+				}
+
+				if changeBatch.Changes != nil {
+					_, changeErr := awsClient.ChangeResourceRecordSets(&route53.ChangeResourceRecordSetsInput{HostedZoneId: zone.Id, ChangeBatch: changeBatch})
+					if changeErr != nil {
+						recordDeleteError := fmt.Sprintf("Failed to delete record sets for hosted zone %s", *zone.Name)
+						awsErrors <- recordDeleteError
+						return changeErr
+					}
+				}
+
+				if *recordSet.IsTruncated {
+					nextRecordName = recordSet.NextRecordName
+				} else {
+					break
+				}
+
+			}
+
+			_, deleteError := awsClient.DeleteHostedZone(&route53.DeleteHostedZoneInput{Id: zone.Id})
+			if deleteError != nil {
+				zoneDelErr := fmt.Sprintf("Failed to delete hosted zone: %s", *zone.Name)
+				awsErrors <- zoneDelErr
+				return deleteError
+			}
+		}
+
+		if *hostedZonesOutput.IsTruncated {
+			nextZoneMarker = hostedZonesOutput.Marker
+		} else {
+			break
+		}
+	}
+
+	successMsg := fmt.Sprintf("Route53 cleanup finished successfully")
+	awsNotifications <- successMsg
+	return nil
+}
+
 // DeleteBucketContent deletes any content in a bucket if it is not empty
 func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
 	// check if objects exits
@@ -282,7 +361,6 @@ func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
