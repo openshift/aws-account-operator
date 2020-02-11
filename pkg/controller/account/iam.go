@@ -19,6 +19,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/credentialwatcher"
@@ -139,7 +140,7 @@ func formatSigninURL(reqLogger logr.Logger, federationEndpointURL, signinToken s
 func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, secretName string, account *awsv1alpha1.Account, secret *corev1.Secret) error {
 
 	// Set controller as owner of secret
-	if err := utils.SetControllerReference(account, secret, r.scheme); err != nil {
+	if err := controllerutil.SetControllerReference(account, secret, r.scheme); err != nil {
 		return err
 	}
 
@@ -624,7 +625,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 		userSecret := userSecretInput.newSecretforCR()
 
 		// Set controller as owner of secret
-		if err := utils.SetControllerReference(account, userSecret, r.scheme); err != nil {
+		if err := controllerutil.SetControllerReference(account, userSecret, r.scheme); err != nil {
 			return "", err
 		}
 
