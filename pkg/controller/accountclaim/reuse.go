@@ -67,6 +67,11 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 		return err
 	}
 
+	reqLogger.Info(fmt.Sprintf(
+		"Setting RotateCredentials and RotateConsoleCredentials for account %s", reusedAccount.Spec.AwsAccountID))
+	reusedAccount.Status.RotateConsoleCredentials = true
+	reusedAccount.Status.RotateCredentials = true
+
 	// Update account status and add conditions indicating account reuse
 	reusedAccount.Status.State = conditionStatus
 	reusedAccount.Status.Claimed = false
