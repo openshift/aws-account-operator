@@ -322,7 +322,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				}
 
 				// Create BYOC role to assume
-				byocRoleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, adminAccessArn)
+				byocRoleID, err = createBYOCAdminAccessRole(reqLogger, byocAWSClient, adminAccessArn)
 				if err != nil {
 					reqLogger.Error(err, "Failed to create BYOC role")
 					r.accountClaimBYOCError(reqLogger, accountClaim, err)
