@@ -299,7 +299,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClie
 					// Build ChangeBatch
 					// https://docs.aws.amazon.com/sdk-for-go/api/service/route53/#ChangeBatch
 					//https://docs.aws.amazon.com/sdk-for-go/api/service/route53/#Change
-					if *record.Type == "TXT" {
+					if *record.Type != "NS" && *record.Type != "SOA" {
 						changeBatch.Changes = append(changeBatch.Changes, &route53.Change{
 							Action:            aws.String("DELETE"),
 							ResourceRecordSet: record,
