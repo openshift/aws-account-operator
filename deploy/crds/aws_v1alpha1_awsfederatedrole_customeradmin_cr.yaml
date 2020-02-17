@@ -2,7 +2,9 @@ apiVersion: aws.managed.openshift.io/v1alpha1
 kind: AWSFederatedRole
 metadata:
   name: customer-admin
+  namespace: aws-account-operator
 spec:
+  roleDisplayName: customer-admin
   roleDescription: This is the description of customer-admin
   # Custom policy definition 
   awsCustomPolicy:
