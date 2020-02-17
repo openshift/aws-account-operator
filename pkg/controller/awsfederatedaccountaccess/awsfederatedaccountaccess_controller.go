@@ -469,6 +469,13 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 		if err != nil {
 			if aerr, ok := err.(awserr.Error); ok {
 				switch aerr.Code() {
+				case "NoSuchEntity":
+					// Delete any custom policies made
+					err = r.deleteNonAttachedCustomPolicy(reqLogger, awsClient, federatedRoleCR)
+					if err != nil {
+						return err
+					}
+					return nil
 				default:
 					reqLogger.Error(
 						aerr,
@@ -535,16 +542,55 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			default:
-				reqLogger.Error(
-					aerr,
-					fmt.Sprintf(aerr.Error()),
-				)
-				reqLogger.Error(err, fmt.Sprintf("%v", err))
+				reqLogger.Error(aerr, fmt.Sprintf(aerr.Error()))
 				return err
 			}
 		} else {
 			reqLogger.Error(err, "NOther error while trying to detach policies")
 			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *ReconcileAWSFederatedAccountAccess) deleteNonAttachedCustomPolicy(reqLogger logr.Logger, awsClient awsclient.Client, federatedRoleCR *awsv1alpha1.AWSFederatedRole) error {
+
+	var policyMarker *string
+	// Paginate through custom policies
+	for {
+		policyListOutput, err := awsClient.ListPolicies(&iam.ListPoliciesInput{Scope: aws.String("Local"), Marker: policyMarker})
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				default:
+					reqLogger.Error(aerr, fmt.Sprintf(aerr.Error()))
+					return err
+				}
+			}
+			return err
+		}
+
+		for _, policy := range policyListOutput.Policies {
+			if *policy.PolicyName == federatedRoleCR.Spec.AWSCustomPolicy.Name {
+				_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: policy.Arn})
+				if err != nil {
+					if aerr, ok := err.(awserr.Error); ok {
+						switch aerr.Code() {
+						default:
+							reqLogger.Error(aerr, fmt.Sprintf(aerr.Error()))
+							return err
+						}
+					}
+					return err
+				}
+			}
+		}
+
+		if *policyListOutput.IsTruncated {
+			policyMarker = policyListOutput.Marker
+		} else {
+			break
 		}
 	}
 
