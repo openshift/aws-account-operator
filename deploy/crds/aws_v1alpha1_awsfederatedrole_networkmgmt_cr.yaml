@@ -1,11 +1,11 @@
 apiVersion: aws.managed.openshift.io/v1alpha1
 kind: AWSFederatedRole
 metadata:
-  name: customer-admin
+  name: network-mgmt
   namespace: aws-account-operator
 spec:
-  roleDisplayName: customer-admin
-  roleDescription: This is the description of customer-admin
+  roleDisplayName: Network management
+  roleDescription: User can view all AWS resources, and can edit VPC related resources to enable services such as IPsec VPN and VPC peering.
   # Custom policy definition 
   awsCustomPolicy:
     name:  CustomerAdministratorAccess
@@ -40,8 +40,4 @@ spec:
           - "*"
   # list of  AWS managed
   awsManagedPolicies:
-    - "AWSAccountUsageReportAccess"
     - "AmazonEC2ReadOnlyAccess"
-    - "AmazonS3ReadOnlyAccess"
-    - "IAMReadOnlyAccess"
-    - "BillingReadOnlyAccess"
