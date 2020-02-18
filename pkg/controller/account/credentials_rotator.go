@@ -62,15 +62,14 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 		}
 	}
 
-	STSSecretInput := SRESecretInput{
-		SecretName:              fmt.Sprintf("%s-sre-cli-credentials", account.Name),
-		NameSpace:               STSCredentialsSecretNamespace,
-		awsCredsSecretIDKey:     *STSCredentials.Credentials.AccessKeyId,
-		awsCredsSecretAccessKey: *STSCredentials.Credentials.SecretAccessKey,
-		awsCredsSessionToken:    *STSCredentials.Credentials.SessionToken,
+	secretName := fmt.Sprintf("%s-sre-cli-credentials", account.Name)
+	secretData := map[string][]byte{
+		"awsCredsSecretIDKey":     []byte(*STSCredentials.Credentials.AccessKeyId),
+		"awsCredsSecretAccessKey": []byte(*STSCredentials.Credentials.SecretAccessKey),
+		"awsCredsSessionToken":    []byte(*STSCredentials.Credentials.SessionToken),
 	}
 
-	STSCredentialsSecret := SRESecretInput.newSTSSecret(STSSecretInput)
+	STSCredentialsSecret := CreateSecret(secretName, STSCredentialsSecretNamespace, secretData)
 
 	err = r.Client.Create(context.TODO(), STSCredentialsSecret)
 	if err != nil {
@@ -78,7 +77,7 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 		return err
 	}
 
-	// Set `status.RotateCredentials` to false now that they ahve been updated
+	// Set `status.RotateCredentials` to false now that they have been updated
 	account.Status.RotateCredentials = false
 
 	err = r.Client.Status().Update(context.TODO(), account)
@@ -141,13 +140,12 @@ func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSe
 
 	secretName := account.Name
 
-	STSConsoleInput := SREConsoleInput{
-		SecretName:              fmt.Sprintf("%s-sre-console-url", secretName),
-		NameSpace:               account.Namespace,
-		awsCredsConsoleLoginURL: SREConsoleLoginURL,
+	STSConsoleSecretName := fmt.Sprintf("%s-sre-console-url", secretName)
+	STSConsoleSecretData := map[string][]byte{
+		"aws_console_login_url": []byte(SREConsoleLoginURL),
 	}
 
-	userConsoleSecret := STSConsoleInput.newConsoleSecret()
+	userConsoleSecret := CreateSecret(STSConsoleSecretName, account.Namespace, STSConsoleSecretData)
 
 	STSSecret := &corev1.Secret{}
 

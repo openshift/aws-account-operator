@@ -16,7 +16,6 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -108,26 +107,6 @@ type ReconcileAccount struct {
 	Client           kubeclientpkg.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder func(awsAccessID, awsAccessSecret, token, region string) (awsclient.Client, error)
-}
-
-// secretInput is a struct that holds data required to create a new secret CR
-type secretInput struct {
-	SecretName, NameSpace, awsCredsUserName, awsCredsSecretIDKey, awsCredsSecretAccessKey string
-}
-
-// SRESecretInput is a struct that holds data required to create a new secret CR for SRE admins
-type SRESecretInput struct {
-	SecretName, NameSpace, awsCredsSecretIDKey, awsCredsSecretAccessKey, awsCredsSessionToken, awsCredsConsoleLoginURL string
-}
-
-// SREConsoleInput is a struct that holds data required to create a new secret CR for SRE admins
-type SREConsoleInput struct {
-	SecretName, NameSpace, awsCredsConsoleLoginURL string
-}
-
-// input for new aws client
-type newAwsClientInput struct {
-	awsCredsSecretIDKey, awsCredsSecretAccessKey, awsToken, awsRegion, secretName, nameSpace string
 }
 
 // Reconcile reads that state of the cluster for a Account object and makes changes based on the state read
@@ -624,68 +603,9 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 		if createStatus != "IN_PROGRESS" {
 			break
 		}
-
 	}
 
 	return accountStatus, nil
-}
-
-func (input SRESecretInput) newSTSSecret() *corev1.Secret {
-	return &corev1.Secret{
-		Type: "Opaque",
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Secret",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      input.SecretName,
-			Namespace: input.NameSpace,
-		},
-		Data: map[string][]byte{
-			"aws_access_key_id":     []byte(input.awsCredsSecretIDKey),
-			"aws_secret_access_key": []byte(input.awsCredsSecretAccessKey),
-			"aws_session_token":     []byte(input.awsCredsSessionToken),
-		},
-	}
-
-}
-
-func (input SREConsoleInput) newConsoleSecret() *corev1.Secret {
-	return &corev1.Secret{
-		Type: "Opaque",
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Secret",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      input.SecretName,
-			Namespace: input.NameSpace,
-		},
-		Data: map[string][]byte{
-			"aws_console_login_url": []byte(input.awsCredsConsoleLoginURL),
-		},
-	}
-
-}
-
-func (input secretInput) newSecretforCR() *corev1.Secret {
-	return &corev1.Secret{
-		Type: "Opaque",
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Secret",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      input.SecretName,
-			Namespace: input.NameSpace,
-		},
-		Data: map[string][]byte{
-			"aws_user_name":         []byte(input.awsCredsUserName),
-			"aws_access_key_id":     []byte(input.awsCredsSecretIDKey),
-			"aws_secret_access_key": []byte(input.awsCredsSecretAccessKey),
-		},
-	}
-
 }
 
 func formatAccountEmail(name string) string {
