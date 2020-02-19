@@ -238,7 +238,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	// Remove finalizer if account CR is BYOC as the accountclaim controller will delete the account CR
 	// when the accountClaim CR is deleted as its set as the owner reference
 	if currentAcctInstance.DeletionTimestamp != nil && currentAcctInstance.Spec.BYOC {
-		if contains(currentAcctInstance.GetFinalizers(), awsv1alpha1.AccountFinalizer) {
+		if utils.Contains(currentAcctInstance.GetFinalizers(), awsv1alpha1.AccountFinalizer) {
 			// Remove finalizer to unlock deletion of the accountClaim
 			err = r.removeFinalizer(reqLogger, currentAcctInstance, awsv1alpha1.AccountFinalizer)
 			if err != nil {
@@ -606,39 +606,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	return reconcile.Result{}, nil
-}
-
-// Function to remove finalizer
-// TODO: This function removeFinalizer, contains and remove are the same as the claim controller and should be moved to the utils pkg
-func (r *ReconcileAccount) removeFinalizer(reqLogger logr.Logger, account *awsv1alpha1.Account, finalizerName string) error {
-	reqLogger.Info("Removing Finalizer from the Account")
-	account.SetFinalizers(remove(account.GetFinalizers(), finalizerName))
-
-	// Update CR
-	err := r.Client.Update(context.TODO(), account)
-	if err != nil {
-		reqLogger.Error(err, "Failed to remove AccountClaim finalizer")
-		return err
-	}
-	return nil
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
-func remove(list []string, s string) []string {
-	for i, v := range list {
-		if v == s {
-			list = append(list[:i], list[i+1:]...)
-		}
-	}
-	return list
 }
 
 // BuildAccount take all parameters required and uses those to make an aws call to CreateAccount. It returns an account ID and and error

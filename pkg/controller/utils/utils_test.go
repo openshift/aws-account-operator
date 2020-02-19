@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -179,6 +180,53 @@ func TestAddingConditionsToStatements(t *testing.T) {
 
 		if statement.Condition.StringEquals[key] != value {
 			t.Errorf("Unexected Condition. Got: \n%s\n\n Expected:\n%s\n", statement.Condition.StringEquals, expected.Condition.StringEquals)
+		}
+	}
+}
+
+func TestContains(t *testing.T) {
+	tables := []struct {
+		list   []string
+		find   string
+		result bool
+	}{
+		{[]string{}, "hello", false},
+		{[]string{"hello"}, "hello", true},
+		{[]string{"hello"}, "world", false},
+	}
+
+	for _, table := range tables {
+		contained := Contains(table.list, table.find)
+		if contained != table.result {
+			var expected string
+			var opposite string
+			if table.result {
+				expected = "found"
+				opposite = "not found"
+			} else {
+				expected = "not found"
+				opposite = "found"
+			}
+			t.Errorf("Expected %s to be %s.  Was %s in %s.", table.find, expected, opposite, table.list)
+		}
+	}
+}
+
+func TestRemove(t *testing.T) {
+	tables := []struct {
+		list   []string
+		value  string
+		result []string
+	}{
+		{[]string{}, "hello", []string{}},
+		{[]string{"hello"}, "world", []string{"hello"}},
+		{[]string{"hello", "world"}, "hello", []string{"world"}},
+	}
+
+	for _, table := range tables {
+		postRemoveList := Remove(table.list, table.value)
+		if !reflect.DeepEqual(postRemoveList, table.result) {
+			t.Errorf("Unexpected Result.  Expected %s got %s", table.result, postRemoveList)
 		}
 	}
 }
