@@ -285,19 +285,22 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	var byocRoleID string
 
-	// If the account is BYOC, needs some different set up
+	// If the account is BYOC, override awsSetupClient with creds from byoc CR
 	if currentAcctInstance.Spec.BYOC {
 		reqLogger.Info("BYOC account")
-		if currentAcctInstance.Status.State == "" || currentAcctInstance.Status.Claimed != true {
-			// Create client for BYOC account
-			byocAWSClient, accountClaim, err := r.getBYOCClient(currentAcctInstance)
-			if err != nil {
-				if accountClaim != nil {
-					r.accountClaimBYOCError(reqLogger, accountClaim, err)
-				}
-				return reconcile.Result{}, err
+		// Create client for BYOC account
+		byocSetupClient, accountClaim, err := r.getBYOCClient(currentAcctInstance)
+		if err != nil {
+			if accountClaim != nil {
+				r.accountClaimBYOCError(reqLogger, accountClaim, err)
 			}
+			return reconcile.Result{}, err
+		}
 
+		// re-assign the client to byoc instantiation
+		awsSetupClient = byocSetupClient
+
+		if currentAcctInstance.Status.State == "" || currentAcctInstance.Status.Claimed != true {
 			err = validateBYOCClaim(accountClaim)
 			if err != nil {
 				r.accountClaimBYOCError(reqLogger, accountClaim, err)
@@ -313,16 +316,67 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 			// Create access key and role for BYOC account
 			if currentAcctInstance.Status.State == "" {
+
+				// retrive current accessKeyID for comparison later
+				initAccessKeyID, err := r.getAWSAccessKeyId(accountClaim)
+				if err != nil {
+					reqLogger.Error(err, "Failed to retrieve accountClaim accessKeyID")
+					return reconcile.Result{}, err
+				}
+
 				// Rotate access keys
-				err = r.byocRotateAccessKeys(reqLogger, byocAWSClient, accountClaim)
+				err = r.byocRotateAccessKeys(reqLogger, awsSetupClient, accountClaim)
 				if err != nil {
 					reqLogger.Info("Failed to rotate BYOC access keys")
 					r.accountClaimBYOCError(reqLogger, accountClaim, err)
 					return reconcile.Result{}, err
 				}
 
+				// Create new client after rotating access keys
+				// Retrieve now-rotated key
+				rotatedAccessKeyID, err := r.getAWSAccessKeyId(accountClaim)
+				if err != nil {
+					reqLogger.Error(err, "Failed to retrieve rotated accountClaim accessKeyID")
+					return reconcile.Result{}, err
+				}
+
+				// validate secret has changed
+				reqLogger.Info("Validating rotated keys have been updated")
+				for i := 1; i <= 20; i++ {
+					// keys have updated
+					if initAccessKeyID != rotatedAccessKeyID {
+						break
+					} else {
+						// reque request if keys match
+						time.Sleep(500 * time.Millisecond)
+					}
+					// This may need tuning.
+					if i == 20 {
+						reqLogger.Info("Timeout attempting to validate rotated keys")
+					}
+				}
+				reqLogger.Info("Rotated keys successfully validated")
+
+				// create new client
+				byocSetupClient, accountClaim, err := r.getBYOCClient(currentAcctInstance)
+				if err != nil {
+					if accountClaim != nil {
+						r.accountClaimBYOCError(reqLogger, accountClaim, err)
+					}
+					return reconcile.Result{}, err
+				}
+				reqLogger.Info("New AWS client created with rotated credentials")
+				// re-assign the client to byoc instantiation
+				awsSetupClient = byocSetupClient
+
+				// To validate, execute the below with new client until successfull
+				err = utils.ValidateAWSclient(reqLogger, awsSetupClient)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+
 				// Create BYOC role to assume
-				byocRoleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, adminAccessArn)
+				byocRoleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, adminAccessArn)
 				if err != nil {
 					reqLogger.Error(err, "Failed to create BYOC role")
 					r.accountClaimBYOCError(reqLogger, accountClaim, err)
@@ -859,4 +913,23 @@ func (r *ReconcileAccount) statusUpdate(reqLogger logr.Logger, account *awsv1alp
 func matchSubstring(roleID, role string) (bool, error) {
 	matched, err := regexp.MatchString(roleID, role)
 	return matched, err
+}
+
+// getAWSAccessKeyId retrieves the awsCredsSecretIDKey for the current account
+func (r *ReconcileAccount) getAWSAccessKeyId(currentAccountClaim *awsv1alpha1.AccountClaim) (accessKeyID string, err error) {
+	currentSecret := &corev1.Secret{}
+	err = r.Client.Get(context.TODO(),
+		types.NamespacedName{
+			Name:      currentAccountClaim.Spec.BYOCSecretRef.Name,
+			Namespace: currentAccountClaim.Spec.BYOCSecretRef.Namespace,
+		}, currentSecret)
+	if err != nil {
+		return "", err
+	}
+	currentAccessKeyID, ok := currentSecret.Data[awsCredsSecretIDKey]
+	if !ok {
+		return "", fmt.Errorf("Failed to retrieve accountClaim accessKeyID")
+	}
+	accessKeyID = string(currentAccessKeyID)
+	return accessKeyID, nil
 }

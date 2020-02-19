@@ -166,6 +166,17 @@ func CreateEC2Instance(reqLogger logr.Logger, client awsclient.Client, ami strin
 			InstanceType: aws.String(awsInstanceType),
 			MinCount:     aws.Int64(1),
 			MaxCount:     aws.Int64(1),
+			TagSpecifications: []*ec2.TagSpecification{
+				{
+					ResourceType: aws.String("instance"),
+					Tags: []*ec2.Tag{
+						{
+							Key:   aws.String("Name"),
+							Value: aws.String("aacInitRegion"),
+						},
+					},
+				},
+			},
 		})
 
 		// Return on unexpected errors:

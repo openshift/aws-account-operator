@@ -35,11 +35,10 @@ var ErrBYOCSecretRefMissing = errors.New("BYOCSecretRefMissing")
 var roleID = ""
 
 // Create role for BYOC IAM user to assume
-func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.Client, byocAWSClient awsclient.Client, policyArn string) (roleID string, err error) {
-
-	getUserOutput, err := awsSetupClient.GetUser(&iam.GetUserInput{})
+func createBYOCAdminAccessRole(reqLogger logr.Logger, byocAWSClient awsclient.Client, policyArn string) (roleID string, err error) {
+	getUserOutput, err := byocAWSClient.GetUser(&iam.GetUserInput{})
 	if err != nil {
-		reqLogger.Error(err, "Failed to get non-BYOC IAM User info")
+		reqLogger.Error(err, "Failed to get BYOC IAM User info")
 		return roleID, err
 	}
 

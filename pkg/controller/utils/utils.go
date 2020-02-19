@@ -3,8 +3,11 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
 
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -112,4 +115,22 @@ func Remove(list []string, s string) []string {
 		}
 	}
 	return list
+}
+
+func ValidateAWSclient(reqLogger logr.Logger, awsClient awsclient.Client) error {
+	for retry := 1; retry <= 6; retry++ {
+		_, err := awsClient.GetUser(&iam.GetUserInput{})
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				if aerr.Code() == "InvalidClientTokenId" {
+					reqLogger.Info(fmt.Sprintf("New credentials not yet available after rotating. Attempt %b/6", retry))
+				} else {
+					reqLogger.Error(err, "Failed to create client with rotated credentials")
+					return err
+				}
+			}
+			time.Sleep(10 * time.Second)
+		}
+	}
+	return nil
 }
