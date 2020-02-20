@@ -129,7 +129,8 @@ func ValidateAWSclient(reqLogger logr.Logger, awsClient awsclient.Client) error 
 					return err
 				}
 			}
-			time.Sleep(10 * time.Second)
+			duration := 500 * time.Duration(retry) * time.Millisecond
+			time.Sleep(duration)
 		}
 	}
 	return nil
