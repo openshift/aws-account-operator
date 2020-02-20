@@ -118,7 +118,7 @@ func Remove(list []string, s string) []string {
 }
 
 func ValidateAWSclient(reqLogger logr.Logger, awsClient awsclient.Client) error {
-	for retry := 1; retry <= 6; retry++ {
+	for retry := 1; retry <= 15; retry++ {
 		_, err := awsClient.GetUser(&iam.GetUserInput{})
 		if err != nil {
 			if aerr, ok := err.(awserr.Error); ok {
