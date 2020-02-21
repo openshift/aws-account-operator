@@ -12,8 +12,6 @@ import (
 type AWSFederatedRoleState string
 
 const (
-	// AWSFederatedRoleStateInProgress const for InProgress status state
-	AWSFederatedRoleStateInProgress AWSFederatedAccountAccessState = "InProgress"
 	// AWSFederatedRoleStateValid const for Requested status state
 	AWSFederatedRoleStateValid AWSFederatedRoleState = "Valid"
 	// AWSFederatedRoleStateInvalid const for Invliad status state
