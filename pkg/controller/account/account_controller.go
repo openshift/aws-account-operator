@@ -318,7 +318,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			if currentAcctInstance.Status.State == "" {
 
 				// retrive current accessKeyID for comparison later
-				initAccessKeyID, err := r.getAWSAccessKeyId(accountClaim)
+				initAccessKeyID, err := r.GetAWSAccessKeyId(accountClaim)
 				if err != nil {
 					reqLogger.Error(err, "Failed to retrieve accountClaim accessKeyID")
 					return reconcile.Result{}, err
@@ -334,7 +334,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 				// Create new client after rotating access keys
 				// Retrieve now-rotated key
-				rotatedAccessKeyID, err := r.getAWSAccessKeyId(accountClaim)
+				rotatedAccessKeyID, err := r.GetAWSAccessKeyId(accountClaim)
 				if err != nil {
 					reqLogger.Error(err, "Failed to retrieve rotated accountClaim accessKeyID")
 					return reconcile.Result{}, err
@@ -913,23 +913,4 @@ func (r *ReconcileAccount) statusUpdate(reqLogger logr.Logger, account *awsv1alp
 func matchSubstring(roleID, role string) (bool, error) {
 	matched, err := regexp.MatchString(roleID, role)
 	return matched, err
-}
-
-// getAWSAccessKeyId retrieves the awsCredsSecretIDKey for the current account
-func (r *ReconcileAccount) getAWSAccessKeyId(currentAccountClaim *awsv1alpha1.AccountClaim) (accessKeyID string, err error) {
-	currentSecret := &corev1.Secret{}
-	err = r.Client.Get(context.TODO(),
-		types.NamespacedName{
-			Name:      currentAccountClaim.Spec.BYOCSecretRef.Name,
-			Namespace: currentAccountClaim.Spec.BYOCSecretRef.Namespace,
-		}, currentSecret)
-	if err != nil {
-		return "", err
-	}
-	currentAccessKeyID, ok := currentSecret.Data[awsCredsSecretIDKey]
-	if !ok {
-		return "", fmt.Errorf("Failed to retrieve accountClaim accessKeyID")
-	}
-	accessKeyID = string(currentAccessKeyID)
-	return accessKeyID, nil
 }

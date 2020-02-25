@@ -647,3 +647,22 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	//Secret already exists
 	return fmt.Sprintf("%s-secret", secretName), nil
 }
+
+// getAWSAccessKeyId retrieves the awsCredsSecretIDKey for the current account
+func (r *ReconcileAccount) GetAWSAccessKeyId(currentAccountClaim *awsv1alpha1.AccountClaim) (accessKeyID string, err error) {
+	currentSecret := &corev1.Secret{}
+	err = r.Client.Get(context.TODO(),
+		types.NamespacedName{
+			Name:      currentAccountClaim.Spec.BYOCSecretRef.Name,
+			Namespace: currentAccountClaim.Spec.BYOCSecretRef.Namespace,
+		}, currentSecret)
+	if err != nil {
+		return "", err
+	}
+	currentAccessKeyID, ok := currentSecret.Data[awsCredsSecretIDKey]
+	if !ok {
+		return "", fmt.Errorf("Failed to retrieve accountClaim accessKeyID")
+	}
+	accessKeyID = string(currentAccessKeyID)
+	return accessKeyID, nil
+}
