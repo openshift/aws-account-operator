@@ -109,7 +109,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			SetStatuswithCondition(currentFAA, "Requested role does not exist", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
-			reqLogger.Error(ErrFederatedAccessRoleNotFound, fmt.Sprintf("Resquested role '%s' not found", currentFAA.Spec.AWSFederatedRole.Name))
+			reqLogger.Error(ErrFederatedAccessRoleNotFound, fmt.Sprintf("Requested role %s not found", currentFAA.Spec.AWSFederatedRole.Name))
 
 			err := r.client.Status().Update(context.TODO(), currentFAA)
 			if err != nil {
