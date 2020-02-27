@@ -163,6 +163,22 @@ func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, secretName string
 	return nil
 }
 
+// DeleteOtherAccessKeys deletes all access whoose IDs do not match the given ID
+func DeleteOtherAccessKeys(reqLogger logr.Logger, client awsclient.Client, accessKeyID string) error {
+
+	accessKeyList, err := client.ListAccessKeys(&iam.ListAccessKeysInput{})
+	for _, accessKey := range accessKeyList.AccessKeyMetadata {
+		if *accessKey.AccessKeyId != accessKeyID {
+			_, err = client.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKey.AccessKeyId})
+			if err != nil {
+				reqLogger.Error(err, "Failed to delete BYOC access keys")
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // BuildSTSUser sets up an IAM user with the proper access and creates secrets to hold cred
 // Takes a logger, an awsSetupClient for the signing token, an awsClient for, an account CR to set ownership of secrets, the namespace to create the secret in, and a role to assume with the creds
 // The awsSetupClient is the client for the user in the target linked account

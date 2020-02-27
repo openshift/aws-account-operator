@@ -300,6 +300,7 @@ func (r *ReconcileAccount) getBYOCClient(currentAcct *awsv1alpha1.Account) (awsc
 
 func (r *ReconcileAccount) byocRotateAccessKeys(reqLogger logr.Logger, byocAWSClient awsclient.Client, accountClaim *awsv1alpha1.AccountClaim) error {
 
+	// Get BYOC IAM User
 	getBYOCUserOutput, err := byocAWSClient.GetUser(&iam.GetUserInput{})
 	if err != nil {
 		reqLogger.Error(err, "Failed to get BYOC IAM User info")
@@ -308,49 +309,23 @@ func (r *ReconcileAccount) byocRotateAccessKeys(reqLogger logr.Logger, byocAWSCl
 
 	// Get the BYOC credentials secret to update
 	accountClaimSecret := &corev1.Secret{}
-
 	err = r.Client.Get(context.TODO(),
 		types.NamespacedName{Name: accountClaim.Spec.BYOCSecretRef.Name, Namespace: accountClaim.Spec.BYOCSecretRef.Namespace},
 		accountClaimSecret)
 
+	// Get access key
 	accessKeyID := string(accountClaimSecret.Data["aws_access_key_id"])
 
 	// List and delete any other access keys
-	accessKeyList, err := byocAWSClient.ListAccessKeys(&iam.ListAccessKeysInput{})
-
-	for _, accessKey := range accessKeyList.AccessKeyMetadata {
-		if *accessKey.AccessKeyId != accessKeyID {
-			_, err = byocAWSClient.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKey.AccessKeyId})
-			if err != nil {
-				reqLogger.Error(err, "Failed to delete BYOC access keys")
-				return err
-			}
-		}
-	}
-
-	// Create new BYOC access keys
-	userSecretInfo, err := CreateUserAccessKey(reqLogger, byocAWSClient, *getBYOCUserOutput.User.UserName)
+	err = DeleteOtherAccessKeys(reqLogger, byocAWSClient, accessKeyID)
 	if err != nil {
-		failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s", *getBYOCUserOutput.User.UserName)
-		reqLogger.Info(failedToCreateUserAccessKeyMsg)
 		return err
 	}
 
-	// Delete original BYOC access key
-	_, err = byocAWSClient.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: &accessKeyID})
-	if err != nil {
-		reqLogger.Error(err, "Failed to delete BYOC access keys")
-		return err
-	}
-
-	accountClaimSecret.Data =
-		map[string][]byte{
-			"aws_access_key_id":     []byte(*userSecretInfo.AccessKey.AccessKeyId),
-			"aws_secret_access_key": []byte(*userSecretInfo.AccessKey.SecretAccessKey),
-		}
-
+	// Update secret with new access key
+	updatedAccountSecret, err := replaceSecretAccessKey(reqLogger, byocAWSClient, *accountClaimSecret, *getBYOCUserOutput.User.UserName, &accessKeyID)
 	reqLogger.Info("BYOC updating secret")
-	err = r.Client.Update(context.TODO(), accountClaimSecret)
+	err = r.Client.Update(context.TODO(), &updatedAccountSecret)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update BYOC access keys")
 		return err
@@ -386,4 +361,30 @@ func validateBYOCClaim(accountClaim *awsv1alpha1.AccountClaim) error {
 	}
 
 	return nil
+}
+
+// replaceSecretAccessKey will create a new access key and use it to replace a users current one
+func replaceSecretAccessKey(reqLogger logr.Logger, client awsclient.Client, secret corev1.Secret, userName string, accessKeyID *string) (corev1.Secret, error) {
+	// Create new BYOC access keys
+	userSecretInfo, err := CreateUserAccessKey(reqLogger, client, userName)
+	if err != nil {
+		failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s", userName)
+		reqLogger.Info(failedToCreateUserAccessKeyMsg)
+		return secret, err
+	}
+
+	// Delete original BYOC access key
+	_, err = client.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKeyID})
+	if err != nil {
+		reqLogger.Error(err, "Failed to delete BYOC access keys")
+		return secret, err
+	}
+
+	// Update secret
+	secret.Data =
+		map[string][]byte{
+			"aws_access_key_id":     []byte(*userSecretInfo.AccessKey.AccessKeyId),
+			"aws_secret_access_key": []byte(*userSecretInfo.AccessKey.SecretAccessKey),
+		}
+	return secret, nil
 }
