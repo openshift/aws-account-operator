@@ -45,6 +45,7 @@ type StatementEntry struct {
 	Effect    string     `json:"effect"`
 	Action    []string   `json:"action"`
 	Resource  []string   `json:"resource,omitempty"`
+	Condition *Condition `json:"condition,omitempty"`
 	Principal *Principal `json:"principal,omitempty"`
 }
 
@@ -52,6 +53,12 @@ type StatementEntry struct {
 type Principal struct {
 	// aws account id
 	AWS string `json:"AWS"`
+}
+
+// Condition contains the aws Condition map to use for IAM roles
+type Condition struct {
+	// A map of the condition
+	StringEquals map[string]string `json:"StringEquals,omitempty"`
 }
 
 // AWSFederatedRoleStatus defines the observed state of AWSFederatedRole
