@@ -20,6 +20,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -41,6 +42,11 @@ var ErrFederatedAccessRoleNotFound = errors.New("FederatedAccessRoleNotFound")
 var ErrFederatedAccessRoleFailedCreate = errors.New("FederatedAccessRoleFailedCreate")
 
 var log = logf.Log.WithName("controller_awsfederatedaccountaccess")
+
+const (
+	roleKey    = "role"
+	accountKey = "account"
+)
 
 // Add creates a new AWSFederatedAccountAccess Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -139,9 +145,15 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		if controllerutils.Contains(currentFAA.GetFinalizers(), controllerutils.Finalizer) {
 
 			reqLogger.Info("Cleaning up FederatedAccountAccess Roles")
-			err = r.cleanFederatedRoles(reqLogger, currentFAA, requestedRole)
-			if err != nil {
-				return reconcile.Result{}, err
+
+			if !r.roleStillInUse(reqLogger, currentFAA, requestedRole) {
+
+				err = r.cleanFederatedRoles(reqLogger, currentFAA, requestedRole)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+			} else {
+				reqLogger.Info("Skipping Role cleanup since another FAA is using same role in same account")
 			}
 
 			reqLogger.Info("Removing Finalizer")
@@ -245,6 +257,26 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 
 		return reconcile.Result{}, nil
 	}
+
+	// Ensure the FAA has the proper labels
+	reqLogger.Info("Checking labels")
+	if !hasLabels(currentFAA, accountID) {
+
+		reqLogger.Info("Missing labels, adding")
+		// Add the labels if they're missing or wrong
+		currentFAA.Labels = map[string]string{
+			roleKey:    currentFAA.Spec.AWSFederatedRole.Name,
+			accountKey: accountID,
+		}
+
+		// Update the CR with new labels
+		err = r.client.Update(context.TODO(), currentFAA)
+		if err != nil {
+			reqLogger.Error(err, fmt.Sprintf("Lable update for %s failed", currentFAA.Name))
+			return reconcile.Result{}, err
+		}
+	}
+
 	// Mark AWSFederatedAccountAccess CR as Ready.
 	SetStatuswithCondition(currentFAA, "Account Access Ready", awsv1alpha1.AWSFederatedAccountReady, awsv1alpha1.AWSFederatedAccountStateReady)
 	reqLogger.Info(fmt.Sprintf("Successfully applied %s", currentFAA.Name))
@@ -416,6 +448,22 @@ func SetStatuswithCondition(afaa *awsv1alpha1.AWSFederatedAccountAccess, message
 		message,
 		controllerutils.UpdateConditionNever)
 	afaa.Status.State = state
+}
+
+func hasLabels(awsFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess, accountID string) bool {
+
+	// Check if the labels exist and that they're set correctly
+	if roleLabel, ok := awsFederatedAccountAccess.Labels[roleKey]; ok {
+		if roleLabel == awsFederatedAccountAccess.Spec.AWSFederatedRole.Name {
+			if accountLabel, ok := awsFederatedAccountAccess.Labels[accountKey]; ok {
+				if accountLabel == accountID {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 func (r *ReconcileAWSFederatedAccountAccess) addFinalizer(reqLogger logr.Logger, awsFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess) error {
@@ -595,4 +643,31 @@ func (r *ReconcileAWSFederatedAccountAccess) deleteNonAttachedCustomPolicy(reqLo
 	}
 
 	return nil
+}
+
+func (r *ReconcileAWSFederatedAccountAccess) roleStillInUse(reqLogger logr.Logger, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, federatedRoleCR *awsv1alpha1.AWSFederatedRole) bool {
+
+	// Get all FederatedAccountAccesses with the same label as the current CR
+	awsFederatedAccountAccessList := &awsv1alpha1.AWSFederatedAccountAccessList{}
+
+	// Get labels from the Federated Account Access CR
+	roleLabel, _ := currentFAA.Labels[roleKey]
+	accountLabel, _ := currentFAA.Labels[accountKey]
+
+	// Build list options from labels
+	labels := map[string]string{roleKey: roleLabel, accountKey: accountLabel}
+	selector, _ := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: labels})
+	listOps := &client.ListOptions{LabelSelector: selector}
+
+	if err := r.client.List(context.TODO(), listOps, awsFederatedAccountAccessList); err != nil {
+		reqLogger.Error(err, "unable to list AWS Federated Account Accesses")
+	}
+
+	// Current count - the one we're deleting
+	// If there is at least one left, don't delete the role
+	if len(awsFederatedAccountAccessList.Items)-1 > 0 {
+		return true
+	}
+
+	return false
 }
