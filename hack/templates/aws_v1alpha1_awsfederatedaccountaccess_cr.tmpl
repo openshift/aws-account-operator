@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Template
+parameters:
+- name: AWS_IAM_ARN
+- name: AWS_FEDERATED_ROLE_NAME
+- name: IAM_USER_SECRET
+- name: NAMESPACE 
+metadata:
+  name: test-federated-user-template
+objects:
+- apiVersion: aws.managed.openshift.io/v1alpha1
+  kind: AWSFederatedAccountAccess
+  metadata:
+    name: test-federated-user
+    namespace: ${NAMESPACE}
+  spec:
+    externalCustomerAWSIAMARN: "${AWS_IAM_ARN}"
+    awsCustomerCredentialSecret:
+        name: "${IAM_USER_SECRET}"
+        namespace: aws-account-operator 
+    awsFederatedRole:
+        name: "${AWS_FEDERATED_ROLE_NAME}"
+        namespace: aws-account-operator 
