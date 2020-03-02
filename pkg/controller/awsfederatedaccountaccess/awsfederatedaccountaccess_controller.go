@@ -185,7 +185,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	gciOut, err := awsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
 	if err != nil {
 		SetStatuswithCondition(currentFAA, "Failed to get account ID information", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
-		utils.LogAwsError(log, fmt.Sprintf("Unable to create role requested by '%s'", currentFAA.Name), err, err)
+		utils.LogAwsError(log, fmt.Sprintf("Failed to get account ID information for '%s'", currentFAA.Name), err, err)
 		err := r.client.Status().Update(context.TODO(), currentFAA)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
@@ -327,7 +327,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createIAMPolicy(awsClient awsclient
 		PolicyDocument: aws.String(string(jsonPolicyDoc)),
 	})
 	if err != nil {
-		return output.Policy, fmt.Errorf("Error creating awsCustomPolicy %s for AWSFederatedRole %s \n AWS Error %s", afr.Spec.AWSCustomPolicy.Name, afr.Name, err.Error())
+		return nil, err
 	}
 
 	return output.Policy, nil
@@ -358,7 +358,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createIAMRole(awsClient awsclient.C
 	// Marshal assumeRolePolicyDoc to json
 	jsonAssumeRolePolicyDoc, err := json.Marshal(&assumeRolePolicyDoc)
 	if err != nil {
-		return nil, fmt.Errorf("Error marshalling jsonPolicy doc : Error %s", err.Error())
+		return nil, err
 	}
 
 	createRoleOutput, err := awsClient.CreateRole(&iam.CreateRoleInput{
@@ -370,19 +370,16 @@ func (r *ReconcileAWSFederatedAccountAccess) createIAMRole(awsClient awsclient.C
 		return nil, err
 	}
 
-	return createRoleOutput.Role, err
+	return createRoleOutput.Role, nil
 }
 
 func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMPolicy(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) error {
 
-	policy, err := r.createIAMPolicy(awsClient, afr, afaa)
+	_, err := r.createIAMPolicy(awsClient, afr, afaa)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			if aerr.Code() == "EntityAlreadyExists" {
-
-				// If the Role already exists, delete it and recreate it
-				_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: policy.Arn})
-				_, err = r.createIAMPolicy(awsClient, afr, afaa)
+				return nil
 			}
 		}
 	}
@@ -394,13 +391,13 @@ func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMRole(awsClient aws
 
 	role, err := r.createIAMRole(awsClient, afr, afaa)
 	if err != nil {
-
 		if aerr, ok := err.(awserr.Error); ok {
 			if aerr.Code() == "EntityAlreadyExists" {
-
-				// If the Role already exists, delete it and recreate it
-				_, err = awsClient.DeleteRole(&iam.DeleteRoleInput{RoleName: aws.String(afr.Name)})
-				role, err = r.createIAMRole(awsClient, afr, afaa)
+				role, err := awsClient.GetRole(&iam.GetRoleInput{RoleName: aws.String(afr.Name)})
+				if err != nil {
+					return nil, err
+				}
+				return role.Role, nil
 			}
 		}
 	}
