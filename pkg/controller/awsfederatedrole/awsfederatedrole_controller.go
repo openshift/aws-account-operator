@@ -7,6 +7,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
+
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 
@@ -97,11 +98,38 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		return reconcile.Result{}, err
 	}
 
+	// Ensure the role has a finalizer
+	if !utils.Contains(instance.GetFinalizers(), utils.Finalizer) {
+
+		err := r.addFinalizer(reqLogger, instance)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{}, nil
+	}
+
+	if instance.DeletionTimestamp != nil {
+
+		if utils.Contains(instance.GetFinalizers(), utils.Finalizer) {
+
+			reqLogger.Info("Cleaning up FederatedAccountAccess Roles")
+			err = r.finalizeFederateRole(reqLogger, instance)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			reqLogger.Info("Removing Finalizer")
+			err = r.removeFinalizer(reqLogger, instance, utils.Finalizer)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+	}
+
 	// If the CR is known to be Valid or Invalid, doesn't need to be reconciled.
 	if instance.Status.State == awsv1alpha1.AWSFederatedRoleStateValid || instance.Status.State == awsv1alpha1.AWSFederatedRoleStateInvalid {
 		return reconcile.Result{}, nil
 	}
-
 	// Setup AWS client
 	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
 		SecretName: awsSecretName,
