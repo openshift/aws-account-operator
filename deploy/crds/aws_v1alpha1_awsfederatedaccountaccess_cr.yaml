@@ -1,10 +1,11 @@
 apiVersion: aws.managed.openshift.io/v1alpha1
 kind: AWSFederatedAccountAccess
 metadata:
-  name: clustername.customeraccountname.rolename
+  name: test-account-access 
+  namespace: aws-account-operator
 spec:
-  accountReference: accountreference
-  awsCredentialSecret:
-      name: secretName
-      namespace: secretNamespace
-  awsFederatedRoleName: awsfederatedrolename
+  awsCustomerCredentialSecret: 
+    name: osd-creds-mgmt-w2tclb-secret
+    namespace: aws-account-operator
+  externalCustomerAWSIAMARN: arn:aws:iam::414830704956:user/james.harrington
+  awsFederatedRoleName: read-only 
