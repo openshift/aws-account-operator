@@ -52,7 +52,7 @@ func NewSecretWatcher(client client.Client, watchInterval time.Duration) *secret
 // message is sent on the stopCh
 func (s *secretWatcher) Start(log logr.Logger, stopCh <-chan struct{}) {
 	log.Info("Starting the secretWatcher")
-	log.Info("Secretwatcher initail run")
+	log.Info("Secretwatcher initial run")
 	err := s.ScanSecrets(log)
 	if err != nil {
 		log.Error(err, "secretwatcher initial run failed ")
