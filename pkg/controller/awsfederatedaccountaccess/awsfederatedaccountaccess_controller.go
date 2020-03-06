@@ -230,7 +230,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	}
 
 	// Create role and apply custom policys and awsmanagedpolicies
-	role, err := r.createOrUpdateIAMRole(awsClient, *requestedRole, *currentFAA)
+	role, err := r.createOrUpdateIAMRole(awsClient, *requestedRole, *currentFAA, reqLogger)
 
 	if err != nil {
 		SetStatuswithCondition(currentFAA, "Failed to create role", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
@@ -424,7 +424,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMPolicy(awsClient a
 	return nil
 }
 
-func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMRole(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) (*iam.Role, error) {
+func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMRole(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess, reqLogger logr.Logger) (*iam.Role, error) {
 
 	uidLabel, ok := afaa.Labels["uid"]
 	if !ok {
@@ -437,7 +437,8 @@ func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMRole(awsClient aws
 	role, err := r.createIAMRole(awsClient, afr, afaa)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
-			if aerr.Code() == "EntityAlreadyExists" {
+			switch aerr.Code() {
+			case "EntityAlreadyExists":
 				_, err := awsClient.DeleteRole(&iam.DeleteRoleInput{RoleName: aws.String(roleName)})
 
 				if err != nil {
@@ -451,12 +452,14 @@ func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMRole(awsClient aws
 				}
 
 				return role, nil
-
-			} else {
+			default:
 				// Handle unexpected AWS API errors
-				return nil, errors.New(aerr.Code())
+				utils.LogAwsError(reqLogger, "createOrUpdateIAMRole: Unexpected AWS Error creating IAM Role", nil, err)
+				return nil, err
 			}
 		}
+		// Return all other (non-AWS) errors
+		return nil, err
 	}
 
 	return role, nil
