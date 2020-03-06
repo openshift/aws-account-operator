@@ -439,18 +439,22 @@ func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMRole(awsClient aws
 		if aerr, ok := err.(awserr.Error); ok {
 			if aerr.Code() == "EntityAlreadyExists" {
 				_, err := awsClient.DeleteRole(&iam.DeleteRoleInput{RoleName: aws.String(roleName)})
+
 				if err != nil {
 					return nil, err
 				}
+
 				role, err := r.createIAMRole(awsClient, afr, afaa)
+
 				if err != nil {
 					return nil, err
-				}
-				if role == nil {
-					return nil, errors.New("Create Role Output is nil")
 				}
 
 				return role, nil
+
+			} else {
+				// Handle unexpected AWS API errors
+				return nil, errors.New(aerr.Code())
 			}
 		}
 	}
