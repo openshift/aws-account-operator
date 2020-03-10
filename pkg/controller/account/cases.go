@@ -12,6 +12,18 @@ import (
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
 
+const (
+	// Fields used to create/monitor AWS case
+	caseCategoryCode              = "other-account-issues"
+	caseServiceCode               = "customer-account"
+	caseIssueType                 = "customer-service"
+	caseSeverity                  = "urgent"
+	caseStatusResolved            = "resolved"
+	caseLanguage                  = "en"
+	intervalAfterCaseCreationSecs = 30
+	intervalBetweenChecksMinutes  = 10
+)
+
 func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client) (string, error) {
 	// Initialize basic communication body and case subject
 	caseCommunicationBody := fmt.Sprintf(

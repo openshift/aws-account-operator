@@ -47,16 +47,6 @@ const (
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
 	createPendTime          = utils.WaitTime * time.Minute
-	// Fields used to create/monitor AWS case
-	caseCategoryCode              = "other-account-issues"
-	caseServiceCode               = "customer-account"
-	caseIssueType                 = "customer-service"
-	caseSeverity                  = "urgent"
-	caseDesiredInstanceLimit      = 25
-	caseStatusResolved            = "resolved"
-	caseLanguage                  = "en"
-	intervalAfterCaseCreationSecs = 30
-	intervalBetweenChecksMinutes  = 10
 
 	// AccountPending indicates an account is pending
 	AccountPending = "Pending"
@@ -119,19 +109,6 @@ var coveredRegions = map[string]map[string]string{
 	"sa-east-1": {
 		"initializationAMI": "ami-05c1c16cac05a7c0b",
 	},
-}
-
-// Instance types UHC supports
-var coveredInstanceTypes = []string{
-	"c5.xlarge",
-	"c5.2xlarge",
-	"c5.4xlarge",
-	"m5.xlarge",
-	"m5.2xlarge",
-	"m5.4xlarge",
-	"r5.xlarge",
-	"r5.2xlarge",
-	"r5.4xlarge",
 }
 
 // Custom errors
