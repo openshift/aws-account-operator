@@ -31,7 +31,7 @@ import (
 var (
 	metricsPort                   = "8080"
 	metricsPath                   = "/metrics"
-	secretWatcherScanInterval     = time.Duration(10) * time.Minute
+	secretWatcherScanInterval     = time.Duration(1) * time.Minute
 	hours                     int = 1
 	totalWatcherInterval          = time.Duration(15) * time.Minute
 )

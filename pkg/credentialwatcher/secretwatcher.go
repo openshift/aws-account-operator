@@ -123,6 +123,12 @@ func (s *secretWatcher) updateAccountRotateCredentialsStatus(log logr.Logger, ac
 		return
 	}
 
+	// Only rotate STS credentials if the account CR is in a Ready state
+	if accountInstance.Status.State != string(awsv1alpha1.AccountReady) {
+		log.Info(fmt.Sprintf("Account %s not in %s state, not rotating STS credentials", accountInstance.Name, awsv1alpha1.AccountReady))
+		return
+	}
+
 	if accountInstance.Status.RotateCredentials != true {
 
 		//log.Info(fmt.Sprintf("AWS credentials secret %s was created %s ago requeing to be refreshed", secret.ObjectMeta.Name, time.Since(unixTime)))
