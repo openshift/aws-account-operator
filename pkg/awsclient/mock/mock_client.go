@@ -8,6 +8,7 @@ import (
 	ec2 "github.com/aws/aws-sdk-go/service/ec2"
 	iam "github.com/aws/aws-sdk-go/service/iam"
 	organizations "github.com/aws/aws-sdk-go/service/organizations"
+	route53 "github.com/aws/aws-sdk-go/service/route53"
 	s3 "github.com/aws/aws-sdk-go/service/s3"
 	sts "github.com/aws/aws-sdk-go/service/sts"
 	support "github.com/aws/aws-sdk-go/service/support"
@@ -605,4 +606,64 @@ func (m *MockClient) ListObjectsV2(arg0 *s3.ListObjectsV2Input) (*s3.ListObjects
 func (mr *MockClientMockRecorder) ListObjectsV2(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectsV2", reflect.TypeOf((*MockClient)(nil).ListObjectsV2), arg0)
+}
+
+// ListHostedZones mocks base method
+func (m *MockClient) ListHostedZones(arg0 *route53.ListHostedZonesInput) (*route53.ListHostedZonesOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListHostedZones", arg0)
+	ret0, _ := ret[0].(*route53.ListHostedZonesOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListHostedZones indicates an expected call of ListHostedZones
+func (mr *MockClientMockRecorder) ListHostedZones(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHostedZones", reflect.TypeOf((*MockClient)(nil).ListHostedZones), arg0)
+}
+
+// DeleteHostedZone mocks base method
+func (m *MockClient) DeleteHostedZone(arg0 *route53.DeleteHostedZoneInput) (*route53.DeleteHostedZoneOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteHostedZone", arg0)
+	ret0, _ := ret[0].(*route53.DeleteHostedZoneOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteHostedZone indicates an expected call of DeleteHostedZone
+func (mr *MockClientMockRecorder) DeleteHostedZone(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHostedZone", reflect.TypeOf((*MockClient)(nil).DeleteHostedZone), arg0)
+}
+
+// ListResourceRecordSets mocks base method
+func (m *MockClient) ListResourceRecordSets(arg0 *route53.ListResourceRecordSetsInput) (*route53.ListResourceRecordSetsOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListResourceRecordSets", arg0)
+	ret0, _ := ret[0].(*route53.ListResourceRecordSetsOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListResourceRecordSets indicates an expected call of ListResourceRecordSets
+func (mr *MockClientMockRecorder) ListResourceRecordSets(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListResourceRecordSets", reflect.TypeOf((*MockClient)(nil).ListResourceRecordSets), arg0)
+}
+
+// ChangeResourceRecordSets mocks base method
+func (m *MockClient) ChangeResourceRecordSets(arg0 *route53.ChangeResourceRecordSetsInput) (*route53.ChangeResourceRecordSetsOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ChangeResourceRecordSets", arg0)
+	ret0, _ := ret[0].(*route53.ChangeResourceRecordSetsOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ChangeResourceRecordSets indicates an expected call of ChangeResourceRecordSets
+func (mr *MockClientMockRecorder) ChangeResourceRecordSets(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChangeResourceRecordSets", reflect.TypeOf((*MockClient)(nil).ChangeResourceRecordSets), arg0)
 }
