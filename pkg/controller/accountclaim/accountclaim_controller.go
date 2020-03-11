@@ -18,7 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -130,7 +129,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		if contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
 			// Only do AWS cleanup and account reset if accountLink is not empty
 			// We will not attempt AWS cleanup if the account is BYOC since we're not going to reuse these accounts
-			if accountClaim.Spec.AccountLink != "" && accountClaim.Spec.BYOC == false {
+			if accountClaim.Spec.AccountLink != "" {
 				err := r.finalizeAccountClaim(reqLogger, accountClaim)
 				if err != nil {
 					// If the finalize/cleanup process fails for an account we don't want to return
@@ -193,11 +192,6 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			newAccount := utils.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
 			populateBYOCSpec(newAccount, accountClaim)
 			utils.AddFinalizer(newAccount, "finalizer.aws.managed.openshift.io")
-
-			// Set AccountClaim instance as the owner and controller
-			if err := controllerutil.SetControllerReference(accountClaim, newAccount, r.scheme); err != nil {
-				return reconcile.Result{}, err
-			}
 
 			// Create the new account
 			err = r.client.Create(context.TODO(), newAccount)
