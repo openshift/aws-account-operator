@@ -31,14 +31,6 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		return err
 	}
 
-	if reusedAccount.Spec.BYOC == true {
-		err := r.client.Delete(context.TODO(), reusedAccount)
-		if err != nil {
-			reqLogger.Error(err, "Failed to delete BYOC account from accountclaim cleanup")
-		}
-		return nil
-	}
-
 	// Perform account clean up in AWS
 	err = r.cleanUpAwsAccount(reqLogger, accountClaim, reusedAccount)
 	if err != nil {
