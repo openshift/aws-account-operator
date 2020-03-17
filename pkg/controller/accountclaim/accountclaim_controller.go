@@ -28,6 +28,7 @@ import (
 const (
 	AccountClaimed          = "AccountClaimed"
 	AccountUnclaimed        = "AccountUnclaimed"
+	BYOCAccountFailedClaim  = "BYOCAccountFailed"
 	awsCredsUserName        = "aws_user_name"
 	awsCredsAccessKeyId     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
@@ -217,30 +218,29 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			return reconcile.Result{}, err
 		}
 
-		// Check account status requeue if we are not ready
 		if byocAccount.Status.State != string(awsv1alpha1.AccountReady) {
+			if byocAccount.Status.State == string(awsv1alpha1.AccountFailed) {
+				accountClaim.Status.State = awsv1alpha1.ClaimStatusError
+				message := "BYOC account failed"
+				accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
+					accountClaim.Status.Conditions,
+					awsv1alpha1.BYOCAccountClaimFailed,
+					corev1.ConditionTrue,
+					BYOCAccountFailedClaim,
+					message,
+					controllerutils.UpdateConditionNever)
+				// Update the status on AccountClaim
+				return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
+			}
 			waitMsg := fmt.Sprintf("%s is not Ready yet requing in %d seconds", byocAccount.Name, waitPeriod)
 			reqLogger.Info(waitMsg)
 			return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
+
 		}
 
 		if byocAccount.Status.State == string(awsv1alpha1.AccountReady) && accountClaim.Status.State != awsv1alpha1.ClaimStatusReady {
 			accountClaim.Status.State = awsv1alpha1.ClaimStatusReady
 			message := "BYOC account ready"
-			accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
-				accountClaim.Status.Conditions,
-				awsv1alpha1.AccountClaimed,
-				corev1.ConditionTrue,
-				AccountClaimed,
-				message,
-				controllerutils.UpdateConditionNever)
-			// Update the status on AccountClaim
-			return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
-		}
-
-		if byocAccount.Status.State == string(awsv1alpha1.AccountFailed) {
-			accountClaim.Status.State = awsv1alpha1.ClaimStatusError
-			message := "BYOC account errored"
 			accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
 				accountClaim.Status.Conditions,
 				awsv1alpha1.AccountClaimed,
