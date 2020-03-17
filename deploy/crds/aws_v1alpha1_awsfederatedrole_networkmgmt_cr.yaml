@@ -34,7 +34,6 @@ spec:
           - "ec2:DescribeRouteTables"
           - "ec2:CreateTags"
           - "ec2:CreateRoute"
-          - "support:*"
           - "directconnect:*"
         resource: 
           - "*"
