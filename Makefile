@@ -78,8 +78,10 @@ create-awsfederatedaccountaccess: check-aws-account-id-env
 
 .PHONY: test-switch-role
 test-switch-role:
+	# Retrieve role UID
+	$(eval UID=$(shell oc get awsfederatedaccountaccesses.aws.managed.openshift.io -n aws-account-operator test-federated-user -o=json |jq -r .metadata.labels.uid))
 	# Test Assume role
-	aws sts assume-role --role-arn arn:aws:iam::${OSD_STAGING_1_AWS_ACCOUNT_ID}:role/read-only --role-session-name RedHatTest --profile osd-staging-2
+	aws sts assume-role --role-arn arn:aws:iam::${OSD_STAGING_1_AWS_ACCOUNT_ID}:role/read-only-$(UID) --role-session-name RedHatTest --profile osd-staging-2
 
 # Delete awsFederatedAccountAccess
 # This uses a AWS Account ID from your environment
