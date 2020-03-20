@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/support"
 	"github.com/go-logr/logr"
 
+	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
@@ -50,11 +51,11 @@ func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client
 		if aerr, ok := caseErr.(awserr.Error); ok {
 			switch aerr.Code() {
 			case support.ErrCodeCaseCreationLimitExceeded:
-				returnErr = ErrAwsCaseCreationLimitExceeded
+				returnErr = v1alpha1.ErrAwsCaseCreationLimitExceeded
 			case support.ErrCodeInternalServerError:
-				returnErr = ErrAwsInternalFailure
+				returnErr = v1alpha1.ErrAwsInternalFailure
 			default:
-				returnErr = ErrAwsFailedCreateSupportCase
+				returnErr = v1alpha1.ErrAwsFailedCreateSupportCase
 			}
 
 			controllerutils.LogAwsError(reqLogger, "New AWS Error while creating case", returnErr, caseErr)
@@ -82,11 +83,11 @@ func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.
 		if aerr, ok := caseErr.(awserr.Error); ok {
 			switch aerr.Code() {
 			case support.ErrCodeCaseIdNotFound:
-				returnErr = ErrAwsSupportCaseIDNotFound
+				returnErr = v1alpha1.ErrAwsSupportCaseIDNotFound
 			case support.ErrCodeInternalServerError:
-				returnErr = ErrAwsInternalFailure
+				returnErr = v1alpha1.ErrAwsInternalFailure
 			default:
-				returnErr = ErrAwsFailedDescribeSupportCase
+				returnErr = v1alpha1.ErrAwsFailedDescribeSupportCase
 			}
 			controllerutils.LogAwsError(reqLogger, "New AWS Error while checking case resolution", returnErr, caseErr)
 		}

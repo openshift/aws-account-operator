@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
+	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
@@ -184,7 +185,7 @@ func CreateEC2Instance(reqLogger logr.Logger, client awsclient.Client, ami strin
 					return timeoutInstanceID, runErr
 				}
 			}
-			return timeoutInstanceID, ErrFailedAWSTypecast
+			return timeoutInstanceID, v1alpha1.ErrFailedAWSTypecast
 		}
 
 		// No error was found, instance is running, return instance id
@@ -192,7 +193,7 @@ func CreateEC2Instance(reqLogger logr.Logger, client awsclient.Client, ami strin
 	}
 
 	// Timeout occurred, return instance id and timeout error
-	return timeoutInstanceID, ErrCreateEC2Instance
+	return timeoutInstanceID, v1alpha1.ErrCreateEC2Instance
 }
 
 // DescribeEC2Instances returns the InstanceState code
