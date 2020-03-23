@@ -36,12 +36,9 @@ var roleID = ""
 
 // BYOC Accounts are determined by having no state set OR not being claimed
 // Returns true if either are true AND Spec.BYOC is true
-func accountIsNewBYOC(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Spec.BYOC {
-		if !accountHasState(currentAcctInstance) {
-			return true
-		}
-		if !accountIsClaimed(currentAcctInstance) {
+func newBYOCAccount(currentAcctInstance *awsv1alpha1.Account) bool {
+	if accountIsBYOC(currentAcctInstance) {
+		if !accountHasState(currentAcctInstance) || !accountIsClaimed(currentAcctInstance) {
 			return true
 		}
 	}
@@ -50,13 +47,68 @@ func accountIsNewBYOC(currentAcctInstance *awsv1alpha1.Account) bool {
 
 // Checks whether or not the current account instance is claimed, and does so if not
 func claimBYOCAccount(r *ReconcileAccount, reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) error {
-	if currentAcctInstance.Status.Claimed != true {
+	if !accountIsClaimed(currentAcctInstance) {
 		reqLogger.Info("Marking BYOC account claimed")
 		currentAcctInstance.Status.Claimed = true
 		return r.statusUpdate(reqLogger, currentAcctInstance)
 	}
 
 	return nil
+}
+
+// Checks whether or not the access keys need to be rotated based on state, and if so, rotates them
+func (r *ReconcileAccount) initializeCredentials(reqLogger logr.Logger, awsSetupClient, client awsclient.Client, currentAcctInstance *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim, adminAccessArn string) (string, error) {
+
+	err := r.byocRotateAccessKeys(reqLogger, client, accountClaim)
+	if err != nil {
+		return "", err
+	}
+	roleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn)
+	if err != nil {
+		return roleID, err
+	}
+
+	return roleID, err
+}
+
+func (r *ReconcileAccount) initializeNewBYOCAccount(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, adminAccessArn string) (string, error) {
+	client, accountClaim, err := r.getBYOCClient(currentAcctInstance)
+	if err != nil && accountClaim != nil {
+		r.accountClaimBYOCError(reqLogger, accountClaim, err)
+		return "", err
+	}
+
+	err = validateBYOCClaim(accountClaim)
+	if err != nil {
+		r.accountClaimBYOCError(reqLogger, accountClaim, err)
+		return "", err
+	}
+
+	err = claimBYOCAccount(r, reqLogger, currentAcctInstance)
+	if err != nil {
+		r.accountClaimBYOCError(reqLogger, accountClaim, err)
+		return "", err
+	}
+
+	// Create access key and role for BYOC account
+	var roleID string
+	if !accountHasState(currentAcctInstance) {
+		roleID, err = r.initializeCredentials(reqLogger, awsSetupClient, client, currentAcctInstance, accountClaim, adminAccessArn)
+		if err != nil {
+			r.accountClaimBYOCError(reqLogger, accountClaim, err)
+			return "", err
+		}
+
+		reqLogger.Info("Updating BYOC to creating")
+		currentAcctInstance.Status.State = AccountCreating
+		SetAccountStatus(reqLogger, currentAcctInstance, "BYOC Account Creating", awsv1alpha1.AccountCreating, AccountCreating)
+		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
+		if err != nil {
+			return roleID, err
+		}
+	}
+
+	return roleID, nil
 }
 
 // Create role for BYOC IAM user to assume

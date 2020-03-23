@@ -227,7 +227,7 @@ var testNotNewBYOCAccountInstances = []*awsv1alpha1.Account{
 
 func TestNewBYOCAccount(t *testing.T) {
 	for index, acct := range testNewBYOCAccountInstances {
-		new := accountIsNewBYOC(acct)
+		new := newBYOCAccount(acct)
 		expected := true
 		if new != expected {
 			t.Error(
@@ -241,7 +241,7 @@ func TestNewBYOCAccount(t *testing.T) {
 
 func TestNotNewBYOCAccount(t *testing.T) {
 	for index, acct := range testNotNewBYOCAccountInstances {
-		new := accountIsNewBYOC(acct)
+		new := newBYOCAccount(acct)
 		expected := false
 		if new != expected {
 			t.Error(
