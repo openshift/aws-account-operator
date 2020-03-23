@@ -184,3 +184,33 @@ list-s3-bucket:
 # Test reuse
 .PHONY: test-reuse
 test-reuse: check-aws-account-id-env create-account create-accountclaim-namespace create-accountclaim create-s3-bucket delete-accountclaim delete-accountclaim-namespace list-s3-bucket delete-account
+
+# Deploy the operator secrets, CRDs and namesapce.
+.PHONY: deploy-aws-account-operator-credentials
+deploy-aws-account-operator-credentials:
+# Base64 Encode the AWS Credentials
+	$(eval ID=$(shell echo -n ${OPERATOR_ACCESS_KEY_ID} | base64 ))
+	$(eval KEY=$(shell echo -n ${OPERATOR_SECRET_ACCESS_KEY} | base64))
+
+.PHONY: deploy-aws-account-operator
+deploy-aws-account-operator:
+# Create aws-account-operator namespace
+	@oc get namespace ${NAMESPACE} || oc new-project ${NAMESPACE}
+# Create the aws-account-operator-credentials secret
+	@oc process -p OPERATOR_ACCESS_KEY_ID=${ID} -p OPERATOR_SECRET_ACCESS_KEY=${KEY} -f hack/templates/aws_v1alpha1_aws_account_operator_credentials.tmpl | oc apply -f -
+# Create aws-account-operator CRDs
+	@ls deploy/crds/*crd.yaml | xargs -L1 oc apply -f
+# Create zero size account pool
+	@oc apply -f hack/files/aws_v1alpha1_zero_size_accountpool.yaml
+
+.PHONY: deploy
+deploy: check-aws-credentials deploy-aws-account-operator-credentials deploy-aws-account-operator
+
+.PHONY: .check-aws-credentials
+check-aws-credentials:
+ifndef OPERATOR_ACCESS_KEY_ID
+	$(error OPERATOR_ACCESS_KEY_ID is undefined)
+endif
+ifndef OPERATOR_SECRET_ACCESS_KEY
+	$(error OPERATOR_SECRET_ACCESS_KEY is undefined)
+endif
