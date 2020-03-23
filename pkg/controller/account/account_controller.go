@@ -153,16 +153,13 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// Remove finalizer if account CR is BYOC as the accountclaim controller will delete the account CR
 	// when the accountClaim CR is deleted as its set as the owner reference
-	if currentAcctInstance.DeletionTimestamp != nil && currentAcctInstance.Spec.BYOC {
-		if utils.Contains(currentAcctInstance.GetFinalizers(), awsv1alpha1.AccountFinalizer) {
-			// Remove finalizer to unlock deletion of the accountClaim
-			err = r.removeFinalizer(reqLogger, currentAcctInstance, awsv1alpha1.AccountFinalizer)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
-			return reconcile.Result{}, nil
+	if accountIsBYOCPendingDeletionWithFinalizer(currentAcctInstance) {
+		// Remove finalizer to unlock deletion of the accountClaim
+		err = r.removeFinalizer(reqLogger, currentAcctInstance, awsv1alpha1.AccountFinalizer)
+		if err != nil {
+			return reconcile.Result{}, err
 		}
+		return reconcile.Result{}, nil
 	}
 
 	// We expect this secret to exist in the same namespace Account CR's are created
@@ -179,68 +176,65 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	var byocRoleID string
 
 	// If the account is BYOC, needs some different set up
-	if currentAcctInstance.Spec.BYOC {
+	if accountIsNewBYOC(currentAcctInstance) {
 		reqLogger.Info("BYOC account")
-		if currentAcctInstance.Status.State == "" || currentAcctInstance.Status.Claimed != true {
-			// Create client for BYOC account
-			byocAWSClient, accountClaim, err := r.getBYOCClient(currentAcctInstance)
-			if err != nil {
-				if accountClaim != nil {
-					r.accountClaimBYOCError(reqLogger, accountClaim, err)
-				}
-				return reconcile.Result{}, err
+		// Create client for BYOC account
+		byocAWSClient, accountClaim, err := r.getBYOCClient(currentAcctInstance)
+		if err != nil {
+			if accountClaim != nil {
+				r.accountClaimBYOCError(reqLogger, accountClaim, err)
 			}
+			return reconcile.Result{}, err
+		}
 
-			err = validateBYOCClaim(accountClaim)
+		err = validateBYOCClaim(accountClaim)
+		if err != nil {
+			r.accountClaimBYOCError(reqLogger, accountClaim, err)
+			return reconcile.Result{}, err
+		}
+
+		// Ensure the account is marked as claimed
+		if !accountIsClaimed(currentAcctInstance) {
+			reqLogger.Info("Marking BYOC account claimed")
+			currentAcctInstance.Status.Claimed = true
+			return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
+		}
+
+		// Create access key and role for BYOC account
+		if !accountHasState(currentAcctInstance) {
+			// Rotate access keys
+			err = r.byocRotateAccessKeys(reqLogger, byocAWSClient, accountClaim)
 			if err != nil {
+				reqLogger.Info("Failed to rotate BYOC access keys")
 				r.accountClaimBYOCError(reqLogger, accountClaim, err)
 				return reconcile.Result{}, err
 			}
 
-			// Ensure the account is marked as claimed
-			if currentAcctInstance.Status.Claimed != true {
-				reqLogger.Info("Marking BYOC account claimed")
-				currentAcctInstance.Status.Claimed = true
-				return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
+			// Create BYOC role to assume
+			byocRoleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, adminAccessArn)
+			if err != nil {
+				reqLogger.Error(err, "Failed to create BYOC role")
+				r.accountClaimBYOCError(reqLogger, accountClaim, err)
+				return reconcile.Result{}, err
 			}
 
-			// Create access key and role for BYOC account
-			if currentAcctInstance.Status.State == "" {
-				// Rotate access keys
-				err = r.byocRotateAccessKeys(reqLogger, byocAWSClient, accountClaim)
-				if err != nil {
-					reqLogger.Info("Failed to rotate BYOC access keys")
-					r.accountClaimBYOCError(reqLogger, accountClaim, err)
-					return reconcile.Result{}, err
-				}
-
-				// Create BYOC role to assume
-				byocRoleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, adminAccessArn)
-				if err != nil {
-					reqLogger.Error(err, "Failed to create BYOC role")
-					r.accountClaimBYOCError(reqLogger, accountClaim, err)
-					return reconcile.Result{}, err
-				}
-
-				// Update the account CR to creating
-				reqLogger.Info("Updating BYOC to creating")
-				currentAcctInstance.Status.State = AccountCreating
-				SetAccountStatus(reqLogger, currentAcctInstance, "BYOC Account Creating", awsv1alpha1.AccountCreating, AccountCreating)
-				err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
-				if err != nil {
-					return reconcile.Result{}, err
-				}
+			// Update the account CR to creating
+			reqLogger.Info("Updating BYOC to creating")
+			currentAcctInstance.Status.State = AccountCreating
+			SetAccountStatus(reqLogger, currentAcctInstance, "BYOC Account Creating", awsv1alpha1.AccountCreating, AccountCreating)
+			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err
 			}
 		}
 	} else {
 		// Normal account creation
 
 		// Test PendingVerification state creating support case and checking for case status
-		if currentAcctInstance.Status.State == AccountPendingVerification {
-			// reqLogger.Info("Account in PendingVerification state", "AccountID", currentAcctInstance.Spec.AwsAccountID)
+		if accountIsPendingVerification(currentAcctInstance) {
 
 			// If the supportCaseID is blank and Account State = PendingVerification, create a case
-			if currentAcctInstance.Status.SupportCaseID == "" {
+			if !accountHasSupportCaseID(currentAcctInstance) {
 				switch utils.DetectDevMode {
 				case "local":
 					log.Info("Running Locally, Skipping Support Case Creation.")
@@ -305,27 +299,21 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Update account Status.Claimed to true if the account is ready and the claim link is not empty
-		if currentAcctInstance.Status.State == AccountReady && currentAcctInstance.Spec.ClaimLink != "" {
-			if currentAcctInstance.Status.Claimed != true {
-				currentAcctInstance.Status.Claimed = true
-				return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
-			}
+		if accountIsReadyUnclaimedAndHasClaimLink(currentAcctInstance) {
+			currentAcctInstance.Status.Claimed = true
+			return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
 		}
 
 		// see if in creating for longer then default wait time
-		now := time.Now()
-		diff := now.Sub(currentAcctInstance.ObjectMeta.CreationTimestamp.Time)
-		if currentAcctInstance.Status.State == AccountCreating && diff > createPendTime {
+		if accountCreatingTooLong(currentAcctInstance) {
 			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Creation pending for longer then %d minutes", utils.WaitTime))
 		}
 
-		if (currentAcctInstance.Status.State == "") && (currentAcctInstance.Status.Claimed == false) {
-
+		if accountIsUnclaimedAndHasNoState(currentAcctInstance) {
 			// Initialize the awsAccountID var here since we only use it now inside this condition
 			var awsAccountID string
 
-			if currentAcctInstance.Spec.AwsAccountID == "" {
-
+			if !accountHasAwsAccountID(currentAcctInstance) {
 				// before doing anything make sure we are not over the limit if we are just error
 				if totalaccountwatcher.TotalAccountWatcher.Total >= AwsLimit {
 					reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached", "Account Total", totalaccountwatcher.TotalAccountWatcher.Total)
@@ -373,13 +361,13 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	// Account init for both BYOC and Non-BYOC
-	if (currentAcctInstance.Spec.BYOC && currentAcctInstance.Status.State != AccountReady) || ((currentAcctInstance.Status.State == AccountCreating) && (currentAcctInstance.Status.Claimed == false)) {
-		reqLogger.Info(fmt.Sprintf("Initalizing account: %s AWS ID: %s", currentAcctInstance.Name, currentAcctInstance.Spec.AwsAccountID))
+	if accountReadyForInitialization(currentAcctInstance) {
 
+		reqLogger.Info(fmt.Sprintf("Initalizing account: %s AWS ID: %s", currentAcctInstance.Name, currentAcctInstance.Spec.AwsAccountID))
 		//var awsAssumedRoleClient awsclient.Client
 		var roleToAssume string
 
-		if currentAcctInstance.Spec.BYOC {
+		if accountIsBYOC(currentAcctInstance) {
 			roleToAssume = byocRole
 		} else {
 			roleToAssume = awsv1alpha1.AccountOperatorIAMRole
@@ -485,7 +473,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		if currentAcctInstance.Spec.BYOC {
+		if accountIsBYOC(currentAcctInstance) {
 			SetAccountStatus(reqLogger, currentAcctInstance, "BYOC Account Ready", awsv1alpha1.AccountReady, AccountReady)
 
 		} else {
@@ -506,21 +494,20 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// If Account CR has `stats.rotateCredentials: true` we'll rotate the temporary credentials
 	// the secretWatcher is what updates this status field by comparing the STS credentials secret `creationTimestamp`
-	if currentAcctInstance.Status.RotateCredentials == true {
+	if accountNeedsCredentialsRotated(currentAcctInstance) {
 		reqLogger.Info(fmt.Sprintf("rotating CLI credentials for %s", currentAcctInstance.Name))
 		err = r.RotateCredentials(reqLogger, awsSetupClient, currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 	}
-	if currentAcctInstance.Status.RotateConsoleCredentials == true {
+	if accountNeedsConsoleCredentialsRotated(currentAcctInstance) {
 		reqLogger.Info(fmt.Sprintf("rotating console URL credentials for %s", currentAcctInstance.Name))
 		err = r.RotateConsoleCredentials(reqLogger, awsSetupClient, currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 	}
-
 	return reconcile.Result{}, nil
 }
 
@@ -739,4 +726,164 @@ func (r *ReconcileAccount) statusUpdate(reqLogger logr.Logger, account *awsv1alp
 func matchSubstring(roleID, role string) (bool, error) {
 	matched, err := regexp.MatchString(roleID, role)
 	return matched, err
+}
+
+// Returns true of there is no state set
+func accountHasState(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Status.State != "" {
+		return true
+	}
+	return false
+}
+
+// Returns true of there is no Status.SupportCaseID set
+func accountHasSupportCaseID(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Status.SupportCaseID != "" {
+		return true
+	}
+	return false
+}
+
+func accountIsPendingVerification(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Status.State == AccountPendingVerification {
+		return true
+	}
+	return false
+}
+
+func accountIsReady(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Status.State == AccountReady {
+		return true
+	}
+	return false
+}
+
+func accountIsCreating(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Status.State == AccountCreating {
+		return true
+	}
+
+	return false
+}
+
+func accountHasClaimLink(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Spec.ClaimLink != "" {
+		return true
+	}
+	return false
+}
+
+func accountCreatingTooLong(currentAcctInstance *awsv1alpha1.Account) bool {
+	if accountIsCreating(currentAcctInstance) && time.Now().Sub(currentAcctInstance.GetCreationTimestamp().Time) > createPendTime {
+		return true
+	}
+	return false
+}
+
+// Returns true if account Status.Claimed is false
+func accountIsClaimed(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Status.Claimed {
+		return true
+	}
+	return false
+}
+
+// Returns true if a DeletionTimestamp has been set
+func accountIsPendingDeletion(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.DeletionTimestamp != nil {
+		return true
+	}
+	return false
+}
+
+// Returns true of Spec.BYOC is true, ie: account is a BYOC account
+func accountIsBYOC(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Spec.BYOC == true {
+		return true
+	}
+	return false
+}
+
+// Returns true if the awsv1alpha1 finalizer is set on the account
+func accountHasAwsv1alpha1Finalizer(currentAcctInstance *awsv1alpha1.Account) bool {
+	if utils.Contains(currentAcctInstance.GetFinalizers(), awsv1alpha1.AccountFinalizer) {
+		return true
+	}
+	return false
+}
+
+// Returns true if awsAccountID is set
+func accountHasAwsAccountID(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Spec.AwsAccountID != "" {
+		return true
+	}
+	return false
+}
+
+// Returns true if Status.RotateCredentials is true
+func accountNeedsCredentialsRotated(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Status.RotateCredentials {
+		return true
+	}
+	return false
+}
+
+// Returns true if Status.RotateConsoleCredentials is true
+func accountNeedsConsoleCredentialsRotated(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Status.RotateConsoleCredentials {
+		return true
+	}
+	return false
+}
+func accountIsReadyUnclaimedAndHasClaimLink(currentAcctInstance *awsv1alpha1.Account) bool {
+	if accountIsReady(currentAcctInstance) && accountHasClaimLink(currentAcctInstance) && !accountIsClaimed(currentAcctInstance) {
+		return true
+	}
+	return false
+}
+
+// Returns true if account is a BYOC Account, has been marked for deletion (deletion
+// timestamp set), and has a finalizer set.
+func accountIsBYOCPendingDeletionWithFinalizer(currentAcctInstance *awsv1alpha1.Account) bool {
+	if accountIsPendingDeletion(currentAcctInstance) && accountIsBYOC(currentAcctInstance) && accountHasAwsv1alpha1Finalizer(currentAcctInstance) {
+		return true
+	}
+	return false
+}
+
+// Returns true if account is BYOC and the state is not AccountReady
+func accountIsBYOCAndNotReady(currentAcctInstance *awsv1alpha1.Account) bool {
+	if accountIsBYOC(currentAcctInstance) && !accountIsReady(currentAcctInstance) {
+		return true
+	}
+	return false
+}
+
+// Returns true if account is a BYOC Account and the state is not ready OR
+// accout state is creating, and has not been claimed
+func accountReadyForInitialization(currentAcctInstance *awsv1alpha1.Account) bool {
+	if accountIsBYOCAndNotReady(currentAcctInstance) || accountIsUnclaimedAndIsCreating(currentAcctInstance) {
+		return true
+	}
+	return false
+}
+
+// Returns true if account has not set state and has not been claimed
+func accountIsUnclaimedAndHasNoState(currentAcctInstance *awsv1alpha1.Account) bool {
+	if !accountHasState(currentAcctInstance) && !accountIsClaimed(currentAcctInstance) {
+		return true
+	}
+	return false
+}
+
+// Return true if account state is AccountCreeating and has not been claimed
+func accountIsUnclaimedAndIsCreating(currentAcctInstance *awsv1alpha1.Account) bool {
+	if accountIsCreating(currentAcctInstance) && !accountIsClaimed(currentAcctInstance) {
+		return true
+	}
+	return false
+}
+
+type accountInstance interface {
+	accountIsUnclaimedAndIsCreating() bool
 }

@@ -34,6 +34,31 @@ var ErrBYOCSecretRefMissing = errors.New("BYOCSecretRefMissing")
 // Placeholder for the unique role id created by createRole
 var roleID = ""
 
+// BYOC Accounts are determined by having no state set OR not being claimed
+// Returns true if either are true AND Spec.BYOC is true
+func accountIsNewBYOC(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Spec.BYOC {
+		if !accountHasState(currentAcctInstance) {
+			return true
+		}
+		if !accountIsClaimed(currentAcctInstance) {
+			return true
+		}
+	}
+	return false
+}
+
+// Checks whether or not the current account instance is claimed, and does so if not
+func claimBYOCAccount(r *ReconcileAccount, reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) error {
+	if currentAcctInstance.Status.Claimed != true {
+		reqLogger.Info("Marking BYOC account claimed")
+		currentAcctInstance.Status.Claimed = true
+		return r.statusUpdate(reqLogger, currentAcctInstance)
+	}
+
+	return nil
+}
+
 // Create role for BYOC IAM user to assume
 func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.Client, byocAWSClient awsclient.Client, policyArn string) (roleID string, err error) {
 	getUserOutput, err := awsSetupClient.GetUser(&iam.GetUserInput{})
