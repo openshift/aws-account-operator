@@ -78,7 +78,6 @@ spec:
           - "route53resolver:GetResolverRuleAssociation"
           - "route53resolver:ListResolverRuleAssociations"
           - "route53resolver:ListResolverRules"
-          - "support:*"
           - "directconnect:*"
         resource: 
           - "*"
