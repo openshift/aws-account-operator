@@ -19,15 +19,22 @@ const (
 	WaitTime  = 25
 )
 
-func MarshalIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
-	// The JSON tags as captials due to requirements for the policydoc
-	type awsStatement struct {
-		Effect    string                 `json:"Effect"`
-		Action    []string               `json:"Action"`
-		Resource  []string               `json:"Resource,omitempty"`
-		Principal *awsv1alpha1.Principal `json:"Principal,omitempty"`
-	}
+// The JSON tags as captials due to requirements for the policydoc
+type awsStatement struct {
+	Effect    string                 `json:"Effect"`
+	Action    []string               `json:"Action"`
+	Resource  []string               `json:"Resource,omitempty"`
+	Condition *awsv1alpha1.Condition `json:"Condition,omitempty"`
+	Principal *awsv1alpha1.Principal `json:"Principal,omitempty"`
+}
 
+type awsPolicy struct {
+	Version   string
+	Statement []awsStatement
+}
+
+// MarshalIAMPolicy converts a role CR into a JSON policy that is acceptable to AWS
+func MarshalIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
 	statements := []awsStatement{}
 
 	for _, statement := range role.Spec.AWSCustomPolicy.Statements {
@@ -35,10 +42,7 @@ func MarshalIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
 	}
 
 	// Create a aws policydoc formated struct
-	policyDoc := struct {
-		Version   string
-		Statement []awsStatement
-	}{
+	policyDoc := awsPolicy{
 		Version:   "2012-10-17",
 		Statement: statements,
 	}

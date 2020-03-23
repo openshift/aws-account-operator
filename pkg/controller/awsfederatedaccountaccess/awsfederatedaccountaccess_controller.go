@@ -294,6 +294,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createIAMPolicy(awsClient awsclient
 		Effect    string                 `json:"Effect"`
 		Action    []string               `json:"Action"`
 		Resource  []string               `json:"Resource,omitempty"`
+		Condition *awsv1alpha1.Condition `json:"Condition,omitempty"`
 		Principal *awsv1alpha1.Principal `json:"Principal,omitempty"`
 	}
 
