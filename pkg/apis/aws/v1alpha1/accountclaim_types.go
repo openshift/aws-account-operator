@@ -57,6 +57,8 @@ type AccountClaimConditionType string
 const (
 	// AccountClaimed is set when an Account is claimed
 	AccountClaimed AccountClaimConditionType = "Claimed"
+	// BYOCAccountClaimFailed is set when a BYOC Account Fails
+	BYOCAccountClaimFailed AccountClaimConditionType = "BYOCAccountClaimFailed"
 	// AccountUnclaimed is set when an Account is not claimed
 	AccountUnclaimed AccountClaimConditionType = "Unclaimed"
 	// BYOCAWSAccountInUse is set when a BYOC AWS Account is in use
