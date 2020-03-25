@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
@@ -521,7 +522,34 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 
-	return reconcile.Result{}, nil
+	requeueTime := getRequeueLength(time.Now().UnixNano())
+	requeueDuration, err := time.ParseDuration(fmt.Sprintf("%dm", requeueTime))
+	if err != nil {
+		reqLogger.Info("There was an error randomizing the requeue length")
+		requeueDuration = time.Minute * 55
+	}
+
+	return reconcile.Result{RequeueAfter: requeueDuration}, nil
+}
+
+// Gets a random number between the lower limit and upper limit so that we can requeue the credentials after that time.
+func getRequeueLength(seed int64) int64 {
+	// The lower limit of how long to requeue after. We want this to be long enough to give a
+	// random distribution of the times however we don't want it to be so early we're refreshing
+	// a given set of credentials too soon that it's just a waste of compute
+	var requeueLowerLimit int64 = 30
+	// The upper limit of how long to requeue after.  We want this to be before the credentials
+	// expire but have a buffer time in case there's a queue that we have to work through.
+	var requeueUpperLimit int64 = 55
+
+	rand.Seed(seed)
+	requeueLength := rand.Int63n(requeueUpperLimit)
+
+	for requeueLength <= requeueLowerLimit || requeueLength >= requeueUpperLimit {
+		requeueLength = rand.Int63n(requeueUpperLimit)
+	}
+
+	return requeueLength
 }
 
 // BuildAccount take all parameters required and uses those to make an aws call to CreateAccount. It returns an account ID and and error
