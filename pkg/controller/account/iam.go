@@ -101,8 +101,8 @@ func getFederationToken(reqLogger logr.Logger, awsclient awsclient.Client, Durat
 
 	if GetFederationTokenOutput == nil {
 
-		reqLogger.Error(ErrFederationTokenOutputNil, fmt.Sprintf("Federation Token Output: %+v", GetFederationTokenOutput))
-		return GetFederationTokenOutput, ErrFederationTokenOutputNil
+		reqLogger.Error(awsv1alpha1.ErrFederationTokenOutputNil, fmt.Sprintf("Federation Token Output: %+v", GetFederationTokenOutput))
+		return GetFederationTokenOutput, awsv1alpha1.ErrFederationTokenOutputNil
 
 	}
 
