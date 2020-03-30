@@ -116,7 +116,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	// Add finalizer to the CR in case it's not present (e.g. old accounts)
-	if !contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
+	if !utils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
 		err := r.addFinalizer(reqLogger, accountClaim)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -127,7 +127,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	// Check if accountClaim is being deleted, this will trigger the account reuse workflow
 
 	if accountClaim.DeletionTimestamp != nil {
-		if contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
+		if utils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
 			// Only do AWS cleanup and account reset if accountLink is not empty
 			// We will not attempt AWS cleanup if the account is BYOC since we're not going to reuse these accounts
 			if accountClaim.Spec.AccountLink != "" {
@@ -553,48 +553,4 @@ func populateBYOCSpec(account *awsv1alpha1.Account, accountClaim *awsv1alpha1.Ac
 	account.Spec.ClaimLink = accountClaim.ObjectMeta.Name
 	account.Spec.ClaimLinkNamespace = accountClaim.ObjectMeta.Namespace
 	account.Spec.LegalEntity = accountClaim.Spec.LegalEntity
-}
-
-func (r *ReconcileAccountClaim) addFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
-	reqLogger.Info("Adding Finalizer for the AccountClaim")
-	accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), accountClaimFinalizer))
-
-	// Update CR
-	err := r.client.Update(context.TODO(), accountClaim)
-	if err != nil {
-		reqLogger.Error(err, "Failed to update AccountClaim with finalizer")
-		return err
-	}
-	return nil
-}
-
-func (r *ReconcileAccountClaim) removeFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, finalizerName string) error {
-	reqLogger.Info("Removing Finalizer for the AccountClaim")
-	accountClaim.SetFinalizers(remove(accountClaim.GetFinalizers(), finalizerName))
-
-	// Update CR
-	err := r.client.Update(context.TODO(), accountClaim)
-	if err != nil {
-		reqLogger.Error(err, "Failed to remove AccountClaim finalizer")
-		return err
-	}
-	return nil
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
-func remove(list []string, s string) []string {
-	for i, v := range list {
-		if v == s {
-			list = append(list[:i], list[i+1:]...)
-		}
-	}
-	return list
 }
