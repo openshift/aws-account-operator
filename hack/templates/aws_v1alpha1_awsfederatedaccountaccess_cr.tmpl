@@ -4,7 +4,7 @@ parameters:
 - name: AWS_IAM_ARN
 - name: AWS_FEDERATED_ROLE_NAME
 - name: IAM_USER_SECRET
-- name: NAMESPACE 
+- name: NAMESPACE
 metadata:
   name: test-federated-user-template
 objects:
@@ -17,7 +17,7 @@ objects:
     externalCustomerAWSIAMARN: "${AWS_IAM_ARN}"
     awsCustomerCredentialSecret:
         name: "${IAM_USER_SECRET}"
-        namespace: aws-account-operator 
+        namespace: aws-account-operator
     awsFederatedRole:
         name: "${AWS_FEDERATED_ROLE_NAME}"
-        namespace: aws-account-operator 
+        namespace: aws-account-operator

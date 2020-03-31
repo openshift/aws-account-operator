@@ -2,6 +2,7 @@ apiVersion: aws.managed.openshift.io/v1alpha1
 kind: AccountPool
 metadata:
   name: example-accountpool
+  namespace: aws-account-operator
 spec:
   # Add fields here
   poolSize: 1

@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Template
+parameters:
+- name: NAME 
+- name: NAMESPACE
+- name: CCS_ACCOUNT_ID 
+metadata:
+  name: test-aws-ccs-accountclaim-template
+objects:
+- apiVersion: aws.managed.openshift.io/v1alpha1
+  kind: AccountClaim
+  metadata:
+    name: ${NAME}
+    namespace: ${NAMESPACE}
+  spec:
+    accountLink: ""
+    aws:
+      regions:
+      - name: us-east-1
+    awsCredentialSecret:
+      name: aws
+      namespace: ${NAMESPACE} 
+      name: ${NAME}
+    byoc: true
+    byocAWSAccountID: ${CCS_ACCOUNT_ID}
+    byocSecretRef:
+      name: "byoc"
+      namespace: ${NAMESPACE} 
+    legalEntity:
+      id: "111111"
+      name: ${NAME}
