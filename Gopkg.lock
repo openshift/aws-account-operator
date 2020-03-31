@@ -78,6 +78,8 @@
     "service/iam/iamiface",
     "service/organizations",
     "service/organizations/organizationsiface",
+    "service/route53",
+    "service/route53/route53iface",
     "service/s3",
     "service/s3/s3iface",
     "service/s3/s3manager",
@@ -308,6 +310,20 @@
   version = "v0.5.1"
 
 [[projects]]
+  digest = "1:76efa3b55850d9caa14f8c0b3a951797f9bc2ffc283526073dcad1b06b6e02d3"
+  name = "github.com/hpcloud/tail"
+  packages = [
+    ".",
+    "ratelimiter",
+    "util",
+    "watch",
+    "winfile",
+  ]
+  pruneopts = "NT"
+  revision = "a30252cb686a21eb2d0b98132633053ec2f7f1e5"
+  version = "v1.0.0"
+
+[[projects]]
   digest = "1:aaa38889f11896ee3644d77e17dc7764cc47f5f3d3b488268df2af2b52541c5f"
   name = "github.com/imdario/mergo"
   packages = ["."]
@@ -381,6 +397,61 @@
   pruneopts = "NT"
   revision = "4b7aa43c6742a2c18fdef89dd197aaae7dac7ccd"
   version = "1.0.1"
+
+[[projects]]
+  digest = "1:048c7055e487eb0db9e76c00f60128ff212c893c348b982081ddd43fb889376f"
+  name = "github.com/onsi/ginkgo"
+  packages = [
+    ".",
+    "config",
+    "ginkgo",
+    "ginkgo/convert",
+    "ginkgo/interrupthandler",
+    "ginkgo/nodot",
+    "ginkgo/testrunner",
+    "ginkgo/testsuite",
+    "ginkgo/watch",
+    "internal/codelocation",
+    "internal/containernode",
+    "internal/failer",
+    "internal/leafnodes",
+    "internal/remote",
+    "internal/spec",
+    "internal/spec_iterator",
+    "internal/specrunner",
+    "internal/suite",
+    "internal/testingtproxy",
+    "internal/writer",
+    "reporters",
+    "reporters/stenographer",
+    "reporters/stenographer/support/go-colorable",
+    "reporters/stenographer/support/go-isatty",
+    "types",
+  ]
+  pruneopts = "NT"
+  revision = "40598150331533e3cd497f21dcce387dae84b561"
+  version = "v1.12.0"
+
+[[projects]]
+  digest = "1:5c9d22f555c67f95dd405c7fcba6878eb221012582389411e5fcfcf194695a30"
+  name = "github.com/onsi/gomega"
+  packages = [
+    ".",
+    "format",
+    "internal/assertion",
+    "internal/asyncassertion",
+    "internal/oraclematcher",
+    "internal/testingtsupport",
+    "matchers",
+    "matchers/support/goraph/bipartitegraph",
+    "matchers/support/goraph/edge",
+    "matchers/support/goraph/node",
+    "matchers/support/goraph/util",
+    "types",
+  ]
+  pruneopts = "NT"
+  revision = "6be6c439588487cd908a3a700795660c2a16dfec"
+  version = "v1.9.0"
 
 [[projects]]
   digest = "1:8bc8f43d2332d035857c92581df240f247c287629d5f60c751df609f9b6215c5"
@@ -582,6 +653,9 @@
   packages = [
     "context",
     "context/ctxhttp",
+    "html",
+    "html/atom",
+    "html/charset",
     "http/httpguts",
     "http2",
     "http2/hpack",
@@ -621,12 +695,24 @@
   packages = [
     "collate",
     "collate/build",
+    "encoding",
+    "encoding/charmap",
+    "encoding/htmlindex",
+    "encoding/internal",
+    "encoding/internal/identifier",
+    "encoding/japanese",
+    "encoding/korean",
+    "encoding/simplifiedchinese",
+    "encoding/traditionalchinese",
+    "encoding/unicode",
     "internal/colltab",
     "internal/gen",
     "internal/tag",
     "internal/triegen",
     "internal/ucd",
+    "internal/utf8internal",
     "language",
+    "runes",
     "secure/bidirule",
     "transform",
     "unicode/bidi",
@@ -669,6 +755,17 @@
   revision = "00c44ba9c14f88ffdd4fb5bfae57fe8dd6d6afb1"
 
 [[projects]]
+  branch = "master"
+  digest = "1:325a1b73817aa79fc85f10376ed41ea607f7dd7f6c6bfa46df6a28ef2857941f"
+  name = "golang.org/x/xerrors"
+  packages = [
+    ".",
+    "internal",
+  ]
+  pruneopts = "NT"
+  revision = "9bdfabe68543c54f90421aeb9a60ef8061b5b544"
+
+[[projects]]
   digest = "1:902ffa11f1d8c19c12b05cabffe69e1a16608ad03a8899ebcb9c6bde295660ae"
   name = "google.golang.org/appengine"
   packages = [
@@ -688,12 +785,29 @@
   version = "v1.4.0"
 
 [[projects]]
+  digest = "1:0914bf7efc3e3052163e92b859a89f3b407ad353d7c3b7f59a1bbb4fd05bb25d"
+  name = "gopkg.in/fsnotify.v1"
+  packages = ["."]
+  pruneopts = "NT"
+  revision = "45d7d09e39ef4ac08d493309fa031790c15bfe8a"
+  source = "https://github.com/fsnotify/fsnotify"
+  version = "v1.4.9"
+
+[[projects]]
   digest = "1:2d1fbdc6777e5408cabeb02bf336305e724b925ff4546ded0fa8715a7267922a"
   name = "gopkg.in/inf.v0"
   packages = ["."]
   pruneopts = "NT"
   revision = "d2d2541c53f18d2a059457998ce2876cc8e67cbf"
   version = "v0.9.1"
+
+[[projects]]
+  branch = "v1"
+  digest = "1:8fb1ccb16a6cfecbfdfeb84d8ea1cc7afa8f9ef16526bc2326f72d993e32cef1"
+  name = "gopkg.in/tomb.v1"
+  packages = ["."]
+  pruneopts = "NT"
+  revision = "dd632973f1e7218eb1089048e0798ec9ae7dceb8"
 
 [[projects]]
   digest = "1:18108594151654e9e696b27b181b953f9a90b16bf14d253dd1b397b025a1487f"
@@ -1029,6 +1143,8 @@
     "github.com/aws/aws-sdk-go/service/iam/iamiface",
     "github.com/aws/aws-sdk-go/service/organizations",
     "github.com/aws/aws-sdk-go/service/organizations/organizationsiface",
+    "github.com/aws/aws-sdk-go/service/route53",
+    "github.com/aws/aws-sdk-go/service/route53/route53iface",
     "github.com/aws/aws-sdk-go/service/s3",
     "github.com/aws/aws-sdk-go/service/s3/s3iface",
     "github.com/aws/aws-sdk-go/service/s3/s3manager",
@@ -1039,6 +1155,9 @@
     "github.com/go-logr/logr",
     "github.com/go-openapi/spec",
     "github.com/golang/mock/gomock",
+    "github.com/onsi/ginkgo",
+    "github.com/onsi/ginkgo/ginkgo",
+    "github.com/onsi/gomega",
     "github.com/openshift/api/route/v1",
     "github.com/openshift/operator-custom-metrics/pkg/metrics",
     "github.com/operator-framework/operator-sdk/pkg/leader",
