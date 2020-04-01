@@ -134,8 +134,10 @@ func SetAccountCondition(
 			existingCondition.Status = status
 			existingCondition.Reason = reason
 			existingCondition.Message = message
-			existingCondition.LastProbeTime = now
 		}
+		// Need to always update the probe time, so if the condition occurs again
+		// or we probe and the condition is still active, the date is updated.
+		existingCondition.LastProbeTime = now
 	}
 	return conditions
 }
