@@ -97,20 +97,16 @@ func (s *secretWatcher) ScanSecrets(log logr.Logger) error {
 		return err
 	}
 
-	fuzzFactor := getFuzzLength(time.Now().UnixNano())
-
-	log.Info(fmt.Sprintf("Fuzz Time: %d", fuzzFactor))
+	fuzzSeed := time.Now().UnixNano()
+	STSCredsFuzzFactor := getCredentialsFuzzLength(fuzzSeed)
+	ConsoleFuzzFactor := getConsoleURLFuzzLength(fuzzSeed)
 
 	for _, secret := range secretList.Items {
-
-		log.Info(fmt.Sprintf("Secret: %s, CreationTimestamp: %s", secret.ObjectMeta.Name, secret.ObjectMeta.CreationTimestamp))
-
 		if strings.HasSuffix(secret.ObjectMeta.Name, STSCredentialsSuffix) {
 			accountName := strings.TrimSuffix(secret.ObjectMeta.Name, STSCredentialsSuffix)
 			timeSinceCreation := s.timeSinceCreation(secret.ObjectMeta.CreationTimestamp)
 
-			if STSCredentialsDuration-timeSinceCreation-fuzzFactor < s.timeToInt(SecretWatcher.watchInterval) {
-				log.Info(fmt.Sprintf("===  Credential Age: %d  Credential Duration: %d  Fuzz Factor: %d", timeSinceCreation/60, STSCredentialsDuration/60, fuzzFactor/60))
+			if STSCredentialsDuration-timeSinceCreation-STSCredsFuzzFactor < s.timeToInt(SecretWatcher.watchInterval) {
 				s.updateAccountRotateCredentialsStatus(log, accountName, "cli")
 			}
 		}
@@ -119,8 +115,7 @@ func (s *secretWatcher) ScanSecrets(log logr.Logger) error {
 			accountName := strings.TrimSuffix(secret.ObjectMeta.Name, STSCredentialsConsoleSuffix)
 			timeSinceCreation := s.timeSinceCreation(secret.ObjectMeta.CreationTimestamp)
 
-			if STSConsoleCredentialsDuration-timeSinceCreation-fuzzFactor < s.timeToInt(SecretWatcher.watchInterval) {
-				log.Info(fmt.Sprintf("===\n  Credential Age: %d\n  Credential Duration: %d\n  Fuzz Factor: %d", timeSinceCreation/60, STSConsoleCredentialsDuration/60, fuzzFactor/60))
+			if STSConsoleCredentialsDuration-timeSinceCreation-ConsoleFuzzFactor < s.timeToInt(SecretWatcher.watchInterval) {
 				s.updateAccountRotateCredentialsStatus(log, accountName, "console")
 			}
 		}
@@ -184,14 +179,27 @@ func (s *secretWatcher) UpdateAccount(account *awsv1alpha1.Account) error {
 	return nil
 }
 
-// Gets a random number between the lower limit and upper limit.  Fuzz time is a way to
-// randomly distribute secret refresh time.
-func getFuzzLength(seed int64) int {
+func getConsoleURLFuzzLength(seed int64) int {
+	// The lower limit is the minimum amount of "fuzz" time we want to add, in minutes.
+	var requeueLowerLimit int64 = 0
+	// The upper limit is the maximum amount of "fuzz" time we want to add, in minutes.
+	var requeueUpperLimit int64 = 3
+
+	return getFuzzLength(seed, requeueLowerLimit, requeueUpperLimit)
+}
+
+func getCredentialsFuzzLength(seed int64) int {
 	// The lower limit is the minimum amount of "fuzz" time we want to add, in minutes.
 	var requeueLowerLimit int64 = 5
 	// The upper limit is the maximum amount of "fuzz" time we want to add, in minutes.
 	var requeueUpperLimit int64 = 15
 
+	return getFuzzLength(seed, requeueLowerLimit, requeueUpperLimit)
+}
+
+// Gets a random number between the lower limit and upper limit.  Fuzz time is a way to
+// randomly distribute secret refresh time.
+func getFuzzLength(seed int64, requeueLowerLimit int64, requeueUpperLimit int64) int {
 	rand.Seed(seed)
 	requeueLength := rand.Int63n(requeueUpperLimit)
 
