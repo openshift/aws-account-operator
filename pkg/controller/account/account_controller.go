@@ -3,7 +3,6 @@ package account
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
