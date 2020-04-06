@@ -79,17 +79,3 @@ func TestNoMatchSubstring(t *testing.T) {
 		}
 	}
 }
-
-func TestGetRequeueLength(t *testing.T) {
-	var i int64
-	for i = 0; i <= 100; i++ {
-		j := getRequeueLength(i)
-		if j < 10 {
-			t.Error("Requeue Length lower than minimum.")
-		}
-		if j > 55 {
-			t.Error("Requeue Length greater than maximum.")
-		}
-		t.Log(j)
-	}
-}

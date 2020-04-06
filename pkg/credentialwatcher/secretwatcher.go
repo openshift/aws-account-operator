@@ -185,7 +185,7 @@ func getConsoleURLFuzzLength(seed int64) int {
 	// The upper limit is the maximum amount of "fuzz" time we want to add, in minutes.
 	var requeueUpperLimit int64 = 3
 
-	return getFuzzLength(seed, requeueLowerLimit, requeueUpperLimit)
+	return GetFuzzLength(seed, requeueLowerLimit, requeueUpperLimit)
 }
 
 func getCredentialsFuzzLength(seed int64) int {
@@ -194,12 +194,12 @@ func getCredentialsFuzzLength(seed int64) int {
 	// The upper limit is the maximum amount of "fuzz" time we want to add, in minutes.
 	var requeueUpperLimit int64 = 15
 
-	return getFuzzLength(seed, requeueLowerLimit, requeueUpperLimit)
+	return GetFuzzLength(seed, requeueLowerLimit, requeueUpperLimit)
 }
 
 // Gets a random number between the lower limit and upper limit.  Fuzz time is a way to
 // randomly distribute secret refresh time.
-func getFuzzLength(seed int64, requeueLowerLimit int64, requeueUpperLimit int64) int {
+func GetFuzzLength(seed int64, requeueLowerLimit int64, requeueUpperLimit int64) int {
 	rand.Seed(seed)
 	requeueLength := rand.Int63n(requeueUpperLimit)
 
