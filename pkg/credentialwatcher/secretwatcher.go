@@ -3,6 +3,7 @@ package credentialwatcher
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -96,13 +97,20 @@ func (s *secretWatcher) ScanSecrets(log logr.Logger) error {
 		return err
 	}
 
+	fuzzFactor := getFuzzLength(time.Now().UnixNano())
+
+	log.Info(fmt.Sprintf("Fuzz Time: %d", fuzzFactor))
+
 	for _, secret := range secretList.Items {
+
+		log.Info(fmt.Sprintf("Secret: %s, CreationTimestamp: %s", secret.ObjectMeta.Name, secret.ObjectMeta.CreationTimestamp))
 
 		if strings.HasSuffix(secret.ObjectMeta.Name, STSCredentialsSuffix) {
 			accountName := strings.TrimSuffix(secret.ObjectMeta.Name, STSCredentialsSuffix)
 			timeSinceCreation := s.timeSinceCreation(secret.ObjectMeta.CreationTimestamp)
 
-			if STSCredentialsDuration-timeSinceCreation < s.timeToInt(SecretWatcher.watchInterval) {
+			if STSCredentialsDuration-timeSinceCreation-fuzzFactor < s.timeToInt(SecretWatcher.watchInterval) {
+				log.Info(fmt.Sprintf("===  Credential Age: %d  Credential Duration: %d  Fuzz Factor: %d", timeSinceCreation/60, STSCredentialsDuration/60, fuzzFactor/60))
 				s.updateAccountRotateCredentialsStatus(log, accountName, "cli")
 			}
 		}
@@ -111,7 +119,8 @@ func (s *secretWatcher) ScanSecrets(log logr.Logger) error {
 			accountName := strings.TrimSuffix(secret.ObjectMeta.Name, STSCredentialsConsoleSuffix)
 			timeSinceCreation := s.timeSinceCreation(secret.ObjectMeta.CreationTimestamp)
 
-			if STSConsoleCredentialsDuration-timeSinceCreation < s.timeToInt(SecretWatcher.watchInterval) {
+			if STSConsoleCredentialsDuration-timeSinceCreation-fuzzFactor < s.timeToInt(SecretWatcher.watchInterval) {
+				log.Info(fmt.Sprintf("===\n  Credential Age: %d\n  Credential Duration: %d\n  Fuzz Factor: %d", timeSinceCreation/60, STSConsoleCredentialsDuration/60, fuzzFactor/60))
 				s.updateAccountRotateCredentialsStatus(log, accountName, "console")
 			}
 		}
@@ -137,14 +146,12 @@ func (s *secretWatcher) updateAccountRotateCredentialsStatus(log logr.Logger, ac
 
 	if accountInstance.Status.RotateCredentials != true {
 
-		//log.Info(fmt.Sprintf("AWS credentials secret %s was created %s ago requeing to be refreshed", secret.ObjectMeta.Name, time.Since(unixTime)))
-
 		if credentialType == "console" {
 			accountInstance.Status.RotateConsoleCredentials = true
-			log.Info(fmt.Sprintf("AWS console credentials secret was created ago requeing to be refreshed"))
+			log.Info(fmt.Sprintf("AWS console credentials secret was created ago requeueing to be refreshed"))
 		} else if credentialType == "cli" {
 			accountInstance.Status.RotateCredentials = true
-			log.Info(fmt.Sprintf("AWS cli credentials secret was created ago requeing to be refreshed"))
+			log.Info(fmt.Sprintf("AWS cli credentials secret was created ago requeueing to be refreshed"))
 		}
 
 		err = s.UpdateAccount(accountInstance)
@@ -175,4 +182,23 @@ func (s *secretWatcher) UpdateAccount(account *awsv1alpha1.Account) error {
 	}
 
 	return nil
+}
+
+// Gets a random number between the lower limit and upper limit.  Fuzz time is a way to
+// randomly distribute secret refresh time.
+func getFuzzLength(seed int64) int {
+	// The lower limit is the minimum amount of "fuzz" time we want to add, in minutes.
+	var requeueLowerLimit int64 = 5
+	// The upper limit is the maximum amount of "fuzz" time we want to add, in minutes.
+	var requeueUpperLimit int64 = 15
+
+	rand.Seed(seed)
+	requeueLength := rand.Int63n(requeueUpperLimit)
+
+	for requeueLength <= requeueLowerLimit || requeueLength >= requeueUpperLimit {
+		requeueLength = rand.Int63n(requeueUpperLimit)
+	}
+
+	// Convert to seconds and return an int
+	return int(requeueLength * 60)
 }
