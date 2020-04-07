@@ -91,9 +91,24 @@ The below commands can be used to test payer account credentials where we create
 
 ## 1.5. Local Development
 
+### 1.5.1 Operator Install
+
+The operator can be installed locally on a Minishift or Code-Ready-Containers (CRC) cluster (or a private OpenShift cluster).  On a new local cluster, running the Makefile `deploy` target (passing the Access Key ID and Secret Access Key) will install the operator, and create all the necessary OpenShift CRDs and secrets for it to work locally.
+
+You must be logged into the cluster as an administrator, or otherwise have permissions to create namespaces and deploy CRDs.  For Minishift, this can be done:
+
+```sh
+oc login -u system:admin
+OPERATOR_ACCESS_KEY_ID="YOUR_ACCESS_KEY_ID" OPERATOR_SECRET_ACCESS_KEY="YOUR_SECRET_ACCESS_KEY" make deploy
+```
+
+This only needs to be done once for an individual local cluster.
+
+### 1.5.2 Running the Operator and Local Development Mode
+
 When developing locally using operator-sdk you may not have a metrics service running and other stages of the code may not want to be run.  We have introduced the ability to set the environment variable `FORCE_DEV_MODE` to account for these edge cases. Set the dev mode to `local` when running locally.
 
-ex: `FORCE_DEV_MODE=local operator-sdk up local`
+ex: `FORCE_DEV_MODE=local operator-sdk up local --namespace=aws-account-operator`
 
 # 2. The Custom Resources
 
