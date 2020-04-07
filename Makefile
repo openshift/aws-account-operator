@@ -3,12 +3,14 @@ SHELL := /usr/bin/env bash
 OPERATOR_DOCKERFILE = ./build/Dockerfile
 
 OSD_STAGING_1_ACCOUNT_CR_NAME_OSD = osd-creds-mgmt-osd-staging-1
+OSD_MANAGED_ADMIN_SECRET = ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}-osdmanagedadminsre-secret
 AWS_FEDERATED_ROLE_NAME = read-only
 IAM_USER_SECRET = ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}-secret
 NAMESPACE = aws-account-operator
 SLEEP_INTERVAL = 10
 ACCOUNT_CLAIM_NAME = test-claim
 ACCOUNT_CLAIM_NAMESPACE = test-claim-namespace
+FED_USER = test-federated-user
 REUSE_UUID := $(shell uuidgen | awk -F- '{ print tolower($$2) }')
 REUSE_BUCKET_NAME = test-reuse-bucket-${REUSE_UUID}
 CCS_CLAIM_NAME = test-ccs
@@ -42,7 +44,7 @@ docker-build: build
 # Delete secrets created by account
 .PHONY: delete-account-secrets
 delete-account-secrets:
-	@for secret in $$(oc get secrets -n aws-account-operator | grep "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" | awk '{print $$1}'); do oc delete secret $$secret -n aws-account-operator; done
+	@for secret in $$(oc get secrets -n ${NAMESPACE} | awk '/${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}/ {print $$1}'); do oc delete secret $$secret -n ${NAMESPACE}; done
 
 # Create AWS account
 .PHONY: create-account
@@ -50,7 +52,7 @@ create-account:
 	# Create Account CR
 	@oc process -p AWS_ACCOUNT_ID=${OSD_STAGING_1_AWS_ACCOUNT_ID} -p ACCOUNT_CR_NAME=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws_v1alpha1_account.tmpl | oc apply -f -
 	# Wait for account to become ready
-	@while true; do STATUS=$$(oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n aws-account-operator -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"; exit 1; fi; sleep 1; done
+	@while true; do STATUS=$$(oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"; exit 1; fi; sleep 1; done
 
 # Delete AWS account
 .PHONY: delete-account
@@ -87,7 +89,7 @@ delete-accountclaim:
 create-awsfederatedrole:
 	@oc apply -f deploy/crds/aws_v1alpha1_awsfederatedrole_readonly_cr.yaml
 	# Wait for awsFederatedAccountAccess CR to become ready
-	@while true; do STATUS=$$(oc get awsfederatedrole -n aws-account-operator ${AWS_FEDERATED_ROLE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Valid" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedRole CR ${AWS_FEDERATED_ROLE_NAME} failed to create"; exit 1; fi; sleep 1; done
+	@while true; do STATUS=$$(oc get awsfederatedrole -n ${NAMESPACE} ${AWS_FEDERATED_ROLE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Valid" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedRole CR ${AWS_FEDERATED_ROLE_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 # Delete awsfederatedrole "Read Only"
 .PHONY: delete-awsfederatedrole
@@ -101,16 +103,16 @@ create-awsfederatedaccountaccess: check-aws-account-id-env
 	# Create awsFederatedAccountAccess CR
 	@oc process -p AWS_IAM_ARN=${AWS_IAM_ARN} -p IAM_USER_SECRET=${IAM_USER_SECRET} -p AWS_FEDERATED_ROLE_NAME=${AWS_FEDERATED_ROLE_NAME} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws_v1alpha1_awsfederatedaccountaccess_cr.tmpl | oc apply -f -
 	# Wait for awsFederatedAccountAccess CR to become ready
-	@while true; do STATUS=$$(oc get awsfederatedaccountaccess -n aws-account-operator test-federated-user -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedAccountAccess CR test-federated-user failed to create"; exit 1; fi; sleep 1; done
+	@while true; do STATUS=$$(oc get awsfederatedaccountaccess -n ${NAMESPACE} ${FED_USER} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedAccountAccess CR ${FED_USER} failed to create"; exit 1; fi; sleep 1; done
 	# Print out AWS Console URL
-	@echo $$(oc get awsfederatedaccountaccess -n aws-account-operator test-federated-user -o json | jq -r '.status.consoleURL')
+	@echo $$(oc get awsfederatedaccountaccess -n ${NAMESPACE} ${FED_USER} -o json | jq -r '.status.consoleURL')
 	# Wait ${SLEEP_INTERVAL} seconds for AWS to register role
 	@sleep ${SLEEP_INTERVAL}
 
 .PHONY: test-switch-role
 test-switch-role:
 	# Retrieve role UID
-	$(eval UID=$(shell oc get awsfederatedaccountaccesses.aws.managed.openshift.io -n aws-account-operator test-federated-user -o=json |jq -r .metadata.labels.uid))
+	$(eval UID=$(shell oc get awsfederatedaccountaccesses.aws.managed.openshift.io -n ${NAMESPACE} ${FED_USER} -o=json |jq -r .metadata.labels.uid))
 	# Test Assume role
 	aws sts assume-role --role-arn arn:aws:iam::${OSD_STAGING_1_AWS_ACCOUNT_ID}:role/read-only-$(UID) --role-session-name RedHatTest --profile osd-staging-2
 
@@ -170,15 +172,15 @@ test-ccs: create-ccs-namespace create-ccs-secret create-ccs-accountclaim delete-
 .PHONY: create-s3-bucket
 create-s3-bucket:
 	# Get credentials
-	@export AWS_ACCESS_KEY_ID=$(shell oc get secret osd-creds-mgmt-osd-staging-1-osdmanagedadminsre-secret -n aws-account-operator -o json | jq -r '.data.aws_access_key_id' | base64 -d); \
-	export AWS_SECRET_ACCESS_KEY=$(shell oc get secret osd-creds-mgmt-osd-staging-1-osdmanagedadminsre-secret -n aws-account-operator -o json | jq -r '.data.aws_secret_access_key' | base64 -d); \
+	@export AWS_ACCESS_KEY_ID=$(shell oc get secret ${OSD_MANAGED_ADMIN_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); \
+	export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${OSD_MANAGED_ADMIN_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); \
 	aws s3api create-bucket --bucket ${REUSE_BUCKET_NAME} --region=us-east-1
 
 # List S3 bucket
 .PHONY: list-s3-bucket
 list-s3-bucket:
 	# Get credentials
-	BUCKETS=$(shell export AWS_ACCESS_KEY_ID=$(shell oc get secret osd-creds-mgmt-osd-staging-1-osdmanagedadminsre-secret -n aws-account-operator -o json | jq -r '.data.aws_access_key_id' | base64 -d); export AWS_SECRET_ACCESS_KEY=$(shell oc get secret osd-creds-mgmt-osd-staging-1-osdmanagedadminsre-secret -n aws-account-operator -o json | jq -r '.data.aws_secret_access_key' | base64 -d); aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'); \
+	BUCKETS=$(shell export AWS_ACCESS_KEY_ID=$(shell oc get secret ${OSD_MANAGED_ADMIN_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${OSD_MANAGED_ADMIN_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'); \
 	if [ $$BUCKETS == 0 ]; then echo "Reuse successfully complete"; else echo "Reuse failed"; exit 1; fi
 
 # Test reuse
