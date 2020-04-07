@@ -7,6 +7,10 @@ AWS_FEDERATED_ROLE_NAME = read-only
 IAM_USER_SECRET = ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}-secret
 NAMESPACE = aws-account-operator
 SLEEP_INTERVAL = 10
+ACCOUNT_CLAIM_NAME = test-claim
+ACCOUNT_CLAIM_NAMESPACE = test-claim-namespace
+REUSE_UUID := $(shell uuidgen | awk -F- '{ print tolower($$2) }')
+REUSE_BUCKET_NAME = test-reuse-bucket-${REUSE_UUID}
 CCS_CLAIM_NAME = test-ccs
 CCS_NAMESPACE_NAME = test-ccs-namespace
 export AWS_IAM_ARN := $(shell aws sts get-caller-identity --profile=osd-staging-2 | jq -r '.Arn')
@@ -53,6 +57,30 @@ create-account:
 delete-account: delete-account-secrets
 	# Delete Account CR
 	@oc process -p AWS_ACCOUNT_ID=${OSD_STAGING_1_AWS_ACCOUNT_ID} -p ACCOUNT_CR_NAME=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws_v1alpha1_account.tmpl | oc delete -f -
+
+# Create account claim namespace
+.PHONY: create-account-claim-namespace
+create-accountclaim-namespace:
+	# Create namespace
+	@oc process -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc apply -f -
+
+# Delete account claim namespace
+.PHONY: delete-account-claim-namespace
+delete-accountclaim-namespace:
+	# Delete namespace
+	@oc process -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc delete -f -
+
+.PHONY: create-accountclaim
+create-accountclaim:
+	# Create accountclaim
+	@oc process -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws_v1alpha1_accountclaim_cr.tmpl | oc apply -f -
+	# Wait for accountclaim to become ready
+	@while true; do STATUS=$$(oc get accountclaim ${ACCOUNT_CLAIM_NAME} -n ${ACCOUNT_CLAIM_NAMESPACE} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${ACCOUNT_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
+
+.PHONY: delete-accountclaim
+delete-accountclaim:
+	# Delete accountclaim
+	@oc process -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws_v1alpha1_accountclaim_cr.tmpl | oc delete -f -
 
 # Create awsfederatedrole "Read Only"
 .PHONY: create-awsfederatedrole
@@ -137,3 +165,22 @@ delete-ccs-accountclaim:
 # Test CCS
 .PHONY: test-ccs
 test-ccs: create-ccs-namespace create-ccs-secret create-ccs-accountclaim delete-ccs-accountclaim delete-ccs-secret delete-ccs-namespace
+
+# Create S3 bucket
+.PHONY: create-s3-bucket
+create-s3-bucket:
+	# Get credentials
+	@export AWS_ACCESS_KEY_ID=$(shell oc get secret osd-creds-mgmt-osd-staging-1-osdmanagedadminsre-secret -n aws-account-operator -o json | jq -r '.data.aws_access_key_id' | base64 -d); \
+	export AWS_SECRET_ACCESS_KEY=$(shell oc get secret osd-creds-mgmt-osd-staging-1-osdmanagedadminsre-secret -n aws-account-operator -o json | jq -r '.data.aws_secret_access_key' | base64 -d); \
+	aws s3api create-bucket --bucket ${REUSE_BUCKET_NAME} --region=us-east-1
+
+# List S3 bucket
+.PHONY: list-s3-bucket
+list-s3-bucket:
+	# Get credentials
+	BUCKETS=$(shell export AWS_ACCESS_KEY_ID=$(shell oc get secret osd-creds-mgmt-osd-staging-1-osdmanagedadminsre-secret -n aws-account-operator -o json | jq -r '.data.aws_access_key_id' | base64 -d); export AWS_SECRET_ACCESS_KEY=$(shell oc get secret osd-creds-mgmt-osd-staging-1-osdmanagedadminsre-secret -n aws-account-operator -o json | jq -r '.data.aws_secret_access_key' | base64 -d); aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'); \
+	if [ $$BUCKETS == 0 ]; then echo "Reuse successfully complete"; else echo "Reuse failed"; exit 1; fi
+
+# Test reuse
+.PHONY: test-reuse
+test-reuse: check-aws-account-id-env create-account create-accountclaim-namespace create-accountclaim create-s3-bucket delete-accountclaim delete-accountclaim-namespace list-s3-bucket delete-account
