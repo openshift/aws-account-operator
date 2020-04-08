@@ -1,22 +1,12 @@
 SHELL := /usr/bin/env bash
 
 OPERATOR_DOCKERFILE = ./build/Dockerfile
-
-OSD_STAGING_1_ACCOUNT_CR_NAME_OSD = osd-creds-mgmt-osd-staging-1
-OSD_MANAGED_ADMIN_SECRET = ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}-osdmanagedadminsre-secret
-AWS_FEDERATED_ROLE_NAME = read-only
-IAM_USER_SECRET = ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}-secret
-NAMESPACE = aws-account-operator
-SLEEP_INTERVAL = 10
-ACCOUNT_CLAIM_NAME = test-claim
-ACCOUNT_CLAIM_NAMESPACE = test-claim-namespace
-FED_USER = test-federated-user
 REUSE_UUID := $(shell uuidgen | awk -F- '{ print tolower($$2) }')
-REUSE_BUCKET_NAME = test-reuse-bucket-${REUSE_UUID}
-CCS_CLAIM_NAME = test-ccs
-CCS_NAMESPACE_NAME = test-ccs-namespace
+REUSE_BUCKET_NAME=test-reuse-bucket-${REUSE_UUID}
+
+include hack/scripts/test_envs
+
 export AWS_IAM_ARN := $(shell aws sts get-caller-identity --profile=osd-staging-2 | jq -r '.Arn')
-OSD_STAGING_2_ACCOUNT_CR_NAME_OSD = osd-creds-mgmt-osd-staging-2
 
 # Include shared Makefiles
 include project.mk
@@ -41,24 +31,19 @@ endif
 .PHONY: docker-build
 docker-build: build
 
-# Delete secrets created by account
-.PHONY: delete-account-secrets
-delete-account-secrets:
-	@for secret in $$(oc get secrets -n ${NAMESPACE} | awk '/${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}/ {print $$1}'); do oc delete secret $$secret -n ${NAMESPACE}; done
-
-# Create AWS account
+# Create account
 .PHONY: create-account
 create-account:
-	# Create Account CR
-	@oc process -p AWS_ACCOUNT_ID=${OSD_STAGING_1_AWS_ACCOUNT_ID} -p ACCOUNT_CR_NAME=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws_v1alpha1_account.tmpl | oc apply -f -
-	# Wait for account to become ready
-	@while true; do STATUS=$$(oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"; exit 1; fi; sleep 1; done
+	# Create Account
+	test/integration/api/create_account.sh
 
-# Delete AWS account
+# Delete account
 .PHONY: delete-account
-delete-account: delete-account-secrets
-	# Delete Account CR
-	@oc process -p AWS_ACCOUNT_ID=${OSD_STAGING_1_AWS_ACCOUNT_ID} -p ACCOUNT_CR_NAME=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws_v1alpha1_account.tmpl | oc delete -f -
+delete-account:
+	# Create Account
+	test/integration/api/delete_account.sh
+	# Delete Secrets
+	test/integration/api/delete_account_secrets.sh
 
 # Create account claim namespace
 .PHONY: create-account-claim-namespace
@@ -74,6 +59,8 @@ delete-accountclaim-namespace:
 
 .PHONY: create-accountclaim
 create-accountclaim:
+	# Create Account
+	test/integration/api/create_account.sh
 	# Create accountclaim
 	@oc process -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws_v1alpha1_accountclaim_cr.tmpl | oc apply -f -
 	# Wait for accountclaim to become ready
@@ -87,6 +74,9 @@ delete-accountclaim:
 # Create awsfederatedrole "Read Only"
 .PHONY: create-awsfederatedrole
 create-awsfederatedrole:
+	# Create Account
+	test/integration/api/create_account.sh
+	# Create Federated role
 	@oc apply -f deploy/crds/aws_v1alpha1_awsfederatedrole_readonly_cr.yaml
 	# Wait for awsFederatedAccountAccess CR to become ready
 	@while true; do STATUS=$$(oc get awsfederatedrole -n ${NAMESPACE} ${AWS_FEDERATED_ROLE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Valid" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedRole CR ${AWS_FEDERATED_ROLE_NAME} failed to create"; exit 1; fi; sleep 1; done
@@ -94,7 +84,12 @@ create-awsfederatedrole:
 # Delete awsfederatedrole "Read Only"
 .PHONY: delete-awsfederatedrole
 delete-awsfederatedrole:
+	# Delete Federated role
 	@oc delete -f deploy/crds/aws_v1alpha1_awsfederatedrole_readonly_cr.yaml
+	# Delete Account
+	test/integration/api/delete_account.sh
+	# Delete Secrets
+	test/integration/api/delete_account_secrets.sh
 
 # Create awsFederatedAccountAccess
 # This uses a AWS Account ID from your environment
@@ -124,18 +119,18 @@ delete-awsfederatedaccountaccess: check-aws-account-id-env
 	@oc process -p AWS_IAM_ARN=${AWS_IAM_ARN} -p IAM_USER_SECRET=${IAM_USER_SECRET} -p AWS_FEDERATED_ROLE_NAME=${AWS_FEDERATED_ROLE_NAME} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws_v1alpha1_awsfederatedaccountaccess_cr.tmpl | oc delete -f -
 
 .PHONY: test-awsfederatedaccountaccess
-test-awsfederatedaccountaccess: check-aws-account-id-env create-account create-awsfederatedrole create-awsfederatedaccountaccess test-switch-role delete-awsfederatedaccountaccess delete-awsfederatedrole delete-account
+test-awsfederatedaccountaccess: check-aws-account-id-env create-awsfederatedrole create-awsfederatedaccountaccess test-switch-role delete-awsfederatedaccountaccess delete-awsfederatedrole
 
 # Create CCS (BYOC) namespace
 .PHONY: create-ccs-namespace
 create-ccs-namespace:
-	# Create namespace
+	# Create CCS namespace
 	@oc process -p NAME=${CCS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc apply -f -
 
 # Delete CCS (BYOC) namespace
 .PHONY: delete-ccs-namespace
 delete-ccs-namespace:
-	# Create namespace
+	# Delete CCS namespace
 	@oc process -p NAME=${CCS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete -f -
 
 # Create CCS (BYOC) Secret
@@ -185,7 +180,11 @@ list-s3-bucket:
 
 # Test reuse
 .PHONY: test-reuse
-test-reuse: check-aws-account-id-env create-account create-accountclaim-namespace create-accountclaim create-s3-bucket delete-accountclaim delete-accountclaim-namespace list-s3-bucket delete-account
+test-reuse: check-aws-account-id-env create-accountclaim-namespace create-accountclaim create-s3-bucket delete-accountclaim delete-accountclaim-namespace list-s3-bucket
+	# Delete reuse account
+	test/integration/api/delete_account.sh
+	# Delete reuse account secrets
+	test/integration/api/delete_account_secrets.sh
 
 # Deploy the operator secrets, CRDs and namesapce.
 .PHONY: deploy-aws-account-operator-credentials

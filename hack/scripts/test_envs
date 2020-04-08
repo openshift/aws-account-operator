@@ -1,0 +1,11 @@
+OSD_STAGING_1_ACCOUNT_CR_NAME_OSD=osd-creds-mgmt-osd-staging-1
+OSD_MANAGED_ADMIN_SECRET=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}-osdmanagedadminsre-secret
+AWS_FEDERATED_ROLE_NAME=read-only
+IAM_USER_SECRET=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}-secret
+NAMESPACE=aws-account-operator
+SLEEP_INTERVAL=10
+ACCOUNT_CLAIM_NAME=test-claim
+ACCOUNT_CLAIM_NAMESPACE=test-claim-namespace
+FED_USER=test-federated-user
+CCS_CLAIM_NAME=test-ccs
+CCS_NAMESPACE_NAME=test-ccs-namespace
