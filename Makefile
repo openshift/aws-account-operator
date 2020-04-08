@@ -45,16 +45,20 @@ delete-account:
 	# Delete Secrets
 	test/integration/api/delete_account_secrets.sh
 
+# Test Account creation
+.PHONY: test-account-creation
+test-account-creation: create-account delete-account
+
 # Create account claim namespace
 .PHONY: create-account-claim-namespace
 create-accountclaim-namespace:
-	# Create namespace
+	# Create reuse namespace
 	@oc process -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc apply -f -
 
 # Delete account claim namespace
 .PHONY: delete-account-claim-namespace
 delete-accountclaim-namespace:
-	# Delete namespace
+	# Delete reuse namespace
 	@oc process -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc delete -f -
 
 .PHONY: create-accountclaim
@@ -215,3 +219,7 @@ endif
 ifndef OPERATOR_SECRET_ACCESS_KEY
 	$(error OPERATOR_SECRET_ACCESS_KEY is undefined)
 endif
+
+# Test all
+.PHONY: test-all
+test-all: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess
