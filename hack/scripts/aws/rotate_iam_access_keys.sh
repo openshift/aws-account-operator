@@ -109,10 +109,13 @@ IAM_USER=$(aws iam list-users | jq --arg AWS_IAM_USER "$AWS_IAM_USER" '.Users[] 
 
 if [ "$IAM_USER" == "" ]; then
     $VERBOSE && echo "Creating IAM user $AWS_IAM_USER"
-    aws iam create-user --user-name "$AWS_IAM_USER"
+    IAM_USER_OUPUT=$(aws iam create-user --user-name "$AWS_IAM_USER")
+    $VERBOSE && echo "$IAM_USER_OUPUT" | jq '.'
     aws iam attach-user-policy --user-name "$AWS_IAM_USER" --policy-arn "arn:aws:iam::aws:policy/AdministratorAccess"
+    # Set IAM_USER after creation
+    IAM_USER="$AWS_IAM_USER"
     # Wait for AWS to create user and attach policy
-    sleep 10
+    sleep 5
 fi
 
 if [ "$IAM_USER" = "$AWS_IAM_USER" ]; then
