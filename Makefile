@@ -119,7 +119,7 @@ test-switch-role:
 # This uses a AWS Account ID from your environment
 .PHONY: delete-awsfederatedaccountaccess
 delete-awsfederatedaccountaccess: check-aws-account-id-env
-	# Delete federatedaccountaccess with secret
+# Delete federatedaccountaccess with secret
 	@oc process -p AWS_IAM_ARN=${AWS_IAM_ARN} -p IAM_USER_SECRET=${IAM_USER_SECRET} -p AWS_FEDERATED_ROLE_NAME=${AWS_FEDERATED_ROLE_NAME} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws_v1alpha1_awsfederatedaccountaccess_cr.tmpl | oc delete -f -
 
 .PHONY: test-awsfederatedaccountaccess

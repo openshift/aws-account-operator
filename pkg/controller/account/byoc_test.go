@@ -1,19 +1,19 @@
-package account_test
+package account
 
 import (
 	"errors"
+	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/golang/mock/gomock"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/controller/testutils"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-
-	. "github.com/openshift/aws-account-operator/pkg/controller/account"
 )
 
 var _ = Describe("Byoc", func() {
@@ -153,3 +153,102 @@ var _ = Describe("Byoc", func() {
 		})
 	})
 })
+
+// These AccountStatus should all be evaluated as new
+var testNewBYOCAccountInstances = []*awsv1alpha1.Account{
+	{
+		Spec: awsv1alpha1.AccountSpec{
+			BYOC: true,
+		},
+		Status: awsv1alpha1.AccountStatus{
+			Claimed: true,
+			State:   "",
+		},
+	},
+	{
+		Spec: awsv1alpha1.AccountSpec{
+			BYOC: true,
+		},
+		Status: awsv1alpha1.AccountStatus{
+			Claimed: false,
+			State:   "",
+		},
+	},
+	{
+		Spec: awsv1alpha1.AccountSpec{
+			BYOC: true,
+		},
+		Status: awsv1alpha1.AccountStatus{
+			Claimed: false,
+			State:   "test state",
+		},
+	},
+}
+
+// This AccountStatus should be evaluated as NOT new
+var testNotNewBYOCAccountInstances = []*awsv1alpha1.Account{
+	{
+		Spec: awsv1alpha1.AccountSpec{
+			BYOC: true,
+		},
+		Status: awsv1alpha1.AccountStatus{
+			Claimed: true,
+			State:   "test state",
+		},
+	},
+	{
+		Spec: awsv1alpha1.AccountSpec{
+			BYOC: false,
+		},
+		Status: awsv1alpha1.AccountStatus{
+			Claimed: true,
+			State:   "",
+		},
+	},
+	{
+		Spec: awsv1alpha1.AccountSpec{
+			BYOC: false,
+		},
+		Status: awsv1alpha1.AccountStatus{
+			Claimed: false,
+			State:   "",
+		},
+	},
+	{
+		Spec: awsv1alpha1.AccountSpec{
+			BYOC: false,
+		},
+		Status: awsv1alpha1.AccountStatus{
+			Claimed: false,
+			State:   "test state",
+		},
+	},
+}
+
+func TestNewBYOCAccount(t *testing.T) {
+	for index, acct := range testNewBYOCAccountInstances {
+		new := accountIsNewBYOC(acct)
+		expected := true
+		if new != expected {
+			t.Error(
+				"for account index:", index,
+				"expected:", expected,
+				"got:", new,
+			)
+		}
+	}
+}
+
+func TestNotNewBYOCAccount(t *testing.T) {
+	for index, acct := range testNotNewBYOCAccountInstances {
+		new := accountIsNewBYOC(acct)
+		expected := false
+		if new != expected {
+			t.Error(
+				"for account index:", index,
+				"expected:", expected,
+				"got:", new,
+			)
+		}
+	}
+}
