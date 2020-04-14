@@ -127,15 +127,17 @@ if [ "$IAM_USER" = "$AWS_IAM_USER" ]; then
     CREDENTIALS=$(aws iam create-access-key --user-name "$IAM_USER")
 	$VERBOSE && echo "Rotated access keys for $IAM_USER"
     KEY=$(echo "$CREDENTIALS" | jq -j '.AccessKey.AccessKeyId')
+    B64_KEY=$(echo -n $CREDENTIALS | jq -r '.AccessKey.AccessKeyId' | base64)
     if $PRINT_SECRETS; then
       echo "Access key: $KEY"
-      echo "Base64 access key: $(echo -n $CREDENTIALS | jq -r '.AccessKey.AccessKeyId' | base64)"
+      echo "Base64 access key: $B64_KEY"
     fi
 
     SECRET=$(echo -n "$CREDENTIALS" | jq -j '.AccessKey.SecretAccessKey')
+    B64_SECRET=$(echo -n $CREDENTIALS | jq -r '.AccessKey.SecretAccessKey' | base64)
     if $PRINT_SECRETS; then
       echo "Secret access key: $SECRET"
-      echo "Base64 secret key: $(echo -n $CREDENTIALS | jq -r '.AccessKey.SecretAccessKey' | base64)"
+      echo "Base64 secret key: $B64_SECRET"
     fi
 else
     echo "Can't find IAM user: $AWS_IAM_USER"
@@ -146,8 +148,8 @@ if ! [ -z "$SECRET_OUTPUT_PATH" ]; then
   cat <<EOF > $SECRET_OUTPUT_PATH
 apiVersion: v1
 data:
-  aws_access_key_id: $KEY
-  aws_secret_access_key: $SECRET
+  aws_access_key_id: $B64_KEY
+  aws_secret_access_key: $B64_SECRET
 kind: Secret
 metadata:
   name: byoc
