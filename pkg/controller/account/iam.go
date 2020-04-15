@@ -31,6 +31,7 @@ type awsSigninTokenResponse struct {
 	SigninToken string
 }
 
+// Type that represents JSON object of an AWS permissions statement
 type awsStatement struct {
 	Effect    string                 `json:"Effect"`
 	Action    []string               `json:"Action"`
@@ -38,11 +39,13 @@ type awsStatement struct {
 	Principal *awsv1alpha1.Principal `json:"Principal,omitempty"`
 }
 
+// Type that represents JSON object of an AWS Policy Document
 type PolicyDocument struct {
 	Version   string
 	Statement []StatementEntry
 }
 
+// Type that represents JSON of a statement in a policy doc
 type StatementEntry struct {
 	Effect   string
 	Action   []string
@@ -136,7 +139,8 @@ func formatSigninURL(reqLogger logr.Logger, federationEndpointURL, signinToken s
 
 }
 
-// CreateSecret creates a secret
+// CreateSecret creates a secret for placing IAM Credentials
+// Takes a logger, the desired name of the secret, the Account CR that will own the secret, and pointer to an empty secret object to fill
 func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, secretName string, account *awsv1alpha1.Account, secret *corev1.Secret) error {
 
 	// Set controller as owner of secret
@@ -159,7 +163,10 @@ func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, secretName string
 	return nil
 }
 
-// BuildSTSUser takes all parameters required to create a user, user secret
+// BuildSTSUser sets up an IAM user with the proper access and creates secrets to hold cred
+// Takes a logger, an awsSetupClient for the signing token, an awsClient for, an account CR to set ownership of secrets, the namespace to create the secret in, and a role to assume with the creds
+// The awsSetupClient is the client for the user in the target linked account
+// The awsClient is the client for the user in the payer level account
 func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient awsclient.Client, awsClient awsclient.Client, account *awsv1alpha1.Account, nameSpace string, iamRole string) (string, error) {
 	reqLogger.Info("Creating IAM STS User")
 
@@ -223,7 +230,8 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 	return userSecret.ObjectMeta.Name, nil
 }
 
-// getStsCredentials returns sts credentials for the specified account ARN
+// getStsCredentials returns STS credentials for the specified account ARN
+// Takes a logger, an awsClient, a role name to assume, and the target AWS account ID
 func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleName string, awsAccountID string) (*sts.AssumeRoleOutput, error) {
 	// Use the role session name to uniquely identify a session when the same role
 	// is assumed by different principals or for different reasons.
@@ -271,6 +279,7 @@ func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleNa
 }
 
 // formatFederatedCredentails returns a JSON byte array containing federation credentials
+// Takes a logger, and the AWS output from a call to get a Federated Token
 func formatFederatedCredentials(reqLogger logr.Logger, federatedTokenCredentials *sts.GetFederationTokenOutput) ([]byte, error) {
 	var jsonCredentials []byte
 
@@ -293,6 +302,7 @@ func formatFederatedCredentials(reqLogger logr.Logger, federatedTokenCredentials
 }
 
 // formatSiginTokenURL take STS credentials and build a URL for signing
+// Takes a logger, a base URL for federation, and the required credentials for the session in a byte array of raw JSON
 func formatSigninTokenURL(reqLogger logr.Logger, federationEndpointURL string, jsonFederatedCredentials []byte) (*url.URL, error) {
 	// Build URL to request Signin Token via Federation end point
 	baseFederationURL, err := url.Parse(federationEndpointURL)
@@ -315,6 +325,7 @@ func formatSigninTokenURL(reqLogger logr.Logger, federationEndpointURL string, j
 }
 
 // requestSignedURL makes a HTTP call to the baseFederationURL to retrieve a signed federated URL for web console login
+// Takes a logger, and the base URL
 func requestSignedURL(reqLogger logr.Logger, baseFederationURL string) ([]byte, error) {
 	// Make HTTP request to retrieve Federated Signin Token
 	res, err := http.Get(baseFederationURL)
@@ -339,6 +350,7 @@ func requestSignedURL(reqLogger logr.Logger, baseFederationURL string) ([]byte, 
 }
 
 // getSigninToken makes a request to the federation endpoint to sign signin token
+// Takes a logger, the base url, and the federation token to sign with
 func getSigninToken(reqLogger logr.Logger, federationEndpointURL string, federatedTokenCredentials *sts.GetFederationTokenOutput) (awsSigninTokenResponse, error) {
 	var signinResponse awsSigninTokenResponse
 
@@ -372,6 +384,8 @@ func getSigninToken(reqLogger logr.Logger, federationEndpointURL string, federat
 
 }
 
+// deleteAllAccessKeys deletes all access key pairs for a given user
+// Takes a logger, an AWS client, and the target IAM user's username
 func deleteAllAccessKeys(reqLogger logr.Logger, client awsclient.Client, userName string) error {
 
 	accessKeyList, err := client.ListAccessKeys(&iam.ListAccessKeysInput{UserName: aws.String(userName)})
@@ -388,6 +402,8 @@ func deleteAllAccessKeys(reqLogger logr.Logger, client awsclient.Client, userNam
 	return nil
 }
 
+// checkIAMUserExists checks if a given IAM user exists within an account
+// Takes a logger, an AWS client for the target account, and a target IAM username
 func checkIAMUserExists(reqLogger logr.Logger, client awsclient.Client, userName string) (bool, error) {
 	// Retry when getting IAM user information
 	// Sometimes we see a delay before credentials are ready to be user resulting in the AWS API returning 404's
@@ -433,7 +449,8 @@ func checkIAMUserExists(reqLogger logr.Logger, client awsclient.Client, userName
 	return true, nil
 }
 
-// CreateIAMUser takes a client and string and creates a IAMuser
+// CreateIAMUser creates a new IAM user in the target AWS account
+// Takes a logger, an AWS client for the target account, and the desired IAM username
 func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.CreateUserOutput, error) {
 
 	// check if username exists for this account
@@ -490,7 +507,8 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 	return createUserOutput, err
 }
 
-// AttachAdminUserPolicy takes a client and string attaches the admin policy to the user
+// AttachAdminUserPolicy attaches the AdministratorAccess policy to a target user
+// Takes a logger, an AWS client for the target account, and the target IAM user's username
 func AttachAdminUserPolicy(reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.AttachUserPolicyOutput, error) {
 
 	attachPolicyOutput := &iam.AttachUserPolicyOutput{}
@@ -514,6 +532,7 @@ func AttachAdminUserPolicy(reqLogger logr.Logger, client awsclient.Client, userN
 }
 
 // CreateUserAccessKey creates an IAM user's secret and returns the accesskey id and secret for that user in a aws.CreateAccessKeyOutput struct
+// Takes a logger, an AWS client, and the target IAM username
 func CreateUserAccessKey(reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.CreateAccessKeyOutput, error) {
 
 	// Create new access key for user
@@ -528,7 +547,8 @@ func CreateUserAccessKey(reqLogger logr.Logger, client awsclient.Client, userNam
 	return result, nil
 }
 
-// BuildIAMUser takes all parameters required to create a user, user secret
+// BuildIAMUser creates and initializes all resources needed for a new IAM user
+// Takes a logger, an AWS client, an Account CR, the desired IAM username and a namespace to create resources in
 func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUserName string, nameSpace string) (string, error) {
 	_, userErr := CreateIAMUser(reqLogger, awsClient, iamUserName)
 	// TODO: better error handling but for now scrap account
