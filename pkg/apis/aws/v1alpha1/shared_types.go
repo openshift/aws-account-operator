@@ -85,3 +85,9 @@ var ErrCreateEC2Instance = errors.New("EC2CreationTimeout")
 
 // ErrFailedAWSTypecast indicates that there was a failure while typecasting to aws error
 var ErrFailedAWSTypecast = errors.New("FailedToTypecastAWSError")
+
+// UIDLabel is the string for the uid label on AWS Federated Account Access CRs
+var UIDLabel = "uid"
+
+// AccountIDLabel is the string for the AWS Account ID label on AWS Federated Account Access CRs
+var AccountIDLabel = "awsAccountID"
