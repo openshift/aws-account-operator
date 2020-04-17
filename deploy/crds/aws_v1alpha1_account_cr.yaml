@@ -2,6 +2,11 @@ apiVersion: aws.managed.openshift.io/v1alpha1
 kind: Account
 metadata:
   name: example-account
+  namespace: example-namespace
 spec:
-  # Add fields here
-  size: 3
+  awsAccountID: "00000000"
+  claimLink: ""
+  iamUserSecret: ""
+  legalEntity:
+    id: "111111"
+    name: Test Organization
