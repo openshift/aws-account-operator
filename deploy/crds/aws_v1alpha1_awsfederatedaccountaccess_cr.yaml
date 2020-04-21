@@ -5,7 +5,7 @@ metadata:
   namespace: aws-account-operator
 spec:
   awsCustomerCredentialSecret: 
-    name: osd-creds-mgmt-w2tclb-secret
-    namespace: aws-account-operator
-  externalCustomerAWSIAMARN: arn:aws:iam::414830704956:user/james.harrington
+    name: secret-name
+    namespace: example-namespace
+  externalCustomerAWSIAMARN: arn:aws:iam::${AWS_ACCOUNT_ID}:user/${AWS_IAM_USER}
   awsFederatedRoleName: read-only 
