@@ -16,6 +16,7 @@ spec:
         action:
           - "ec2:AcceptVpcPeeringConnection"
           - "ec2:AttachVpnGateway"
+          - "ec2:CreateCustomerGateway"
           - "ec2:CreateRoute"
           - "ec2:CreateTags"
           - "ec2:CreateVPCEndpoint"
