@@ -57,8 +57,6 @@ const (
 	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
 	AccountPendingVerification = "PendingVerification"
 	byocRole                   = "BYOCAdminAccess"
-
-	adminAccessArn = "arn:aws:iam::aws:policy/AdministratorAccess"
 )
 
 /**
@@ -141,12 +139,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, nil
 	}
 
-	// We expect this secret to exist in the same namespace Account CR's are created
-	awsSetupClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
-		SecretName: utils.AwsSecretName,
-		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
-	})
+	// Set these vars in this scope so they can be passed as required.
+	AwsPlatformConfig := utils.AwsPlatformConfig{}
+	AwsPlatformConfig = utils.AwsPlatformConfigGlobal
+
+	// Pass awsPlatformConfig to the setup client to create platform appropriate client.
+	awsSetupClient, err := awsclient.GetAWSClient(r.Client, AwsPlatformConfig.ClientInput)
 	if err != nil {
 		reqLogger.Error(err, "Failed to get AWS client")
 		return reconcile.Result{}, err
@@ -157,8 +155,8 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	// If the account is BYOC, needs some different set up
 	if accountIsNewBYOC(currentAcctInstance) {
 		reqLogger.Info("BYOC account")
-		// Create client for BYOC account
-		byocAWSClient, accountClaim, err := r.getBYOCClient(currentAcctInstance)
+		// Get current accountClaim for awsClient instantiation.
+		accountClaim, err := r.getAccountClaim(currentAcctInstance)
 		if err != nil {
 			if accountClaim != nil {
 				r.accountClaimBYOCError(reqLogger, accountClaim, err)
@@ -166,11 +164,32 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
+		// validateBYOCClaim.
 		err = validateBYOCClaim(accountClaim)
 		if err != nil {
 			r.accountClaimBYOCError(reqLogger, accountClaim, err)
 			return reconcile.Result{}, err
 		}
+
+		// Create client for BYOC account
+		byocAWSClient, err := awsclient.GetAWSBYOCClientFromClaim(r.Client, accountClaim)
+
+		// Get Region for Global or China dependencies logic.
+		awsRegion := accountClaim.Spec.Aws.Regions[0].Name
+
+		// AWS China only support BYOC. This logic lives only this block for now.
+		// Based on the awsRegion bool, reassign either the Global or China configuration to AwsPlatformConfig
+		if !awsclient.CheckAwsProviderIsGlobal(awsRegion) {
+			AwsPlatformConfig = utils.AwsPlatformConfigChina
+			// Reset the awsSetupClient if accountClaim region in AWS China.
+			awsSetupClient, err = awsclient.GetAWSClientFromClaim(r.Client, accountClaim)
+			if err != nil {
+				reqLogger.Error(err, "Failed to get AWS client")
+				return reconcile.Result{}, err
+			}
+		}
+
+		reqLogger.Info(fmt.Sprintf("AWS Platform configured region: %s for claimed account: %s", accountClaim.Spec.Aws.Regions[0].Name, currentAcctInstance.Name))
 
 		// Ensure the account is marked as claimed
 		if !accountIsClaimed(currentAcctInstance) {
@@ -189,8 +208,11 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				return reconcile.Result{}, err
 			}
 
+			// Create IAMAdministratorPolicy  based on AWS Provider
+			IAMAdministratorPolicy := AwsPlatformConfig.ARNPrefix + utils.AWSIAMPolicyAdministrator
+
 			// Create BYOC role to assume
-			byocRoleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, adminAccessArn)
+			byocRoleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, IAMAdministratorPolicy)
 			if err != nil {
 				reqLogger.Error(err, "Failed to create BYOC role")
 				r.accountClaimBYOCError(reqLogger, accountClaim, err)
@@ -357,7 +379,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		for i := 0; i < 10; i++ {
 			// Get STS credentials so that we can create an aws client with
-			creds, credsErr = getStsCredentials(reqLogger, awsSetupClient, roleToAssume, currentAcctInstance.Spec.AwsAccountID)
+			creds, credsErr = getStsCredentials(reqLogger, awsSetupClient, roleToAssume, currentAcctInstance.Spec.AwsAccountID, AwsPlatformConfig.ARNPrefix)
 			if credsErr != nil {
 				stsErrMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s", currentAcctInstance.Spec.AwsAccountID)
 				reqLogger.Info(stsErrMsg, "Error", credsErr.Error())
@@ -383,7 +405,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
 			AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
 			AwsToken:                *creds.Credentials.SessionToken,
-			AwsRegion:               "us-east-1",
+			AwsRegion:               AwsPlatformConfig.ClientInput.AwsRegion,
 		})
 		if err != nil {
 			reqLogger.Info(err.Error())
@@ -391,7 +413,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserNameUHC, request.Namespace)
+		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserNameUHC, request.Namespace, AwsPlatformConfig.ARNPrefix)
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build IAM UHC user: %s", iamUserNameUHC))
 			return reconcile.Result{}, err
@@ -403,7 +425,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Create SRE IAM user and return the credentials
-		SREIAMUserSecret, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserNameSRE, request.Namespace)
+		SREIAMUserSecret, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserNameSRE, request.Namespace, AwsPlatformConfig.ARNPrefix)
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build IAM SRE user: %s", iamUserNameSRE))
 			return reconcile.Result{}, err
@@ -429,7 +451,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		SREAWSClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
 			SecretName: *SREIAMUserSecret,
 			NameSpace:  awsv1alpha1.AccountCrNamespace,
-			AwsRegion:  "us-east-1",
+			AwsRegion:  AwsPlatformConfig.ClientInput.AwsRegion,
 		})
 
 		if err != nil {
@@ -439,14 +461,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Create STS CLI Credentials for SRE
-		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace, roleToAssume)
+		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace, roleToAssume, AwsPlatformConfig)
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build SRE STS credentials: %s", iamUserNameSRE))
 			return reconcile.Result{}, err
 		}
 
 		// Initialize all supported regions by creating and terminating an instance in each
-		err = r.InitializeSupportedRegions(reqLogger, awsv1alpha1.CoveredRegions, creds)
+		err = r.InitializeSupportedRegions(reqLogger, AwsPlatformConfig.CoveredRegions, creds)
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to build and destroy ec2 instances")
 			return reconcile.Result{}, err
@@ -475,14 +497,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	// the secretWatcher is what updates this status field by comparing the STS credentials secret `creationTimestamp`
 	if accountNeedsCredentialsRotated(currentAcctInstance) {
 		reqLogger.Info(fmt.Sprintf("rotating CLI credentials for %s", currentAcctInstance.Name))
-		err = r.RotateCredentials(reqLogger, awsSetupClient, currentAcctInstance)
+		err = r.RotateCredentials(reqLogger, awsSetupClient, currentAcctInstance, AwsPlatformConfig.ARNPrefix)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 	}
 	if accountNeedsConsoleCredentialsRotated(currentAcctInstance) {
 		reqLogger.Info(fmt.Sprintf("rotating console URL credentials for %s", currentAcctInstance.Name))
-		err = r.RotateConsoleCredentials(reqLogger, awsSetupClient, currentAcctInstance)
+		err = r.RotateConsoleCredentials(reqLogger, awsSetupClient, currentAcctInstance, AwsPlatformConfig)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -802,6 +824,24 @@ func accountIsUnclaimedAndIsCreating(currentAcctInstance *awsv1alpha1.Account) b
 		return true
 	}
 	return false
+}
+
+// getAccountClaim returns an account claim from a given account CR.
+// If errors occur, return them instead.
+func (r *ReconcileAccount) getAccountClaim(account *awsv1alpha1.Account) (*awsv1alpha1.AccountClaim, error) {
+	accountClaim := &awsv1alpha1.AccountClaim{}
+
+	err := r.Client.Get(context.TODO(),
+		types.NamespacedName{Name: account.Spec.ClaimLink, Namespace: account.Spec.ClaimLinkNamespace}, accountClaim)
+
+	if err != nil {
+		if k8serr.IsNotFound(err) {
+			return nil, err
+
+		}
+		return nil, err
+	}
+	return accountClaim, nil
 }
 
 type accountInstance interface {

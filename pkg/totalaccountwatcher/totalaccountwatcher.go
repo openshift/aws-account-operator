@@ -11,9 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/go-logr/logr"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -37,11 +36,11 @@ type totalAccountWatcher struct {
 func Initialize(client client.Client, watchInterval time.Duration) {
 	log.Info("Initializing the totalAccountWatcher")
 
-	AwsClient, err := awsclient.GetAWSClient(client, awsclient.NewAwsClientInput{
-		SecretName: controllerutils.AwsSecretName,
-		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
-	})
+	// Create this as AWS Global by default as there is currently no
+	// need to support China.
+	awsPlatformConfig := utils.AwsPlatformConfigGlobal
+
+	AwsClient, err := awsclient.GetAWSClient(client, awsPlatformConfig.ClientInput)
 
 	if err != nil {
 		log.Error(err, "Failed to get AwsClient")

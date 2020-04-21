@@ -261,10 +261,6 @@ func FindAWSFederatedAccountAccessCondition(conditions []awsv1alpha1.AWSFederate
 	return nil
 }
 
-const (
-	AwsSecretName = "aws-account-operator-credentials"
-)
-
 // SetBYOCAccountClaimStatusAWSAccountInUse Sets the Status.State and appends an account Status.Condition
 func SetBYOCAccountClaimStatusAWSAccountInUse(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) {
 	message := fmt.Sprintf("AWS Account %s already in use", accountClaim.Spec.BYOCAWSAccountID)

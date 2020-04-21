@@ -11,18 +11,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
-)
-
-const (
-	byocPolicy        = "BYOCEC2Policy"
-	arnIAMPrefix      = "arn:aws:iam::"
-	byocUserArnSuffix = ":user/byocSetupUser"
 )
 
 // ErrBYOCAccountIDMissing is an error for missing Account ID
@@ -271,26 +265,20 @@ func DeleteRole(reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.
 	return err
 }
 
-func (r *ReconcileAccount) getBYOCClient(currentAcct *awsv1alpha1.Account) (awsclient.Client, *awsv1alpha1.AccountClaim, error) {
-	// Get associated AccountClaim
+func (r *ReconcileAccount) getBYOCClient(currentAcct *awsv1alpha1.Account, pc utils.AwsPlatformConfig) (awsclient.Client, *awsv1alpha1.AccountClaim, error) {
 	accountClaim := &awsv1alpha1.AccountClaim{}
 
-	err := r.Client.Get(context.TODO(),
-		types.NamespacedName{Name: currentAcct.Spec.ClaimLink, Namespace: currentAcct.Spec.ClaimLinkNamespace},
-		accountClaim)
+	accountClaim, err := r.getAccountClaim(currentAcct)
 	if err != nil {
-		if k8serr.IsNotFound(err) {
-			return nil, nil, err
-		}
 		return nil, nil, err
 	}
 
-	// Get credentials
-	byocAWSClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
-		SecretName: accountClaim.Spec.BYOCSecretRef.Name,
-		NameSpace:  accountClaim.Spec.BYOCSecretRef.Namespace,
-		AwsRegion:  "us-east-1",
-	})
+	// Update fields to BYOC Specs
+	pc.ClientInput.SecretName = accountClaim.Spec.BYOCSecretRef.Name
+	pc.ClientInput.NameSpace = accountClaim.Spec.BYOCSecretRef.Namespace
+	pc.ClientInput.AwsRegion = accountClaim.Spec.Aws.Regions[0].Name
+
+	byocAWSClient, err := awsclient.GetAWSClient(r.Client, pc.ClientInput)
 	if err != nil {
 		return nil, accountClaim, err
 	}
@@ -298,8 +286,10 @@ func (r *ReconcileAccount) getBYOCClient(currentAcct *awsv1alpha1.Account) (awsc
 	return byocAWSClient, accountClaim, nil
 }
 
+// byocRotateAccessKeys rotates the accessKey for given credentials that byocAWSClient is currently configured with.
 func (r *ReconcileAccount) byocRotateAccessKeys(reqLogger logr.Logger, byocAWSClient awsclient.Client, accountClaim *awsv1alpha1.AccountClaim) error {
 
+	// Retrieve current IAM user info.
 	getBYOCUserOutput, err := byocAWSClient.GetUser(&iam.GetUserInput{})
 	if err != nil {
 		reqLogger.Error(err, "Failed to get BYOC IAM User info")
@@ -343,6 +333,7 @@ func (r *ReconcileAccount) byocRotateAccessKeys(reqLogger logr.Logger, byocAWSCl
 		return err
 	}
 
+	// Populate secret with new key data and commit back to etcd.
 	accountClaimSecret.Data =
 		map[string][]byte{
 			"aws_access_key_id":     []byte(*userSecretInfo.AccessKey.AccessKeyId),

@@ -36,6 +36,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts/stsiface"
 	"github.com/aws/aws-sdk-go/service/support"
 	"github.com/aws/aws-sdk-go/service/support/supportiface"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
@@ -44,6 +45,8 @@ import (
 const (
 	awsCredsSecretIDKey     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
+	AWSSecretNameGlobal     = "aws-account-operator-credentials"
+	AWSSecretNameChina      = "aws-account-operator-china-credentials"
 )
 
 //go:generate mockgen -source=./client.go -destination=./mock/client_generated.go -package=mock
@@ -376,4 +379,60 @@ func GetAWSClient(kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Cli
 		return nil, err
 	}
 	return awsClient, nil
+}
+
+// GetAWSBYOCClientFromClaim returns an byocAWSClient type with region derived from current accountClaim.
+func GetAWSBYOCClientFromClaim(kc kubeclientpkg.Client, ac *awsv1alpha1.AccountClaim) (Client, error) {
+	newClient := NewAwsClientInput{
+		AwsRegion:  ac.Spec.Aws.Regions[0].Name,
+		SecretName: ac.Spec.BYOCSecretRef.Name,
+		NameSpace:  ac.Spec.BYOCSecretRef.Namespace,
+	}
+
+	client, err := GetAWSClient(kc, newClient)
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
+
+}
+
+// GetAWSClientFromClaim returns an AWSClient type with region derived from current accountClaim.
+func GetAWSClientFromClaim(kc kubeclientpkg.Client, ac *awsv1alpha1.AccountClaim) (Client, error) {
+	// get region to determine AWS platform (Global or China)
+	region := ac.Spec.Aws.Regions[0].Name
+
+	// set defaults for AWS Global
+	secretName := AWSSecretNameGlobal
+	namespace := awsv1alpha1.AccountCrNamespace
+
+	if !CheckAwsProviderIsGlobal(region) {
+		// Update to reference AWS China secret
+		secretName = AWSSecretNameChina
+	}
+
+	newClient := NewAwsClientInput{
+		AwsRegion:  region,
+		SecretName: secretName,
+		NameSpace:  namespace,
+	}
+
+	client, err := GetAWSClient(kc, newClient)
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
+
+}
+
+// checkAwsProviderIsGlobal determines the AWS Provider based on the region string passed.
+func CheckAwsProviderIsGlobal(awsRegion string) bool {
+	if awsRegion == "cn-north-1" || awsRegion == "cn-northwest-1" {
+		// Region is China, return `false` to awsGlobal caller
+		return false
+	}
+	// Region is Global, return `true` to awsGlobal caller
+	return true
 }

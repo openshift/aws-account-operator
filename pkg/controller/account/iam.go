@@ -53,9 +53,7 @@ type StatementEntry struct {
 }
 
 // RequestSigninToken makes a HTTP request to retrieve a Signin Token from the federation end point
-func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, DurationSeconds *int64, FederatedUserName *string, PolicyArns []*sts.PolicyDescriptorType, STSCredentials *sts.AssumeRoleOutput) (string, error) {
-	// URL for building Federated Signin queries
-	federationEndpointURL := "https://signin.aws.amazon.com/federation"
+func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, DurationSeconds *int64, FederatedUserName *string, PolicyArns []*sts.PolicyDescriptorType, STSCredentials *sts.AssumeRoleOutput, fc utils.AwsFederationConfig) (string, error) {
 
 	// Get Federated token credentials to build console URL
 	GetFederationTokenOutput, err := getFederationToken(reqLogger, awsclient, DurationSeconds, FederatedUserName, PolicyArns)
@@ -64,13 +62,13 @@ func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, Durat
 		return "", err
 	}
 
-	signinTokenResponse, err := getSigninToken(reqLogger, federationEndpointURL, GetFederationTokenOutput)
+	signinTokenResponse, err := getSigninToken(reqLogger, fc.EndpointURL, GetFederationTokenOutput)
 
 	if err != nil {
 		return "", err
 	}
 
-	signedFederationURL, err := formatSigninURL(reqLogger, federationEndpointURL, signinTokenResponse.SigninToken)
+	signedFederationURL, err := formatSigninURL(reqLogger, fc, signinTokenResponse.SigninToken)
 
 	if err != nil {
 		return "", err
@@ -114,12 +112,10 @@ func getFederationToken(reqLogger logr.Logger, awsclient awsclient.Client, Durat
 }
 
 // formatSigninURL build and format the signin URL to be used in the secret
-func formatSigninURL(reqLogger logr.Logger, federationEndpointURL, signinToken string) (*url.URL, error) {
-	// URLs for building Federated Signin queries
-	awsConsoleURL := "https://console.aws.amazon.com/"
+func formatSigninURL(reqLogger logr.Logger, fc utils.AwsFederationConfig, signinToken string) (*url.URL, error) {
 	issuer := "Red Hat SRE"
 
-	signinFederationURL, err := url.Parse(federationEndpointURL)
+	signinFederationURL, err := url.Parse(fc.EndpointURL)
 
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Malformed URL: %s", err.Error()))
@@ -129,7 +125,7 @@ func formatSigninURL(reqLogger logr.Logger, federationEndpointURL, signinToken s
 	signinParams := url.Values{}
 
 	signinParams.Add("Action", "login")
-	signinParams.Add("Destination", awsConsoleURL)
+	signinParams.Add("Destination", fc.ConsoleURL)
 	signinParams.Add("Issuer", issuer)
 	signinParams.Add("SigninToken", signinToken)
 
@@ -167,7 +163,7 @@ func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, account *awsv1alp
 // Takes a logger, an awsSetupClient for the signing token, an awsClient for, an account CR to set ownership of secrets, the namespace to create the secret in, and a role to assume with the creds
 // The awsSetupClient is the client for the user in the target linked account
 // The awsClient is the client for the user in the payer level account
-func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient awsclient.Client, awsClient awsclient.Client, account *awsv1alpha1.Account, nameSpace string, iamRole string) (string, error) {
+func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient awsclient.Client, awsClient awsclient.Client, account *awsv1alpha1.Account, nameSpace string, iamRole string, pc utils.AwsPlatformConfig) (string, error) {
 	reqLogger.Info("Creating IAM STS User")
 
 	// If IAM user was just created we cannot immediately create STS credentials due to an issue
@@ -175,7 +171,7 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 	time.Sleep(10 * time.Second)
 
 	// Create STS user for SRE admins
-	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsClient, iamRole, account.Spec.AwsAccountID)
+	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsClient, iamRole, account.Spec.AwsAccountID, pc.ARNPrefix)
 	if STSCredentialsErr != nil {
 		reqLogger.Info("Failed to get SRE admin STSCredentials from AWS api ", "Error", STSCredentialsErr.Error())
 		return "", STSCredentialsErr
@@ -183,7 +179,7 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 
 	STSUserName := account.Name + "-STS"
 
-	IAMAdministratorPolicy := "arn:aws:iam::aws:policy/AdministratorAccess"
+	IAMAdministratorPolicy := pc.ARNPrefix + utils.AWSIAMPolicyAdministrator
 
 	IAMPolicy := sts.PolicyDescriptorType{Arn: &IAMAdministratorPolicy}
 
@@ -193,7 +189,7 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 
 	// Set IAM policy for Web Console login, this policy cannot grant more permissions than the IAM user has which creates it
 
-	SREConsoleLoginURL, err := RequestSigninToken(reqLogger, awsSetupClient, &SigninTokenDuration, &STSUserName, IAMPolicyDescriptors, STSCredentials)
+	SREConsoleLoginURL, err := RequestSigninToken(reqLogger, awsSetupClient, &SigninTokenDuration, &STSUserName, IAMPolicyDescriptors, STSCredentials, pc.FederationConfig)
 	if err != nil {
 		reqLogger.Error(err, "Unable to create AWS signin token")
 	}
@@ -229,7 +225,7 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 
 // getStsCredentials returns STS credentials for the specified account ARN
 // Takes a logger, an awsClient, a role name to assume, and the target AWS account ID
-func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleName string, awsAccountID string) (*sts.AssumeRoleOutput, error) {
+func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleName string, awsAccountID string, platformARNPrefix string) (*sts.AssumeRoleOutput, error) {
 	// Use the role session name to uniquely identify a session when the same role
 	// is assumed by different principals or for different reasons.
 	var roleSessionName = "awsAccountOperator"
@@ -238,7 +234,7 @@ func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleNa
 	var roleSessionDuration int64 = 3600
 	// The role ARN made up of the account number and the role which is the default role name
 	// created in child accounts
-	var roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", awsAccountID, iamRoleName)
+	var roleArn = fmt.Sprintf("%siam::%s:role/%s", platformARNPrefix, awsAccountID, iamRoleName)
 	reqLogger.Info(fmt.Sprintf("Creating STS credentials for AWS ARN: %s", roleArn))
 	// Build input for AssumeRole
 	assumeRoleInput := sts.AssumeRoleInput{
@@ -506,15 +502,19 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 
 // AttachAdminUserPolicy attaches the AdministratorAccess policy to a target user
 // Takes a logger, an AWS client for the target account, and the target IAM user's username
-func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.AttachUserPolicyOutput, error) {
+func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User, platformARNPrefix string) (*iam.AttachUserPolicyOutput, error) {
 
 	attachPolicyOutput := &iam.AttachUserPolicyOutput{}
 	var err error
+
+	// Construct iamAdministratorPolicy with current platform prefix
+	iamAdministratorPolicy := platformARNPrefix + utils.AWSIAMPolicyAdministrator
+
 	for i := 0; i < 100; i++ {
 		time.Sleep(500 * time.Millisecond)
 		attachPolicyOutput, err = client.AttachUserPolicy(&iam.AttachUserPolicyInput{
 			UserName:  iamUser.UserName,
-			PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
+			PolicyArn: aws.String(iamAdministratorPolicy),
 		})
 		if err == nil {
 			break
@@ -541,7 +541,7 @@ func CreateUserAccessKey(client awsclient.Client, iamUser *iam.User) (*iam.Creat
 
 // BuildIAMUser creates and initializes all resources needed for a new IAM user
 // Takes a logger, an AWS client, an Account CR, the desired IAM username and a namespace to create resources in
-func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUserName string, nameSpace string) (*string, error) {
+func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUserName string, nameSpace string, platformARNPrefix string) (*string, error) {
 	var iamUserSecretName string
 	var createdIAMUser *iam.User
 
@@ -576,7 +576,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	reqLogger.Info(fmt.Sprintf("Attaching Admin Policy to IAM user %s", aws.StringValue(createdIAMUser.UserName)))
 
 	// Setting IAM user policy
-	_, err = AttachAdminUserPolicy(awsClient, createdIAMUser)
+	_, err = AttachAdminUserPolicy(awsClient, createdIAMUser, platformARNPrefix)
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to attach admin policy to IAM user %s", aws.StringValue(createdIAMUser.UserName))
 		reqLogger.Error(err, errMsg)

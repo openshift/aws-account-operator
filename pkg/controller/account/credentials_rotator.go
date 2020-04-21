@@ -9,6 +9,7 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/credentialwatcher"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -16,7 +17,7 @@ import (
 )
 
 // RotateCredentials update existing secret with new STS tokens and Singin URL
-func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClient awsclient.Client, account *awsv1alpha1.Account) error {
+func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClient awsclient.Client, account *awsv1alpha1.Account, platformARNPrefix string) error {
 	STSCredentialsSecretName := account.Name + credentialwatcher.STSCredentialsSuffix
 	STSCredentialsSecretNamespace := account.Namespace
 
@@ -32,7 +33,7 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 	}
 
 	// Get STS user credentials
-	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsSetupClient, roleToAssume, account.Spec.AwsAccountID)
+	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsSetupClient, roleToAssume, account.Spec.AwsAccountID, platformARNPrefix)
 
 	if STSCredentialsErr != nil {
 		reqLogger.Info("RotateCredentials: Failed to get SRE admin STSCredentials from AWS api ", "Error", STSCredentialsErr.Error())
@@ -91,7 +92,8 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 	return nil
 }
 
-func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSetupClient awsclient.Client, account *awsv1alpha1.Account) error {
+// RotateConsoleCredentials rotates STS credentials used to access the AWS console for a given account.
+func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSetupClient awsclient.Client, account *awsv1alpha1.Account, pc utils.AwsPlatformConfig) error {
 	STSCredentialsSecretName := account.Name + credentialwatcher.STSCredentialsConsoleSuffix
 
 	//var awsAssumedRoleClient awsclient.Client
@@ -104,7 +106,7 @@ func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSe
 	}
 
 	// Get STS user credentials
-	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsSetupClient, roleToAssume, account.Spec.AwsAccountID)
+	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsSetupClient, roleToAssume, account.Spec.AwsAccountID, pc.ARNPrefix)
 
 	if STSCredentialsErr != nil {
 		reqLogger.Info("RotateCredentials: Failed to get SRE admin STSCredentials from AWS api ", "Error", STSCredentialsErr.Error())
@@ -113,7 +115,7 @@ func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSe
 
 	STSUserName := account.Name + "-sts"
 
-	IAMAdministratorPolicy := "arn:aws:iam::aws:policy/AdministratorAccess"
+	IAMAdministratorPolicy := pc.ARNPrefix + utils.AWSIAMPolicyAdministrator
 
 	IAMPolicy := sts.PolicyDescriptorType{Arn: &IAMAdministratorPolicy}
 
@@ -125,14 +127,14 @@ func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSe
 	SREAWSClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
 		SecretName: account.Name + "-" + strings.ToLower(iamUserNameSRE) + "-secret",
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
+		AwsRegion:  pc.ClientInput.AwsRegion,
 	})
 	if err != nil {
 		reqLogger.Error(err, "RotateCredentials: Unable to create AWS conn with IAM user creds")
 		return err
 	}
 
-	SREConsoleLoginURL, err := RequestSigninToken(reqLogger, SREAWSClient, &SigninTokenDuration, &STSUserName, IAMPolicyDescriptors, STSCredentials)
+	SREConsoleLoginURL, err := RequestSigninToken(reqLogger, SREAWSClient, &SigninTokenDuration, &STSUserName, IAMPolicyDescriptors, STSCredentials, pc.FederationConfig)
 	if err != nil {
 		reqLogger.Error(err, "RotateCredentials: Unable to create AWS signin token")
 		return err

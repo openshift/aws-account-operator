@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -128,3 +129,69 @@ func Remove(list []string, s string) []string {
 	}
 	return list
 }
+
+const (
+	AWSRegionDefaultGlobal = "us-east-1"
+	AWSRegionDefaultChina  = "cn-north-1"
+
+	AWSSecretNameGlobal = "aws-account-operator-credentials"
+	AWSSecretNameChina  = "aws-account-operator-china-credentials"
+
+	AWSARNPrefixGlobal = "arn:aws:"
+	AWSARNPrefixChina  = "arn:aws-cn:"
+
+	AWSIAMPolicyAdministrator = "iam::aws:policy/AdministratorAccess"
+
+	AWSFedEndpointURLGlobal = "https://signin.aws.amazon.com/federation"
+	AWSFedEndpointURLChina  = "https://signin.amazonaws.cn/federation"
+
+	AWSFedConsURLGlobal = "https://console.aws.amazon.com/"
+	AWSFedConsURLChina  = "https://console.amazonaws.cn/"
+)
+
+// AwsPlatformConfig contains all required fields to service either AWS Global or AWS China.
+type AwsPlatformConfig struct {
+	ClientInput      awsclient.NewAwsClientInput
+	ARNPrefix        string
+	CoveredRegions   map[string]map[string]string
+	FederationConfig AwsFederationConfig
+}
+
+// AwsFederationConfig consolidates EndpointURL and ConsoleURL into one structure that accounts
+// for requirements of FederationConfig.
+type AwsFederationConfig struct {
+	EndpointURL string
+	ConsoleURL  string
+}
+
+var (
+	// AwsPlatformConfigGlobal provides a default struct with fields configured for AWS Global.
+	AwsPlatformConfigGlobal = AwsPlatformConfig{
+		ClientInput: awsclient.NewAwsClientInput{
+			AwsRegion:  AWSRegionDefaultGlobal,
+			SecretName: AWSSecretNameGlobal,
+			NameSpace:  awsv1alpha1.AccountCrNamespace,
+		},
+		ARNPrefix:      AWSARNPrefixGlobal,
+		CoveredRegions: awsv1alpha1.AWSRegionsGlobal,
+		FederationConfig: AwsFederationConfig{
+			EndpointURL: AWSFedEndpointURLGlobal,
+			ConsoleURL:  AWSFedConsURLGlobal,
+		},
+	}
+
+	// AwsPlatformConfigChina provides a default struct with fields configured for AWS China.
+	AwsPlatformConfigChina = AwsPlatformConfig{
+		ClientInput: awsclient.NewAwsClientInput{
+			AwsRegion:  AWSRegionDefaultChina,
+			SecretName: AWSSecretNameChina,
+			NameSpace:  awsv1alpha1.AccountCrNamespace,
+		},
+		ARNPrefix:      AWSARNPrefixChina,
+		CoveredRegions: awsv1alpha1.AWSRegionsChina,
+		FederationConfig: AwsFederationConfig{
+			EndpointURL: AWSFedEndpointURLChina,
+			ConsoleURL:  AWSFedConsURLChina,
+		},
+	}
+)
