@@ -1,6 +1,11 @@
 package v1alpha1
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/iam"
+)
 
 // CoveredRegions map
 var CoveredRegions = map[string]map[string]string{
@@ -49,6 +54,36 @@ var CoveredRegions = map[string]map[string]string{
 	"sa-east-1": {
 		"initializationAMI": "ami-05c1c16cac05a7c0b",
 	},
+}
+
+// Tags
+
+// TagBuilder is an interface for building the different types of tags we use
+type TagBuilder interface {
+	IAMTag() iam.Tag
+	EC2Tag() ec2.Tag
+}
+
+// Tag is a simply structure that mimics aws tag structures
+type Tag struct {
+	key   string
+	value string
+}
+
+// IAMTag will build and return an iam tag with the given input
+func (t Tag) IAMTag() iam.Tag {
+	return iam.Tag{
+		Key:   &t.key,
+		Value: &t.value,
+	}
+}
+
+// EC2Tag will build and return an ec2 tag with the given input
+func (t Tag) EC2Tag() ec2.Tag {
+	return ec2.Tag{
+		Key:   &t.key,
+		Value: &t.value,
+	}
 }
 
 // Custom errors
