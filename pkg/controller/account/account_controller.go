@@ -443,7 +443,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Initialize all supported regions by creating and terminating an instance in each
-		err = r.InitializeSupportedRegions(reqLogger, awsv1alpha1.CoveredRegions, creds)
+		err = r.InitializeSupportedRegions(reqLogger, currentAcctInstance, awsv1alpha1.CoveredRegions, creds)
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, "Failed to build and destroy ec2 instances")
 			return reconcile.Result{}, err

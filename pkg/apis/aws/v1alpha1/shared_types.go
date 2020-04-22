@@ -1,6 +1,8 @@
 package v1alpha1
 
-import "errors"
+import (
+	"errors"
+)
 
 // CoveredRegions map
 var CoveredRegions = map[string]map[string]string{
@@ -86,6 +88,8 @@ var ErrCreateEC2Instance = errors.New("EC2CreationTimeout")
 // ErrFailedAWSTypecast indicates that there was a failure while typecasting to aws error
 var ErrFailedAWSTypecast = errors.New("FailedToTypecastAWSError")
 
+// Shared variables
+
 // UIDLabel is the string for the uid label on AWS Federated Account Access CRs
 var UIDLabel = "uid"
 
@@ -109,3 +113,6 @@ var IAMUserIDLabel = "iamUserId"
 
 // EmailID is the ID used for prefixing Account CR names
 var EmailID = "osd-creds-mgmt"
+
+// EC2ResourceType is the resource type used when building EC2 tags
+var EC2ResourceType = "ec2Resources"
