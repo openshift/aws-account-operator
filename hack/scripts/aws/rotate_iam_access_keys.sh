@@ -127,14 +127,14 @@ if [ "$IAM_USER" = "$AWS_IAM_USER" ]; then
     CREDENTIALS=$(aws iam create-access-key --user-name "$IAM_USER")
 	$VERBOSE && echo "Rotated access keys for $IAM_USER"
     KEY=$(echo "$CREDENTIALS" | jq -j '.AccessKey.AccessKeyId')
-    B64_KEY=$(echo -n $CREDENTIALS | jq -r '.AccessKey.AccessKeyId' | base64)
+    B64_KEY=$(echo -n $CREDENTIALS | jq -j '.AccessKey.AccessKeyId' | base64)
     if $PRINT_SECRETS; then
       echo "Access key: $KEY"
       echo "Base64 access key: $B64_KEY"
     fi
 
     SECRET=$(echo -n "$CREDENTIALS" | jq -j '.AccessKey.SecretAccessKey')
-    B64_SECRET=$(echo -n $CREDENTIALS | jq -r '.AccessKey.SecretAccessKey' | base64)
+    B64_SECRET=$(echo -n $CREDENTIALS | jq -j '.AccessKey.SecretAccessKey' | base64)
     if $PRINT_SECRETS; then
       echo "Secret access key: $SECRET"
       echo "Base64 secret key: $B64_SECRET"
