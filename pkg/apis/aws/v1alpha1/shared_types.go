@@ -91,3 +91,9 @@ var UIDLabel = "uid"
 
 // AccountIDLabel is the string for the AWS Account ID label on AWS Federated Account Access CRs
 var AccountIDLabel = "awsAccountID"
+
+// ClusterNameTagKey is the AWS key name for cluster name
+var ClusterNameTagKey = "clusterName"
+
+// ClusterNamespaceTagKey is the AWS key name for cluster namespace
+var ClusterNamespaceTagKey = "clusterNamespace"
