@@ -159,11 +159,11 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	}
 
 	// Check if the FAA has the uid label
-	if !hasUIDLabel(currentFAA) {
+	if !hasLabel(currentFAA, awsv1alpha1.UIDLabel) {
 		// Generate a new UID
 		uid := rand.String(6)
 
-		reqLogger.Info(fmt.Sprintf("Adding UID %s to AccountAcess %s", uid, currentFAA.Name))
+		reqLogger.Info(fmt.Sprintf("Adding UID %s to AccountAccess %s", uid, currentFAA.Name))
 		newLabel := map[string]string{"uid": uid}
 
 		// Join the new UID label with any current labels
@@ -182,7 +182,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 
 	}
 
-	uidLabel, ok := currentFAA.Labels["uid"]
+	uidLabel, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
 	if !ok {
 		return reconcile.Result{}, err
 	}
@@ -211,6 +211,28 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		}
 
 		return reconcile.Result{}, err
+	}
+
+	accountID := *gciOut.Account // Add requested aws managed policies to the role
+
+	if !hasLabel(currentFAA, awsv1alpha1.AccountIDLabel) {
+
+		reqLogger.Info(fmt.Sprintf("Adding awsAccountID %s to AccountAccess %s", accountID, currentFAA.Name))
+		newLabel := map[string]string{"awsAccountID": accountID}
+
+		// Join the new UID label with any current labels
+		if currentFAA.Labels != nil {
+			currentFAA.Labels = joinLabelMaps(currentFAA.Labels, newLabel)
+		} else {
+			currentFAA.Labels = newLabel
+		}
+
+		// Update the CR with new labels
+		err = r.client.Update(context.TODO(), currentFAA)
+		if err != nil {
+			reqLogger.Error(err, fmt.Sprintf("Label update for %s failed", currentFAA.Name))
+			return reconcile.Result{}, err
+		}
 	}
 
 	// Here create the custom policy in the cluster account
@@ -245,7 +267,6 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		return reconcile.Result{}, nil
 	}
 
-	accountID := *gciOut.Account // Add requested aws managed policies to the role
 	currentFAA.Status.ConsoleURL = fmt.Sprintf("https://signin.aws.amazon.com/switchrole?account=%s&roleName=%s", accountID, *role.RoleName)
 
 	awsManagedPolicyNames := []string{}
@@ -694,13 +715,12 @@ func (r *ReconcileAWSFederatedAccountAccess) deleteNonAttachedCustomPolicy(reqLo
 	return nil
 }
 
-func hasUIDLabel(awsFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess) bool {
+func hasLabel(awsFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess, labelKey string) bool {
 
-	// Check if the UID label exists and is set
-	if _, ok := awsFederatedAccountAccess.Labels["uid"]; ok {
+	// Check if the given key exists as a label
+	if _, ok := awsFederatedAccountAccess.Labels[labelKey]; ok {
 		return true
 	}
-
 	return false
 }
 
