@@ -200,28 +200,23 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 
 	secretName := account.Name
 
-	STSConsoleInput := SREConsoleInput{
-		SecretName:              fmt.Sprintf("%s-sre-console-url", secretName),
-		NameSpace:               nameSpace,
-		awsCredsConsoleLoginURL: SREConsoleLoginURL,
+	consoleSecretName := fmt.Sprintf("%s-sre-console-url", secretName)
+	consoleSecretData := map[string][]byte{
+		"awsCredsConsoleLoginURL": []byte(SREConsoleLoginURL),
 	}
-
-	userConsoleSecret := STSConsoleInput.newConsoleSecret()
-
+	userConsoleSecret := CreateSecret(consoleSecretName, nameSpace, consoleSecretData)
 	err = r.CreateSecret(reqLogger, secretName, account, userConsoleSecret)
 	if err != nil {
 		return "", err
 	}
 
-	STSSecretInput := SRESecretInput{
-		SecretName:              fmt.Sprintf("%s-sre-cli-credentials", secretName),
-		NameSpace:               nameSpace,
-		awsCredsSecretIDKey:     *STSCredentials.Credentials.AccessKeyId,
-		awsCredsSecretAccessKey: *STSCredentials.Credentials.SecretAccessKey,
-		awsCredsSessionToken:    *STSCredentials.Credentials.SessionToken,
+	cliSecretName := fmt.Sprintf("%s-sre-cli-credentials", secretName)
+	cliSecretData := map[string][]byte{
+		"awsCredsSecretIDKey":     []byte(*STSCredentials.Credentials.AccessKeyId),
+		"awsCredsSecretAccessKey": []byte(*STSCredentials.Credentials.SecretAccessKey),
+		"awsCredsSessionToken":    []byte(*STSCredentials.Credentials.SessionToken),
 	}
-	userSecret := STSSecretInput.newSTSSecret()
-
+	userSecret := CreateSecret(cliSecretName, nameSpace, cliSecretData)
 	err = r.CreateSecret(reqLogger, secretName, account, userSecret)
 	if err != nil {
 		return "", err
@@ -633,16 +628,15 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 		}
 
 		//Fill in the secret data
-		userSecretInput := secretInput{
-			SecretName:              fmt.Sprintf("%s-secret", secretName),
-			NameSpace:               nameSpace,
-			awsCredsUserName:        *accessKeyOutput.AccessKey.UserName,
-			awsCredsSecretIDKey:     *accessKeyOutput.AccessKey.AccessKeyId,
-			awsCredsSecretAccessKey: *accessKeyOutput.AccessKey.SecretAccessKey,
+		userSecretName := fmt.Sprintf("%s-secret", secretName)
+		userSecretData := map[string][]byte{
+			"aws_user_name":         []byte(*accessKeyOutput.AccessKey.UserName),
+			"aws_access_key_id":     []byte(*accessKeyOutput.AccessKey.AccessKeyId),
+			"aws_secret_access_key": []byte(*accessKeyOutput.AccessKey.SecretAccessKey),
 		}
 
 		//Create new secret
-		userSecret := userSecretInput.newSecretforCR()
+		userSecret := CreateSecret(userSecretName, nameSpace, userSecretData)
 
 		// Set controller as owner of secret
 		if err := controllerutil.SetControllerReference(account, userSecret, r.scheme); err != nil {
