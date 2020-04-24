@@ -46,20 +46,25 @@ func (t *AWSAccountOperatorTags) GetEC2Tags() []*ec2.Tag {
 }
 
 // BuildTags intializes AWSTags with required tags
-func BuildTags(accountClaim *awsv1alpha1.AccountClaim) AWSTagBuilder {
-	if AWSTags == nil {
-		ClusterNameTag := AWSTag{
-			Key:   awsv1alpha1.ClusterNameTagKey,
-			Value: accountClaim.Name,
-		}
-		ClusterNamespaceTag := AWSTag{
-			Key:   awsv1alpha1.ClusterNamespaceTagKey,
-			Value: accountClaim.Namespace,
-		}
-		AWSTags = &AWSAccountOperatorTags{
-			Tags: []AWSTag{ClusterNameTag, ClusterNamespaceTag},
-		}
-		return AWSTags
+func (t *AWSAccountOperatorTags) BuildTags(account *awsv1alpha1.Account) AWSTagBuilder {
+	ClusterAccountNameTag := AWSTag{
+		Key:   awsv1alpha1.ClusterAccountNameTagKey,
+		Value: account.Name,
+	}
+	ClusterNamespaceTag := AWSTag{
+		Key:   awsv1alpha1.ClusterNamespaceTagKey,
+		Value: account.Namespace,
+	}
+	ClusterClaimLinkTag := AWSTag{
+		Key:   awsv1alpha1.ClusterClaimLinkTagKey,
+		Value: account.Spec.ClaimLink,
+	}
+	ClusterClaimLinkNamespaceTag := AWSTag{
+		Key:   awsv1alpha1.ClusterClaimLinkNamespaceTagKey,
+		Value: account.Spec.ClaimLinkNamespace,
+	}
+	AWSTags = &AWSAccountOperatorTags{
+		Tags: []AWSTag{ClusterAccountNameTag, ClusterNamespaceTag, ClusterClaimLinkTag, ClusterClaimLinkNamespaceTag},
 	}
 	return AWSTags
 }
