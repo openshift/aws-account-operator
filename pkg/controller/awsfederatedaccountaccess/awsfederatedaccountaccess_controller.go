@@ -558,22 +558,51 @@ func (r *ReconcileAWSFederatedAccountAccess) removeFinalizer(reqLogger logr.Logg
 func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.Logger, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, federatedRoleCR *awsv1alpha1.AWSFederatedRole) error {
 
 	// Get the UID
-	uidLabel, ok := currentFAA.Labels["uid"]
+	uidLabel, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
 	if !ok {
 		labelErr := fmt.Sprintf("Unable to get UID label")
 		return errors.New(labelErr)
 	}
 
+	// Get the AWS Account ID
+	accountIDLabel, ok := currentFAA.Labels[awsv1alpha1.AccountIDLabel]
+	if !ok {
+		labelErr := fmt.Sprintf("Unable to get AWS Account ID label")
+		return errors.New(labelErr)
+	}
+
 	roleName := currentFAA.Spec.AWSFederatedRole.Name + "-" + uidLabel
 
-	// Build AWS client
-	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
-		SecretName: currentFAA.Spec.AWSCustomerCredentialSecret.Name,
-		NameSpace:  currentFAA.Spec.AWSCustomerCredentialSecret.Namespace,
+	// Build AWS client from root secret
+	rootAwsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
+		SecretName: "aws-account-operator-credentials",
+		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
 	})
 	if err != nil {
-		awsClientErr := fmt.Sprintf("Unable to create aws client for region ")
+		awsClientErr := fmt.Sprintf("Unable to create root aws client for region ")
+		reqLogger.Error(err, awsClientErr)
+		return err
+	}
+
+	assumeRoleOutput, err := rootAwsClient.AssumeRole(&sts.AssumeRoleInput{
+		RoleArn:         aws.String(fmt.Sprintf("arn:aws:iam::%s:role/OrganizationAccountAccessRole", accountIDLabel)),
+		RoleSessionName: aws.String("FederatedRoleCleanup"),
+	})
+	if err != nil {
+		awsClientErr := fmt.Sprintf("Unable to assume role in target linked aws account")
+		reqLogger.Error(err, awsClientErr)
+		return err
+	}
+
+	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
+		AwsCredsSecretIDKey:     *assumeRoleOutput.Credentials.AccessKeyId,
+		AwsCredsSecretAccessKey: *assumeRoleOutput.Credentials.SecretAccessKey,
+		AwsToken:                *assumeRoleOutput.Credentials.SessionToken,
+		AwsRegion:               "us-east-1",
+	})
+	if err != nil {
+		awsClientErr := fmt.Sprintf("Unable to create aws client for target linked account in region ")
 		reqLogger.Error(err, awsClientErr)
 		return err
 	}
