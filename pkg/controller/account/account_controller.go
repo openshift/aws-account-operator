@@ -147,6 +147,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
 	})
+	if err != nil {
+		reqLogger.Error(err, "Failed to get AWS client")
+		return reconcile.Result{}, err
+	}
 	var byocRoleID string
 
 	// If the account is BYOC, needs some different set up
