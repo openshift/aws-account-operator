@@ -138,20 +138,24 @@ func (s *secretWatcher) updateAccountRotateCredentialsStatus(log logr.Logger, ac
 		return
 	}
 
-	if accountInstance.Status.RotateCredentials != true {
+	if (accountInstance.Status.RotateConsoleCredentials && credentialType == "console") || (accountInstance.Status.RotateCredentials && credentialType == "cli") {
+		// We don't want to update the status since its already been updated
+		return
+	}
 
-		if credentialType == "console" {
-			accountInstance.Status.RotateConsoleCredentials = true
-			log.Info(fmt.Sprintf("AWS console credentials secret was created ago requeueing to be refreshed"))
-		} else if credentialType == "cli" {
-			accountInstance.Status.RotateCredentials = true
-			log.Info(fmt.Sprintf("AWS cli credentials secret was created ago requeueing to be refreshed"))
-		}
+	if !accountInstance.Status.RotateConsoleCredentials && credentialType == "console" {
+		accountInstance.Status.RotateConsoleCredentials = true
+		log.Info(fmt.Sprintf("%s %s credentials secret to be refreshed", accountName, credentialType))
+	}
 
-		err = s.UpdateAccount(accountInstance)
-		if err != nil {
-			log.Error(err, fmt.Sprintf("Error updating account %s", accountName))
-		}
+	if !accountInstance.Status.RotateCredentials && credentialType == "cli" {
+		accountInstance.Status.RotateCredentials = true
+		log.Info(fmt.Sprintf("%s %s credentials secret to be refreshed", accountName, credentialType))
+	}
+
+	err = s.UpdateAccount(accountInstance)
+	if err != nil {
+		log.Error(err, fmt.Sprintf("Unable to update status to trigger account %s to rotate %s credentials", accountName, credentialType))
 	}
 }
 
