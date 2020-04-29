@@ -396,7 +396,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build IAM UHC user: %s", iamUserNameUHC))
 			return reconcile.Result{}, err
 		}
-		currentAcctInstance.Spec.IAMUserSecret = secretName
+		currentAcctInstance.Spec.IAMUserSecret = *secretName
 		err = r.Client.Update(context.TODO(), currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -412,7 +412,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		// Intermittently our secret wont be ready before the next call, lets ensure it exists
 		for i := 0; i < 10; i++ {
 			secret := &corev1.Secret{}
-			err := r.Client.Get(context.TODO(), types.NamespacedName{Name: SREIAMUserSecret, Namespace: request.Namespace}, secret)
+			err := r.Client.Get(context.TODO(), types.NamespacedName{Name: *SREIAMUserSecret, Namespace: request.Namespace}, secret)
 			if err != nil {
 				if k8serr.IsNotFound(err) {
 					reqLogger.Info("SREIAMUserSecret not ready, trying again")
@@ -427,7 +427,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		// Create new awsClient with SRE IAM credentials so we can generate STS and Federation tokens from it
 		SREAWSClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
-			SecretName: SREIAMUserSecret,
+			SecretName: *SREIAMUserSecret,
 			NameSpace:  awsv1alpha1.AccountCrNamespace,
 			AwsRegion:  "us-east-1",
 		})

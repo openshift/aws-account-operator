@@ -103,7 +103,7 @@ func LogAwsError(logger logr.Logger, errMsg string, customError error, err error
 
 		logger.Error(customError,
 			fmt.Sprintf(`%s,
-				AWS Error Code: %s, 
+				AWS Error Code: %s,
 				AWS Error Message: %s`,
 				errMsg,
 				aerr.Code(),

@@ -141,7 +141,7 @@ func formatSigninURL(reqLogger logr.Logger, federationEndpointURL, signinToken s
 
 // CreateSecret creates a secret for placing IAM Credentials
 // Takes a logger, the desired name of the secret, the Account CR that will own the secret, and pointer to an empty secret object to fill
-func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, secretName string, account *awsv1alpha1.Account, secret *corev1.Secret) error {
+func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, account *awsv1alpha1.Account, secret *corev1.Secret) error {
 
 	// Set controller as owner of secret
 	if err := controllerutil.SetControllerReference(account, secret, r.scheme); err != nil {
@@ -150,7 +150,7 @@ func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, secretName string
 
 	createErr := r.Client.Create(context.TODO(), secret)
 	if createErr != nil {
-		failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret for STS user %s", secretName)
+		failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret %s", secret.Name)
 		SetAccountStatus(reqLogger, account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
@@ -159,7 +159,7 @@ func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, secretName string
 		reqLogger.Info(failedToCreateUserSecretMsg)
 		return createErr
 	}
-	reqLogger.Info("Created IAM STS User")
+	reqLogger.Info(fmt.Sprintf("Created secret %s", secret.Name))
 	return nil
 }
 
@@ -205,7 +205,7 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 		"awsCredsConsoleLoginURL": []byte(SREConsoleLoginURL),
 	}
 	userConsoleSecret := CreateSecret(consoleSecretName, nameSpace, consoleSecretData)
-	err = r.CreateSecret(reqLogger, secretName, account, userConsoleSecret)
+	err = r.CreateSecret(reqLogger, account, userConsoleSecret)
 	if err != nil {
 		return "", err
 	}
@@ -216,8 +216,10 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 		"awsCredsSecretAccessKey": []byte(*STSCredentials.Credentials.SecretAccessKey),
 		"awsCredsSessionToken":    []byte(*STSCredentials.Credentials.SessionToken),
 	}
+
 	userSecret := CreateSecret(cliSecretName, nameSpace, cliSecretData)
-	err = r.CreateSecret(reqLogger, secretName, account, userSecret)
+
+	err = r.CreateSecret(reqLogger, account, userSecret)
 	if err != nil {
 		return "", err
 	}
@@ -261,8 +263,8 @@ func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleNa
 		// Log AWS error
 		if aerr, ok := err.(awserr.Error); ok {
 			reqLogger.Error(aerr,
-				fmt.Sprintf(`New AWS Error while getting STS credentials, 
-					AWS Error Code: %s, 
+				fmt.Sprintf(`New AWS Error while getting STS credentials,
+					AWS Error Code: %s,
 					AWS Error Message: %s`,
 					aerr.Code(),
 					aerr.Message()))
@@ -381,14 +383,16 @@ func getSigninToken(reqLogger logr.Logger, federationEndpointURL string, federat
 
 // deleteAllAccessKeys deletes all access key pairs for a given user
 // Takes a logger, an AWS client, and the target IAM user's username
-func deleteAllAccessKeys(reqLogger logr.Logger, client awsclient.Client, userName string) error {
+func deleteAllAccessKeys(client awsclient.Client, iamUser *iam.User) error {
 
-	accessKeyList, err := client.ListAccessKeys(&iam.ListAccessKeysInput{UserName: aws.String(userName)})
+	accessKeyList, err := client.ListAccessKeys(&iam.ListAccessKeysInput{UserName: iamUser.UserName})
 	if err != nil {
 		return err
 	}
+
+	// Range through all AccessKeys for IAM user and delete them
 	for index := range accessKeyList.AccessKeyMetadata {
-		_, err = client.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKeyList.AccessKeyMetadata[index].AccessKeyId, UserName: aws.String(userName)})
+		_, err = client.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKeyList.AccessKeyMetadata[index].AccessKeyId, UserName: iamUser.UserName})
 		if err != nil {
 			return err
 		}
@@ -399,13 +403,16 @@ func deleteAllAccessKeys(reqLogger logr.Logger, client awsclient.Client, userNam
 
 // checkIAMUserExists checks if a given IAM user exists within an account
 // Takes a logger, an AWS client for the target account, and a target IAM username
-func checkIAMUserExists(reqLogger logr.Logger, client awsclient.Client, userName string) (bool, error) {
+func checkIAMUserExists(reqLogger logr.Logger, client awsclient.Client, userName string) (bool, *iam.GetUserOutput, error) {
 	// Retry when getting IAM user information
 	// Sometimes we see a delay before credentials are ready to be user resulting in the AWS API returning 404's
+	var iamGetUserOutput *iam.GetUserOutput
+	var err error
+
 	attempt := 1
 	for i := 0; i < 10; i++ {
 		// check if username exists for this account
-		_, err := client.GetUser(&iam.GetUserInput{
+		iamGetUserOutput, err = client.GetUser(&iam.GetUserInput{
 			UserName: aws.String(userName),
 		})
 
@@ -415,51 +422,40 @@ func checkIAMUserExists(reqLogger logr.Logger, client awsclient.Client, userName
 			if aerr, ok := err.(awserr.Error); ok {
 				switch aerr.Code() {
 				case iam.ErrCodeNoSuchEntityException:
-					return false, nil
+					return false, nil, nil
 				case "InvalidClientTokenId":
 					invalidTokenMsg := fmt.Sprintf("Invalid Token error from AWS when attempting get IAM user %s, trying again", userName)
 					reqLogger.Info(invalidTokenMsg)
 					if attempt == 10 {
-						return false, err
+						return false, nil, err
 					}
 				case "AccessDenied":
 					checkUserMsg := fmt.Sprintf("AWS Error while checking IAM user %s exists, trying again", userName)
 					utils.LogAwsError(reqLogger, checkUserMsg, nil, err)
 					// We may have bad credentials so return an error if so
 					if attempt == 10 {
-						return false, err
+						return false, nil, err
 					}
 				default:
 					utils.LogAwsError(reqLogger, "checkIAMUserExists: Unexpected AWS Error when checking IAM user exists", nil, err)
-					return false, err
+					return false, nil, err
 				}
 				time.Sleep(time.Duration(time.Duration(attempt*5) * time.Second))
 			} else {
-				return false, fmt.Errorf("Unable to check if user %s exists error: %s", userName, err)
+				return false, nil, fmt.Errorf("Unable to check if user %s exists error: %s", userName, err)
 			}
 		}
 	}
 
 	// User exists return
-	return true, nil
+	return true, iamGetUserOutput, nil
 }
 
 // CreateIAMUser creates a new IAM user in the target AWS account
 // Takes a logger, an AWS client for the target account, and the desired IAM username
 func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.CreateUserOutput, error) {
-
-	// check if username exists for this account
-	userExists, err := checkIAMUserExists(reqLogger, client, userName)
-	if err != nil {
-		return &iam.CreateUserOutput{}, err
-	}
-
-	// return the error if the IAM user already exists
-	if userExists {
-		return &iam.CreateUserOutput{}, err
-	}
-
-	var createUserOutput = &iam.CreateUserOutput{}
+	var createUserOutput *iam.CreateUserOutput
+	var err error
 
 	attempt := 1
 	for i := 0; i < 10; i++ {
@@ -504,14 +500,14 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 
 // AttachAdminUserPolicy attaches the AdministratorAccess policy to a target user
 // Takes a logger, an AWS client for the target account, and the target IAM user's username
-func AttachAdminUserPolicy(reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.AttachUserPolicyOutput, error) {
+func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.AttachUserPolicyOutput, error) {
 
 	attachPolicyOutput := &iam.AttachUserPolicyOutput{}
 	var err error
 	for i := 0; i < 100; i++ {
 		time.Sleep(500 * time.Millisecond)
 		attachPolicyOutput, err = client.AttachUserPolicy(&iam.AttachUserPolicyInput{
-			UserName:  aws.String(userName),
+			UserName:  iamUser.UserName,
 			PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
 		})
 		if err == nil {
@@ -519,23 +515,18 @@ func AttachAdminUserPolicy(reqLogger logr.Logger, client awsclient.Client, userN
 		}
 	}
 	if err != nil {
-		utils.LogAwsError(reqLogger, "New AWS Error while attaching admin user policy", nil, err)
 		return &iam.AttachUserPolicyOutput{}, err
 	}
 
 	return attachPolicyOutput, nil
 }
 
-// CreateUserAccessKey creates an IAM user's secret and returns the accesskey id and secret for that user in a aws.CreateAccessKeyOutput struct
-// Takes a logger, an AWS client, and the target IAM username
-func CreateUserAccessKey(reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.CreateAccessKeyOutput, error) {
+// CreateUserAccessKey creates a new IAM Access Key in AWS and returns aws.CreateAccessKeyOutput struct containing access key and secret
+func CreateUserAccessKey(client awsclient.Client, iamUser *iam.User) (*iam.CreateAccessKeyOutput, error) {
 
 	// Create new access key for user
-	input := &iam.CreateAccessKeyInput{}
-	input.SetUserName(userName)
-	result, err := client.CreateAccessKey(input)
+	result, err := client.CreateAccessKey(&iam.CreateAccessKeyInput{UserName: iamUser.UserName})
 	if err != nil {
-		utils.LogAwsError(reqLogger, "New AWS Error while creating user access key", nil, err)
 		return &iam.CreateAccessKeyOutput{}, err
 	}
 
@@ -544,120 +535,150 @@ func CreateUserAccessKey(reqLogger logr.Logger, client awsclient.Client, userNam
 
 // BuildIAMUser creates and initializes all resources needed for a new IAM user
 // Takes a logger, an AWS client, an Account CR, the desired IAM username and a namespace to create resources in
-func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUserName string, nameSpace string) (string, error) {
-	_, userErr := CreateIAMUser(reqLogger, awsClient, iamUserName)
-	// TODO: better error handling but for now scrap account
-	if userErr != nil {
-		//If the user already exists, don't erro
-		if aerr, ok := userErr.(awserr.Error); ok {
-			switch aerr.Code() {
-			case "EntityAlreadyExists":
-				break
-			default:
-				failedToCreateIAMUserMsg := fmt.Sprintf("Failed to create IAM user %s due to AWS Error: %s", iamUserName, aerr.Message())
-				utils.LogAwsError(reqLogger, "", nil, userErr)
-				SetAccountStatus(reqLogger, account, failedToCreateIAMUserMsg, awsv1alpha1.AccountFailed, AccountFailed)
-				err := r.Client.Status().Update(context.TODO(), account)
-				if err != nil {
-					return "", err
-				}
-				reqLogger.Info(failedToCreateIAMUserMsg)
-				return "", userErr
-			}
-		} else {
-			failedToCreateIAMUserMsg := fmt.Sprintf("Failed to create IAM user %s due to non-AWS Error", iamUserName)
-			SetAccountStatus(reqLogger, account, failedToCreateIAMUserMsg, awsv1alpha1.AccountFailed, AccountFailed)
-			err := r.Client.Status().Update(context.TODO(), account)
-			if err != nil {
-				return "", err
-			}
-			reqLogger.Info(failedToCreateIAMUserMsg)
-			return "", userErr
-		}
-	}
+func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUserName string, nameSpace string) (*string, error) {
+	var iamUserSecretName string
+	var createdIAMUser *iam.User
 
-	reqLogger.Info(fmt.Sprintf("Attaching Admin Policy to IAM user %s", iamUserName))
-	// Setting user access policy
-	_, policyErr := AttachAdminUserPolicy(reqLogger, awsClient, iamUserName)
-	if policyErr != nil {
-		failedToAttachUserPolicyMsg := fmt.Sprintf("Failed to attach admin policy to IAM user %s", iamUserName)
-		SetAccountStatus(reqLogger, account, failedToAttachUserPolicyMsg, awsv1alpha1.AccountFailed, AccountFailed)
-		r.setStatusFailed(reqLogger, account, failedToAttachUserPolicyMsg)
-		return "", policyErr
-	}
-
-	reqLogger.Info(fmt.Sprintf("Creating Secrets for IAM user %s", iamUserName))
-
-	secretName := account.Name
-
-	// Append to secret name if we're if its the SRE admin user secret
-	if iamUserName == iamUserNameSRE {
-		secretName = account.Name + "-" + strings.ToLower(iamUserName)
-	}
-
-	// create user secrets if needed
-	userExistingSecret := &corev1.Secret{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: fmt.Sprintf("%s-secret", secretName), Namespace: nameSpace}, userExistingSecret)
+	// Check if IAM User exists for this account
+	iamUserExists, iamUserExistsOutput, err := checkIAMUserExists(reqLogger, awsClient, iamUserName)
 	if err != nil {
-		if !k8serr.IsNotFound(err) {
-			getSecretErr := fmt.Sprintf("Error getting secret for user %s, err: %+v", iamUserName, err)
-			reqLogger.Info(getSecretErr)
-			return "", err
+		return nil, err
+	}
+
+	// Create IAM user in AWS if it doesn't exist
+	if iamUserExists {
+		// If user exists extract iam.User pointer
+		createdIAMUser = iamUserExistsOutput.User
+	} else {
+		CreateUserOutput, err := CreateIAMUser(reqLogger, awsClient, iamUserName)
+		// Err is handled within the function and returns a error message
+		if err != nil {
+			return nil, err
+		}
+
+		// Extract iam.User as pointer
+		createdIAMUser = CreateUserOutput.User
+	}
+
+	// Determine the kubernetes secret name as its different if the IAM user is osdManagedAdminSRE
+	if isIAMUserOsdManagedAdminSRE(createdIAMUser.UserName) {
+		iamUserSecretName = createIAMUserSecretName(fmt.Sprintf("%s-%s", account.Name, aws.StringValue(createdIAMUser.UserName)))
+	} else {
+		iamUserSecretName = createIAMUserSecretName(account.Name)
+	}
+
+	reqLogger.Info(fmt.Sprintf("Attaching Admin Policy to IAM user %s", aws.StringValue(createdIAMUser.UserName)))
+
+	// Setting IAM user policy
+	_, err = AttachAdminUserPolicy(awsClient, createdIAMUser)
+	if err != nil {
+		errMsg := fmt.Sprintf("Failed to attach admin policy to IAM user %s", aws.StringValue(createdIAMUser.UserName))
+		reqLogger.Error(err, errMsg)
+		return nil, err
+	}
+
+	reqLogger.Info(fmt.Sprintf("Creating Secrets for IAM user %s", aws.StringValue(createdIAMUser.UserName)))
+
+	// Create a NamespacedName for the secret
+	secretNamespacedName := types.NamespacedName{Name: iamUserSecretName, Namespace: nameSpace}
+
+	secretExists, err := r.DoesSecretExist(secretNamespacedName)
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Unable check if secret: %s exists", secretNamespacedName.String()))
+		return nil, err
+	}
+
+	if !secretExists {
+		iamAccessKeyOutput, err := r.RotateIAMAccessKeys(reqLogger, awsClient, account, createdIAMUser)
+		if err != nil {
+			errMsg := fmt.Sprintf("Unable to rotate access keys for IAM user: %s", aws.StringValue(createdIAMUser.UserName))
+			reqLogger.Error(err, errMsg)
+			return nil, err
+		}
+
+		err = r.createIAMUserSecret(reqLogger, account, secretNamespacedName, iamAccessKeyOutput)
+		if err != nil {
+			errMsg := fmt.Sprintf("Unable to create secret: %s", secretNamespacedName.Name)
+			reqLogger.Error(err, errMsg)
+			return nil, err
 		}
 	}
 
-	if k8serr.IsNotFound(err) {
-		//Delete all current access keys
-		deleteKeysErr := deleteAllAccessKeys(reqLogger, awsClient, iamUserName)
-		if deleteKeysErr != nil {
-			deleteAccessKeysMsg := fmt.Sprintf("Failed to delete IAM access keys for %s, err: %+v", iamUserName, deleteKeysErr)
-			reqLogger.Info(deleteAccessKeysMsg)
-			return "", deleteKeysErr
-		}
-		//Create new access key
-		accessKeyOutput, createKeyErr := CreateUserAccessKey(reqLogger, awsClient, iamUserName)
-		if createKeyErr != nil {
-			failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s, err: %+v", iamUserName, createKeyErr)
-			SetAccountStatus(reqLogger, account, failedToCreateUserAccessKeyMsg, awsv1alpha1.AccountFailed, AccountFailed)
-			err := r.Client.Status().Update(context.TODO(), account)
-			if err != nil {
-				return "", err
-			}
-			reqLogger.Info(failedToCreateUserAccessKeyMsg)
-			return "", createKeyErr
-		}
+	// Return secret name
+	return &iamUserSecretName, nil
+}
 
-		//Fill in the secret data
-		userSecretName := fmt.Sprintf("%s-secret", secretName)
-		userSecretData := map[string][]byte{
-			"aws_user_name":         []byte(*accessKeyOutput.AccessKey.UserName),
-			"aws_access_key_id":     []byte(*accessKeyOutput.AccessKey.AccessKeyId),
-			"aws_secret_access_key": []byte(*accessKeyOutput.AccessKey.SecretAccessKey),
+// RotateIAMAccessKeys will delete all AWS access keys assigned to the user and recreate them
+func (r *ReconcileAccount) RotateIAMAccessKeys(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUser *iam.User) (*iam.CreateAccessKeyOutput, error) {
+
+	// Delete all current access keys
+	err := deleteAllAccessKeys(awsClient, iamUser)
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Failed to delete IAM access keys for %s", aws.StringValue(iamUser.UserName)))
+		return nil, err
+	}
+	// Create new access key
+	accessKeyOutput, err := CreateUserAccessKey(awsClient, iamUser)
+	if err != nil {
+		errMsg := fmt.Sprintf("Failed to create IAM access key for IAM user %s", aws.StringValue(iamUser.UserName))
+		reqLogger.Error(err, errMsg)
+		// TODO: We should move this status update to the main reconcile where BuildIAMUser is called
+		// This would mean we can remove reqLogger and the awsv1alpha1 account reference to keep things cleaner
+		SetAccountStatus(reqLogger, account, errMsg, awsv1alpha1.AccountFailed, AccountFailed)
+		err := r.Client.Status().Update(context.TODO(), account)
+		if err != nil {
+			return nil, err
 		}
-
-		//Create new secret
-		userSecret := CreateSecret(userSecretName, nameSpace, userSecretData)
-
-		// Set controller as owner of secret
-		if err := controllerutil.SetControllerReference(account, userSecret, r.scheme); err != nil {
-			return "", err
-		}
-
-		createErr := r.Client.Create(context.TODO(), userSecret)
-		if createErr != nil {
-			failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret for IAM user %s", iamUserName)
-			SetAccountStatus(reqLogger, account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, AccountFailed)
-			err := r.Client.Status().Update(context.TODO(), account)
-			if err != nil {
-				return "", err
-			}
-			reqLogger.Info(failedToCreateUserSecretMsg)
-			return "", createErr
-		}
-
-		return userSecret.ObjectMeta.Name, nil
+		return nil, err
 	}
 
-	//Secret already exists
-	return fmt.Sprintf("%s-secret", secretName), nil
+	return accessKeyOutput, nil
+}
+
+// createIAMUserSecret creates a K8s secret from iam.createAccessKeyOuput and sets the owner reference to the controller
+func (r *ReconcileAccount) createIAMUserSecret(reqLogger logr.Logger, account *awsv1alpha1.Account, secretName types.NamespacedName, createAccessKeyOutput *iam.CreateAccessKeyOutput) error {
+
+	// Fill in the secret data
+	userSecretData := map[string][]byte{
+		"aws_user_name":         []byte(*createAccessKeyOutput.AccessKey.UserName),
+		"aws_access_key_id":     []byte(*createAccessKeyOutput.AccessKey.AccessKeyId),
+		"aws_secret_access_key": []byte(*createAccessKeyOutput.AccessKey.SecretAccessKey),
+	}
+
+	// Create new secret
+	iamUserSecret := CreateSecret(secretName.Name, secretName.Namespace, userSecretData)
+
+	// Set controller as owner of secret
+	if err := controllerutil.SetControllerReference(account, iamUserSecret, r.scheme); err != nil {
+		return err
+	}
+
+	// Return nil or err if we're unable to create the k8s secret
+	return r.CreateSecret(reqLogger, account, iamUserSecret)
+}
+
+// DoesSecretExist returns a bool if the secret exists
+func (r *ReconcileAccount) DoesSecretExist(namespacedName types.NamespacedName) (bool, error) {
+
+	secret := &corev1.Secret{}
+	err := r.Client.Get(context.TODO(), namespacedName, secret)
+	if err != nil {
+		if k8serr.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
+}
+
+// isIAMUserOsdManagedAdminSRE returns true if the username begins with osdManagedAdminSRE
+func isIAMUserOsdManagedAdminSRE(userName *string) bool {
+	return strings.HasPrefix(*userName, iamUserNameSRE)
+}
+
+// createIAMUserSecretName returns a lower case concatinated string of the input separated by "-"
+func createIAMUserSecretName(account string) string {
+	suffix := "secret"
+	return strings.ToLower(fmt.Sprintf("%s-%s", account, suffix))
 }
