@@ -323,14 +323,11 @@ func (r *ReconcileAccount) byocRotateAccessKeys(reqLogger logr.Logger, byocAWSCl
 	}
 
 	// Update secret with new access key
-	updatedAccountSecret, err := replaceSecretAccessKey(reqLogger, byocAWSClient, *accountClaimSecret, *getBYOCUserOutput.User.UserName, &accessKeyID)
-	reqLogger.Info("BYOC updating secret")
-	err = r.Client.Update(context.TODO(), &updatedAccountSecret)
+	id, secret, err := RotateIAMUserKeys(reqLogger, byocAWSClient, *getBYOCUserOutput.User.UserName, &accessKeyID)
+	err = r.updateBYOCSecret(reqLogger, *accountClaimSecret, &id, &secret)
 	if err != nil {
-		reqLogger.Error(err, "Failed to update BYOC access keys")
 		return err
 	}
-
 	return nil
 }
 
@@ -351,6 +348,22 @@ func (r *ReconcileAccount) accountClaimBYOCError(reqLogger logr.Logger, accountC
 	}
 }
 
+func (r *ReconcileAccount) updateBYOCSecret(reqLogger logr.Logger, secret corev1.Secret, AccessKeyID *string, SecretAccessKey *string) error {
+	// Update secret
+	secret.Data =
+		map[string][]byte{
+			"aws_access_key_id":     []byte(*AccessKeyID),
+			"aws_secret_access_key": []byte(*SecretAccessKey),
+		}
+	reqLogger.Info("BYOC updating secret")
+	err := r.Client.Update(context.TODO(), &secret)
+	if err != nil {
+		reqLogger.Error(err, "Failed to update BYOC access keys")
+		return err
+	}
+	return nil
+}
+
 func validateBYOCClaim(accountClaim *awsv1alpha1.AccountClaim) error {
 
 	if accountClaim.Spec.BYOCAWSAccountID == "" {
@@ -363,28 +376,22 @@ func validateBYOCClaim(accountClaim *awsv1alpha1.AccountClaim) error {
 	return nil
 }
 
-// replaceSecretAccessKey will create a new access key and use it to replace a users current one
-func replaceSecretAccessKey(reqLogger logr.Logger, client awsclient.Client, secret corev1.Secret, userName string, accessKeyID *string) (corev1.Secret, error) {
+// RotateIAMUserKeys will create a new access key and use it to replace a users current one
+func RotateIAMUserKeys(reqLogger logr.Logger, client awsclient.Client, userName string, accessKeyID *string) (string, string, error) {
+
+	// Delete original BYOC access key
+	_, err := client.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKeyID})
+	if err != nil {
+		reqLogger.Error(err, "Failed to delete BYOC access keys")
+		return "", "", err
+	}
+
 	// Create new BYOC access keys
 	userSecretInfo, err := CreateUserAccessKey(reqLogger, client, userName)
 	if err != nil {
 		failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s", userName)
 		reqLogger.Info(failedToCreateUserAccessKeyMsg)
-		return secret, err
+		return "", "", err
 	}
-
-	// Delete original BYOC access key
-	_, err = client.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKeyID})
-	if err != nil {
-		reqLogger.Error(err, "Failed to delete BYOC access keys")
-		return secret, err
-	}
-
-	// Update secret
-	secret.Data =
-		map[string][]byte{
-			"aws_access_key_id":     []byte(*userSecretInfo.AccessKey.AccessKeyId),
-			"aws_secret_access_key": []byte(*userSecretInfo.AccessKey.SecretAccessKey),
-		}
-	return secret, nil
+	return *userSecretInfo.AccessKey.AccessKeyId, *userSecretInfo.AccessKey.SecretAccessKey, nil
 }
