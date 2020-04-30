@@ -329,7 +329,7 @@ func (r *ReconcileAccount) byocRotateAccessKeys(reqLogger logr.Logger, byocAWSCl
 	}
 
 	// Create new BYOC access keys
-	userSecretInfo, err := CreateUserAccessKey(reqLogger, byocAWSClient, *getBYOCUserOutput.User.UserName)
+	userSecretInfo, err := CreateUserAccessKey(byocAWSClient, getBYOCUserOutput.User)
 	if err != nil {
 		failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s", *getBYOCUserOutput.User.UserName)
 		reqLogger.Info(failedToCreateUserAccessKeyMsg)
