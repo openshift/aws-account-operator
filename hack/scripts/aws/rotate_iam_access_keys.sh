@@ -29,25 +29,25 @@ VERBOSE=false
 while getopts ":a:u:p:r:o:svh" opt; do
     case $opt in
         a)
-            AWS_ACCOUNT_ID="$OPTARG" >&2
+            AWS_ACCOUNT_ID="$OPTARG"
             ;;
         u)
-            AWS_IAM_USER="$OPTARG" >&2
+            AWS_IAM_USER="$OPTARG"
             ;;
         p)
-            AWS_DEFAULT_PROFILE="$OPTARG" >&2
+            AWS_DEFAULT_PROFILE="$OPTARG"
             ;;
         r)
-            AWS_DEFAULT_REGION="$OPTARG" >&2
+            AWS_DEFAULT_REGION="$OPTARG"
             ;;
         s)
-            PRINT_SECRETS=true >&2
+            PRINT_SECRETS=true
             ;;
         o)
-            SECRET_OUTPUT_PATH="$OPTARG" >&2
+            SECRET_OUTPUT_PATH="$OPTARG"
             ;;
         v)
-            VERBOSE=true >&2
+            VERBOSE=true
             ;;
         h)
             echo "Invalid option: -$OPTARG" >&2
