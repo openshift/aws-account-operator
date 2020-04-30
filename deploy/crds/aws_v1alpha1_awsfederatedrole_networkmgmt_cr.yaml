@@ -46,6 +46,7 @@ spec:
           - "ec2:DetachVpnGateway"
           - "ec2:ModifyVpcPeeringConnectionOptions"
           - "ec2:RejectVpcPeeringConnection"
+          - "ec2:DisableVgwRoutePropagation"
           - "guardduty:GetDetector"
           - "guardduty:GetFindings"
           - "guardduty:GetFindingsStatistics"
