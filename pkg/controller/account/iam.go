@@ -202,7 +202,7 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 
 	consoleSecretName := fmt.Sprintf("%s-sre-console-url", secretName)
 	consoleSecretData := map[string][]byte{
-		"awsCredsConsoleLoginURL": []byte(SREConsoleLoginURL),
+		"aws_console_login_url": []byte(SREConsoleLoginURL),
 	}
 	userConsoleSecret := CreateSecret(consoleSecretName, nameSpace, consoleSecretData)
 	err = r.CreateSecret(reqLogger, account, userConsoleSecret)
@@ -212,9 +212,9 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 
 	cliSecretName := fmt.Sprintf("%s-sre-cli-credentials", secretName)
 	cliSecretData := map[string][]byte{
-		"awsCredsSecretIDKey":     []byte(*STSCredentials.Credentials.AccessKeyId),
-		"awsCredsSecretAccessKey": []byte(*STSCredentials.Credentials.SecretAccessKey),
-		"awsCredsSessionToken":    []byte(*STSCredentials.Credentials.SessionToken),
+		"aws_access_key_id":     []byte(*STSCredentials.Credentials.AccessKeyId),
+		"aws_secret_access_key": []byte(*STSCredentials.Credentials.SecretAccessKey),
+		"aws_session_token":     []byte(*STSCredentials.Credentials.SessionToken),
 	}
 
 	userSecret := CreateSecret(cliSecretName, nameSpace, cliSecretData)
