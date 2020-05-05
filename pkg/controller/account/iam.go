@@ -444,6 +444,9 @@ func checkIAMUserExists(reqLogger logr.Logger, client awsclient.Client, userName
 			} else {
 				return false, nil, fmt.Errorf("Unable to check if user %s exists error: %s", userName, err)
 			}
+		} else {
+			// Break for loop if no errors present.
+			break
 		}
 	}
 
@@ -483,7 +486,7 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 				case iam.ErrCodeEntityAlreadyExistsException:
 					invalidTokenMsg := fmt.Sprintf("IAM User %s was created", userName)
 					reqLogger.Info(invalidTokenMsg)
-					return &iam.CreateUserOutput{}, nil
+					return &iam.CreateUserOutput{}, err
 				default:
 					utils.LogAwsError(reqLogger, "CreateIAMUser: Unexpected AWS Error during creation of IAM user", nil, err)
 					return &iam.CreateUserOutput{}, err
@@ -492,10 +495,13 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 			} else {
 				return &iam.CreateUserOutput{}, err
 			}
+		} else {
+			// Break for loop if no errors are present.
+			break
 		}
 	}
-
-	return createUserOutput, err
+	// User creation successful
+	return createUserOutput, nil
 }
 
 // AttachAdminUserPolicy attaches the AdministratorAccess policy to a target user
