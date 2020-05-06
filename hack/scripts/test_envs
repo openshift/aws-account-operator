@@ -9,3 +9,4 @@ ACCOUNT_CLAIM_NAMESPACE=test-claim-namespace
 FED_USER=test-federated-user
 CCS_CLAIM_NAME=test-ccs
 CCS_NAMESPACE_NAME=test-ccs-namespace
+CCS_NAMESPACE_NAME_2=test-ccs-2-namespace

@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	EmailID   = "osd-creds-mgmt"
 	Finalizer = "finalizer.aws.managed.openshift.io"
 	WaitTime  = 25
 
@@ -67,26 +66,6 @@ func MarshalIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
 	return string(jsonPolicyDoc), nil
 }
 
-// GenerateAccountCR returns new account CR struct
-func GenerateAccountCR(namespace string) *awsv1alpha1.Account {
-
-	uuid := rand.String(6)
-	accountName := EmailID + "-" + uuid
-
-	return &awsv1alpha1.Account{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      accountName,
-			Namespace: namespace,
-		},
-		Spec: awsv1alpha1.AccountSpec{
-			AwsAccountID:       "",
-			IAMUserSecret:      "",
-			ClaimLink:          "",
-			ClaimLinkNamespace: "",
-		},
-	}
-}
-
 // AddFinalizer adds a finalizer to an object
 func AddFinalizer(object metav1.Object, finalizer string) {
 	finalizers := sets.NewString(object.GetFinalizers()...)
@@ -127,4 +106,35 @@ func Remove(list []string, s string) []string {
 		}
 	}
 	return list
+}
+
+// GenerateShortUID Generates a short UID
+func GenerateShortUID() string {
+	UID := rand.String(6)
+	return fmt.Sprintf("%s", UID)
+}
+
+// GenerateLabel returns a ObjectMeta Labels
+func GenerateLabel(key, value string) map[string]string {
+	return map[string]string{key: value}
+}
+
+// JoinLabelMaps adds a label to CR
+func JoinLabelMaps(m1, m2 map[string]string) map[string]string {
+
+	for key, value := range m2 {
+		m1[key] = value
+	}
+	return m1
+}
+
+// AccountCRHasIAMUserIDLabel check for label
+func AccountCRHasIAMUserIDLabel(accountCR *awsv1alpha1.Account) bool {
+
+	// Check if the UID label exists and is set
+	if _, ok := accountCR.Labels[awsv1alpha1.IAMUserIDLabel]; ok {
+		return true
+	}
+
+	return false
 }

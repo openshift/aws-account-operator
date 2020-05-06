@@ -546,7 +546,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	var createdIAMUser *iam.User
 
 	// Check if IAM User exists for this account
-	iamUserExists, iamUserExistsOutput, err := checkIAMUserExists(reqLogger, awsClient, iamUserName)
+	iamUserExists, iamUserExistsOutput, err := awsclient.CheckIAMUserExists(reqLogger, awsClient, iamUserName)
 	if err != nil {
 		return nil, err
 	}
@@ -556,7 +556,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 		// If user exists extract iam.User pointer
 		createdIAMUser = iamUserExistsOutput.User
 	} else {
-		CreateUserOutput, err := CreateIAMUser(reqLogger, awsClient, iamUserName)
+		CreateUserOutput, err := awsclient.CreateIAMUser(reqLogger, awsClient, account, iamUserName)
 		// Err is handled within the function and returns a error message
 		if err != nil {
 			return nil, err
@@ -568,7 +568,8 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 
 	// Determine the kubernetes secret name as its different if the IAM user is osdManagedAdminSRE
 	if isIAMUserOsdManagedAdminSRE(createdIAMUser.UserName) {
-		iamUserSecretName = createIAMUserSecretName(fmt.Sprintf("%s-%s", account.Name, aws.StringValue(createdIAMUser.UserName)))
+		// Use iamUserNameSRE constant here to ensure we don't double up on suffix for secret name
+		iamUserSecretName = createIAMUserSecretName(fmt.Sprintf("%s-%s", account.Name, iamUserNameSRE))
 	} else {
 		iamUserSecretName = createIAMUserSecretName(account.Name)
 	}

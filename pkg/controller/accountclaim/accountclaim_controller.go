@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
@@ -167,30 +168,8 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 		if accountClaim.Spec.AccountLink == "" {
 
-			// Check that their are now other accountClaims with this AWS account ID as we
-			// don't support multiple clusters in a BYOC account
-			accountClaimList, err := r.getAccountClaimList(reqLogger)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
-			// We need to ignore our own accountClaim
-			if AWSAccountIDClaimed(accountClaim, accountClaimList) {
-				reqLogger.Info(fmt.Sprintf("BYOC AWS Account ID %s already in use", accountClaim.Spec.BYOCAWSAccountID))
-				// We should update status only if the condition doesn't exist so we don't hot loop
-				condition := utils.FindAccountClaimCondition(accountClaim.Status.Conditions, awsv1alpha1.BYOCAWSAccountInUse)
-				if condition == nil {
-					utils.SetBYOCAccountClaimStatusAWSAccountInUse(reqLogger, accountClaim)
-					// Since we are returing with the result of statusUpdate we will requeue if the status update fails
-					return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
-				}
-				// We don't want to requeue here since we'll just loop on this error
-				return reconcile.Result{}, nil
-			}
-			reqLogger.Info(fmt.Sprintf("BYOC AWS Account ID %s not in use", accountClaim.Spec.BYOCAWSAccountID))
-
-			//Create a new account with BYOC flag
-			newAccount := utils.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
+			// Create a new account with BYOC flag
+			newAccount := account.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
 			populateBYOCSpec(newAccount, accountClaim)
 			utils.AddFinalizer(newAccount, "finalizer.aws.managed.openshift.io")
 

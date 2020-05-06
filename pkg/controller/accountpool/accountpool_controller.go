@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -143,7 +144,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	}
 
 	// Create Account CR
-	newAccount := utils.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
+	newAccount := account.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
 	utils.AddFinalizer(newAccount, awsv1alpha1.AccountFinalizer)
 
 	// Set AccountPool instance as the owner and controller

@@ -33,7 +33,7 @@ docker-build: build
 
 # Create account
 .PHONY: create-account
-create-account:
+create-account: check-aws-account-id-env
 	# Create Account
 	test/integration/api/create_account.sh
 
@@ -131,17 +131,37 @@ create-ccs-namespace:
 	# Create CCS namespace
 	@oc process -p NAME=${CCS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc apply -f -
 
+# Create CCS (BYOC) namespace
+.PHONY: create-ccs-2-namespace
+create-ccs-2-namespace:
+	# Create CCS namespace
+	@oc process -p NAME=${CCS_NAMESPACE_NAME_2} -f hack/templates/namespace.tmpl | oc apply -f -
+
 # Delete CCS (BYOC) namespace
 .PHONY: delete-ccs-namespace
 delete-ccs-namespace:
 	# Delete CCS namespace
 	@oc process -p NAME=${CCS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete -f -
 
+# Delete CCS (BYOC) namespace
+.PHONY: delete-ccs-2-namespace
+delete-ccs-2-namespace:
+	# Delete CCS namespace
+	@oc process -p NAME=${CCS_NAMESPACE_NAME_2} -f hack/templates/namespace.tmpl | oc delete -f -
+
 # Create CCS (BYOC) Secret
 .PHONY: create-ccs-secret
 create-ccs-secret:
 	# Create CCS Secret
-	./hack/scripts/aws/rotate_iam_access_keys.sh -p osd-staging-2 -u osdCcsAdmin -a ${OSD_STAGING_2_AWS_ACCOUNT_ID} -o /dev/stdout | oc apply -f -
+	./hack/scripts/aws/rotate_iam_access_keys.sh -p osd-staging-2 -u osdCcsAdmin -a ${OSD_STAGING_2_AWS_ACCOUNT_ID} -n ${CCS_NAMESPACE_NAME} -o /dev/stdout | oc apply -f -
+	# Wait for AWS to propogate IAM credentials
+	sleep ${SLEEP_INTERVAL}
+
+# Create CCS (BYOC) Secret
+.PHONY: create-ccs-2-secret
+create-ccs-2-secret:
+	# Create CCS Secret
+	./hack/scripts/aws/rotate_iam_access_keys.sh -p osd-staging-2 -u osdCcsAdmin -a ${OSD_STAGING_2_AWS_ACCOUNT_ID} -n ${CCS_NAMESPACE_NAME_2} -o /dev/stdout | oc apply -f -
 	# Wait for AWS to propogate IAM credentials
 	sleep ${SLEEP_INTERVAL}
 
@@ -151,6 +171,12 @@ delete-ccs-secret:
 	# Delete CCS Secret
 	@oc delete secret byoc -n ${CCS_NAMESPACE_NAME}
 
+# Delete CCS (BYOC) Secret
+.PHONY: delete-ccs-2-secret
+delete-ccs-2-secret:
+	# Delete CCS Secret
+	@oc delete secret byoc -n ${CCS_NAMESPACE_NAME_2}
+
 .PHONY: create-ccs-accountclaim
 create-ccs-accountclaim:
 	# Create ccs accountclaim
@@ -158,10 +184,22 @@ create-ccs-accountclaim:
 	# Wait for accountclaim to become ready
 	@while true; do STATUS=$$(oc get accountclaim ${CCS_CLAIM_NAME} -n ${CCS_NAMESPACE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${CCS_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
+.PHONY: create-ccs-2-accountclaim
+create-ccs-2-accountclaim:
+	# Create ccs accountclaim
+	@oc process -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME_2} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc apply -f -
+	# Wait for accountclaim to become ready
+	@while true; do STATUS=$$(oc get accountclaim ${CCS_CLAIM_NAME} -n ${CCS_NAMESPACE_NAME_2} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${CCS_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
+
 .PHONY: delete-ccs-accountclaim
 delete-ccs-accountclaim:
 	# Delete ccs accountclaim
 	@oc process -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc delete -f -
+
+.PHONY: delete-ccs-2-accountclaim
+delete-ccs-2-accountclaim:
+	# Delete ccs accountclaim
+	@oc process -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME_2} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc delete -f -
 
 # Test CCS
 .PHONY: test-ccs

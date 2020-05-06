@@ -8,12 +8,14 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
 
 const (
@@ -31,6 +33,46 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		reqLogger.Error(err, "Failed to get claimed account")
 		return err
 	}
+	var awsClientInput awsclient.NewAwsClientInput
+
+	// Region comes from accountClaim
+	clusterAwsRegion := accountClaim.Spec.Aws.Regions[0].Name
+	if reusedAccount.Spec.BYOC {
+		// AWS credential comes from accountclaim object osdCcsAdmin user
+		// We must use this user as we would other delete the osdManagedAdmin
+		// user that we're going to delete
+		// TODO: We should use the role here
+		awsClientInput = awsclient.NewAwsClientInput{
+			SecretName: accountClaim.Spec.BYOCSecretRef.Name,
+			NameSpace:  accountClaim.Namespace,
+			AwsRegion:  clusterAwsRegion,
+		}
+	} else {
+		// AWS credential comes from account object
+		awsClientInput = awsclient.NewAwsClientInput{
+			SecretName: reusedAccount.Spec.IAMUserSecret,
+			NameSpace:  awsv1alpha1.AccountCrNamespace,
+			AwsRegion:  clusterAwsRegion,
+		}
+	}
+
+	awsClient, err := awsclient.GetAWSClient(r.client, awsClientInput)
+
+	if err != nil {
+		connErr := fmt.Sprintf("Unable to create aws client for region %s", clusterAwsRegion)
+		reqLogger.Error(err, connErr)
+		return err
+	}
+
+	// Remove IAM user we'll remove the IAM user for CCS
+	if utils.AccountCRHasIAMUserIDLabel(reusedAccount) && accountClaim.Spec.BYOC {
+		err = r.cleanUpIAM(reqLogger, awsClient, reusedAccount, accountClaim)
+		if err != nil {
+			reqLogger.Error(err, "Failed to delete IAM user during finalizer cleanup")
+		}
+	} else {
+		reqLogger.Info(fmt.Sprintf("Account: %s has no label", reusedAccount.Name))
+	}
 
 	if reusedAccount.Spec.BYOC == true {
 		err := r.client.Delete(context.TODO(), reusedAccount)
@@ -41,7 +83,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 	}
 
 	// Perform account clean up in AWS
-	err = r.cleanUpAwsAccount(reqLogger, accountClaim, reusedAccount)
+	err = r.cleanUpAwsAccount(reqLogger, awsClient)
 	if err != nil {
 		reqLogger.Error(err, "Failed to clean up AWS account")
 		return err
@@ -96,7 +138,7 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 	return nil
 }
 
-func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
+func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, awsClient awsclient.Client) error {
 	// Clean up status, used to store an error if any of the cleanup functions received one
 	cleanUpStatusFailed := false
 
@@ -105,23 +147,6 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, account
 
 	defer close(awsNotifications)
 	defer close(awsErrors)
-
-	// Region comes from accountClaim
-	clusterAwsRegion := accountClaim.Spec.Aws.Regions[0].Name
-	// AWS credential comes from account object
-	awsClientInput := awsclient.NewAwsClientInput{
-		SecretName: account.Spec.IAMUserSecret,
-		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  clusterAwsRegion,
-	}
-
-	awsClient, err := awsclient.GetAWSClient(r.client, awsClientInput)
-
-	if err != nil {
-		connErr := fmt.Sprintf("Unable to create aws client for region %s", clusterAwsRegion)
-		reqLogger.Error(err, connErr)
-		return err
-	}
 
 	// Declare un array of cleanup functions
 	cleanUpFunctions := []func(logr.Logger, awsclient.Client, chan string, chan string) error{
@@ -142,7 +167,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, account
 		case msg := <-awsNotifications:
 			reqLogger.Info(msg)
 		case errMsg := <-awsErrors:
-			err = errors.New(errMsg)
+			err := errors.New(errMsg)
 			reqLogger.Error(err, errMsg)
 			cleanUpStatusFailed = true
 		}
@@ -151,7 +176,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, account
 	// Return an error if we saw any errors on the awsErrors channel so we can make the reused account as failed
 	if cleanUpStatusFailed {
 		cleanUpStatusFailedMsg := "Failed to clean up AWS account"
-		err = errors.New(cleanUpStatusFailedMsg)
+		err := errors.New(cleanUpStatusFailedMsg)
 		reqLogger.Error(err, cleanUpStatusFailedMsg)
 	}
 
@@ -354,6 +379,66 @@ func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClie
 
 	successMsg := fmt.Sprintf("Route53 cleanup finished successfully")
 	awsNotifications <- successMsg
+	return nil
+}
+
+func (r *ReconcileAccountClaim) cleanUpIAM(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) error {
+
+	reqLogger.Info("Cleaning up IAM users")
+
+	users, err := awsclient.ListIAMUsers(reqLogger, awsClient)
+	if err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		clusterNameTag := false
+		clusterNamespaceTag := false
+		getUser, err := awsClient.GetUser(&iam.GetUserInput{UserName: user.UserName})
+		if err != nil {
+			return err
+		}
+		user = getUser.User
+		for _, tag := range user.Tags {
+			if *tag.Key == "ClusterName" && *tag.Value == accountCR.Name {
+				clusterNameTag = true
+			}
+			if *tag.Key == "ClusterNamespace" && *tag.Value == accountCR.Namespace {
+				clusterNamespaceTag = true
+			}
+		}
+		if clusterNameTag && clusterNamespaceTag {
+			attachedUserPolicies, err := awsClient.ListAttachedUserPolicies(&iam.ListAttachedUserPoliciesInput{UserName: user.UserName})
+			if err != nil {
+				return fmt.Errorf(fmt.Sprintf("Unable to list IAM user policies from user %s", *user.UserName), err)
+			}
+			for _, attachedPolicy := range attachedUserPolicies.AttachedPolicies {
+				_, err := awsClient.DetachUserPolicy(&iam.DetachUserPolicyInput{UserName: user.UserName, PolicyArn: attachedPolicy.PolicyArn})
+				if err != nil {
+					return fmt.Errorf(fmt.Sprintf("Unable to detach IAM user policy from user %s", *user.UserName), err)
+				}
+			}
+			accessKeysOutput, err := awsClient.ListAccessKeys(&iam.ListAccessKeysInput{UserName: user.UserName})
+			if err != nil {
+				return fmt.Errorf(fmt.Sprintf("Unable to list IAM user access keys for user %s", *user.UserName), err)
+			}
+			for _, accessKey := range accessKeysOutput.AccessKeyMetadata {
+				_, err := awsClient.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKey.AccessKeyId, UserName: user.UserName})
+				if err != nil {
+					return fmt.Errorf(fmt.Sprintf("Unable to delete IAM user access key %s for user %s", *accessKey.AccessKeyId, *user.UserName), err)
+				}
+			}
+
+			_, err = awsClient.DeleteUser(&iam.DeleteUserInput{UserName: user.UserName})
+			reqLogger.Info(fmt.Sprintf("Deleting IAM user: %s", *user.UserName))
+			if err != nil {
+				return fmt.Errorf(fmt.Sprintf("Unable to delete IAM user %s", *user.UserName), err)
+			}
+		} else {
+			reqLogger.Info(fmt.Sprintf("Not deleting user: %s", *user.UserName))
+		}
+	}
+
 	return nil
 }
 
