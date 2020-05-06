@@ -56,6 +56,10 @@ push:
 	docker push $(OPERATOR_IMAGE_URI)
 	docker push $(OPERATOR_IMAGE_URI_LATEST)
 
+# Generate code (Mock clients etc)
+.PHONY: generate
+	go generate ./pkg/... ./cmd/...
+
 .PHONY: gocheck
 gocheck: ## Lint code
 	gofmt -s -l $(shell go list -f '{{ .Dir }}' ./... ) | grep ".*\.go"; if [ "$$?" = "0" ]; then gofmt -s -d $(shell go list -f '{{ .Dir }}' ./... ); exit 1; fi
