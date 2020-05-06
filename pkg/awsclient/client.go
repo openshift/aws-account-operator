@@ -66,11 +66,16 @@ type Client interface {
 	DeleteUser(*iam.DeleteUserInput) (*iam.DeleteUserOutput, error)
 	DeleteUserPolicy(*iam.DeleteUserPolicyInput) (*iam.DeleteUserPolicyOutput, error)
 	GetUser(*iam.GetUserInput) (*iam.GetUserOutput, error)
+	ListUsers(*iam.ListUsersInput) (*iam.ListUsersOutput, error)
+	ListUsersPages(*iam.ListUsersInput, func(*iam.ListUsersOutput, bool) bool) error
+	ListUserTags(*iam.ListUserTagsInput) (*iam.ListUserTagsOutput, error)
 	ListAccessKeys(*iam.ListAccessKeysInput) (*iam.ListAccessKeysOutput, error)
 	ListUserPolicies(*iam.ListUserPoliciesInput) (*iam.ListUserPoliciesOutput, error)
 	PutUserPolicy(*iam.PutUserPolicyInput) (*iam.PutUserPolicyOutput, error)
 	AttachUserPolicy(*iam.AttachUserPolicyInput) (*iam.AttachUserPolicyOutput, error)
+	DetachUserPolicy(*iam.DetachUserPolicyInput) (*iam.DetachUserPolicyOutput, error)
 	ListPolicies(*iam.ListPoliciesInput) (*iam.ListPoliciesOutput, error)
+	ListAttachedUserPolicies(*iam.ListAttachedUserPoliciesInput) (*iam.ListAttachedUserPoliciesOutput, error)
 	CreatePolicy(*iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error)
 	DeletePolicy(input *iam.DeletePolicyInput) (*iam.DeletePolicyOutput, error)
 	AttachRolePolicy(*iam.AttachRolePolicyInput) (*iam.AttachRolePolicyOutput, error)
@@ -178,6 +183,18 @@ func (c *awsClient) GetUser(input *iam.GetUserInput) (*iam.GetUserOutput, error)
 	return c.iamClient.GetUser(input)
 }
 
+func (c *awsClient) ListUsers(input *iam.ListUsersInput) (*iam.ListUsersOutput, error) {
+	return c.iamClient.ListUsers(input)
+}
+
+func (c *awsClient) ListUsersPages(input *iam.ListUsersInput, fn func(*iam.ListUsersOutput, bool) bool) error {
+	return c.iamClient.ListUsersPages(input, fn)
+}
+
+func (c *awsClient) ListUserTags(input *iam.ListUserTagsInput) (*iam.ListUserTagsOutput, error) {
+	return c.iamClient.ListUserTags(input)
+}
+
 func (c *awsClient) ListAccessKeys(input *iam.ListAccessKeysInput) (*iam.ListAccessKeysOutput, error) {
 	return c.iamClient.ListAccessKeys(input)
 }
@@ -194,8 +211,16 @@ func (c *awsClient) AttachUserPolicy(input *iam.AttachUserPolicyInput) (*iam.Att
 	return c.iamClient.AttachUserPolicy(input)
 }
 
+func (c *awsClient) DetachUserPolicy(input *iam.DetachUserPolicyInput) (*iam.DetachUserPolicyOutput, error) {
+	return c.iamClient.DetachUserPolicy(input)
+}
+
 func (c *awsClient) ListPolicies(input *iam.ListPoliciesInput) (*iam.ListPoliciesOutput, error) {
 	return c.iamClient.ListPolicies(input)
+}
+
+func (c *awsClient) ListAttachedUserPolicies(input *iam.ListAttachedUserPoliciesInput) (*iam.ListAttachedUserPoliciesOutput, error) {
+	return c.iamClient.ListAttachedUserPolicies(input)
 }
 
 func (c *awsClient) CreatePolicy(input *iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error) {

@@ -9,12 +9,13 @@ usage() {
     -p         AWS Profile, leave blank for none
     -r         AWS Region leave blank for default us-east-1
     -s         Print secrets
+    -n         Namespace for outputted secret
     -o         Output path for secret yaml
     -v         Verbose
 EOF
 }
 
-if ( ! getopts ":a:u:p:r:o:svh" opt); then
+if ( ! getopts ":a:u:p:r:o:n:svh" opt); then
     echo ""
     echo "    $0 requries an argument!"
     usage
@@ -26,7 +27,7 @@ PRINT_SECRETS=false
 
 VERBOSE=false
 
-while getopts ":a:u:p:r:o:svh" opt; do
+while getopts ":a:u:p:r:o:n:svh" opt; do
     case $opt in
         a)
             AWS_ACCOUNT_ID="$OPTARG"
@@ -42,6 +43,9 @@ while getopts ":a:u:p:r:o:svh" opt; do
             ;;
         s)
             PRINT_SECRETS=true
+            ;;
+        n)
+            SECRET_NAMESPACE="$OPTARG"
             ;;
         o)
             SECRET_OUTPUT_PATH="$OPTARG"
@@ -69,6 +73,10 @@ while getopts ":a:u:p:r:o:svh" opt; do
 
 
 if [ -z "$AWS_IAM_USER" ]; then
+	usage
+fi
+
+if [ -z "$SECRET_NAMESPACE" ]; then
 	usage
 fi
 
@@ -153,7 +161,7 @@ data:
 kind: Secret
 metadata:
   name: byoc
-  namespace: test-ccs-namespace
+  namespace: $SECRET_NAMESPACE
 type: Opaque
 
 EOF

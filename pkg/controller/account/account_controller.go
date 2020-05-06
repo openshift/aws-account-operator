@@ -40,8 +40,6 @@ const (
 	awsCredsUserName        = "aws_user_name"
 	awsCredsSecretIDKey     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
-	iamUserNameUHC          = "osdManagedAdmin"
-	iamUserNameSRE          = "osdManagedAdminSRE"
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
 	createPendTime          = utils.WaitTime * time.Minute
@@ -59,6 +57,8 @@ const (
 	byocRole                   = "BYOCAdminAccess"
 
 	adminAccessArn = "arn:aws:iam::aws:policy/AdministratorAccess"
+	iamUserNameUHC = "osdManagedAdmin"
+	iamUserNameSRE = "osdManagedAdminSRE"
 )
 
 /**
@@ -343,10 +343,15 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	if accountReadyForInitialization(currentAcctInstance) {
 
 		reqLogger.Info(fmt.Sprintf("Initalizing account: %s AWS ID: %s", currentAcctInstance.Name, currentAcctInstance.Spec.AwsAccountID))
-		//var awsAssumedRoleClient awsclient.Client
 		var roleToAssume string
+		var iamUserUHC = iamUserNameUHC
+		var iamUserSRE = iamUserNameSRE
 
 		if accountIsBYOC(currentAcctInstance) {
+			// Use the same ID applied to the account name for IAM usernames
+			currentAccInstanceID := currentAcctInstance.Labels[fmt.Sprintf("%s", awsv1alpha1.IAMUserIDLabel)]
+			iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
+			iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
 			roleToAssume = byocRole
 		} else {
 			roleToAssume = awsv1alpha1.AccountOperatorIAMRole
@@ -391,9 +396,9 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserNameUHC, request.Namespace)
+		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
 		if err != nil {
-			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build IAM UHC user: %s", iamUserNameUHC))
+			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build IAM UHC user: %s", iamUserUHC))
 			return reconcile.Result{}, err
 		}
 		currentAcctInstance.Spec.IAMUserSecret = *secretName
@@ -403,9 +408,9 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Create SRE IAM user and return the credentials
-		SREIAMUserSecret, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserNameSRE, request.Namespace)
+		SREIAMUserSecret, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserSRE, request.Namespace)
 		if err != nil {
-			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build IAM SRE user: %s", iamUserNameSRE))
+			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build IAM SRE user: %s", iamUserSRE))
 			return reconcile.Result{}, err
 		}
 
@@ -441,7 +446,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		// Create STS CLI Credentials for SRE
 		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace, roleToAssume)
 		if err != nil {
-			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build SRE STS credentials: %s", iamUserNameSRE))
+			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build SRE STS credentials: %s", iamUserSRE))
 			return reconcile.Result{}, err
 		}
 

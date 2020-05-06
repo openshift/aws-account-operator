@@ -103,3 +103,9 @@ var ClusterClaimLinkTagKey = "clusterClaimLink"
 
 // ClusterClaimLinkNamespaceTagKey is the AWS key name for cluster claim namespace
 var ClusterClaimLinkNamespaceTagKey = "clusterClaimLinkNamespace"
+
+// IAMUserIDLabel label key for IAM user suffix
+var IAMUserIDLabel = "iamUserId"
+
+// EmailID is the ID used for prefixing Account CR names
+var EmailID = "osd-creds-mgmt"

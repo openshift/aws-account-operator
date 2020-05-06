@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/rand"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
@@ -161,14 +160,14 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	// Check if the FAA has the uid label
 	if !hasLabel(currentFAA, awsv1alpha1.UIDLabel) {
 		// Generate a new UID
-		uid := rand.String(6)
+		uid := utils.GenerateShortUID()
 
 		reqLogger.Info(fmt.Sprintf("Adding UID %s to AccountAccess %s", uid, currentFAA.Name))
 		newLabel := map[string]string{"uid": uid}
 
 		// Join the new UID label with any current labels
 		if currentFAA.Labels != nil {
-			currentFAA.Labels = joinLabelMaps(currentFAA.Labels, newLabel)
+			currentFAA.Labels = utils.JoinLabelMaps(currentFAA.Labels, newLabel)
 		} else {
 			currentFAA.Labels = newLabel
 		}
@@ -222,7 +221,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 
 		// Join the new UID label with any current labels
 		if currentFAA.Labels != nil {
-			currentFAA.Labels = joinLabelMaps(currentFAA.Labels, newLabel)
+			currentFAA.Labels = utils.JoinLabelMaps(currentFAA.Labels, newLabel)
 		} else {
 			currentFAA.Labels = newLabel
 		}
@@ -751,12 +750,4 @@ func hasLabel(awsFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess, 
 		return true
 	}
 	return false
-}
-
-func joinLabelMaps(m1, m2 map[string]string) map[string]string {
-
-	for key, value := range m2 {
-		m1[key] = value
-	}
-	return m1
 }
