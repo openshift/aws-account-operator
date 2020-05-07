@@ -181,14 +181,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		// Create access key and role for BYOC account
 		if !accountHasState(currentAcctInstance) {
-			// Rotate access keys
-			err = r.byocRotateAccessKeys(reqLogger, byocAWSClient, accountClaim)
-			if err != nil {
-				reqLogger.Info("Failed to rotate BYOC access keys")
-				r.accountClaimBYOCError(reqLogger, accountClaim, err)
-				return reconcile.Result{}, err
-			}
-
 			// Create BYOC role to assume
 			byocRoleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, adminAccessArn)
 			if err != nil {
