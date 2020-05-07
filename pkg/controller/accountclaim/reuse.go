@@ -400,10 +400,10 @@ func (r *ReconcileAccountClaim) cleanUpIAM(reqLogger logr.Logger, awsClient awsc
 		}
 		user = getUser.User
 		for _, tag := range user.Tags {
-			if *tag.Key == "ClusterName" && *tag.Value == accountCR.Name {
+			if *tag.Key == awsv1alpha1.ClusterAccountNameTagKey && *tag.Value == accountCR.Name {
 				clusterNameTag = true
 			}
-			if *tag.Key == "ClusterNamespace" && *tag.Value == accountCR.Namespace {
+			if *tag.Key == awsv1alpha1.ClusterNamespaceTagKey && *tag.Value == accountCR.Namespace {
 				clusterNamespaceTag = true
 			}
 		}
