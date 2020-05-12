@@ -11,13 +11,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
 	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
 
 // InitializeSupportedRegions concurrently calls InitalizeRegion to create instances in all supported regions
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
-func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, regions map[string]map[string]string, creds *sts.AssumeRoleOutput) error {
+func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions map[string]map[string]string, creds *sts.AssumeRoleOutput) error {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
 	ec2Notifications, ec2Errors := make(chan string), make(chan string)
 
@@ -27,7 +28,7 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, reg
 
 	// Create go routines to initialize regions in parallel
 	for region := range regions {
-		go r.InitializeRegion(reqLogger, region, regions[region]["initializationAMI"], ec2Notifications, ec2Errors, creds)
+		go r.InitializeRegion(reqLogger, account, region, regions[region]["initializationAMI"], ec2Notifications, ec2Errors, creds)
 	}
 
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished
@@ -46,7 +47,7 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, reg
 }
 
 // InitializeRegion sets up a connection to the AWS `region` and then creates and terminates an EC2 instance
-func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, region string, ami string, ec2Notifications chan string, ec2Errors chan string, creds *sts.AssumeRoleOutput) error {
+func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, account *awsv1alpha1.Account, region string, ami string, ec2Notifications chan string, ec2Errors chan string, creds *sts.AssumeRoleOutput) error {
 	reqLogger.Info(fmt.Sprintf("Initializing region: %s", region))
 
 	awsClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
@@ -64,7 +65,7 @@ func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, region string
 		return err
 	}
 
-	err = r.BuildandDestroyEC2Instances(reqLogger, awsClient, ami)
+	err = r.BuildandDestroyEC2Instances(reqLogger, account, awsClient, ami)
 
 	if err != nil {
 		createErr := fmt.Sprintf("Unable to create instance in region: %s", region)
@@ -83,9 +84,9 @@ func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, region string
 }
 
 // BuildandDestroyEC2Instances runs and ec2 instance and terminates it
-func (r *ReconcileAccount) BuildandDestroyEC2Instances(reqLogger logr.Logger, awsClient awsclient.Client, ami string) error {
+func (r *ReconcileAccount) BuildandDestroyEC2Instances(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, ami string) error {
 
-	instanceID, err := CreateEC2Instance(reqLogger, awsClient, ami)
+	instanceID, err := CreateEC2Instance(reqLogger, account, awsClient, ami)
 	if err != nil {
 		// Terminate instance id if it exists
 		if instanceID != "" {
@@ -146,7 +147,7 @@ func (r *ReconcileAccount) BuildandDestroyEC2Instances(reqLogger logr.Logger, aw
 }
 
 // CreateEC2Instance creates ec2 instance and returns its instance ID
-func CreateEC2Instance(reqLogger logr.Logger, client awsclient.Client, ami string) (string, error) {
+func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, client awsclient.Client, ami string) (string, error) {
 
 	// Retain instance id
 	var timeoutInstanceID string
@@ -167,6 +168,12 @@ func CreateEC2Instance(reqLogger logr.Logger, client awsclient.Client, ami strin
 			InstanceType: aws.String(awsInstanceType),
 			MinCount:     aws.Int64(1),
 			MaxCount:     aws.Int64(1),
+			TagSpecifications: []*ec2.TagSpecification{
+				{
+					ResourceType: &awsv1alpha1.EC2ResourceType,
+					Tags:         awsclient.AWSTags.BuildTags(account).GetEC2Tags(),
+				},
+			},
 		})
 
 		// Return on unexpected errors:
