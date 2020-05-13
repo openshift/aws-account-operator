@@ -114,5 +114,5 @@ var IAMUserIDLabel = "iamUserId"
 // EmailID is the ID used for prefixing Account CR names
 var EmailID = "osd-creds-mgmt"
 
-// EC2ResourceType is the resource type used when building EC2 tags
-var EC2ResourceType = "ec2Resources"
+// InstanceResourceType is the resource type used when building Instance tags
+var InstanceResourceType = "instance"
