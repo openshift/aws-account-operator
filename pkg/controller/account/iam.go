@@ -507,6 +507,15 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 // AttachAdminUserPolicy attaches the AdministratorAccess policy to a target user
 // Takes a logger, an AWS client for the target account, and the target IAM user's username
 func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.AttachUserPolicyOutput, error) {
+	var policyArn string
+
+	// Use the aws managed policy AdministratorAccess for IAM user iamUserNameSRE
+	// and the custom policy osdManagedAdminAccess for IAM user iamUserNameUHC
+	if isIAMUserOsdManagedAdminSRE(iamUser.UserName) {
+		policyArn = "arn:aws:iam:aws:policy/AdministratorAccess"
+	} else {
+		policyArn = "arn:aws:iam:aws:policy/osdManagedAdminAccess"
+	}
 
 	attachPolicyOutput := &iam.AttachUserPolicyOutput{}
 	var err error
@@ -514,7 +523,7 @@ func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.Att
 		time.Sleep(500 * time.Millisecond)
 		attachPolicyOutput, err = client.AttachUserPolicy(&iam.AttachUserPolicyInput{
 			UserName:  iamUser.UserName,
-			PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
+			PolicyArn: aws.String(policyArn),
 		})
 		if err == nil {
 			break
@@ -525,6 +534,104 @@ func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.Att
 	}
 
 	return attachPolicyOutput, nil
+}
+
+// Create the IAM policy which will be consumed by the iamUserNameUHC
+func createManagedPolicy(awsClient awsclient.Client) (*iam.Policy, error) {
+	osdManagedPolicyName := "osdManagedAdminAccess"
+
+	// Prepare the policy document
+	policyDoc := PolicyDocument{
+		Version: "2012-10-17",
+		Statement: []StatementEntry{
+			{
+				Effect: "Allow",
+				Action: []string{
+					"ec2:*",
+					"elasticloadbalancing:*",
+					"iam:AddRoleToInstanceProfile",
+					"iam:CreateInstanceProfile",
+					"iam:CreateRole",
+					"iam:DeleteInstanceProfile",
+					"iam:DeleteRole",
+					"iam:DeleteRolePolicy",
+					"iam:GetInstanceProfile",
+					"iam:GetRole",
+					"iam:GetRolePolicy",
+					"iam:ListInstanceProfilesForRole",
+					"iam:ListRoles",
+					"iam:ListUsers",
+					"iam:PassRole",
+					"iam:PutRolePolicy",
+					"iam:RemoveRoleFromInstanceProfile",
+					"iam:SimulatePrincipalPolicy",
+					"iam:TagRole",
+					"route53:ChangeResourceRecordSets",
+					"route53:ChangeTagsForResource",
+					"route53:GetChange",
+					"route53:GetHostedZone",
+					"route53:CreateHostedZone",
+					"route53:DeleteHostedZone",
+					"route53:ListHostedZones",
+					"route53:ListHostedZonesByName",
+					"route53:ListResourceRecordSets",
+					"route53:ListTagsForResource",
+					"route53:UpdateHostedZoneComment",
+					"s3:CreateBucket",
+					"s3:DeleteBucket",
+					"s3:GetAccelerateConfiguration",
+					"s3:GetBucketCors",
+					"s3:GetBucketLocation",
+					"s3:GetBucketLogging",
+					"s3:GetBucketObjectLockConfiguration",
+					"s3:GetBucketReplication",
+					"s3:GetBucketRequestPayment",
+					"s3:GetBucketTagging",
+					"s3:GetBucketVersioning",
+					"s3:GetBucketWebsite",
+					"s3:GetEncryptionConfiguration",
+					"s3:GetLifecycleConfiguration",
+					"s3:GetReplicationConfiguration",
+					"s3:ListBucket",
+					"s3:PutBucketAcl",
+					"s3:PutBucketTagging",
+					"s3:PutEncryptionConfiguration",
+					"s3:PutObject",
+					"s3:PutObjectAcl",
+					"s3:PutObjectTagging",
+					"s3:GetObject",
+					"s3:GetObjectAcl",
+					"s3:GetObjectTagging",
+					"s3:GetObjectVersion",
+					"s3:DeleteObject",
+					"autoscaling:DescribeAutoScalingGroups",
+					"iam:ListInstanceProfiles",
+					"iam:ListRolePolicies",
+					"iam:ListUserPolicies",
+					"tag:GetResources",
+					"support:*",
+				},
+				Resource: "*",
+			},
+		},
+	}
+
+	// Marshal json format for the policy document
+	jsonPolicyDoc, err := json.Marshal(&policyDoc)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the IAM policy via awsclient
+	output, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
+		PolicyName:     aws.String(osdManagedPolicyName),
+		PolicyDocument: aws.String(string(jsonPolicyDoc)),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return output.Policy, nil
 }
 
 // CreateUserAccessKey creates a new IAM Access Key in AWS and returns aws.CreateAccessKeyOutput struct containing access key and secret
@@ -575,6 +682,13 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	}
 
 	reqLogger.Info(fmt.Sprintf("Attaching Admin Policy to IAM user %s", aws.StringValue(createdIAMUser.UserName)))
+
+	// Create the osdManagedAccess policy for iamUserNameUHC
+	_, err = createManagedPolicy(awsClient)
+	if err != nil {
+		reqLogger.Error(err, "Failed to create the managed policy.")
+		return nil, err
+	}
 
 	// Setting IAM user policy
 	_, err = AttachAdminUserPolicy(awsClient, createdIAMUser)
