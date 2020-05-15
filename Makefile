@@ -47,7 +47,7 @@ delete-account:
 
 # Test Account creation
 .PHONY: test-account-creation
-test-account-creation: create-account delete-account
+test-account-creation: create-account test-secrets delete-account
 
 # Create account claim namespace
 .PHONY: create-account-claim-namespace
@@ -227,6 +227,12 @@ test-reuse: check-aws-account-id-env create-accountclaim-namespace create-accoun
 	test/integration/api/delete_account.sh
 	# Delete reuse account secrets
 	test/integration/api/delete_account_secrets.sh
+
+# Test secrets are what we expect them to be
+.PHONY: test-secrets
+test-secrets: 
+	# Test Secrets
+	test/integration/test_secrets.sh
 
 # Deploy the operator secrets, CRDs and namesapce.
 .PHONY: deploy-aws-account-operator-credentials
