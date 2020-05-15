@@ -237,17 +237,55 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logge
 
 	for _, volume := range ebsVolumes.Volumes {
 
+		// Log volume being removed
+		reqLogger.Info(fmt.Sprintf("Removing volume %s", *volume.VolumeId))
+
+		// Get instances to terminate
+		instancesToTerminate := []*string{}
+		if *volume.State != "available" {
+			for _, attachments := range volume.Attachments {
+				instancesToTerminate = append(instancesToTerminate, attachments.InstanceId)
+			}
+
+			// Terminate instances
+			terminateInstanceInput := ec2.TerminateInstancesInput{
+				InstanceIds: instancesToTerminate,
+			}
+			req, _ := awsClient.TerminateInstancesRequest(&terminateInstanceInput)
+			err := req.Send()
+			if err != nil {
+				errorMsg := fmt.Sprintf("Failed to terminate instance")
+				utils.LogAwsError(reqLogger, errorMsg, nil, err)
+			}
+			// Log terminated instances
+			for _, s := range instancesToTerminate {
+				instancesTerminatedMsg := fmt.Sprintf("Instance %s terminated succesfully", *s)
+				reqLogger.Info(instancesTerminatedMsg)
+			}
+
+		}
+
+		// delete volume
 		deleteVolumeInput := ec2.DeleteVolumeInput{
 			VolumeId: aws.String(*volume.VolumeId),
 		}
-
 		_, err = awsClient.DeleteVolume(&deleteVolumeInput)
 		if err != nil {
-			delError := fmt.Sprintf("Failed deleting EBS volume: %s", *volume.VolumeId)
-			awsErrors <- delError
-			return err
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				case "InvalidVolume.NotFound":
+					volumeRemoved := fmt.Sprintf("Volume %s has been removed", *volume.VolumeId)
+					reqLogger.Info(volumeRemoved)
+				default:
+					delError := fmt.Sprintf("Failed deleting EBS volume: %s, Volume state: %s", *volume.VolumeId, *volume.State)
+					utils.LogAwsError(reqLogger, delError, nil, err)
+					awsErrors <- delError
+					return err
+				}
+			}
 		}
-
+		volumeTerminatedMsg := fmt.Sprintf("Volume %s terminated succesfully", *volume.VolumeId)
+		reqLogger.Info(volumeTerminatedMsg)
 	}
 
 	successMsg := fmt.Sprintf("EBS Volume cleanup finished successfully")

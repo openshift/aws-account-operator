@@ -5,6 +5,7 @@
 package mock
 
 import (
+	request "github.com/aws/aws-sdk-go/aws/request"
 	ec2 "github.com/aws/aws-sdk-go/service/ec2"
 	iam "github.com/aws/aws-sdk-go/service/iam"
 	organizations "github.com/aws/aws-sdk-go/service/organizations"
@@ -54,6 +55,21 @@ func (mr *MockClientMockRecorder) RunInstances(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunInstances", reflect.TypeOf((*MockClient)(nil).RunInstances), arg0)
 }
 
+// DescribeInstances mocks base method
+func (m *MockClient) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DescribeInstances", input)
+	ret0, _ := ret[0].(*ec2.DescribeInstancesOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DescribeInstances indicates an expected call of DescribeInstances
+func (mr *MockClientMockRecorder) DescribeInstances(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeInstances", reflect.TypeOf((*MockClient)(nil).DescribeInstances), input)
+}
+
 // DescribeInstanceStatus mocks base method
 func (m *MockClient) DescribeInstanceStatus(arg0 *ec2.DescribeInstanceStatusInput) (*ec2.DescribeInstanceStatusOutput, error) {
 	m.ctrl.T.Helper()
@@ -84,6 +100,21 @@ func (mr *MockClientMockRecorder) TerminateInstances(arg0 interface{}) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TerminateInstances", reflect.TypeOf((*MockClient)(nil).TerminateInstances), arg0)
 }
 
+// TerminateInstancesRequest mocks base method
+func (m *MockClient) TerminateInstancesRequest(arg0 *ec2.TerminateInstancesInput) (*request.Request, *ec2.TerminateInstancesOutput) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TerminateInstancesRequest", arg0)
+	ret0, _ := ret[0].(*request.Request)
+	ret1, _ := ret[1].(*ec2.TerminateInstancesOutput)
+	return ret0, ret1
+}
+
+// TerminateInstancesRequest indicates an expected call of TerminateInstancesRequest
+func (mr *MockClientMockRecorder) TerminateInstancesRequest(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TerminateInstancesRequest", reflect.TypeOf((*MockClient)(nil).TerminateInstancesRequest), arg0)
+}
+
 // DescribeVolumes mocks base method
 func (m *MockClient) DescribeVolumes(arg0 *ec2.DescribeVolumesInput) (*ec2.DescribeVolumesOutput, error) {
 	m.ctrl.T.Helper()
@@ -112,6 +143,36 @@ func (m *MockClient) DeleteVolume(arg0 *ec2.DeleteVolumeInput) (*ec2.DeleteVolum
 func (mr *MockClientMockRecorder) DeleteVolume(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVolume", reflect.TypeOf((*MockClient)(nil).DeleteVolume), arg0)
+}
+
+// DetachVolume mocks base method
+func (m *MockClient) DetachVolume(input *ec2.DetachVolumeInput) (*ec2.VolumeAttachment, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DetachVolume", input)
+	ret0, _ := ret[0].(*ec2.VolumeAttachment)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DetachVolume indicates an expected call of DetachVolume
+func (mr *MockClientMockRecorder) DetachVolume(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetachVolume", reflect.TypeOf((*MockClient)(nil).DetachVolume), input)
+}
+
+// DetachVolumeRequest mocks base method
+func (m *MockClient) DetachVolumeRequest(input *ec2.DetachVolumeInput) (*request.Request, *ec2.VolumeAttachment) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DetachVolumeRequest", input)
+	ret0, _ := ret[0].(*request.Request)
+	ret1, _ := ret[1].(*ec2.VolumeAttachment)
+	return ret0, ret1
+}
+
+// DetachVolumeRequest indicates an expected call of DetachVolumeRequest
+func (mr *MockClientMockRecorder) DetachVolumeRequest(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetachVolumeRequest", reflect.TypeOf((*MockClient)(nil).DetachVolumeRequest), input)
 }
 
 // DescribeSnapshots mocks base method

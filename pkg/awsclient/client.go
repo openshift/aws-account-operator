@@ -22,6 +22,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
@@ -52,10 +53,14 @@ const (
 type Client interface {
 	//EC2
 	RunInstances(*ec2.RunInstancesInput) (*ec2.Reservation, error)
+	DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)
 	DescribeInstanceStatus(*ec2.DescribeInstanceStatusInput) (*ec2.DescribeInstanceStatusOutput, error)
 	TerminateInstances(*ec2.TerminateInstancesInput) (*ec2.TerminateInstancesOutput, error)
+	TerminateInstancesRequest(*ec2.TerminateInstancesInput) (*request.Request, *ec2.TerminateInstancesOutput)
 	DescribeVolumes(*ec2.DescribeVolumesInput) (*ec2.DescribeVolumesOutput, error)
 	DeleteVolume(*ec2.DeleteVolumeInput) (*ec2.DeleteVolumeOutput, error)
+	DetachVolume(input *ec2.DetachVolumeInput) (*ec2.VolumeAttachment, error)
+	DetachVolumeRequest(input *ec2.DetachVolumeInput) (req *request.Request, output *ec2.VolumeAttachment)
 	DescribeSnapshots(*ec2.DescribeSnapshotsInput) (*ec2.DescribeSnapshotsOutput, error)
 	DeleteSnapshot(*ec2.DeleteSnapshotInput) (*ec2.DeleteSnapshotOutput, error)
 
@@ -140,6 +145,10 @@ func (c *awsClient) RunInstances(input *ec2.RunInstancesInput) (*ec2.Reservation
 	return c.ec2Client.RunInstances(input)
 }
 
+func (c *awsClient) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
+	return c.ec2Client.DescribeInstances(input)
+}
+
 func (c *awsClient) DescribeInstanceStatus(input *ec2.DescribeInstanceStatusInput) (*ec2.DescribeInstanceStatusOutput, error) {
 	return c.ec2Client.DescribeInstanceStatus(input)
 }
@@ -148,12 +157,24 @@ func (c *awsClient) TerminateInstances(input *ec2.TerminateInstancesInput) (*ec2
 	return c.ec2Client.TerminateInstances(input)
 }
 
+func (c *awsClient) TerminateInstancesRequest(input *ec2.TerminateInstancesInput) (*request.Request, *ec2.TerminateInstancesOutput) {
+	return c.ec2Client.TerminateInstancesRequest(input)
+}
+
 func (c *awsClient) DescribeVolumes(input *ec2.DescribeVolumesInput) (*ec2.DescribeVolumesOutput, error) {
 	return c.ec2Client.DescribeVolumes(input)
 }
 
 func (c *awsClient) DeleteVolume(input *ec2.DeleteVolumeInput) (*ec2.DeleteVolumeOutput, error) {
 	return c.ec2Client.DeleteVolume(input)
+}
+
+func (c *awsClient) DetachVolume(input *ec2.DetachVolumeInput) (*ec2.VolumeAttachment, error) {
+	return c.ec2Client.DetachVolume(input)
+}
+
+func (c *awsClient) DetachVolumeRequest(input *ec2.DetachVolumeInput) (req *request.Request, output *ec2.VolumeAttachment) {
+	return c.ec2Client.DetachVolumeRequest(input)
 }
 
 func (c *awsClient) DescribeSnapshots(input *ec2.DescribeSnapshotsInput) (*ec2.DescribeSnapshotsOutput, error) {
