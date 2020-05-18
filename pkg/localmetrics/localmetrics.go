@@ -23,54 +23,66 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
+const operatorName = "aws-account-operator"
+
 var log = logf.Log.WithName("localmetrics")
 
 var (
-	MetricTotalAWSAccounts = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "aws_account_operator_total_aws_accounts",
-		Help: "Report how many accounts have been created in AWS org",
-	}, []string{"name"})
-	MetricTotalAccountCRs = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "aws_account_operator_total_account_crs",
-		Help: "Report how many account CRs have been created",
-	}, []string{"name"})
-	MetricTotalAccountCRsUnclaimed = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "aws_account_operator_total_accounts_crs_unclaimed",
-		Help: "Report how many account CRs are unclaimed",
-	}, []string{"name"})
-	MetricTotalAccountCRsClaimed = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "aws_account_operator_total_accounts_crs_claimed",
-		Help: "Report how many account CRs are claimed",
-	}, []string{"name"})
-	MetricTotalAccountCRsFailed = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "aws_account_operator_total_accounts_crs_failed",
-		Help: "Report how many account CRs are failed",
-	}, []string{"name"})
-	MetricTotalAccountClaimCRs = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "aws_account_operator_total_aws_account_claim_crs",
-		Help: "Report how many account claim CRs have been created",
-	}, []string{"name"})
-	MetricTotalAccountCRsReady = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "aws_account_operator_total_aws_accounts_crs_ready",
-		Help: "Report how many account CRs are ready",
-	}, []string{"name"})
-	MetricPoolSizeVsUnclaimed = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "aws_account_operator_pool_size_vs_unclaimed",
-		Help: "Report the difference between the pool size and the number of unclaimed account CRs",
-	}, []string{"name"})
-	MetricTotalAccountPendingVerification = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "aws_account_operator_total_aws_account_pending_verification",
-		Help: "Report the number of accounts waiting for enterprise support and EC2 limit increases in AWS",
-	}, []string{"name"})
+	MetricTotalAWSAccounts = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:        "aws_account_operator_total_aws_accounts",
+		Help:        "Report how many accounts have been created in AWS org",
+		ConstLabels: prometheus.Labels{"name": operatorName},
+	})
+	MetricTotalAccountCRs = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:        "aws_account_operator_total_account_crs",
+		Help:        "Report how many account CRs have been created",
+		ConstLabels: prometheus.Labels{"name": operatorName},
+	})
+	MetricTotalAccountCRsUnclaimed = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:        "aws_account_operator_total_accounts_crs_unclaimed",
+		Help:        "Report how many account CRs are unclaimed",
+		ConstLabels: prometheus.Labels{"name": operatorName},
+	})
+	MetricTotalAccountCRsClaimed = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:        "aws_account_operator_total_accounts_crs_claimed",
+		Help:        "Report how many account CRs are claimed",
+		ConstLabels: prometheus.Labels{"name": operatorName},
+	})
+	MetricTotalAccountCRsFailed = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:        "aws_account_operator_total_accounts_crs_failed",
+		Help:        "Report how many account CRs are failed",
+		ConstLabels: prometheus.Labels{"name": operatorName},
+	})
+	MetricTotalAccountClaimCRs = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:        "aws_account_operator_total_aws_account_claim_crs",
+		Help:        "Report how many account claim CRs have been created",
+		ConstLabels: prometheus.Labels{"name": operatorName},
+	})
+	MetricTotalAccountCRsReady = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:        "aws_account_operator_total_aws_accounts_crs_ready",
+		Help:        "Report how many account CRs are ready",
+		ConstLabels: prometheus.Labels{"name": operatorName},
+	})
+	MetricPoolSizeVsUnclaimed = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:        "aws_account_operator_pool_size_vs_unclaimed",
+		Help:        "Report the difference between the pool size and the number of unclaimed account CRs",
+		ConstLabels: prometheus.Labels{"name": operatorName},
+	})
+	MetricTotalAccountPendingVerification = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:        "aws_account_operator_total_aws_account_pending_verification",
+		Help:        "Report the number of accounts waiting for enterprise support and EC2 limit increases in AWS",
+		ConstLabels: prometheus.Labels{"name": operatorName},
+	})
 	MetricTotalAccountReusedAvailable = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name:        "aws_account_operator_total_aws_account_reused_available",
 		Help:        "Report the number of reused accounts available for claiming grouped by legal ID",
-		ConstLabels: prometheus.Labels{"name": "aws-account-operator"},
+		ConstLabels: prometheus.Labels{"name": operatorName},
 	}, []string{"LegalID"})
-	MetricTotalAccountReuseFailed = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "aws_account_operator_total_aws_account_reused_failed",
-		Help: "Report the number of accounts that failed during account reuse",
-	}, []string{"name"})
+	MetricTotalAccountReuseFailed = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name:        "aws_account_operator_total_aws_account_reused_failed",
+		Help:        "Report the number of accounts that failed during account reuse",
+		ConstLabels: prometheus.Labels{"name": operatorName},
+	})
 
 	MetricsList = []prometheus.Collector{
 		MetricTotalAWSAccounts,
@@ -101,7 +113,7 @@ func UpdateAccountCRUnclaimedMetric(accountList awsv1alpha1.AccountList, wg *syn
 		}
 	}
 
-	MetricTotalAccountCRsUnclaimed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(unclaimedAccountCount))
+	MetricTotalAccountCRsUnclaimed.Set(float64(unclaimedAccountCount))
 	wg.Done()
 }
 
@@ -149,15 +161,15 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 		}
 	}
 
-	MetricTotalAccountCRs.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(len(accountList.Items)))
-	MetricTotalAccountCRsClaimed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(claimedAccountCount))
-	MetricTotalAccountPendingVerification.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(pendingVerificationAccountCount))
-	MetricTotalAccountCRsFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(failedAccountCount))
-	MetricTotalAccountCRsReady.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(readyAccountCount))
-	MetricTotalAccountReuseFailed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(reuseAccountFailedCount))
+	MetricTotalAccountCRs.Set(float64(len(accountList.Items)))
+	MetricTotalAccountCRsClaimed.Set(float64(claimedAccountCount))
+	MetricTotalAccountPendingVerification.Set(float64(pendingVerificationAccountCount))
+	MetricTotalAccountCRsFailed.Set(float64(failedAccountCount))
+	MetricTotalAccountCRsReady.Set(float64(readyAccountCount))
+	MetricTotalAccountReuseFailed.Set(float64(reuseAccountFailedCount))
 
 	for id, val := range idMap {
-		MetricTotalAccountReusedAvailable.With(prometheus.Labels{"LegalID": id}).Set(float64(val))
+		MetricTotalAccountReusedAvailable.WithLabelValues(id).Set(float64(val))
 	}
 
 	wg.Wait()
@@ -166,7 +178,7 @@ func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
 // UpdateAccountClaimMetrics updates all metrics related to AccountClaim CRs
 func UpdateAccountClaimMetrics(accountClaimList *awsv1alpha1.AccountClaimList) {
 
-	MetricTotalAccountClaimCRs.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(len(accountClaimList.Items)))
+	MetricTotalAccountClaimCRs.Set(float64(len(accountClaimList.Items)))
 }
 
 // UpdatePoolSizeVsUnclaimed updates the metric that measures the difference between Poolsize and Unclaimed Account CRs
@@ -174,5 +186,5 @@ func UpdatePoolSizeVsUnclaimed(poolSize int, unclaimedAccountCount int) {
 
 	metric := math.Abs(float64(poolSize) - float64(unclaimedAccountCount))
 
-	MetricPoolSizeVsUnclaimed.With(prometheus.Labels{"name": "aws-account-operator"}).Set(metric)
+	MetricPoolSizeVsUnclaimed.Set(metric)
 }
