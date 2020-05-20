@@ -29,6 +29,7 @@ import (
 const (
 	AccountClaimed          = "AccountClaimed"
 	AccountUnclaimed        = "AccountUnclaimed"
+	OUConfigMapName         = "aws-account-operator-configmap"
 	BYOCAccountFailedClaim  = "BYOCAccountFailed"
 	awsCredsUserName        = "aws_user_name"
 	awsCredsAccessKeyId     = "aws_access_key_id"
@@ -102,7 +103,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling AccountClaim")
 
-	// Watch AccountCliaim
+	// Watch AccountClaim
 	accountClaim := &awsv1alpha1.AccountClaim{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, accountClaim)
 	if err != nil {
@@ -125,8 +126,8 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 		return reconcile.Result{}, nil
 	}
-	// Check if accountClaim is being deleted, this will trigger the account reuse workflow
 
+	// Check if accountClaim is being deleted, this will trigger the account reuse workflow
 	if accountClaim.DeletionTimestamp != nil {
 		if utils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
 			// Only do AWS cleanup and account reset if accountLink is not empty
@@ -236,7 +237,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	// Return if this claim has been satisfied
-	if accountClaim.Spec.AccountLink != "" && accountClaim.Status.State == awsv1alpha1.ClaimStatusReady {
+	if claimIsSatisfied(accountClaim) {
 		reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.ObjectMeta.Name))
 		return reconcile.Result{}, nil
 	}
@@ -287,7 +288,6 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-
 	}
 
 	// Set awsAccountClaim.Spec.AccountLink
@@ -295,6 +295,14 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		setAccountLinkOnAccountClaim(reqLogger, unclaimedAccount, accountClaim)
 		return reconcile.Result{}, r.specUpdate(reqLogger, accountClaim)
 
+	}
+
+	// Set awsAccountClaim.Spec.AwsAccountOU
+	if accountClaim.Spec.AccountOU == "" || accountClaim.Spec.AccountOU == "ROOT" {
+		err = MoveAccountToOU(r, reqLogger, accountClaim, unclaimedAccount)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	// Create secret for UHC to consume
@@ -503,6 +511,10 @@ func setAccountLinkOnAccountClaim(reqLogger logr.Logger, awsAccount *awsv1alpha1
 	// Set link on AccountClaim
 	awsAccountClaim.Spec.AccountLink = awsAccount.ObjectMeta.Name
 	reqLogger.Info(fmt.Sprintf("Linked claim %s to account %s", awsAccountClaim.Name, awsAccount.Name))
+}
+
+func claimIsSatisfied(accountClaim *awsv1alpha1.AccountClaim) bool {
+	return accountClaim.Spec.AccountLink != "" && accountClaim.Status.State == awsv1alpha1.ClaimStatusReady && accountClaim.Spec.AccountOU != ""
 }
 
 func newSecretforCR(secretName string, secretNameSpace string, awsAccessKeyID []byte, awsSecretAccessKey []byte) *corev1.Secret {

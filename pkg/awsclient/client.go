@@ -89,6 +89,10 @@ type Client interface {
 	ListAccounts(*organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error)
 	CreateAccount(*organizations.CreateAccountInput) (*organizations.CreateAccountOutput, error)
 	DescribeCreateAccountStatus(*organizations.DescribeCreateAccountStatusInput) (*organizations.DescribeCreateAccountStatusOutput, error)
+	MoveAccount(*organizations.MoveAccountInput) (*organizations.MoveAccountOutput, error)
+	CreateOrganizationalUnit(*organizations.CreateOrganizationalUnitInput) (*organizations.CreateOrganizationalUnitOutput, error)
+	ListOrganizationalUnitsForParent(*organizations.ListOrganizationalUnitsForParentInput) (*organizations.ListOrganizationalUnitsForParentOutput, error)
+	ListChildren(*organizations.ListChildrenInput) (*organizations.ListChildrenOutput, error)
 
 	//sts
 	AssumeRole(*sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error)
@@ -265,6 +269,22 @@ func (c *awsClient) CreateAccount(input *organizations.CreateAccountInput) (*org
 
 func (c *awsClient) DescribeCreateAccountStatus(input *organizations.DescribeCreateAccountStatusInput) (*organizations.DescribeCreateAccountStatusOutput, error) {
 	return c.orgClient.DescribeCreateAccountStatus(input)
+}
+
+func (c *awsClient) MoveAccount(input *organizations.MoveAccountInput) (*organizations.MoveAccountOutput, error) {
+	return c.orgClient.MoveAccount(input)
+}
+
+func (c *awsClient) CreateOrganizationalUnit(input *organizations.CreateOrganizationalUnitInput) (*organizations.CreateOrganizationalUnitOutput, error) {
+	return c.orgClient.CreateOrganizationalUnit(input)
+}
+
+func (c *awsClient) ListOrganizationalUnitsForParent(input *organizations.ListOrganizationalUnitsForParentInput) (*organizations.ListOrganizationalUnitsForParentOutput, error) {
+	return c.orgClient.ListOrganizationalUnitsForParent(input)
+}
+
+func (c *awsClient) ListChildren(input *organizations.ListChildrenInput) (*organizations.ListChildrenOutput, error) {
+	return c.orgClient.ListChildren(input)
 }
 
 func (c *awsClient) AssumeRole(input *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error) {

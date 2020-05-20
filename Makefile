@@ -28,6 +28,15 @@ ifndef AWS_IAM_ARN
 	$(error AWS_IAM_ARN is undefined)
 endif
 
+.PHONY: .check-ou-mapping-configmap-env
+check-ou-mapping-configmap-env:
+ifndef OSD_STAGING_1_OU_ROOT_ID
+	$(error OSD_STAGING_1_OU_ROOT_ID is undefined)
+endif
+ifndef OSD_STAGING_1_OU_BASE_ID
+	$(error OSD_STAGING_1_OU_BASE_ID is undefined)
+endif
+
 .PHONY: docker-build
 docker-build: build
 
@@ -62,7 +71,7 @@ delete-accountclaim-namespace:
 	@oc process -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc delete -f -
 
 .PHONY: create-accountclaim
-create-accountclaim:
+create-accountclaim: create-ou-map
 	# Create Account
 	test/integration/api/create_account.sh
 	# Create accountclaim
@@ -71,7 +80,7 @@ create-accountclaim:
 	@while true; do STATUS=$$(oc get accountclaim ${ACCOUNT_CLAIM_NAME} -n ${ACCOUNT_CLAIM_NAMESPACE} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${ACCOUNT_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 .PHONY: delete-accountclaim
-delete-accountclaim:
+delete-accountclaim: delete-ou-map
 	# Delete accountclaim
 	@oc process -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws_v1alpha1_accountclaim_cr.tmpl | oc delete -f -
 
@@ -258,6 +267,28 @@ ifndef OPERATOR_SECRET_ACCESS_KEY
 	$(error OPERATOR_SECRET_ACCESS_KEY is undefined)
 endif
 
-# Test all
+# Test apply ou map cr
+.PHONY: create-ou-map
+create-ou-map:
+	# Create OU map
+	@oc process -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -f hack/templates/aws_v1alpha1_configmap.tmpl | oc apply -f -
+
+# Test delete ou map cr
+.PHONY: delete-ou-map
+delete-ou-map:
+# Delete OU map
+	@oc process -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -f hack/templates/aws_v1alpha1_configmap.tmpl | oc delete -f -
+
+# Test aws ou logic
+.PHONY: test-aws-ou-logic
+test-aws-ou-logic: check-ou-mapping-configmap-env check-ou-mapping-configmap-env create-account-claim-namespace create-accountclaim
+	# Check that account was moved correctly
+	@sleep 2; TYPE=$$(aws organizations list-parents --child-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1 | jq -r ".Parents[0].Type"); if [ "$$TYPE" == "ORGANIZATIONAL_UNIT" ]; then echo "Account move successfully"; exit 0; elif [ "$$TYPE" == "ROOT" ]; then echo "Failed to move account out of root"; exit 1; fi;
+	@aws organizations list-parents --child-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1
+	# Move account back into Root and delete test OU
+	@ROOT_ID=$$(aws organizations list-roots --profile osd-staging-1 | jq -r ".Roots[0].Id"); OU=$$(aws organizations list-parents --child-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1 | jq -r ".Parents[0].Id"); aws organizations move-account --account-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --source-parent-id "$$OU" --destination-parent-id "$$ROOT_ID" --profile osd-staging-1; aws organizations delete-organizational-unit --organizational-unit-id "$$OU" --profile osd-staging-1;
+	@echo "Successfully moved account back and deleted the test OU"
+
+#s Test all
 .PHONY: test-all
-test-all: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess
+test-all: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-aws-ou-logic
