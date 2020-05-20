@@ -88,6 +88,18 @@ var ErrCreateEC2Instance = errors.New("EC2CreationTimeout")
 // ErrFailedAWSTypecast indicates that there was a failure while typecasting to aws error
 var ErrFailedAWSTypecast = errors.New("FailedToTypecastAWSError")
 
+// ErrInvalidOUMap indicates that the OU ConfigMap is not valid
+var ErrInvalidOUMap = errors.New("OUConfigMapInvalid")
+
+// ErrNonexistentOU indicates that an OU does not exist
+var ErrNonexistentOU = errors.New("OUWithNameNotFound")
+
+// ErrAccAlreadyInOU indicates that an account is already in an OU
+var ErrAccAlreadyInOU = errors.New("ErrAccAlreadyInOU")
+
+// ErrChildNotFound indicates that a child was not found inside an OU
+var ErrChildNotFound = errors.New("ChildNotFoundInOU")
+
 // Shared variables
 
 // UIDLabel is the string for the uid label on AWS Federated Account Access CRs
