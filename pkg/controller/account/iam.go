@@ -39,20 +39,21 @@ type awsStatement struct {
 	Principal *awsv1alpha1.Principal `json:"Principal,omitempty"`
 }
 
-// Type that represents JSON object of an AWS Policy Document
+// PolicyDocument represents JSON object of an AWS Policy Document
 type PolicyDocument struct {
 	Version   string
 	Statement []StatementEntry
 }
 
-// Type that represents JSON of a statement in a policy doc
+// StatementEntry represents JSON of a statement in a policy doc
 type StatementEntry struct {
 	Effect   string
 	Action   []string
 	Resource string
 }
 
-// RequestSigninToken makes a HTTP request to retrieve a Signin Token from the federation end point
+// RequestSigninToken makes a HTTP request to retrieve an AWS Signin Token
+// via the AWS Federation endpoint
 func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, DurationSeconds *int64, FederatedUserName *string, PolicyArns []*sts.PolicyDescriptorType, STSCredentials *sts.AssumeRoleOutput) (string, error) {
 	// URL for building Federated Signin queries
 	federationEndpointURL := "https://signin.aws.amazon.com/federation"
@@ -81,6 +82,7 @@ func RequestSigninToken(reqLogger logr.Logger, awsclient awsclient.Client, Durat
 
 }
 
+// getFederationToken gets the Federation Token from AWS.
 func getFederationToken(reqLogger logr.Logger, awsclient awsclient.Client, DurationSeconds *int64, FederatedUserName *string, PolicyArns []*sts.PolicyDescriptorType) (*sts.GetFederationTokenOutput, error) {
 
 	GetFederationTokenInput := sts.GetFederationTokenInput{
@@ -140,7 +142,8 @@ func formatSigninURL(reqLogger logr.Logger, federationEndpointURL, signinToken s
 }
 
 // CreateSecret creates a secret for placing IAM Credentials
-// Takes a logger, the desired name of the secret, the Account CR that will own the secret, and pointer to an empty secret object to fill
+// Takes a logger, the desired name of the secret, the Account CR
+// that will own the secret, and pointer to an empty secret object to fill
 func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, account *awsv1alpha1.Account, secret *corev1.Secret) error {
 
 	// Set controller as owner of secret
@@ -163,7 +166,7 @@ func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, account *awsv1alp
 	return nil
 }
 
-// BuildSTSUser sets up an IAM user with the proper access and creates secrets to hold cred
+// BuildSTSUser sets up an IAM user with the proper access and creates secrets to hold credentials
 // Takes a logger, an awsSetupClient for the signing token, an awsClient for, an account CR to set ownership of secrets, the namespace to create the secret in, and a role to assume with the creds
 // The awsSetupClient is the client for the user in the target linked account
 // The awsClient is the client for the user in the payer level account
@@ -174,7 +177,7 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 	// with eventual consisency on AWS' side
 	time.Sleep(10 * time.Second)
 
-	// Create STS user for SRE admins
+	// Create the temporary sre-admin user credentials using STS
 	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsClient, iamRole, account.Spec.AwsAccountID)
 	if STSCredentialsErr != nil {
 		reqLogger.Info("Failed to get SRE admin STSCredentials from AWS api ", "Error", STSCredentialsErr.Error())
@@ -191,8 +194,8 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 
 	SigninTokenDuration := int64(credentialwatcher.STSCredentialsDuration)
 
-	// Set IAM policy for Web Console login, this policy cannot grant more permissions than the IAM user has which creates it
-
+	// gets Web Console login, this policy cannot grant more permissions than the IAM user has which creates it
+	// which is why we're using awsSetupClient here and not awsClient
 	SREConsoleLoginURL, err := RequestSigninToken(reqLogger, awsSetupClient, &SigninTokenDuration, &STSUserName, IAMPolicyDescriptors, STSCredentials)
 	if err != nil {
 		reqLogger.Error(err, "Unable to create AWS signin token")
@@ -200,6 +203,7 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 
 	secretName := account.Name
 
+	// Create Console Secret
 	consoleSecretName := fmt.Sprintf("%s-sre-console-url", secretName)
 	consoleSecretData := map[string][]byte{
 		"aws_console_login_url": []byte(SREConsoleLoginURL),
@@ -210,6 +214,7 @@ func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient aw
 		return "", err
 	}
 
+	// Create sre-cli user secret
 	cliSecretName := fmt.Sprintf("%s-sre-cli-credentials", secretName)
 	cliSecretData := map[string][]byte{
 		"aws_access_key_id":     []byte(*STSCredentials.Credentials.AccessKeyId),
@@ -384,7 +389,6 @@ func getSigninToken(reqLogger logr.Logger, federationEndpointURL string, federat
 // deleteAllAccessKeys deletes all access key pairs for a given user
 // Takes a logger, an AWS client, and the target IAM user's username
 func deleteAllAccessKeys(client awsclient.Client, iamUser *iam.User) error {
-
 	accessKeyList, err := client.ListAccessKeys(&iam.ListAccessKeysInput{UserName: iamUser.UserName})
 	if err != nil {
 		return err
@@ -664,7 +668,7 @@ func (r *ReconcileAccount) createIAMUserSecret(reqLogger logr.Logger, account *a
 	return r.CreateSecret(reqLogger, account, iamUserSecret)
 }
 
-// DoesSecretExist returns a bool if the secret exists
+// DoesSecretExist checks to see if a given secret exists
 func (r *ReconcileAccount) DoesSecretExist(namespacedName types.NamespacedName) (bool, error) {
 
 	secret := &corev1.Secret{}
