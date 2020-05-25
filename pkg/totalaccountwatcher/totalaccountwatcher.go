@@ -18,7 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// ErrAwsAccountLimitExceeded indicates the orgnization account limit has been reached.
+// ErrAwsAccountLimitExceeded indicates the organization account limit has been reached.
 var ErrAwsAccountLimitExceeded = errors.New("AccountLimitExceeded")
 
 // TotalAccountWatcher global var for TotalAccountWatcher

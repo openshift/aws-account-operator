@@ -17,7 +17,7 @@ import (
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
 
-// InitializeSupportedRegions concurrently calls InitalizeRegion to create instances in all supported regions
+// InitializeSupportedRegions concurrently calls InitializeRegion to create instances in all supported regions
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
 func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions map[string]map[string]string, creds *sts.AssumeRoleOutput) error {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
@@ -66,7 +66,7 @@ func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, account *awsv
 		return err
 	}
 
-	err = r.BuildandDestroyEC2Instances(reqLogger, account, awsClient, ami)
+	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, ami)
 
 	if err != nil {
 		createErr := fmt.Sprintf("Unable to create instance in region: %s", region)
@@ -85,8 +85,8 @@ func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, account *awsv
 	return nil
 }
 
-// BuildandDestroyEC2Instances runs and ec2 instance and terminates it
-func (r *ReconcileAccount) BuildandDestroyEC2Instances(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, ami string) error {
+// BuildAndDestroyEC2Instances runs and ec2 instance and terminates it
+func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, ami string) error {
 
 	instanceID, err := CreateEC2Instance(reqLogger, account, awsClient, ami)
 	if err != nil {

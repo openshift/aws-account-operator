@@ -45,7 +45,7 @@ func (t *AWSAccountOperatorTags) GetEC2Tags() []*ec2.Tag {
 	return tags
 }
 
-// BuildTags intializes AWSTags with required tags
+// BuildTags initializes AWSTags with required tags
 func (t *AWSAccountOperatorTags) BuildTags(account *awsv1alpha1.Account) AWSTagBuilder {
 	ClusterAccountNameTag := AWSTag{
 		Key:   awsv1alpha1.ClusterAccountNameTagKey,

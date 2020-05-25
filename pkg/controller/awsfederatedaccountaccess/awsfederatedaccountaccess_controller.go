@@ -250,7 +250,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		return reconcile.Result{}, nil
 	}
 
-	// Create role and apply custom policys and awsmanagedpolicies
+	// Create role and apply custom policies and awsmanagedpolicies
 	role, err := r.createOrUpdateIAMRole(awsClient, *requestedRole, *currentFAA, reqLogger)
 
 	if err != nil {
