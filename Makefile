@@ -109,7 +109,7 @@ delete-awsfederatedrole:
 .PHONY: create-awsfederatedaccountaccess
 create-awsfederatedaccountaccess: check-aws-account-id-env
 	# Create awsFederatedAccountAccess CR
-	@oc process -p AWS_IAM_ARN=${AWS_IAM_ARN} -p IAM_USER_SECRET=${IAM_USER_SECRET} -p AWS_FEDERATED_ROLE_NAME=${AWS_FEDERATED_ROLE_NAME} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws_v1alpha1_awsfederatedaccountaccess_cr.tmpl | oc apply -f -
+	oc process -p AWS_IAM_ARN=${AWS_IAM_ARN} -p IAM_USER_SECRET=${IAM_USER_SECRET} -p AWS_FEDERATED_ROLE_NAME=${AWS_FEDERATED_ROLE_NAME} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws_v1alpha1_awsfederatedaccountaccess_cr.tmpl | oc apply -f -
 	# Wait for awsFederatedAccountAccess CR to become ready
 	@while true; do STATUS=$$(oc get awsfederatedaccountaccess -n ${NAMESPACE} ${FED_USER} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedAccountAccess CR ${FED_USER} failed to create"; exit 1; fi; sleep 1; done
 	# Print out AWS Console URL
