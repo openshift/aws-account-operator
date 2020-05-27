@@ -31,8 +31,6 @@ const (
 	osdManagedAdminSRE = "osdManagedAdminSRE"
 )
 
-var secretSuffixes = []string{"-secret", "-osdmanagedadminsre-secret", "-sre-cli-credentials", "-sre-console-url"}
-
 func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 
 	// Get account claimed by deleted accountclaim
@@ -212,9 +210,9 @@ func (r *ReconcileAccountClaim) rotateIAMUserCreds(reqLogger logr.Logger, awsCli
 			return err
 		}
 
-		secretName := claim.Spec.AccountLink + "-secret"
+		secretName := utils.CreateIAMUserSecretName(claim.Spec.AccountLink)
 		if strings.Contains(user, "SRE") {
-			secretName = claim.Spec.AccountLink + "-" + strings.ToLower(user) + "-secret"
+			secretName = utils.CreateIAMUserSecretName(fmt.Sprintf("%s-%s", claim.Spec.AccountLink, strings.ToLower(user)))
 		}
 
 		secret := &corev1.Secret{}
