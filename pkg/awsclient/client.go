@@ -57,6 +57,7 @@ type Client interface {
 	DescribeInstanceStatus(*ec2.DescribeInstanceStatusInput) (*ec2.DescribeInstanceStatusOutput, error)
 	TerminateInstances(*ec2.TerminateInstancesInput) (*ec2.TerminateInstancesOutput, error)
 	TerminateInstancesRequest(*ec2.TerminateInstancesInput) (*request.Request, *ec2.TerminateInstancesOutput)
+	WaitUntilInstanceTerminated(input *ec2.DescribeInstancesInput) error
 	DescribeVolumes(*ec2.DescribeVolumesInput) (*ec2.DescribeVolumesOutput, error)
 	DeleteVolume(*ec2.DeleteVolumeInput) (*ec2.DeleteVolumeOutput, error)
 	DetachVolume(input *ec2.DetachVolumeInput) (*ec2.VolumeAttachment, error)
@@ -159,6 +160,10 @@ func (c *awsClient) TerminateInstances(input *ec2.TerminateInstancesInput) (*ec2
 
 func (c *awsClient) TerminateInstancesRequest(input *ec2.TerminateInstancesInput) (*request.Request, *ec2.TerminateInstancesOutput) {
 	return c.ec2Client.TerminateInstancesRequest(input)
+}
+
+func (c *awsClient) WaitUntilInstanceTerminated(input *ec2.DescribeInstancesInput) error {
+	return c.ec2Client.WaitUntilInstanceTerminated(input)
 }
 
 func (c *awsClient) DescribeVolumes(input *ec2.DescribeVolumesInput) (*ec2.DescribeVolumesOutput, error) {

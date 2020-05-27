@@ -115,6 +115,20 @@ func (mr *MockClientMockRecorder) TerminateInstancesRequest(arg0 interface{}) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TerminateInstancesRequest", reflect.TypeOf((*MockClient)(nil).TerminateInstancesRequest), arg0)
 }
 
+// WaitUntilInstanceTerminated mocks base method
+func (m *MockClient) WaitUntilInstanceTerminated(input *ec2.DescribeInstancesInput) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WaitUntilInstanceTerminated", input)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WaitUntilInstanceTerminated indicates an expected call of WaitUntilInstanceTerminated
+func (mr *MockClientMockRecorder) WaitUntilInstanceTerminated(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitUntilInstanceTerminated", reflect.TypeOf((*MockClient)(nil).WaitUntilInstanceTerminated), input)
+}
+
 // DescribeVolumes mocks base method
 func (m *MockClient) DescribeVolumes(arg0 *ec2.DescribeVolumesInput) (*ec2.DescribeVolumesOutput, error) {
 	m.ctrl.T.Helper()

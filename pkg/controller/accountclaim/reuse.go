@@ -252,17 +252,21 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logge
 				InstanceIds: instancesToTerminate,
 			}
 			req, _ := awsClient.TerminateInstancesRequest(&terminateInstanceInput)
-			err := req.Send()
-			if err != nil {
-				errorMsg := fmt.Sprintf("Failed to terminate instance")
-				utils.LogAwsError(reqLogger, errorMsg, nil, err)
+			senErr := req.Send()
+			terErr := awsClient.WaitUntilInstanceTerminated(&ec2.DescribeInstancesInput{
+				InstanceIds: instancesToTerminate,
+			})
+			if terErr != nil {
+				if senErr != nil {
+					errorMsg := fmt.Sprintf("Failed to terminate instance")
+					utils.LogAwsError(reqLogger, errorMsg, nil, err)
+				}
 			}
 			// Log terminated instances
 			for _, s := range instancesToTerminate {
 				instancesTerminatedMsg := fmt.Sprintf("Instance %s terminated succesfully", *s)
 				reqLogger.Info(instancesTerminatedMsg)
 			}
-
 		}
 
 		// delete volume
