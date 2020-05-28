@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -12,6 +13,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
@@ -22,7 +26,9 @@ const (
 	// AccountReady indicates account creation is ready
 	AccountReady = "Ready"
 	// AccountFailed indicates account reuse has failed
-	AccountFailed = "Failed"
+	AccountFailed      = "Failed"
+	osdManagedAdmin    = "osdManagedAdmin"
+	osdManagedAdminSRE = "osdManagedAdminSRE"
 )
 
 func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
@@ -83,7 +89,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 	}
 
 	// Perform account clean up in AWS
-	err = r.cleanUpAwsAccount(reqLogger, awsClient)
+	err = r.cleanUpAwsAccount(reqLogger, accountClaim, awsClient)
 	if err != nil {
 		reqLogger.Error(err, "Failed to clean up AWS account")
 		return err
@@ -118,11 +124,6 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 		return err
 	}
 
-	reqLogger.Info(fmt.Sprintf(
-		"Setting RotateCredentials and RotateConsoleCredentials for account %s", reusedAccount.Spec.AwsAccountID))
-	reusedAccount.Status.RotateConsoleCredentials = true
-	reusedAccount.Status.RotateCredentials = true
-
 	// Update account status and add conditions indicating account reuse
 	reusedAccount.Status.State = conditionStatus
 	reusedAccount.Status.Claimed = false
@@ -138,7 +139,7 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 	return nil
 }
 
-func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, awsClient awsclient.Client) error {
+func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, claim *awsv1alpha1.AccountClaim, awsClient awsclient.Client) error {
 	// Clean up status, used to store an error if any of the cleanup functions received one
 	cleanUpStatusFailed := false
 
@@ -149,16 +150,17 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, awsClie
 	defer close(awsErrors)
 
 	// Declare un array of cleanup functions
-	cleanUpFunctions := []func(logr.Logger, awsclient.Client, chan string, chan string) error{
+	cleanUpFunctions := []func(logr.Logger, awsclient.Client, *awsv1alpha1.AccountClaim, chan string, chan string) error{
 		r.cleanUpAwsAccountSnapshots,
 		r.cleanUpAwsAccountEbsVolumes,
 		r.cleanUpAwsAccountS3,
 		r.cleanUpAwsRoute53,
+		r.rotateIAMUserCreds,
 	}
 
 	// Call the clean up functions in parallel
 	for _, cleanUpFunc := range cleanUpFunctions {
-		go cleanUpFunc(reqLogger, awsClient, awsNotifications, awsErrors)
+		go cleanUpFunc(reqLogger, awsClient, claim, awsNotifications, awsErrors)
 	}
 
 	// Wait for clean up functions to end
@@ -185,7 +187,55 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, awsClie
 	return nil
 }
 
-func (r *ReconcileAccountClaim) cleanUpAwsAccountSnapshots(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
+func (r *ReconcileAccountClaim) rotateIAMUserCreds(reqLogger logr.Logger, awsClient awsclient.Client, claim *awsv1alpha1.AccountClaim, awsNotifications chan string, awsErrors chan string) error {
+
+	for _, user := range []string{osdManagedAdmin, osdManagedAdminSRE} {
+
+		getUserOutput, err := awsClient.GetUser(&iam.GetUserInput{UserName: aws.String(user)})
+		if err != nil {
+			getUserError := fmt.Sprintf("Could not find IAM user: %s", user)
+			awsErrors <- getUserError
+			return err
+		}
+
+		err = deleteAllAccessKeys(reqLogger, awsClient, user)
+		if err != nil {
+			delError := fmt.Sprintf("Failed deleting Access Keys for IAM user: %s", user)
+			awsErrors <- delError
+			return err
+		}
+
+		accessKeyOutput, err := account.CreateUserAccessKey(awsClient, getUserOutput.User)
+		if err != nil {
+			return err
+		}
+
+		secretName := utils.CreateIAMUserSecretName(claim.Spec.AccountLink)
+		if strings.Contains(user, "SRE") {
+			secretName = utils.CreateIAMUserSecretName(fmt.Sprintf("%s-%s", claim.Spec.AccountLink, strings.ToLower(user)))
+		}
+
+		secret := &corev1.Secret{}
+		err = r.client.Get(context.TODO(), types.NamespacedName{Name: secretName, Namespace: awsv1alpha1.AccountCrNamespace}, secret)
+		if err != nil {
+			return err
+		}
+
+		secret.Data["aws_access_key_id"] = []byte(*accessKeyOutput.AccessKey.AccessKeyId)
+		secret.Data["aws_secret_access_key"] = []byte(*accessKeyOutput.AccessKey.SecretAccessKey)
+
+		err = r.client.Update(context.TODO(), secret)
+		if err != nil {
+			return err
+		}
+	}
+
+	successMsg := fmt.Sprintf("IAM Credentials rotation finished succesfully")
+	awsNotifications <- successMsg
+	return nil
+}
+
+func (r *ReconcileAccountClaim) cleanUpAwsAccountSnapshots(reqLogger logr.Logger, awsClient awsclient.Client, claim *awsv1alpha1.AccountClaim, awsNotifications chan string, awsErrors chan string) error {
 
 	// Filter only for snapshots owned by the account
 	selfOwnerFilter := ec2.Filter{
@@ -225,7 +275,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountSnapshots(reqLogger logr.Logger
 	return nil
 }
 
-func (r *ReconcileAccountClaim) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
+func (r *ReconcileAccountClaim) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logger, awsClient awsclient.Client, claim *awsv1alpha1.AccountClaim, awsNotifications chan string, awsErrors chan string) error {
 
 	describeVolumesInput := ec2.DescribeVolumesInput{}
 	ebsVolumes, err := awsClient.DescribeVolumes(&describeVolumesInput)
@@ -255,7 +305,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logge
 	return nil
 }
 
-func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
+func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsClient awsclient.Client, claim *awsv1alpha1.AccountClaim, awsNotifications chan string, awsErrors chan string) error {
 	listBucketsInput := s3.ListBucketsInput{}
 	s3Buckets, err := awsClient.ListBuckets(&listBucketsInput)
 	if err != nil {
@@ -305,7 +355,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 	return nil
 }
 
-func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
+func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClient awsclient.Client, claim *awsv1alpha1.AccountClaim, awsNotifications chan string, awsErrors chan string) error {
 
 	var nextZoneMarker *string
 
@@ -475,4 +525,20 @@ func matchAccountForReuse(account *awsv1alpha1.Account, accountClaim *awsv1alpha
 		return true
 	}
 	return false
+}
+
+func deleteAllAccessKeys(reqLogger logr.Logger, client awsclient.Client, userName string) error {
+
+	accessKeyList, err := client.ListAccessKeys(&iam.ListAccessKeysInput{UserName: aws.String(userName)})
+	if err != nil {
+		return err
+	}
+	for index := range accessKeyList.AccessKeyMetadata {
+		_, err = client.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKeyList.AccessKeyMetadata[index].AccessKeyId, UserName: aws.String(userName)})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
