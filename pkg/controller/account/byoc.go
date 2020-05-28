@@ -58,8 +58,10 @@ func claimBYOCAccount(r *ReconcileAccount, reqLogger logr.Logger, currentAcctIns
 
 func (r *ReconcileAccount) initializeNewBYOCAccount(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, adminAccessArn string) (string, error) {
 	client, accountClaim, err := r.getBYOCClient(currentAcctInstance)
-	if err != nil && accountClaim != nil {
-		r.accountClaimBYOCError(reqLogger, accountClaim, err)
+	if err != nil {
+		if accountClaim != nil {
+			r.accountClaimBYOCError(reqLogger, accountClaim, err)
+		}
 		return "", err
 	}
 
