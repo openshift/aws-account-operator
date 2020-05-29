@@ -91,7 +91,7 @@ create-awsfederatedrole:
 	test/integration/api/create_account.sh
 	# Create Federated role
 	@oc apply -f deploy/crds/aws_v1alpha1_awsfederatedrole_readonly_cr.yaml
-	# Wait for awsFederatedAccountAccess CR to become ready
+	# Wait for awsFederatedRole CR to become ready
 	@while true; do STATUS=$$(oc get awsfederatedrole -n ${NAMESPACE} ${AWS_FEDERATED_ROLE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Valid" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedRole CR ${AWS_FEDERATED_ROLE_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 # Delete awsfederatedrole "Read Only"
@@ -108,14 +108,36 @@ delete-awsfederatedrole:
 # This uses a AWS Account ID from your environment
 .PHONY: create-awsfederatedaccountaccess
 create-awsfederatedaccountaccess: check-aws-account-id-env
-	# Create awsFederatedAccountAccess CR
-	oc process -p AWS_IAM_ARN=${AWS_IAM_ARN} -p IAM_USER_SECRET=${IAM_USER_SECRET} -p AWS_FEDERATED_ROLE_NAME=${AWS_FEDERATED_ROLE_NAME} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws_v1alpha1_awsfederatedaccountaccess_cr.tmpl | oc apply -f -
-	# Wait for awsFederatedAccountAccess CR to become ready
-	@while true; do STATUS=$$(oc get awsfederatedaccountaccess -n ${NAMESPACE} ${FED_USER} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedAccountAccess CR ${FED_USER} failed to create"; exit 1; fi; sleep 1; done
-	# Print out AWS Console URL
-	@echo $$(oc get awsfederatedaccountaccess -n ${NAMESPACE} ${FED_USER} -o json | jq -r '.status.consoleURL')
-	# Wait ${SLEEP_INTERVAL} seconds for AWS to register role
-	@sleep ${SLEEP_INTERVAL}
+	#create account access
+	test/integration/create_awsfederatedaccountaccess.sh --role read-only --name test-federated-user
+
+# Test Federated Access Roles
+.PHONY: test-awsfederatedrole
+test-awsfederatedrole: check-aws-account-id-env
+	# Create Account if not already created
+	test/integration/api/create_account.sh
+	# Create Federated Roles if not created
+	@oc apply -f deploy/crds/aws_v1alpha1_awsfederatedrole_readonly_cr.yaml
+	@oc apply -f deploy/crds/aws_v1alpha1_awsfederatedrole_networkmgmt_cr.yaml
+	# Wait for readonly CR to become ready
+	@while true; do STATUS=$$(oc get awsfederatedrole -n ${NAMESPACE} read-only -o json | jq -r '.status.state'); if [ "$$STATUS" == "Valid" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedRole CR read-only failed to create"; exit 1; fi; sleep 1; done
+	# Wait for networkmgmt CR to become ready
+	@while true; do STATUS=$$(oc get awsfederatedrole -n ${NAMESPACE} network-mgmt -o json | jq -r '.status.state'); if [ "$$STATUS" == "Valid" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedRole CR network-mgmt failed to create"; exit 1; fi; sleep 1; done
+	# Test Federated Account Access
+	test/integration/create_awsfederatedaccountaccess.sh --role read-only --name test-federated-user-readonly
+	test/integration/create_awsfederatedaccountaccess.sh --role network-mgmt --name test-federated-user-network-mgmt
+	TEST_CR=test-federated-user-readonly TEST_ROLE_FILE=deploy/crds/aws_v1alpha1_awsfederatedrole_readonly_cr.yaml go test github.com/openshift/aws-account-operator/test/integration
+	TEST_CR=test-federated-user-network-mgmt TEST_ROLE_FILE=deploy/crds/aws_v1alpha1_awsfederatedrole_networkmgmt_cr.yaml go test github.com/openshift/aws-account-operator/test/integration
+	test/integration/delete_awsfederatedaccountaccess.sh --role read-only --name test-federated-user-readonly
+	test/integration/delete_awsfederatedaccountaccess.sh --role network-mgmt --name test-federated-user-network-mgmt
+	# Delete network-mgmt role
+	@oc delete awsfederatedrole -n aws-account-operator network-mgmt
+	# Delete read-only role
+	@oc delete awsfederatedrole -n aws-account-operator read-only
+	# Delete Account
+	test/integration/api/delete_account.sh
+	# Delete Secrets
+	test/integration/api/delete_account_secrets.sh
 
 .PHONY: test-switch-role
 test-switch-role:
@@ -128,8 +150,7 @@ test-switch-role:
 # This uses a AWS Account ID from your environment
 .PHONY: delete-awsfederatedaccountaccess
 delete-awsfederatedaccountaccess: check-aws-account-id-env
-# Delete federatedaccountaccess with secret
-	@oc process -p AWS_IAM_ARN=${AWS_IAM_ARN} -p IAM_USER_SECRET=${IAM_USER_SECRET} -p AWS_FEDERATED_ROLE_NAME=${AWS_FEDERATED_ROLE_NAME} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws_v1alpha1_awsfederatedaccountaccess_cr.tmpl | oc delete -f -
+	test/integration/delete_awsfederatedaccountaccess.sh --role read-only --name test-federated-user
 
 .PHONY: test-awsfederatedaccountaccess
 test-awsfederatedaccountaccess: check-aws-account-id-env create-awsfederatedrole create-awsfederatedaccountaccess test-switch-role delete-awsfederatedaccountaccess delete-awsfederatedrole
@@ -291,4 +312,4 @@ test-aws-ou-logic: check-ou-mapping-configmap-env check-ou-mapping-configmap-env
 
 #s Test all
 .PHONY: test-all
-test-all: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-aws-ou-logic
+test-all: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic 

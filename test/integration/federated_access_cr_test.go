@@ -50,9 +50,9 @@ type federatedAccountAccess struct {
 // Struct for Secret to use for aws calls
 type awsUserSecret struct {
 	Data struct {
-		AccessKeyID     string `yaml:"awsCredsSecretIDKey"`
-		SecretAccessKey string `yaml:"awsCredsSecretAccessKey"`
-		SessionToken    string `yaml:"awsCredsSessionToken"`
+		AccessKeyID     string `yaml:"aws_access_key_id"`
+		SecretAccessKey string `yaml:"aws_secret_access_key"`
+		SessionToken    string `yaml:"aws_session_token"`
 	} `yaml:"data"`
 }
 
@@ -76,7 +76,7 @@ func TestFederatedAccessRolePermissions(t *testing.T) {
 	awsSecret := awsUserSecret{}
 	getSecretCredentials(t, &awsSecret)
 
-	iamClient, err := getAWSClient(awsSecret)
+	iamClient, err := getAWSClient(t, awsSecret)
 	if err != nil {
 		t.Fatal("Unable to get AWS Client", err)
 	}
@@ -191,7 +191,7 @@ func getSecretCredentials(t *testing.T, secret *awsUserSecret) {
 }
 
 // Gets AWS Client using passed in credentials struct
-func getAWSClient(awsCreds awsUserSecret) (*iam.IAM, error) {
+func getAWSClient(t *testing.T, awsCreds awsUserSecret) (*iam.IAM, error) {
 	accessKeyID, err := base64.StdEncoding.DecodeString(awsCreds.Data.AccessKeyID)
 	if err != nil {
 		return nil, err
@@ -210,5 +210,8 @@ func getAWSClient(awsCreds awsUserSecret) (*iam.IAM, error) {
 	s, err := session.NewSession(&aws.Config{
 		Credentials: credentials.NewStaticCredentials(string(accessKeyID), string(secretAccessKey), string(sessionToken)),
 	})
+	if err != nil {
+		return nil, err
+	}
 	return iam.New(s), nil
 }
