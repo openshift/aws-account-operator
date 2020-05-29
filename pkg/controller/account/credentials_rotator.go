@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 // RotateCredentials update existing secret with new STS tokens and Singin URL
@@ -70,6 +71,10 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 	}
 
 	STSCredentialsSecret := CreateSecret(secretName, STSCredentialsSecretNamespace, secretData)
+
+	if err := controllerutil.SetControllerReference(account, STSCredentialsSecret, r.scheme); err != nil {
+		return err
+	}
 
 	err = r.Client.Create(context.TODO(), STSCredentialsSecret)
 	if err != nil {
@@ -146,6 +151,10 @@ func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSe
 	}
 
 	userConsoleSecret := CreateSecret(STSConsoleSecretName, account.Namespace, STSConsoleSecretData)
+
+	if err := controllerutil.SetControllerReference(account, userConsoleSecret, r.scheme); err != nil {
+		return err
+	}
 
 	STSSecret := &corev1.Secret{}
 
