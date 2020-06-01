@@ -29,7 +29,6 @@ import (
 const (
 	AccountClaimed          = "AccountClaimed"
 	AccountUnclaimed        = "AccountUnclaimed"
-	OUConfigMapName         = "aws-account-operator-configmap"
 	BYOCAccountFailedClaim  = "BYOCAccountFailed"
 	awsCredsUserName        = "aws_user_name"
 	awsCredsAccessKeyId     = "aws_access_key_id"

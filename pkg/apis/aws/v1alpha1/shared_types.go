@@ -88,8 +88,11 @@ var ErrCreateEC2Instance = errors.New("EC2CreationTimeout")
 // ErrFailedAWSTypecast indicates that there was a failure while typecasting to aws error
 var ErrFailedAWSTypecast = errors.New("FailedToTypecastAWSError")
 
-// ErrInvalidOUMap indicates that the OU ConfigMap is not valid
-var ErrInvalidOUMap = errors.New("OUConfigMapInvalid")
+// ErrMissingDefaultConfigMap indicates that the expected default confimap was not found
+var ErrMissingDefaultConfigMap = errors.New("MissingDefaultConfigMap")
+
+// ErrInvalidConfigMap indicates that the ConfigMap has invalid fields
+var ErrInvalidConfigMap = errors.New("OUConfigMapInvalid")
 
 // ErrNonexistentOU indicates that an OU does not exist
 var ErrNonexistentOU = errors.New("OUWithNameNotFound")
@@ -128,3 +131,9 @@ var EmailID = "osd-creds-mgmt"
 
 // InstanceResourceType is the resource type used when building Instance tags
 var InstanceResourceType = "instance"
+
+// DefaultConfigMap holds the expected name for the operator's ConfigMap
+var DefaultConfigMap = "aws-account-operator-configmap"
+
+// DefaultConfigMapAccountLimit holds the fallback limit of aws-accounts
+var DefaultConfigMapAccountLimit = 100
