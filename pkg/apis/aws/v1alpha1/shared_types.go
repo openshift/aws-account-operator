@@ -92,7 +92,7 @@ var ErrFailedAWSTypecast = errors.New("FailedToTypecastAWSError")
 var ErrMissingDefaultConfigMap = errors.New("MissingDefaultConfigMap")
 
 // ErrInvalidConfigMap indicates that the ConfigMap has invalid fields
-var ErrInvalidConfigMap = errors.New("OUConfigMapInvalid")
+var ErrInvalidConfigMap = errors.New("ConfigMapInvalid")
 
 // ErrNonexistentOU indicates that an OU does not exist
 var ErrNonexistentOU = errors.New("OUWithNameNotFound")
