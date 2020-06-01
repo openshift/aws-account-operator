@@ -108,6 +108,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		return reconcile.Result{}, nil
 	}
 
+	// Clean up Federated Role before deletion
 	if instance.DeletionTimestamp != nil {
 
 		if utils.Contains(instance.GetFinalizers(), utils.Finalizer) {
@@ -126,10 +127,6 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		}
 	}
 
-	// If the CR is known to be Valid or Invalid, doesn't need to be reconciled.
-	if instance.Status.State == awsv1alpha1.AWSFederatedRoleStateValid || instance.Status.State == awsv1alpha1.AWSFederatedRoleStateInvalid {
-		return reconcile.Result{}, nil
-	}
 	// Setup AWS client
 	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
 		SecretName: awsSecretName,
@@ -138,7 +135,6 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	})
 
 	// Validates Custom IAM Policy
-
 	log.Info("Validating Custom Policies")
 	// Build custom policy in AWS-valid JSON and converts to string
 	jsonPolicy, err := utils.MarshalIAMPolicy(*instance)
@@ -253,7 +249,44 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		log.Error(err, "Error updating conditions")
 		return reconcile.Result{}, err
 	}
+
+	// Get list of all FederatedAccountAccess
+	afaaList := &awsv1alpha1.AWSFederatedAccountAccessList{}
+	if err = r.client.List(context.TODO(), &client.ListOptions{}, afaaList); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Build list of AFAAs using the current role
+	afaaUsingRoleList := []awsv1alpha1.AWSFederatedAccountAccess{}
+	for _, afaa := range afaaList.Items {
+		if isRoleUsedInAccountAccess(afaa, *instance) {
+			afaaUsingRoleList = append(afaaUsingRoleList, afaa)
+		}
+	}
+
+	// Label all FAAs using role to be updated
+	for _, afaaToLabel := range afaaUsingRoleList {
+		updateLabel := map[string]string{"update": "true"}
+		afaaToLabel.Labels = utils.JoinLabelMaps(afaaToLabel.Labels, updateLabel)
+		err = r.client.Update(context.TODO(), &afaaToLabel)
+		if err != nil {
+
+		}
+	}
+
 	return reconcile.Result{}, nil
+}
+
+func isRoleUsedInAccountAccess(afaa awsv1alpha1.AWSFederatedAccountAccess, ara awsv1alpha1.AWSFederatedRole) bool {
+
+	if afaa.Spec.AWSFederatedRole.Name != ara.Name {
+		return false
+	}
+
+	if afaa.Spec.AWSFederatedRole.Namespace != ara.Namespace {
+		return false
+	}
+	return true
 }
 
 // Paginate through ListPolicy results from AWS
