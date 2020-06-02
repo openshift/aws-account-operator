@@ -320,7 +320,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 			} else {
 
-				// set state creating if the account was alredy created
+				// set state creating if the account was already created
 				SetAccountStatus(reqLogger, currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, AccountCreating)
 				err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 				if err != nil {
@@ -415,7 +415,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 					reqLogger.Info("SREIAMUserSecret not ready, trying again")
 					time.Sleep(time.Duration(time.Duration(i*1) * time.Second))
 				} else {
-					reqLogger.Error(err, "unable to retrive SREIAMUserSecret secret")
+					reqLogger.Error(err, "unable to retrieve SREIAMUserSecret secret")
 					return reconcile.Result{}, err
 				}
 			}
@@ -518,11 +518,11 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 
 	accountObjectKey, err := client.ObjectKeyFromObject(account)
 	if err != nil {
-		reqLogger.Error(err, "Unable to get name and namespace of Acccount object")
+		reqLogger.Error(err, "Unable to get name and namespace of Account object")
 	}
 	err = r.Client.Get(context.TODO(), accountObjectKey, account)
 	if err != nil {
-		reqLogger.Error(err, "Unable to get updated Acccount object after status update")
+		reqLogger.Error(err, "Unable to get updated Account object after status update")
 	}
 
 	reqLogger.Info("Account Created")
@@ -541,7 +541,7 @@ func (r *ReconcileAccount) setStatusFailed(reqLogger logr.Logger, awsAccount *aw
 	return nil
 }
 
-// CreateAccount creates an AWS account for the specified accountName and accountEmail in the orgnization
+// CreateAccount creates an AWS account for the specified accountName and accountEmail in the organization
 func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, accountEmail string) (*organizations.DescribeCreateAccountStatusOutput, error) {
 
 	createInput := organizations.CreateAccountInput{
@@ -793,7 +793,7 @@ func accountIsUnclaimedAndHasNoState(currentAcctInstance *awsv1alpha1.Account) b
 	return false
 }
 
-// Return true if account state is AccountCreeating and has not been claimed
+// Return true if account state is AccountCreating and has not been claimed
 func accountIsUnclaimedAndIsCreating(currentAcctInstance *awsv1alpha1.Account) bool {
 	if accountIsCreating(currentAcctInstance) && !accountIsClaimed(currentAcctInstance) {
 		return true

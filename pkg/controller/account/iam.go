@@ -280,12 +280,12 @@ func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleNa
 	return assumeRoleOutput, nil
 }
 
-// formatFederatedCredentails returns a JSON byte array containing federation credentials
+// formatFederatedCredentials returns a JSON byte array containing federation credentials
 // Takes a logger, and the AWS output from a call to get a Federated Token
 func formatFederatedCredentials(reqLogger logr.Logger, federatedTokenCredentials *sts.GetFederationTokenOutput) ([]byte, error) {
 	var jsonCredentials []byte
 
-	// Build JSON credentials for federation requets
+	// Build JSON credentials for federation requests
 	federationCredentials := map[string]string{
 		"sessionId":    *federatedTokenCredentials.Credentials.AccessKeyId,
 		"sessionKey":   *federatedTokenCredentials.Credentials.SecretAccessKey,
