@@ -41,3 +41,5 @@ done
 if [ $EXIT_STATUS == "FAIL" ]; then
   exit 1
 fi
+
+echo "Tested Secrets have valid structure."
