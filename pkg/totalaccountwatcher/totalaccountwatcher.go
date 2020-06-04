@@ -18,7 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// ErrAwsAccountLimitExceeded indicates the orgnization account limit has been reached.
+// ErrAwsAccountLimitExceeded indicates the organization account limit has been reached.
 var ErrAwsAccountLimitExceeded = errors.New("AccountLimitExceeded")
 
 // TotalAccountWatcher global var for TotalAccountWatcher
@@ -84,7 +84,7 @@ func (s *totalAccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 
 	accountTotal, err := TotalAwsAccounts()
 	if err != nil {
-		log.Error(err, "Failed to get account list with error code %s")
+		log.Error(err, "Failed to get account list with error code")
 	}
 
 	localmetrics.MetricTotalAWSAccounts.With(prometheus.Labels{"name": "aws-account-operator"}).Set(float64(accountTotal))

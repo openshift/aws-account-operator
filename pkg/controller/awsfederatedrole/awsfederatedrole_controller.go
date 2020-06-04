@@ -163,7 +163,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		return reconcile.Result{}, nil
 	}
 
-	// Attemps to create the policy to ensure its a valid policy
+	// Attempts to create the policy to ensure its a valid policy
 	createOutput, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
 		Description:    &instance.Spec.AWSCustomPolicy.Description,
 		PolicyName:     &instance.Spec.AWSCustomPolicy.Name,
@@ -203,7 +203,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	}
 	log.Info("Valided Custom Policies")
 
-	// Ensures the managed IAM Polcies exist
+	// Ensures the managed IAM Policies exist
 	log.Info("Validating Managed Policies")
 	// List all policies from AWS
 	managedPolicies, err := getAllPolicies(awsClient)
