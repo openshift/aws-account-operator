@@ -155,48 +155,11 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	var byocRoleID string
 
 	// If the account is BYOC, needs some different set up
-	if accountIsNewBYOC(currentAcctInstance) {
-		reqLogger.Info("BYOC account")
-		// Create client for BYOC account
-		byocAWSClient, accountClaim, err := r.getBYOCClient(currentAcctInstance)
-		if err != nil {
-			if accountClaim != nil {
-				r.accountClaimBYOCError(reqLogger, accountClaim, err)
-			}
+	if newBYOCAccount(currentAcctInstance) {
+		byocRoleID, err = r.initializeNewBYOCAccount(reqLogger, currentAcctInstance, awsSetupClient, adminAccessArn)
+		if err != nil || byocRoleID == "" {
+			reqLogger.Error(err, "Failed setting up new BYOC account")
 			return reconcile.Result{}, err
-		}
-
-		err = validateBYOCClaim(accountClaim)
-		if err != nil {
-			r.accountClaimBYOCError(reqLogger, accountClaim, err)
-			return reconcile.Result{}, err
-		}
-
-		// Ensure the account is marked as claimed
-		if !accountIsClaimed(currentAcctInstance) {
-			reqLogger.Info("Marking BYOC account claimed")
-			currentAcctInstance.Status.Claimed = true
-			return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
-		}
-
-		// Create access key and role for BYOC account
-		if !accountHasState(currentAcctInstance) {
-			// Create BYOC role to assume
-			byocRoleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, adminAccessArn)
-			if err != nil {
-				reqLogger.Error(err, "Failed to create BYOC role")
-				r.accountClaimBYOCError(reqLogger, accountClaim, err)
-				return reconcile.Result{}, err
-			}
-
-			// Update the account CR to creating
-			reqLogger.Info("Updating BYOC to creating")
-			currentAcctInstance.Status.State = AccountCreating
-			SetAccountStatus(reqLogger, currentAcctInstance, "BYOC Account Creating", awsv1alpha1.AccountCreating, AccountCreating)
-			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
 		}
 	} else {
 		// Normal account creation
