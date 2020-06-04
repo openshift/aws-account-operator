@@ -35,6 +35,7 @@ const (
 	awsCredsAccessKeyId     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
 	accountClaimFinalizer   = "finalizer.aws.managed.openshift.io"
+	byocSecretFinalizer     = accountClaimFinalizer + "/byoc"
 	waitPeriod              = 30
 )
 
@@ -166,6 +167,13 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	if accountClaim.Spec.BYOC {
 
 		reqLogger.Info("Reconciling BYOC AccountClaim")
+
+		// Ensure BYOC secret has finalizer
+		reqLogger.Info("Ensuring byoc secret has finalizer")
+		err = r.addBYOCSecretFinalizer(accountClaim)
+		if err != nil {
+			reqLogger.Error(err, "Unable to add finalizer to byoc secret")
+		}
 
 		if accountClaim.Spec.AccountLink == "" {
 
