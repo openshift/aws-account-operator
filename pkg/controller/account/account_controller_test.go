@@ -340,6 +340,41 @@ func TestAccountIsReady(t *testing.T) {
 	}
 }
 
+// Test accountIsFailed
+func TestAccountIsFailed(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected bool
+		acct     *testAccountBuilder
+	}{
+		{
+			name:     "Account is ready",
+			acct:     newTestAccountBuilder(),
+			expected: false,
+		},
+		{
+			name:     "Account is failed",
+			acct:     newTestAccountBuilder().WithState(awsv1alpha1.AccountFailed),
+			expected: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				result := accountIsFailed(&test.acct.acct)
+				if result != test.expected {
+					t.Error(
+						"for account:", test.acct,
+						"expected", test.expected,
+						"got", result,
+					)
+				}
+			},
+		)
+	}
+}
+
 // Test accountIsCreating
 func TestAccountIsCreating(t *testing.T) {
 	tests := []struct {
