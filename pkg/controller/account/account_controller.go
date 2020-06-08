@@ -77,7 +77,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileAccount{
 		Client:           mgr.GetClient(),
 		scheme:           mgr.GetScheme(),
-		awsClientBuilder: awsclient.NewClient,
+		awsClientBuilder: awsclient.GetAWSClient,
 	}
 }
 
@@ -106,7 +106,7 @@ type ReconcileAccount struct {
 	// that reads objects from the cache and writes to the apiserver
 	Client           kubeclientpkg.Client
 	scheme           *runtime.Scheme
-	awsClientBuilder func(awsAccessID, awsAccessSecret, token, region string) (awsclient.Client, error)
+	awsClientBuilder func(kubeClient kubeclientpkg.Client, input awsclient.NewAwsClientInput) (awsclient.Client, error)
 }
 
 // Reconcile reads that state of the cluster for a Account object and makes changes based on the state read
@@ -142,7 +142,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	// We expect this secret to exist in the same namespace Account CR's are created
-	awsSetupClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+	awsSetupClient, err := r.awsClientBuilder(r.Client, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
@@ -151,7 +151,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		reqLogger.Error(err, "Failed to get AWS client")
 		return reconcile.Result{}, err
 	}
-
 	var byocRoleID string
 
 	// If the account is BYOC, needs some different set up
@@ -338,8 +337,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				break
 			}
 		}
-
-		awsAssumedRoleClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+		awsAssumedRoleClient, err := r.awsClientBuilder(r.Client, awsclient.NewAwsClientInput{
 			AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
 			AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
 			AwsToken:                *creds.Credentials.SessionToken,
@@ -386,12 +384,11 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Create new awsClient with SRE IAM credentials so we can generate STS and Federation tokens from it
-		SREAWSClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+		SREAWSClient, err := r.awsClientBuilder(r.Client, awsclient.NewAwsClientInput{
 			SecretName: *SREIAMUserSecret,
 			NameSpace:  awsv1alpha1.AccountCrNamespace,
 			AwsRegion:  "us-east-1",
 		})
-
 		if err != nil {
 			var returnErr error
 			utils.LogAwsError(reqLogger, "Unable to create AWS connection with SRE credentials", returnErr, err)
