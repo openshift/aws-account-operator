@@ -141,6 +141,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, nil
 	}
 
+	// Log accounts that have failed and don't attempt to reconcile them
+	if accountIsFailed(currentAcctInstance) {
+		reqLogger.Info(fmt.Sprintf("Account %s is failed ignoring", currentAcctInstance.Name))
+		return reconcile.Result{}, nil
+	}
+
 	// We expect this secret to exist in the same namespace Account CR's are created
 	awsSetupClient, err := r.awsClientBuilder(r.Client, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
@@ -603,6 +609,14 @@ func (r *ReconcileAccount) statusUpdate(reqLogger logr.Logger, account *awsv1alp
 func matchSubstring(roleID, role string) (bool, error) {
 	matched, err := regexp.MatchString(roleID, role)
 	return matched, err
+}
+
+// Returns true if account CR is Failed
+func accountIsFailed(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Status.State == AccountFailed {
+		return true
+	}
+	return false
 }
 
 // Returns true of there is no state set
