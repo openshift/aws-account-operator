@@ -1,22 +1,14 @@
-approvers:
-- drewandersonnz
-- c-e-brumm
-- jharrington22
-- fahlmant
-- rogbas
-- jewzaam
-- mwoodson
-- wanghaoran1988
-- dofinn
 reviewers:
-- rafael-azevedo
 - jharrington22
 - fahlmant
-- rogbas
-- jewzaam
-- mwoodson
-- ninataneja 
-- dofinn
+- rafael-azevedo
 - iamkirkbater
 - clcollins
+- rogbas
 - ArielLima
+approvers:
+- jharrington22
+- fahlmant
+- rogbas
+maintainers:
+- rogbas
