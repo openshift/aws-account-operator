@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"runtime"
 	"time"
@@ -19,6 +20,9 @@ import (
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,11 +34,11 @@ import (
 
 // Change below variables to serve metrics on different host or port.
 var (
-	metricsPort                   = "8080"
-	metricsPath                   = "/metrics"
-	secretWatcherScanInterval     = time.Duration(1) * time.Minute
-	hours                     int = 1
-	totalWatcherInterval          = time.Duration(15) * time.Minute
+	metricsPort               = "8080"
+	metricsPath               = "/metrics"
+	secretWatcherScanInterval = time.Duration(1) * time.Minute
+	hours                     = 1
+	totalWatcherInterval      = time.Duration(15) * time.Minute
 )
 
 var log = logf.Log.WithName("cmd")
@@ -111,13 +115,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	// initialize metrics collector
+	localmetrics.Collector = localmetrics.NewMetricsCollector(mgr.GetCache())
 	switch utils.DetectDevMode {
 	case "local":
-		log.Info("Running Locally, Skipping metrics configuration")
+		if err := prometheus.Register(localmetrics.Collector); err != nil {
+			log.Error(err, "failed to register Prometheus metrics")
+			os.Exit(1)
+		}
+		http.Handle(metricsPath, promhttp.Handler())
+		go func() {
+			if err := http.ListenAndServe(":"+metricsPort, nil); err != nil {
+				log.Error(err, "failed to start metrics handler")
+				os.Exit(1)
+			}
+		}()
 	default:
 		//Create metrics endpoint and register metrics
 		metricsServer := metrics.NewBuilder().WithPort(metricsPort).WithPath(metricsPath).
-			WithCollectors(localmetrics.MetricsList).
+			WithCollector(localmetrics.Collector).
 			WithRoute().
 			WithServiceName("aws-account-operator").
 			GetConfig()

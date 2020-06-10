@@ -10,8 +10,6 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
-	"github.com/openshift/aws-account-operator/pkg/localmetrics"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -216,7 +214,9 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 					corev1.ConditionTrue,
 					BYOCAccountFailedClaim,
 					message,
-					controllerutils.UpdateConditionNever)
+					controllerutils.UpdateConditionNever,
+					accountClaim.Spec.BYOCAWSAccountID != "",
+				)
 				// Update the status on AccountClaim
 				return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 			}
@@ -235,7 +235,9 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 				corev1.ConditionTrue,
 				AccountClaimed,
 				message,
-				controllerutils.UpdateConditionNever)
+				controllerutils.UpdateConditionNever,
+				accountClaim.Spec.BYOCAWSAccountID != "",
+			)
 			// Update the status on AccountClaim
 			return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 		}
@@ -260,7 +262,9 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			corev1.ConditionTrue,
 			AccountClaimed,
 			message,
-			controllerutils.UpdateConditionNever)
+			controllerutils.UpdateConditionNever,
+			accountClaim.Spec.BYOCAWSAccountID != "",
+		)
 		// Update the Spec on AccountClaim
 		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 	}
@@ -320,16 +324,6 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			return reconcile.Result{}, nil
 		}
 	}
-
-	// Set metrics
-	accountClaimList := &awsv1alpha1.AccountClaimList{}
-
-	listOps = &client.ListOptions{Namespace: accountClaim.Namespace}
-	if err = r.client.List(context.TODO(), listOps, accountList); err != nil {
-		return reconcile.Result{}, err
-	}
-
-	localmetrics.UpdateAccountClaimMetrics(accountClaimList)
 
 	if accountClaim.Status.State != awsv1alpha1.ClaimStatusReady && accountClaim.Spec.AccountLink != "" {
 		// Set AccountClaim.Status.Conditions and AccountClaim.Status.State to Ready
@@ -505,7 +499,9 @@ func setAccountClaimStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Accoun
 		corev1.ConditionTrue,
 		AccountClaimed,
 		message,
-		controllerutils.UpdateConditionNever)
+		controllerutils.UpdateConditionNever,
+		awsAccountClaim.Spec.BYOCAWSAccountID != "",
+	)
 	awsAccountClaim.Status.State = awsv1alpha1.ClaimStatusReady
 	reqLogger.Info(fmt.Sprintf("Account %s condition status updated", awsAccountClaim.Name))
 }

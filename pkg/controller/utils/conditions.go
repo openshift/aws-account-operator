@@ -2,9 +2,9 @@ package utils
 
 import (
 	"fmt"
-
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -51,6 +51,7 @@ func SetAccountClaimCondition(
 	reason string,
 	message string,
 	updateConditionCheck UpdateConditionCheck,
+	ccs bool,
 ) []awsv1alpha1.AccountClaimCondition {
 	now := metav1.Now()
 	existingCondition := FindAccountClaimCondition(conditions, conditionType)
@@ -81,6 +82,14 @@ func SetAccountClaimCondition(
 			existingCondition.Reason = reason
 			existingCondition.Message = message
 			existingCondition.LastProbeTime = now
+		}
+	}
+
+	if conditionType == awsv1alpha1.AccountClaimed {
+		unclaimedCondition := FindAccountClaimCondition(conditions, awsv1alpha1.AccountUnclaimed)
+		if unclaimedCondition != nil {
+			readyDuration := now.Sub(unclaimedCondition.LastProbeTime.Time)
+			localmetrics.Collector.SetAccountClaimReadyDuration(ccs, readyDuration.Seconds())
 		}
 	}
 	return conditions
@@ -139,6 +148,15 @@ func SetAccountCondition(
 		// or we probe and the condition is still active, the date is updated.
 		existingCondition.LastProbeTime = now
 	}
+
+	if conditionType == awsv1alpha1.AccountReady {
+		creatingCondition := FindAccountCondition(conditions, awsv1alpha1.AccountCreating)
+		if creatingCondition != nil {
+			readyDuration := now.Sub(creatingCondition.LastProbeTime.Time)
+			localmetrics.Collector.SetAccountReadyDuration(readyDuration.Seconds())
+		}
+	}
+
 	return conditions
 }
 
@@ -274,7 +292,9 @@ func SetBYOCAccountClaimStatusAWSAccountInUse(reqLogger logr.Logger, accountClai
 		corev1.ConditionTrue,
 		string(awsv1alpha1.BYOCAWSAccountInUse),
 		message,
-		UpdateConditionNever)
+		UpdateConditionNever,
+		accountClaim.Spec.BYOCAWSAccountID != "",
+	)
 	accountClaim.Status.State = awsv1alpha1.ClaimStatusError
 	reqLogger.Info(fmt.Sprintf("AccountClaim %s condition status updated", accountClaim.Name))
 }
