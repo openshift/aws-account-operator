@@ -138,9 +138,3 @@ func AccountCRHasIAMUserIDLabel(accountCR *awsv1alpha1.Account) bool {
 
 	return false
 }
-
-// CreateIAMUserSecretName returns a lower case concatinated string of the input separated by "-"
-func CreateIAMUserSecretName(account string) string {
-	suffix := "secret"
-	return strings.ToLower(fmt.Sprintf("%s-%s", account, suffix))
-}
