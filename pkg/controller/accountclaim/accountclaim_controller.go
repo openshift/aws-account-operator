@@ -362,17 +362,6 @@ func (r *ReconcileAccountClaim) getClaimedAccount(accountLink string, namespace 
 	return account, nil
 }
 
-func AWSAccountIDClaimed(accountClaim *awsv1alpha1.AccountClaim, accountClaimList *awsv1alpha1.AccountClaimList) bool {
-	match := false
-	for _, ac := range accountClaimList.Items {
-		// We don't check AccountClaim names since they could be identical, namespaces are unique though
-		if ac.Spec.BYOCAWSAccountID == accountClaim.Spec.BYOCAWSAccountID && ac.Namespace != accountClaim.Namespace {
-			match = true
-		}
-	}
-	return match
-}
-
 func getUnclaimedAccount(reqLogger logr.Logger, accountList *awsv1alpha1.AccountList, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
 	var unclaimedAccount awsv1alpha1.Account
 	var reusedAccount awsv1alpha1.Account
