@@ -340,19 +340,6 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileAccountClaim) getAccountClaimList(reqLogger logr.Logger) (*awsv1alpha1.AccountClaimList, error) {
-	accountClaimList := &awsv1alpha1.AccountClaimList{}
-
-	listOps := &client.ListOptions{}
-	if err := r.client.List(context.TODO(), listOps, accountClaimList); err != nil {
-		reqLogger.Error(err, "unable to list account claims")
-		return accountClaimList, err
-	}
-
-	return accountClaimList, nil
-
-}
-
 func (r *ReconcileAccountClaim) getClaimedAccount(accountLink string, namespace string) (*awsv1alpha1.Account, error) {
 	account := &awsv1alpha1.Account{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: accountLink, Namespace: namespace}, account)
