@@ -422,25 +422,15 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		}
 
-		// Create new awsClient with SRE IAM credentials so we can generate STS and Federation tokens from it
-		SREAWSClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
-			SecretName: *SREIAMUserSecret,
-			NameSpace:  awsv1alpha1.AccountCrNamespace,
-			AwsRegion:  "us-east-1",
-		})
-
 		if err != nil {
 			var returnErr error
 			utils.LogAwsError(reqLogger, "Unable to create AWS connection with SRE credentials", returnErr, err)
 			return reconcile.Result{}, err
 		}
 
-		// Create STS CLI Credentials for SRE
-		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace, roleToAssume)
-		if err != nil {
-			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build SRE STS credentials: %s", iamUserSRE))
-			return reconcile.Result{}, err
-		}
+		// Tag STS and Console credentials as "needs rotated" so they get created
+		currentAcctInstance.Status.RotateCredentials = true
+		currentAcctInstance.Status.RotateConsoleCredentials = true
 
 		// Initialize all supported regions by creating and terminating an instance in each
 		err = r.InitializeSupportedRegions(reqLogger, currentAcctInstance, awsv1alpha1.CoveredRegions, creds)
@@ -461,21 +451,18 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				reqLogger.Info("Account pending AWS limits verification")
 			}
 		}
-		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
 	}
 
 	// If Account CR has `stats.rotateCredentials: true` we'll rotate the temporary credentials
 	// the secretWatcher is what updates this status field by comparing the STS credentials secret `creationTimestamp`
+	credentialsRotated := false
 	if accountNeedsCredentialsRotated(currentAcctInstance) {
 		reqLogger.Info(fmt.Sprintf("rotating CLI credentials for %s", currentAcctInstance.Name))
 		err = r.RotateCredentials(reqLogger, awsSetupClient, currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+		credentialsRotated = true
 	}
 	if accountNeedsConsoleCredentialsRotated(currentAcctInstance) {
 		reqLogger.Info(fmt.Sprintf("rotating console URL credentials for %s", currentAcctInstance.Name))
@@ -483,7 +470,19 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+		credentialsRotated = true
 	}
+	if credentialsRotated {
+		// Set `status.RotateCredentials` to false now that they have been updated
+		currentAcctInstance.Status.RotateCredentials = false
+	}
+
+	// Push the updated client to the server.
+	err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
 	return reconcile.Result{}, nil
 }
 

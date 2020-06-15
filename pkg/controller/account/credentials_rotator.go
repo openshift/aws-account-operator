@@ -82,15 +82,6 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 		return err
 	}
 
-	// Set `status.RotateCredentials` to false now that they have been updated
-	account.Status.RotateCredentials = false
-
-	err = r.Client.Status().Update(context.TODO(), account)
-	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("RotateCredentials: Error updating account %s", account.Name))
-		return err
-	}
-
 	reqLogger.Info(fmt.Sprintf("AWS STS and signin token rotated for account %s valid for %d", account.Name, credentialwatcher.STSCredentialsDuration-credentialwatcher.STSCredentialsThreshold))
 
 	return nil
@@ -183,15 +174,6 @@ func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSe
 
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Unable to update secret %s", STSSecret.Name))
-		return err
-	}
-
-	// Set `status.RotateCredentials` to false now that they ahve been updated
-	account.Status.RotateConsoleCredentials = false
-
-	err = r.Client.Status().Update(context.TODO(), account)
-	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("RotateCredentials: Error updating account %s", account.Name))
 		return err
 	}
 
