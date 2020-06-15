@@ -312,7 +312,8 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			currentAccInstanceID := currentAcctInstance.Labels[fmt.Sprintf("%s", awsv1alpha1.IAMUserIDLabel)]
 			iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
 			iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
-			roleToAssume = byocRole
+			byocRoleToAssume := fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
+			roleToAssume = byocRoleToAssume
 		} else {
 			roleToAssume = awsv1alpha1.AccountOperatorIAMRole
 		}

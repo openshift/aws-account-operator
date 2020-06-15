@@ -497,6 +497,53 @@ func (r *ReconcileAccountClaim) cleanUpIAM(reqLogger logr.Logger, awsClient awsc
 		}
 	}
 
+	reqLogger.Info("Cleaning up IAM roles")
+
+	roles, err := awsclient.ListIAMRoles(reqLogger, awsClient)
+	if err != nil {
+		return err
+	}
+
+	for _, role := range roles {
+		clusterNameTag := false
+		clusterNamespaceTag := false
+		getRole, err := awsClient.GetRole(&iam.GetRoleInput{RoleName: role.RoleName})
+		if err != nil {
+			return err
+		}
+
+		for _, tag := range getRole.Role.Tags {
+			if *tag.Key == awsv1alpha1.ClusterAccountNameTagKey && *tag.Value == accountCR.Name {
+				clusterNameTag = true
+			}
+			if *tag.Key == awsv1alpha1.ClusterNamespaceTagKey && *tag.Value == accountCR.Namespace {
+				clusterNamespaceTag = true
+			}
+		}
+
+		if clusterNameTag && clusterNamespaceTag {
+			attachedRolePolicies, err := awsClient.ListAttachedRolePolicies(&iam.ListAttachedRolePoliciesInput{RoleName: getRole.Role.RoleName})
+			if err != nil {
+				return fmt.Errorf(fmt.Sprintf("Unable to list IAM role policies from role %s", *getRole.Role.RoleName), err)
+			}
+			for _, attachedPolicy := range attachedRolePolicies.AttachedPolicies {
+				_, err := awsClient.DetachRolePolicy(&iam.DetachRolePolicyInput{
+					PolicyArn: attachedPolicy.PolicyArn,
+					RoleName:  getRole.Role.RoleName,
+				})
+				if err != nil {
+					return fmt.Errorf(fmt.Sprintf("Unable to detach IAM role policy from role %s", *getRole.Role.RoleName), err)
+				}
+			}
+			_, err = awsClient.DeleteRole(&iam.DeleteRoleInput{RoleName: getRole.Role.RoleName})
+			reqLogger.Info(fmt.Sprintf("Deleting IAM role: %s", *getRole.Role.RoleName))
+			if err != nil {
+				return fmt.Errorf(fmt.Sprintf("Unable to delete IAM role %s", *getRole.Role.RoleName), err)
+			}
+		} else {
+			reqLogger.Info(fmt.Sprintf("Not deleting role: %s", *getRole.Role.RoleName))
+		}
+	}
 	return nil
 }
 
