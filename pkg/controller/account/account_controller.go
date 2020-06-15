@@ -444,7 +444,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		currentAcctInstance.Status.RotateCredentials = false
 	}
 
-	// Push the updated client to the server.
+	// Push the updated account to the server.
 	err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 	if err != nil {
 		return reconcile.Result{}, err
