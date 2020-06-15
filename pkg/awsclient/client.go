@@ -84,6 +84,7 @@ type Client interface {
 	CreateRole(*iam.CreateRoleInput) (*iam.CreateRoleOutput, error)
 	GetRole(*iam.GetRoleInput) (*iam.GetRoleOutput, error)
 	DeleteRole(*iam.DeleteRoleInput) (*iam.DeleteRoleOutput, error)
+	ListRoles(input *iam.ListRolesInput) (*iam.ListRolesOutput, error)
 
 	//Organizations
 	ListAccounts(*organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error)
@@ -257,6 +258,10 @@ func (c *awsClient) GetRole(input *iam.GetRoleInput) (*iam.GetRoleOutput, error)
 
 func (c *awsClient) DeleteRole(input *iam.DeleteRoleInput) (*iam.DeleteRoleOutput, error) {
 	return c.iamClient.DeleteRole(input)
+}
+
+func (c *awsClient) ListRoles(input *iam.ListRolesInput) (*iam.ListRolesOutput, error) {
+	return c.iamClient.ListRoles(input)
 }
 
 func (c *awsClient) ListAccounts(input *organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error) {
