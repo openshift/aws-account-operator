@@ -213,12 +213,12 @@ func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleNa
 	return assumeRoleOutput, nil
 }
 
-// formatFederatedCredentails returns a JSON byte array containing federation credentials
+// formatFederatedCredentials returns a JSON byte array containing federation credentials
 // Takes a logger, and the AWS output from a call to get a Federated Token
 func formatFederatedCredentials(reqLogger logr.Logger, federatedTokenCredentials *sts.GetFederationTokenOutput) ([]byte, error) {
 	var jsonCredentials []byte
 
-	// Build JSON credentials for federation requets
+	// Build JSON credentials for federation requests
 	federationCredentials := map[string]string{
 		"sessionId":    *federatedTokenCredentials.Credentials.AccessKeyId,
 		"sessionKey":   *federatedTokenCredentials.Credentials.SecretAccessKey,
@@ -506,9 +506,9 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	// Determine the kubernetes secret name as its different if the IAM user is osdManagedAdminSRE
 	if isIAMUserOsdManagedAdminSRE(createdIAMUser.UserName) {
 		// Use iamUserNameSRE constant here to ensure we don't double up on suffix for secret name
-		iamUserSecretName = utils.CreateIAMUserSecretName(fmt.Sprintf("%s-%s", account.Name, iamUserNameSRE))
+		iamUserSecretName = createIAMUserSecretName(fmt.Sprintf("%s-%s", account.Name, iamUserNameSRE))
 	} else {
-		iamUserSecretName = utils.CreateIAMUserSecretName(account.Name)
+		iamUserSecretName = createIAMUserSecretName(account.Name)
 	}
 
 	reqLogger.Info(fmt.Sprintf("Attaching Admin Policy to IAM user %s", aws.StringValue(createdIAMUser.UserName)))
@@ -619,4 +619,10 @@ func (r *ReconcileAccount) DoesSecretExist(namespacedName types.NamespacedName) 
 // isIAMUserOsdManagedAdminSRE returns true if the username begins with osdManagedAdminSRE
 func isIAMUserOsdManagedAdminSRE(userName *string) bool {
 	return strings.HasPrefix(*userName, iamUserNameSRE)
+}
+
+// createIAMUserSecretName returns a lower case concatinated string of the input separated by "-"
+func createIAMUserSecretName(account string) string {
+	suffix := "secret"
+	return strings.ToLower(fmt.Sprintf("%s-%s", account, suffix))
 }

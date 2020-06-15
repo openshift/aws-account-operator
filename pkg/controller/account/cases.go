@@ -18,7 +18,7 @@ const (
 	caseCategoryCode              = "other-account-issues"
 	caseServiceCode               = "customer-account"
 	caseIssueType                 = "customer-service"
-	caseSeverity                  = "urgent"
+	caseSeverity                  = "high"
 	caseStatusResolved            = "resolved"
 	caseLanguage                  = "en"
 	intervalAfterCaseCreationSecs = 30

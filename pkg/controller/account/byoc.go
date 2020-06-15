@@ -36,12 +36,9 @@ var roleID = ""
 
 // BYOC Accounts are determined by having no state set OR not being claimed
 // Returns true if either are true AND Spec.BYOC is true
-func accountIsNewBYOC(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Spec.BYOC {
-		if !accountHasState(currentAcctInstance) {
-			return true
-		}
-		if !accountIsClaimed(currentAcctInstance) {
+func newBYOCAccount(currentAcctInstance *awsv1alpha1.Account) bool {
+	if accountIsBYOC(currentAcctInstance) {
+		if !accountHasState(currentAcctInstance) || !accountIsClaimed(currentAcctInstance) {
 			return true
 		}
 	}
@@ -50,13 +47,55 @@ func accountIsNewBYOC(currentAcctInstance *awsv1alpha1.Account) bool {
 
 // Checks whether or not the current account instance is claimed, and does so if not
 func claimBYOCAccount(r *ReconcileAccount, reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) error {
-	if currentAcctInstance.Status.Claimed != true {
+	if !accountIsClaimed(currentAcctInstance) {
 		reqLogger.Info("Marking BYOC account claimed")
 		currentAcctInstance.Status.Claimed = true
 		return r.statusUpdate(reqLogger, currentAcctInstance)
 	}
 
 	return nil
+}
+
+func (r *ReconcileAccount) initializeNewBYOCAccount(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, adminAccessArn string) (string, error) {
+	client, accountClaim, err := r.getBYOCClient(currentAcctInstance)
+	if err != nil {
+		if accountClaim != nil {
+			r.accountClaimBYOCError(reqLogger, accountClaim, err)
+		}
+		return "", err
+	}
+
+	err = validateBYOCClaim(accountClaim)
+	if err != nil {
+		r.accountClaimBYOCError(reqLogger, accountClaim, err)
+		return "", err
+	}
+
+	err = claimBYOCAccount(r, reqLogger, currentAcctInstance)
+	if err != nil {
+		r.accountClaimBYOCError(reqLogger, accountClaim, err)
+		return "", err
+	}
+
+	// Create access key and role for BYOC account
+	var roleID string
+	if !accountHasState(currentAcctInstance) {
+		roleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn)
+		if err != nil {
+			r.accountClaimBYOCError(reqLogger, accountClaim, err)
+			return "", err
+		}
+
+		reqLogger.Info("Updating BYOC to creating")
+		currentAcctInstance.Status.State = AccountCreating
+		SetAccountStatus(reqLogger, currentAcctInstance, "BYOC Account Creating", awsv1alpha1.AccountCreating, AccountCreating)
+		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
+		if err != nil {
+			return roleID, err
+		}
+	}
+
+	return roleID, nil
 }
 
 // Create role for BYOC IAM user to assume
@@ -296,67 +335,6 @@ func (r *ReconcileAccount) getBYOCClient(currentAcct *awsv1alpha1.Account) (awsc
 	}
 
 	return byocAWSClient, accountClaim, nil
-}
-
-func (r *ReconcileAccount) byocRotateAccessKeys(reqLogger logr.Logger, byocAWSClient awsclient.Client, accountClaim *awsv1alpha1.AccountClaim) error {
-
-	getBYOCUserOutput, err := byocAWSClient.GetUser(&iam.GetUserInput{})
-	if err != nil {
-		reqLogger.Error(err, "Failed to get BYOC IAM User info")
-		return err
-	}
-
-	// Get the BYOC credentials secret to update
-	accountClaimSecret := &corev1.Secret{}
-
-	err = r.Client.Get(context.TODO(),
-		types.NamespacedName{Name: accountClaim.Spec.BYOCSecretRef.Name, Namespace: accountClaim.Spec.BYOCSecretRef.Namespace},
-		accountClaimSecret)
-
-	accessKeyID := string(accountClaimSecret.Data["aws_access_key_id"])
-
-	// List and delete any other access keys
-	accessKeyList, err := byocAWSClient.ListAccessKeys(&iam.ListAccessKeysInput{})
-
-	for _, accessKey := range accessKeyList.AccessKeyMetadata {
-		if *accessKey.AccessKeyId != accessKeyID {
-			_, err = byocAWSClient.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKey.AccessKeyId})
-			if err != nil {
-				reqLogger.Error(err, "Failed to delete BYOC access keys")
-				return err
-			}
-		}
-	}
-
-	// Create new BYOC access keys
-	userSecretInfo, err := CreateUserAccessKey(byocAWSClient, getBYOCUserOutput.User)
-	if err != nil {
-		failedToCreateUserAccessKeyMsg := fmt.Sprintf("Failed to create IAM access key for %s", *getBYOCUserOutput.User.UserName)
-		reqLogger.Info(failedToCreateUserAccessKeyMsg)
-		return err
-	}
-
-	// Delete original BYOC access key
-	_, err = byocAWSClient.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: &accessKeyID})
-	if err != nil {
-		reqLogger.Error(err, "Failed to delete BYOC access keys")
-		return err
-	}
-
-	accountClaimSecret.Data =
-		map[string][]byte{
-			"aws_access_key_id":     []byte(*userSecretInfo.AccessKey.AccessKeyId),
-			"aws_secret_access_key": []byte(*userSecretInfo.AccessKey.SecretAccessKey),
-		}
-
-	reqLogger.Info("BYOC updating secret")
-	err = r.Client.Update(context.TODO(), accountClaimSecret)
-	if err != nil {
-		reqLogger.Error(err, "Failed to update BYOC access keys")
-		return err
-	}
-
-	return nil
 }
 
 func (r *ReconcileAccount) accountClaimBYOCError(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, claimError error) {

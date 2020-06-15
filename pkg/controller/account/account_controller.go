@@ -77,7 +77,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileAccount{
 		Client:           mgr.GetClient(),
 		scheme:           mgr.GetScheme(),
-		awsClientBuilder: awsclient.NewClient,
+		awsClientBuilder: awsclient.GetAWSClient,
 	}
 }
 
@@ -106,7 +106,7 @@ type ReconcileAccount struct {
 	// that reads objects from the cache and writes to the apiserver
 	Client           kubeclientpkg.Client
 	scheme           *runtime.Scheme
-	awsClientBuilder func(awsAccessID, awsAccessSecret, token, region string) (awsclient.Client, error)
+	awsClientBuilder func(kubeClient kubeclientpkg.Client, input awsclient.NewAwsClientInput) (awsclient.Client, error)
 }
 
 // Reconcile reads that state of the cluster for a Account object and makes changes based on the state read
@@ -141,8 +141,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, nil
 	}
 
+	// Log accounts that have failed and don't attempt to reconcile them
+	if accountIsFailed(currentAcctInstance) {
+		reqLogger.Info(fmt.Sprintf("Account %s is failed ignoring", currentAcctInstance.Name))
+		return reconcile.Result{}, nil
+	}
+
 	// We expect this secret to exist in the same namespace Account CR's are created
-	awsSetupClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+	awsSetupClient, err := r.awsClientBuilder(r.Client, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
@@ -151,52 +157,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		reqLogger.Error(err, "Failed to get AWS client")
 		return reconcile.Result{}, err
 	}
-
 	var byocRoleID string
 
 	// If the account is BYOC, needs some different set up
-	if accountIsNewBYOC(currentAcctInstance) {
-		reqLogger.Info("BYOC account")
-		// Create client for BYOC account
-		byocAWSClient, accountClaim, err := r.getBYOCClient(currentAcctInstance)
-		if err != nil {
-			if accountClaim != nil {
-				r.accountClaimBYOCError(reqLogger, accountClaim, err)
-			}
+	if newBYOCAccount(currentAcctInstance) {
+		byocRoleID, err = r.initializeNewBYOCAccount(reqLogger, currentAcctInstance, awsSetupClient, adminAccessArn)
+		if err != nil || byocRoleID == "" {
+			reqLogger.Error(err, "Failed setting up new BYOC account")
 			return reconcile.Result{}, err
-		}
-
-		err = validateBYOCClaim(accountClaim)
-		if err != nil {
-			r.accountClaimBYOCError(reqLogger, accountClaim, err)
-			return reconcile.Result{}, err
-		}
-
-		// Ensure the account is marked as claimed
-		if !accountIsClaimed(currentAcctInstance) {
-			reqLogger.Info("Marking BYOC account claimed")
-			currentAcctInstance.Status.Claimed = true
-			return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
-		}
-
-		// Create access key and role for BYOC account
-		if !accountHasState(currentAcctInstance) {
-			// Create BYOC role to assume
-			byocRoleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, byocAWSClient, adminAccessArn)
-			if err != nil {
-				reqLogger.Error(err, "Failed to create BYOC role")
-				r.accountClaimBYOCError(reqLogger, accountClaim, err)
-				return reconcile.Result{}, err
-			}
-
-			// Update the account CR to creating
-			reqLogger.Info("Updating BYOC to creating")
-			currentAcctInstance.Status.State = AccountCreating
-			SetAccountStatus(reqLogger, currentAcctInstance, "BYOC Account Creating", awsv1alpha1.AccountCreating, AccountCreating)
-			err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
 		}
 	} else {
 		// Normal account creation
@@ -320,7 +288,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 			} else {
 
-				// set state creating if the account was alredy created
+				// set state creating if the account was already created
 				SetAccountStatus(reqLogger, currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, AccountCreating)
 				err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 				if err != nil {
@@ -375,8 +343,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				break
 			}
 		}
-
-		awsAssumedRoleClient, err := awsclient.GetAWSClient(r.Client, awsclient.NewAwsClientInput{
+		awsAssumedRoleClient, err := r.awsClientBuilder(r.Client, awsclient.NewAwsClientInput{
 			AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
 			AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
 			AwsToken:                *creds.Credentials.SessionToken,
@@ -415,7 +382,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 					reqLogger.Info("SREIAMUserSecret not ready, trying again")
 					time.Sleep(time.Duration(time.Duration(i*1) * time.Second))
 				} else {
-					reqLogger.Error(err, "unable to retrive SREIAMUserSecret secret")
+					reqLogger.Error(err, "unable to retrieve SREIAMUserSecret secret")
 					return reconcile.Result{}, err
 				}
 			}
@@ -517,11 +484,11 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 
 	accountObjectKey, err := client.ObjectKeyFromObject(account)
 	if err != nil {
-		reqLogger.Error(err, "Unable to get name and namespace of Acccount object")
+		reqLogger.Error(err, "Unable to get name and namespace of Account object")
 	}
 	err = r.Client.Get(context.TODO(), accountObjectKey, account)
 	if err != nil {
-		reqLogger.Error(err, "Unable to get updated Acccount object after status update")
+		reqLogger.Error(err, "Unable to get updated Account object after status update")
 	}
 
 	reqLogger.Info("Account Created")
@@ -540,7 +507,7 @@ func (r *ReconcileAccount) setStatusFailed(reqLogger logr.Logger, awsAccount *aw
 	return nil
 }
 
-// CreateAccount creates an AWS account for the specified accountName and accountEmail in the orgnization
+// CreateAccount creates an AWS account for the specified accountName and accountEmail in the organization
 func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, accountEmail string) (*organizations.DescribeCreateAccountStatusOutput, error) {
 
 	createInput := organizations.CreateAccountInput{
@@ -642,6 +609,14 @@ func (r *ReconcileAccount) statusUpdate(reqLogger logr.Logger, account *awsv1alp
 func matchSubstring(roleID, role string) (bool, error) {
 	matched, err := regexp.MatchString(roleID, role)
 	return matched, err
+}
+
+// Returns true if account CR is Failed
+func accountIsFailed(currentAcctInstance *awsv1alpha1.Account) bool {
+	if currentAcctInstance.Status.State == AccountFailed {
+		return true
+	}
+	return false
 }
 
 // Returns true of there is no state set
@@ -792,7 +767,7 @@ func accountIsUnclaimedAndHasNoState(currentAcctInstance *awsv1alpha1.Account) b
 	return false
 }
 
-// Return true if account state is AccountCreeating and has not been claimed
+// Return true if account state is AccountCreating and has not been claimed
 func accountIsUnclaimedAndIsCreating(currentAcctInstance *awsv1alpha1.Account) bool {
 	if accountIsCreating(currentAcctInstance) && !accountIsClaimed(currentAcctInstance) {
 		return true

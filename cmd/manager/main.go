@@ -113,7 +113,7 @@ func main() {
 
 	switch utils.DetectDevMode {
 	case "local":
-		log.Info("Running Locally, Skiping metrics configuration")
+		log.Info("Running Locally, Skipping metrics configuration")
 	default:
 		//Create metrics endpoint and register metrics
 		metricsServer := metrics.NewBuilder().WithPort(metricsPort).WithPath(metricsPath).
