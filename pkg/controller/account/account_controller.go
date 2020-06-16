@@ -389,12 +389,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		}
 
-		if err != nil {
-			var returnErr error
-			utils.LogAwsError(reqLogger, "Unable to create AWS connection with SRE credentials", returnErr, err)
-			return reconcile.Result{}, err
-		}
-
 		// Tag STS and Console credentials as "needs rotated" so they get created
 		currentAcctInstance.Status.RotateCredentials = true
 		currentAcctInstance.Status.RotateConsoleCredentials = true
