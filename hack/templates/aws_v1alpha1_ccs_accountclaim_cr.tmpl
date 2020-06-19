@@ -18,12 +18,12 @@ objects:
       regions:
       - name: us-east-1
     awsCredentialSecret:
+      name: aws
       namespace: ${NAMESPACE}
-      name: ${NAME}
     byoc: true
     byocAWSAccountID: ${CCS_ACCOUNT_ID}
     byocSecretRef:
-      name: "byoc"
+      name: byoc
       namespace: ${NAMESPACE}
     legalEntity:
       id: "111111"

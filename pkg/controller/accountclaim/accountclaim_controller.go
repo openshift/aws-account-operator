@@ -162,7 +162,6 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	if accountClaim.Spec.BYOC {
-
 		reqLogger.Info("Reconciling BYOC AccountClaim")
 
 		// Ensure BYOC secret has finalizer
@@ -239,6 +238,14 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			)
 			// Update the status on AccountClaim
 			return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
+		}
+
+		// Create secret for OCM to consume
+		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+			err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)
+			if err != nil {
+				return reconcile.Result{}, nil
+			}
 		}
 
 		return reconcile.Result{}, nil
