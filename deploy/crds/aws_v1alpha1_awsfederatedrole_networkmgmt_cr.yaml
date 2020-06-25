@@ -12,58 +12,33 @@ spec:
     description: Description of CustomerAdministratorAccess
     # list of statements for the policy
     awsStatements:
+      ## START LEGACY PERMISSIONS
+      # AWS Transit Gateway
+      - effect: Allow
+        action:
+          - "ec2:CreateTransitGatewayVpcAttachment"
+        resource:
+          - "arn:aws:ec2:*:*:subnet/*"
+          - "arn:aws:ec2:*:*:transit-gateway/*"
+          - "arn:aws:ec2:*:*:vpc/*"
+          - "arn:aws:ec2:*:*:transit-gateway-attachment/*"
+
+      # AWS EC2
       - effect: Allow
         action:
           - "ec2:AcceptVpcPeeringConnection"
-          - "ec2:AttachVpnGateway"
-          - "ec2:CreateCustomerGateway"
-          - "ec2:CreateRoute"
-          - "ec2:CreateTags"
           - "ec2:CreateVPCEndpoint"
-          - "ec2:CreateVpcPeeringConnection"
-          - "ec2:CreateVpnConnection"
           - "ec2:CreateVpnConnectionRoute"
-          - "ec2:CreateVpnGateway"
-          - "ec2:DeleteVpcPeeringConnection"
-          - "ec2:DeleteVpnConnection"
           - "ec2:DeleteVpnConnectionRoute"
-          - "ec2:DeleteVpnGateway"
-          - "ec2:DescribeAvailabilityZones"
-          - "ec2:DescribeRouteTables"
-          - "ec2:DescribeSubnets"
-          - "ec2:DescribeTransitGatewayAttachments"
-          - "ec2:DescribeTransitGatewayVpcAttachments"
-          - "ec2:DescribeTransitGateways"
-          - "ec2:DescribeVPCEndpoints"
-          - "ec2:DescribeVpcPeeringConnections"
-          - "ec2:DescribeVpcs"
-          - "ec2:DescribeVpnConnections"
-          - "ec2:DescribeVpnGateways"
-          - "ec2:CreateVpnConnection"
-          - "ec2:CreateTags"
-          - "ec2:CreateRoute"
-          - "ec2:DescribeRouteTables"
-          - "ec2:DetachVpnGateway"
           - "ec2:ModifyVpcPeeringConnectionOptions"
           - "ec2:RejectVpcPeeringConnection"
-          - "ec2:DisableVgwRoutePropagation"
-          - "ec2:EnableVgwRoutePropagation"
-          - "guardduty:GetDetector"
-          - "guardduty:GetFindings"
-          - "guardduty:GetFindingsStatistics"
-          - "guardduty:GetFreeTrialStatistics"
-          - "guardduty:GetIPSet"
-          - "guardduty:GetInvitationsCount"
-          - "guardduty:GetMasterAccount"
-          - "guardduty:GetMembers"
-          - "guardduty:GetThreatIntelSet"
-          - "guardduty:ListDetectors"
-          - "guardduty:ListFilters"
-          - "guardduty:ListFindings"
-          - "guardduty:ListIPSets"
-          - "guardduty:ListInvitations"
-          - "guardduty:ListMembers"
-          - "guardduty:ListThreatIntelSets"
+        resource:
+          - "*"
+
+      # Resource Access Management
+      # Allows sharing resources between VPCs
+      - effect: Allow
+        action:
           - "ram:AcceptResourceShareInvitation"
           - "ram:DeleteResourceShare"
           - "ram:GetResourcePolicies"
@@ -74,6 +49,12 @@ spec:
           - "ram:ListPrincipals"
           - "ram:ListResources"
           - "ram:RejectResourceShareInvitation"
+        resource:
+          - "*"
+     
+      # DNS Route Propagation
+      - effect: Allow
+        action:
           - "route53resolver:AssociateResolverRule"
           - "route53resolver:DeleteResolverRule"
           - "route53resolver:DisassociateResolverRule"
@@ -81,7 +62,6 @@ spec:
           - "route53resolver:GetResolverRuleAssociation"
           - "route53resolver:ListResolverRuleAssociations"
           - "route53resolver:ListResolverRules"
-          - "directconnect:*"
         resource: 
           - "*"
       - effect: Allow
@@ -92,14 +72,7 @@ spec:
         condition:
           StringEquals:
             ram:RequestedResourceType: route53resolver:ResolverRule
-      - effect: Allow
-        action:
-          - "ec2:CreateTransitGatewayVpcAttachment"
-        resource:
-          - "arn:aws:ec2:*:*:subnet/*"
-          - "arn:aws:ec2:*:*:transit-gateway/*"
-          - "arn:aws:ec2:*:*:vpc/*"
-          - "arn:aws:ec2:*:*:transit-gateway-attachment/*"
+
 
       # START Targeted Statements
       # AWS VPN
