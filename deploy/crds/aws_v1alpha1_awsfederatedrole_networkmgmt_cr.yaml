@@ -101,6 +101,35 @@ spec:
           - "arn:aws:ec2:*:*:vpc/*"
           - "arn:aws:ec2:*:*:transit-gateway-attachment/*"
 
+
+      # START Targeted Statements
+      # AWS VPN
+      - effect: Allow
+        action:
+          - "ec2:CreateCustomerGateway"
+          - "ec2:DeleteCustomerGateway"
+          - "ec2:CreateVpnGateway"
+          - "ec2:AttachVpnGateway"
+          - "ec2:DetachVpnGateway"
+          - "ec2:DeleteVpnGateway"
+          - "ec2:CreateVpnConnection"
+          - "ec2:ModifyVpnConnection"
+          - "ec2:ModifyVpnTunnelOptions"
+          - "ec2:DeleteVpnConnection"
+          - "ec2:EnableVgwRoutePropagation"
+          - "ec2:DisableVgwRoutePropagation"
+        resource: 
+          - "*"
+      - effect: Allow
+        action:
+          - "ec2:CreateTags"
+          - "ec2:DeleteTags"
+        resource:
+          - "arn:aws:ec2:*:*:customer-gateway/*"
+          - "arn:aws:ec2:*:*:vpn-gateway/*"
+          - "arn:aws:ec2:*:*:vpn-connection/*"
+
+
   # list of  AWS managed
   awsManagedPolicies:
     - "AmazonEC2ReadOnlyAccess"
