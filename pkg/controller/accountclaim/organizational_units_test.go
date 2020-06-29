@@ -107,7 +107,7 @@ func TestCheckOUMapping(t *testing.T) {
 					"base": "claim-test",
 				},
 			},
-			expectedError:      awsv1alpha1.ErrInvalidOUMap,
+			expectedError:      awsv1alpha1.ErrInvalidConfigMap,
 			checkOUMappingFunc: checkOUMapping,
 		},
 		{
@@ -117,7 +117,7 @@ func TestCheckOUMapping(t *testing.T) {
 					"root": "test",
 				},
 			},
-			expectedError:      awsv1alpha1.ErrInvalidOUMap,
+			expectedError:      awsv1alpha1.ErrInvalidConfigMap,
 			checkOUMappingFunc: checkOUMapping,
 		},
 		{
@@ -127,7 +127,7 @@ func TestCheckOUMapping(t *testing.T) {
 					"root": "test",
 				},
 			},
-			expectedError:      awsv1alpha1.ErrInvalidOUMap,
+			expectedError:      awsv1alpha1.ErrInvalidConfigMap,
 			checkOUMappingFunc: checkOUMapping,
 		},
 	}
