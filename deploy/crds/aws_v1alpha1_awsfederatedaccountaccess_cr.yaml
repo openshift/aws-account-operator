@@ -8,4 +8,6 @@ spec:
     name: secret-name
     namespace: example-namespace
   externalCustomerAWSIAMARN: arn:aws:iam::${AWS_ACCOUNT_ID}:user/${AWS_IAM_USER}
-  awsFederatedRoleName: read-only 
+  awsFederatedRole:
+    name: read-only
+    namespace: aws-account-operator
