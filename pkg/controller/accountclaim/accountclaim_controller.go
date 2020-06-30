@@ -316,7 +316,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		}
 	}
 
-	// Create secret for UHC to consume
+	// Create secret for OCM to consume
 	if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 		err = r.createIAMSecret(reqLogger, accountClaim, unclaimedAccount)
 		if err != nil {
@@ -411,7 +411,7 @@ func getUnclaimedAccount(reqLogger logr.Logger, accountList *awsv1alpha1.Account
 }
 
 func (r *ReconcileAccountClaim) createIAMSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {
-	// Get secret created by Account controller and copy it to the name/namespace combo that UHC is expecting
+	// Get secret created by Account controller and copy it to the name/namespace combo that OCM is expecting
 	accountIAMUserSecret := &corev1.Secret{}
 	objectKey := client.ObjectKey{Namespace: unclaimedAccount.Namespace, Name: unclaimedAccount.Spec.IAMUserSecret}
 
@@ -421,8 +421,8 @@ func (r *ReconcileAccountClaim) createIAMSecret(reqLogger logr.Logger, accountCl
 		return err
 	}
 
-	UHCSecretName := accountClaim.Spec.AwsCredentialSecret.Name
-	UHCSecretNamespace := accountClaim.Spec.AwsCredentialSecret.Namespace
+	OCMSecretName := accountClaim.Spec.AwsCredentialSecret.Name
+	OCMSecretNamespace := accountClaim.Spec.AwsCredentialSecret.Namespace
 	awsAccessKeyID := accountIAMUserSecret.Data[awsCredsAccessKeyId]
 	awsSecretAccessKey := accountIAMUserSecret.Data[awsCredsSecretAccessKey]
 
@@ -430,15 +430,15 @@ func (r *ReconcileAccountClaim) createIAMSecret(reqLogger logr.Logger, accountCl
 		reqLogger.Error(err, fmt.Sprintf("Cannot get AWS Credentials from secret %s referenced from Account", unclaimedAccount.Spec.IAMUserSecret))
 	}
 
-	UHCSecret := newSecretforCR(UHCSecretName, UHCSecretNamespace, awsAccessKeyID, awsSecretAccessKey)
+	OCMSecret := newSecretforCR(OCMSecretName, OCMSecretNamespace, awsAccessKeyID, awsSecretAccessKey)
 
-	err = r.client.Create(context.TODO(), UHCSecret)
+	err = r.client.Create(context.TODO(), OCMSecret)
 	if err != nil {
-		reqLogger.Error(err, "Unable to create secret for UHC")
+		reqLogger.Error(err, "Unable to create secret for OCM")
 		return err
 	}
 
-	reqLogger.Info(fmt.Sprintf("Secret %s created for claim %s", UHCSecret.Name, accountClaim.Name))
+	reqLogger.Info(fmt.Sprintf("Secret %s created for claim %s", OCMSecret.Name, accountClaim.Name))
 	return nil
 }
 
