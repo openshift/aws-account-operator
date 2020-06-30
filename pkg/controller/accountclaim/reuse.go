@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -16,6 +17,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 )
 
 const (
@@ -90,12 +92,15 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		return nil
 	}
 
+	before := time.Now()
 	// Perform account clean up in AWS
 	err = r.cleanUpAwsAccount(reqLogger, awsClient)
 	if err != nil {
+		localmetrics.Collector.AddAccountReuseCleanupFailure()
 		reqLogger.Error(err, "Failed to clean up AWS account")
 		return err
 	}
+	localmetrics.Collector.SetAccountReusedCleanupDuration(time.Now().Sub(before).Seconds())
 
 	err = r.resetAccountSpecStatus(reqLogger, reusedAccount, accountClaim, awsv1alpha1.AccountReused, "Ready")
 	if err != nil {

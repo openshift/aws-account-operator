@@ -346,7 +346,9 @@ func (r *ReconcileAccount) accountClaimBYOCError(reqLogger logr.Logger, accountC
 		corev1.ConditionTrue,
 		"AccountFailed",
 		message,
-		controllerutils.UpdateConditionNever)
+		controllerutils.UpdateConditionNever,
+		accountClaim.Spec.BYOCAWSAccountID != "",
+	)
 	accountClaim.Status.State = awsv1alpha1.ClaimStatusError
 	err := r.Client.Status().Update(context.TODO(), accountClaim)
 	if err != nil {

@@ -15,176 +15,219 @@
 package localmetrics
 
 import (
-	"math"
-	"sync"
+	"context"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+
 	"github.com/prometheus/client_golang/prometheus"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
-const operatorName = "aws-account-operator"
-
-var log = logf.Log.WithName("localmetrics")
-
-var (
-	MetricTotalAWSAccounts = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "aws_account_operator_total_aws_accounts",
-		Help:        "Report how many accounts have been created in AWS org",
-		ConstLabels: prometheus.Labels{"name": operatorName},
-	})
-	MetricTotalAccountCRs = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "aws_account_operator_total_account_crs",
-		Help:        "Report how many account CRs have been created",
-		ConstLabels: prometheus.Labels{"name": operatorName},
-	})
-	MetricTotalAccountCRsUnclaimed = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "aws_account_operator_total_accounts_crs_unclaimed",
-		Help:        "Report how many account CRs are unclaimed",
-		ConstLabels: prometheus.Labels{"name": operatorName},
-	})
-	MetricTotalAccountCRsClaimed = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "aws_account_operator_total_accounts_crs_claimed",
-		Help:        "Report how many account CRs are claimed",
-		ConstLabels: prometheus.Labels{"name": operatorName},
-	})
-	MetricTotalAccountCRsFailed = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "aws_account_operator_total_accounts_crs_failed",
-		Help:        "Report how many account CRs are failed",
-		ConstLabels: prometheus.Labels{"name": operatorName},
-	})
-	MetricTotalAccountClaimCRs = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "aws_account_operator_total_aws_account_claim_crs",
-		Help:        "Report how many account claim CRs have been created",
-		ConstLabels: prometheus.Labels{"name": operatorName},
-	})
-	MetricTotalAccountCRsReady = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "aws_account_operator_total_aws_accounts_crs_ready",
-		Help:        "Report how many account CRs are ready",
-		ConstLabels: prometheus.Labels{"name": operatorName},
-	})
-	MetricPoolSizeVsUnclaimed = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "aws_account_operator_pool_size_vs_unclaimed",
-		Help:        "Report the difference between the pool size and the number of unclaimed account CRs",
-		ConstLabels: prometheus.Labels{"name": operatorName},
-	})
-	MetricTotalAccountPendingVerification = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "aws_account_operator_total_aws_account_pending_verification",
-		Help:        "Report the number of accounts waiting for enterprise support and EC2 limit increases in AWS",
-		ConstLabels: prometheus.Labels{"name": operatorName},
-	})
-	MetricTotalAccountReusedAvailable = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name:        "aws_account_operator_total_aws_account_reused_available",
-		Help:        "Report the number of reused accounts available for claiming grouped by legal ID",
-		ConstLabels: prometheus.Labels{"name": operatorName},
-	}, []string{"LegalID"})
-	MetricTotalAccountReuseFailed = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "aws_account_operator_total_aws_account_reused_failed",
-		Help:        "Report the number of accounts that failed during account reuse",
-		ConstLabels: prometheus.Labels{"name": operatorName},
-	})
-
-	MetricsList = []prometheus.Collector{
-		MetricTotalAWSAccounts,
-		MetricTotalAccountCRs,
-		MetricTotalAccountCRsUnclaimed,
-		MetricTotalAccountCRsClaimed,
-		MetricTotalAccountCRsFailed,
-		MetricTotalAccountClaimCRs,
-		MetricTotalAccountCRsReady,
-		MetricPoolSizeVsUnclaimed,
-		MetricTotalAccountPendingVerification,
-		MetricTotalAccountReusedAvailable,
-		MetricTotalAccountReuseFailed,
-	}
+const (
+	operatorName = "aws-account-operator"
 )
 
-// UpdateAccountCRUnclaimedMetric updates the unclaimed account metric
-func UpdateAccountCRUnclaimedMetric(accountList awsv1alpha1.AccountList, wg *sync.WaitGroup) {
+var (
+	log       = logf.Log.WithName("metrics-collector")
+	Collector *MetricsCollector
+)
 
-	wg.Add(1)
-	unclaimedAccountCount := 0
-
-	for _, account := range accountList.Items {
-		if account.Status.Claimed == false && account.Status.Reused == false {
-			if account.Status.State == "Ready" || account.Status.State == string(awsv1alpha1.AccountPendingVerification) {
-				unclaimedAccountCount++
-			}
-		}
-	}
-
-	MetricTotalAccountCRsUnclaimed.Set(float64(unclaimedAccountCount))
-	wg.Done()
+type MetricsCollector struct {
+	store                           cache.Cache
+	awsAccounts                     prometheus.Gauge
+	accounts                        *prometheus.GaugeVec
+	ccsAccounts                     *prometheus.GaugeVec
+	accountClaims                   *prometheus.GaugeVec
+	accountReuseAvailable           *prometheus.GaugeVec
+	accountPoolSize                 *prometheus.GaugeVec
+	accountReadyDuration            prometheus.Summary
+	accountClaimReadyDuration       *prometheus.SummaryVec
+	accountReuseCleanupDuration     prometheus.Summary
+	accountReuseCleanupFailureCount prometheus.Counter
 }
 
-// UpdateAccountCRMetrics updates all metrics related to Account CRs
-func UpdateAccountCRMetrics(accountList *awsv1alpha1.AccountList) {
+func NewMetricsCollector(store cache.Cache) *MetricsCollector {
+	return &MetricsCollector{
+		store: store,
+		awsAccounts: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name:        "aws_account_operator_aws_accounts",
+			Help:        "Report how many accounts have been created in AWS org",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}),
+		accounts: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name:        "aws_account_operator_account_crs",
+			Help:        "Report how many account crs in the cluster",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}, []string{"claimed", "reused", "state"}),
+		ccsAccounts: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name:        "aws_account_operator_account_ccs_crs",
+			Help:        "Report how many ccs account crs in the cluster",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}, []string{"claimed", "reused", "state"}),
+		accountClaims: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name:        "aws_account_operator_account_claim_crs",
+			Help:        "Report how many account claim crs in the cluster",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}, []string{"state"}),
+		accountReuseAvailable: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name:        "aws_account_operator_aws_accounts_reusable",
+			Help:        "Report the number of reused accounts available for claiming grouped by legal ID",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}, []string{"legal_id"}),
 
-	var wg sync.WaitGroup
-	go UpdateAccountCRUnclaimedMetric(*accountList, &wg)
+		// pool_name is not a good label because it may cause
+		// high cardinality. But in our use case it is okay
+		// since we only has one account pool in the cluster.
+		accountPoolSize: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name:        "aws_account_operator_account_pool_size",
+			Help:        "Report the size of account pool cr",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}, []string{"namespace", "pool_name"}),
+		accountReadyDuration: prometheus.NewSummary(prometheus.SummaryOpts{
+			Name:        "aws_account_operator_account_ready_duration_seconds",
+			Help:        "The duration for account cr to get ready",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}),
+		accountClaimReadyDuration: prometheus.NewSummaryVec(prometheus.SummaryOpts{
+			Name:        "aws_account_operator_account_claim_ready_duration_seconds",
+			Help:        "The duration for account claim cr to get claimed",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}, []string{"ccs"}),
 
-	claimedAccountCount := 0
-	failedAccountCount := 0
-	reuseAccountFailedCount := 0
-	pendingVerificationAccountCount := 0
-	readyAccountCount := 0
-	idMap := make(map[string]int)
-	for _, account := range accountList.Items {
-		if account.Status.Claimed == false {
-			if account.Status.State == "Ready" {
-				// Reused accounts in Ready state are counted in separate metric
-				if account.Status.Reused == true {
-					if idMap[account.Spec.LegalEntity.ID] == 0 {
-						idMap[account.Spec.LegalEntity.ID] = 1
-					} else {
-						idMap[account.Spec.LegalEntity.ID] = idMap[account.Spec.LegalEntity.ID] + 1
-					}
-				} else {
-					// Regular account (non-reused) in Ready state
-					readyAccountCount++
-				}
-			}
+		accountReuseCleanupDuration: prometheus.NewSummary(prometheus.SummaryOpts{
+			Name:        "aws_account_operator_account_reuse_cleanup_duration_seconds",
+			Help:        "The duration for account reuse cleanup",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}),
+
+		accountReuseCleanupFailureCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Name:        "aws_account_operator_account_reuse_cleanup_failures_total",
+			Help:        "Number of account reuse cleanup failures",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}),
+	}
+}
+
+// Describe implements the prometheus.Collector interface.
+func (c *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
+	c.awsAccounts.Describe(ch)
+	c.accounts.Describe(ch)
+	c.ccsAccounts.Describe(ch)
+	c.accountClaims.Describe(ch)
+	c.accountPoolSize.Describe(ch)
+	c.accountReuseAvailable.Describe(ch)
+	c.accountReadyDuration.Describe(ch)
+	c.accountClaimReadyDuration.Describe(ch)
+	c.accountReuseCleanupDuration.Describe(ch)
+	c.accountReuseCleanupFailureCount.Describe(ch)
+}
+
+// Collect implements the prometheus.Collector interface.
+func (c *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
+	c.collect()
+	c.awsAccounts.Collect(ch)
+	c.accounts.Collect(ch)
+	c.ccsAccounts.Collect(ch)
+	c.accountClaims.Collect(ch)
+	c.accountPoolSize.Collect(ch)
+	c.accountReuseAvailable.Collect(ch)
+	c.accountReadyDuration.Collect(ch)
+	c.accountClaimReadyDuration.Collect(ch)
+	c.accountReuseCleanupDuration.Collect(ch)
+	c.accountReuseCleanupFailureCount.Collect(ch)
+}
+
+// collect will cleanup the gauge metrics first, then getting all the
+// CRs in the cluster and update metrics
+func (c *MetricsCollector) collect() {
+	c.accounts.Reset()
+	c.ccsAccounts.Reset()
+	c.accountClaims.Reset()
+	c.accountPoolSize.Reset()
+	c.accountReuseAvailable.Reset()
+
+	ctx := context.TODO()
+	var (
+		accounts      awsv1alpha1.AccountList
+		accountClaims awsv1alpha1.AccountClaimList
+		accountPool   awsv1alpha1.AccountPoolList
+		claimed       string
+		reused        string
+	)
+	if err := c.store.List(ctx, &client.ListOptions{
+		Namespace: awsv1alpha1.AccountCrNamespace}, &accounts); err != nil {
+		log.Error(err, "failed to list accounts")
+		return
+	}
+
+	if err := c.store.List(ctx, &client.ListOptions{}, &accountClaims); err != nil {
+		log.Error(err, "failed to list account claims")
+		return
+	}
+
+	if err := c.store.List(ctx, &client.ListOptions{}, &accountPool); err != nil {
+		log.Error(err, "failed to list account pools")
+		return
+	}
+
+	for _, account := range accounts.Items {
+		if account.Status.Claimed {
+			claimed = "true"
 		} else {
-			claimedAccountCount++
+			claimed = "false"
 		}
 
-		if account.Status.State == "Failed" {
-			if account.Status.Reused == true {
-				// Account failed during reuse process
-				reuseAccountFailedCount++
-			} else {
-				// Other types of failed account
-				failedAccountCount++
-			}
-		} else if account.Status.State == "PendingVerification" {
-			pendingVerificationAccountCount++
+		if account.Status.Reused {
+			reused = "true"
+		} else {
+			reused = "false"
+		}
+
+		if account.Status.Claimed == false && account.Status.Reused == true &&
+			account.Status.State == "Ready" {
+			c.accountReuseAvailable.WithLabelValues(account.Spec.LegalEntity.ID).Inc()
+		}
+
+		if account.Spec.BYOC {
+			c.ccsAccounts.WithLabelValues(claimed, reused, account.Status.State).Inc()
+		} else {
+			c.accounts.WithLabelValues(claimed, reused, account.Status.State).Inc()
 		}
 	}
 
-	MetricTotalAccountCRs.Set(float64(len(accountList.Items)))
-	MetricTotalAccountCRsClaimed.Set(float64(claimedAccountCount))
-	MetricTotalAccountPendingVerification.Set(float64(pendingVerificationAccountCount))
-	MetricTotalAccountCRsFailed.Set(float64(failedAccountCount))
-	MetricTotalAccountCRsReady.Set(float64(readyAccountCount))
-	MetricTotalAccountReuseFailed.Set(float64(reuseAccountFailedCount))
-
-	for id, val := range idMap {
-		MetricTotalAccountReusedAvailable.WithLabelValues(id).Set(float64(val))
+	for _, accountClaim := range accountClaims.Items {
+		c.accountClaims.WithLabelValues(string(accountClaim.Status.State)).Inc()
 	}
 
-	wg.Wait()
+	for _, pool := range accountPool.Items {
+		c.accountPoolSize.WithLabelValues(pool.Namespace, pool.Name).Set(float64(pool.Spec.PoolSize))
+	}
 }
 
-// UpdateAccountClaimMetrics updates all metrics related to AccountClaim CRs
-func UpdateAccountClaimMetrics(accountClaimList *awsv1alpha1.AccountClaimList) {
-
-	MetricTotalAccountClaimCRs.Set(float64(len(accountClaimList.Items)))
+func (c *MetricsCollector) SetTotalAWSAccounts(total int) {
+	c.awsAccounts.Set(float64(total))
 }
 
-// UpdatePoolSizeVsUnclaimed updates the metric that measures the difference between Poolsize and Unclaimed Account CRs
-func UpdatePoolSizeVsUnclaimed(poolSize int, unclaimedAccountCount int) {
+func (c *MetricsCollector) SetAccountReadyDuration(duration float64) {
+	c.accountReadyDuration.Observe(duration)
+}
 
-	metric := math.Abs(float64(poolSize) - float64(unclaimedAccountCount))
+func (c *MetricsCollector) SetAccountClaimReadyDuration(isCCS bool, duration float64) {
+	var ccs string
+	if isCCS {
+		ccs = "true"
+	} else {
+		ccs = "false"
+	}
+	c.accountClaimReadyDuration.WithLabelValues(ccs).Observe(duration)
+}
 
-	MetricPoolSizeVsUnclaimed.Set(metric)
+func (c *MetricsCollector) SetAccountReusedCleanupDuration(duration float64) {
+	c.accountReuseCleanupDuration.Observe(duration)
+}
+
+func (c *MetricsCollector) AddAccountReuseCleanupFailure() {
+	c.accountReuseCleanupFailureCount.Inc()
 }

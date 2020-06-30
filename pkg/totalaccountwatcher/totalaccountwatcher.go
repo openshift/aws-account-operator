@@ -52,7 +52,11 @@ func Initialize(client client.Client, watchInterval time.Duration) {
 }
 
 // NewTotalAccountWatcher returns a new instance of the TotalAccountWatcher interface
-func NewTotalAccountWatcher(client client.Client, AwsClient awsclient.Client, watchInterval time.Duration) *totalAccountWatcher {
+func NewTotalAccountWatcher(
+	client client.Client,
+	AwsClient awsclient.Client,
+	watchInterval time.Duration,
+) *totalAccountWatcher {
 	return &totalAccountWatcher{
 		watchInterval: watchInterval,
 		AwsClient:     AwsClient,
@@ -85,8 +89,7 @@ func (s *totalAccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 	if err != nil {
 		log.Error(err, "Failed to get account list with error code")
 	}
-
-	localmetrics.MetricTotalAWSAccounts.Set(float64(accountTotal))
+	localmetrics.Collector.SetTotalAWSAccounts(accountTotal)
 
 	if accountTotal != TotalAccountWatcher.Total {
 		log.Info(fmt.Sprintf("Updating total from %d to %d", TotalAccountWatcher.Total, accountTotal))
