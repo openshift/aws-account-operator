@@ -65,9 +65,9 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 
 	secretName := fmt.Sprintf("%s-sre-cli-credentials", account.Name)
 	secretData := map[string][]byte{
-		"awsCredsSecretIDKey":     []byte(*STSCredentials.Credentials.AccessKeyId),
-		"awsCredsSecretAccessKey": []byte(*STSCredentials.Credentials.SecretAccessKey),
-		"awsCredsSessionToken":    []byte(*STSCredentials.Credentials.SessionToken),
+		"aws_access_key_id":     []byte(*STSCredentials.Credentials.AccessKeyId),
+		"aws_secret_access_key": []byte(*STSCredentials.Credentials.SecretAccessKey),
+		"aws_session_token":     []byte(*STSCredentials.Credentials.SessionToken),
 	}
 
 	STSCredentialsSecret := CreateSecret(secretName, STSCredentialsSecretNamespace, secretData)
