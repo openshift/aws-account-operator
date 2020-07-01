@@ -168,6 +168,59 @@ spec:
     name: {Legal Entity Name}
 ```
 
+### 2.4. AWSFederatedRole CR
+
+The AWSFederatedRole CR contains a definition of a desired AWS Role, with both managed and custom Policies included
+
+```yaml
+apiVersion: aws.managed.openshift.io/v1alpha1
+kind: AWSFederatedRole
+metadata:
+  name: example-role
+  namespace: aws-account-operator
+spec:
+  roleDisplayName: Example Role
+  roleDescription: This is an example Role
+  # Custom Policy definition
+  awsCustomPolicy:
+    name:  ExampleCustomPolicy
+    description: Description of Example Custom Policy
+    # list of statements for the policy
+    awsStatements:
+      - effect: Allow
+        action:
+        - "aws-portal:ViewAccount"
+        - "aws-portal:ViewBilling"
+        resource: 
+        - "*"
+  # list of  AWS managed
+  awsManagedPolicies:
+   - "AWSAccountUsageReportAccess"
+   - "AmazonEC2ReadOnlyAccess"
+   - "AmazonS3ReadOnlyAccess"
+   - "IAMReadOnlyAccess"
+```
+
+### 2.4. AWSFederatedAccountAccess CR
+
+The AWSFederatedAccountAccess CR creates an instance of an AWSFederatedRole in AWS and allows the target IAM account to assume it
+
+```yaml
+apiVersion: aws.managed.openshift.io/v1alpha1
+kind: AWSFederatedAccountAccess
+metadata:
+  name: example-account-access
+  namespace: aws-account-operator
+spec:
+  awsCustomerCredentialSecret: 
+    name: {Name for secret with osdManagedAdmin credentials} 
+    namespace: {Namespace for the secret with osdManagedAdmin credentials}
+  externalCustomerAWSIAMARN: arn:aws:iam::${EXTERNAL_AWS_ACCOUNT_ID}:user/${EXTERNAL_AWS_IAM_USER}
+  awsFederatedRole:
+    name: {Name of desired AWSFederatedRole}
+    namespace: aws-account-operator  
+```
+
 ## 3. The controllers
 
 ### 3.1. AccountPool Controller
@@ -425,6 +478,125 @@ Updated in the accountClaim-controller
 ```txt
 MetricTotalAccountClaimCRs
 ```
+### 3.4 AWSFederatedRole Controller
+
+The AWSFederatedRole-controller is triggered when an AWSFederatedRoke is created in any namespace. It is responsible for following behaviours:
+
+1. Building AWS Policy Doc from Role definition in the spec
+2. Attempting to validate the Role in AWS by creating the Role, and deleting it if successful
+3. Setting the status to Valid or Failed
+4. If the status is Valid or Failed, stop all reconciling
+5. If an AWSFederatedRole is deleted, cleaning up any instance of the Role in AWS by cleaning up any AWSFederatedAccountAccesses using the AWSFederatedRole 
+
+#### 3.4.1. Constants and Globals
+
+None
+
+#### 3.4.2. Spec
+
+```yaml
+spec:
+  roleDisplayName: Example Role
+  roleDescription: This is an example Role
+  # Custom Policy definition
+  awsCustomPolicy:
+    name:  ExampleCustomPolicy
+    description: Description of Example Custom Policy
+    # list of statements for the policy
+    awsStatements:
+      - effect: Allow
+        action:
+        - "aws-portal:ViewAccount"
+        - "aws-portal:ViewBilling"
+        resource: 
+        - "*"
+  # list of  AWS managed
+  awsManagedPolicies:
+   - "AWSAccountUsageReportAccess"
+   - "AmazonEC2ReadOnlyAccess"
+   - "AmazonS3ReadOnlyAccess"
+   - "IAMReadOnlyAccess"
+```
+*roleDisplayName* is a human-readable name for the Role
+*roleDescription* is a human-readable description for what the Role does
+*awsCustomPolicy* is a representation of an AWS Policy to be created as part of the Role. It contains a Policy name a description,
+and a list of AWS Statements which Allow or Deny specific actions on specific resources. Please refer to the following documentation
+for more information: https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html
+*awsManagedPolicies* is a list of AWS pre-defined policies to add to the Role. Please refer to the following documentation for more information: https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_managed-vs-inline.html#aws-managed-policies
+
+
+#### 3.4.3. Status
+```yaml
+  conditions:
+  - lastProbeTime: {Time Stamp}
+    lastTransitionTime: {Time Stamp}
+    message: All managed and custom policies are validated
+    reason: AllPoliciesValid
+    status: "True"
+    type: Valid
+  state: Valid
+```
+
+*conditions* indicates the last states the AWSFederatedRole had and supporting details. In general for AWSFederatedRoles, only one condition is expected, and it should match the state.
+*state* is the current state of the CR. Possible values are Valid and Failed
+
+#### 3.4.4. Metrics
+
+None
+
+### 3.5 AWSFederatedAccountAccess Controller
+
+The AWSFederatedAccountAccess-controller is triggered when an accountClaim is created in any namespace. It is responsible for following behaviours:
+
+1. Ensures the requested AWSFederatedRole exists
+2. Converts the AWSFederatedRole spec into an AWS Policy Doc
+3. Creates a unique AWS Role in the AWS containing the OSD cluster using the AWSFederatedRole definition
+4. Creates a unique AWS Policy if the AWSFederatedRole has awsCustomPolicy defined and attaches it to the Role
+5. Attaches any specified AWS Managed Policies to the Role
+
+#### 3.5.1. Constants and Globals
+
+None
+
+#### 3.5.2. Spec
+
+```yaml
+spec:
+  awsCustomerCredentialSecret: 
+    name: {Name for secret with osdManagedAdmin credentials} 
+    namespace: {Namespace for the secret with osdManagedAdmin credentials}
+  externalCustomerAWSIAMARN: arn:aws:iam::${EXTERNAL_AWS_ACCOUNT_ID}:user/${EXTERNAL_AWS_IAM_USER}
+  awsFederatedRole:
+    name: {Name of desired AWSFederatedRole}
+    namespace: aws-account-operator  
+```
+
+*awsCustomerCredentialSecret* is the secret reference for the osdManagedAdmin IAM user in the AWS account where OSD is installed
+*externalCustomerAWSIAMARN* is the AWS ARN for the desired IAM user that will use the AWS role when created. This should be in an AWS account external to the one where OSD is installed
+*awsFederatedRole* is the reference to the target AWSFederatedRole CR to create an instance of 
+
+#### 3.5.3. Status
+ 
+```yaml
+status:
+  conditions:
+  - lastProbeTime: {Time Stamp}
+    lastTransitionTime: {Time Stamp}
+    message: Account Access Ready
+    reason: Ready
+    status: "True"
+    type: Ready
+  consoleURL: https://signin.aws.amazon.com/switchrole?account=701718415138&roleName=network-mgmt-5dhkmd
+  state: Ready
+```
+
+*conditions* indicates the states the AWSFederatedAccountAccess had and supporting details
+*consoleURL* is a generated URL that directly allows the targeted IAM user to access the AWS Role
+*state* is the current state of the CR
+
+#### 3.4.4. Metrics
+
+None
 
 ## 4. Special Items in main.go
 
