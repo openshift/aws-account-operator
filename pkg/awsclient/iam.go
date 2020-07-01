@@ -173,3 +173,27 @@ func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Ac
 
 	return createUserOutput, err
 }
+
+func ListIAMRoles(reqLogger logr.Logger, client Client) ([]*iam.Role, error) {
+
+	// List of IAM roles to return
+	iamRoleList := []*iam.Role{}
+	var marker *string
+
+	for {
+		output, err := client.ListRoles(&iam.ListRolesInput{Marker: marker})
+		if err != nil {
+			return nil, err
+		}
+
+		for _, role := range output.Roles {
+			iamRoleList = append(iamRoleList, role)
+		}
+
+		if *output.IsTruncated {
+			marker = output.Marker
+		} else {
+			return iamRoleList, nil
+		}
+	}
+}

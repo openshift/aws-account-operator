@@ -135,20 +135,20 @@ var _ = Describe("Byoc", func() {
 	Context("Testing CreateRole", func() {
 		It("Works properly without error", func() {
 			mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(&iam.CreateRoleOutput{Role: &iam.Role{RoleId: aws.String("AROA1234567890EXAMPLE")}}, nil).AnyTimes()
-			roleID, err := CreateRole(nullLogger, "roleName", userARN, mockAWSClient)
+			roleID, err := CreateRole(nullLogger, "roleName", userARN, mockAWSClient, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(roleID).To(Equal("AROA1234567890EXAMPLE"))
 		})
 
 		It("Throws an error on any AWS error", func() {
 			mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(nil, awserr.New("AWSError", "Some AWS Error", nil)).AnyTimes()
-			_, err := CreateRole(nullLogger, "roleName", userARN, mockAWSClient)
+			_, err := CreateRole(nullLogger, "roleName", userARN, mockAWSClient, nil)
 			Expect(err).To(HaveOccurred())
 		})
 
 		It("Throws an error on any Non-AWS error", func() {
 			mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(nil, errors.New("NonAWSError")).AnyTimes()
-			_, err := CreateRole(nullLogger, "roleName", userARN, mockAWSClient)
+			_, err := CreateRole(nullLogger, "roleName", userARN, mockAWSClient, nil)
 			Expect(err).To(HaveOccurred())
 		})
 	})
