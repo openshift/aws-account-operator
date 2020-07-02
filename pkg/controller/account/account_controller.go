@@ -634,166 +634,110 @@ func matchSubstring(roleID, role string) (bool, error) {
 
 // Returns true if account CR is Failed
 func accountIsFailed(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Status.State == AccountFailed {
-		return true
-	}
-	return false
+	return currentAcctInstance.Status.State == AccountFailed
 }
 
 // Returns true of there is no state set
 func accountHasState(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Status.State != "" {
-		return true
-	}
-	return false
+	return currentAcctInstance.Status.State != ""
 }
 
 // Returns true of there is no Status.SupportCaseID set
 func accountHasSupportCaseID(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Status.SupportCaseID != "" {
-		return true
-	}
-	return false
+	return currentAcctInstance.Status.SupportCaseID != ""
 }
 
 func accountIsPendingVerification(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Status.State == AccountPendingVerification {
-		return true
-	}
-	return false
+	return currentAcctInstance.Status.State == AccountPendingVerification
 }
 
 func accountIsReady(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Status.State == AccountReady {
-		return true
-	}
-	return false
+	return currentAcctInstance.Status.State == AccountReady
 }
 
 func accountIsCreating(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Status.State == AccountCreating {
-		return true
-	}
-
-	return false
+	return currentAcctInstance.Status.State == AccountCreating
 }
 
 func accountHasClaimLink(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Spec.ClaimLink != "" {
-		return true
-	}
-	return false
+	return currentAcctInstance.Spec.ClaimLink != ""
 }
 
 func accountCreatingTooLong(currentAcctInstance *awsv1alpha1.Account) bool {
-	if accountIsCreating(currentAcctInstance) && time.Now().Sub(currentAcctInstance.GetCreationTimestamp().Time) > createPendTime {
-		return true
-	}
-	return false
+	return accountIsCreating(currentAcctInstance) &&
+		time.Now().Sub(currentAcctInstance.GetCreationTimestamp().Time) > createPendTime
 }
 
 // Returns true if account Status.Claimed is false
 func accountIsClaimed(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Status.Claimed {
-		return true
-	}
-	return false
+	return currentAcctInstance.Status.Claimed
 }
 
 // Returns true if a DeletionTimestamp has been set
 func accountIsPendingDeletion(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.DeletionTimestamp != nil {
-		return true
-	}
-	return false
+	return currentAcctInstance.DeletionTimestamp != nil
 }
 
 // Returns true of Spec.BYOC is true, ie: account is a BYOC account
 func accountIsBYOC(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Spec.BYOC == true {
-		return true
-	}
-	return false
+	return currentAcctInstance.Spec.BYOC
 }
 
 // Returns true if the awsv1alpha1 finalizer is set on the account
 func accountHasAwsv1alpha1Finalizer(currentAcctInstance *awsv1alpha1.Account) bool {
-	if utils.Contains(currentAcctInstance.GetFinalizers(), awsv1alpha1.AccountFinalizer) {
-		return true
-	}
-	return false
+	return utils.Contains(currentAcctInstance.GetFinalizers(), awsv1alpha1.AccountFinalizer)
 }
 
 // Returns true if awsAccountID is set
 func accountHasAwsAccountID(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Spec.AwsAccountID != "" {
-		return true
-	}
-	return false
+	return currentAcctInstance.Spec.AwsAccountID != ""
 }
 
 // Returns true if Status.RotateCredentials is true
 func accountNeedsCredentialsRotated(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Status.RotateCredentials {
-		return true
-	}
-	return false
+	return currentAcctInstance.Status.RotateCredentials
 }
 
 // Returns true if Status.RotateConsoleCredentials is true
 func accountNeedsConsoleCredentialsRotated(currentAcctInstance *awsv1alpha1.Account) bool {
-	if currentAcctInstance.Status.RotateConsoleCredentials {
-		return true
-	}
-	return false
+	return currentAcctInstance.Status.RotateConsoleCredentials
 }
 func accountIsReadyUnclaimedAndHasClaimLink(currentAcctInstance *awsv1alpha1.Account) bool {
-	if accountIsReady(currentAcctInstance) && accountHasClaimLink(currentAcctInstance) && !accountIsClaimed(currentAcctInstance) {
-		return true
-	}
-	return false
+	return accountIsReady(currentAcctInstance) &&
+		accountHasClaimLink(currentAcctInstance) &&
+		!accountIsClaimed(currentAcctInstance)
 }
 
 // Returns true if account is a BYOC Account, has been marked for deletion (deletion
 // timestamp set), and has a finalizer set.
 func accountIsBYOCPendingDeletionWithFinalizer(currentAcctInstance *awsv1alpha1.Account) bool {
-	if accountIsPendingDeletion(currentAcctInstance) && accountIsBYOC(currentAcctInstance) && accountHasAwsv1alpha1Finalizer(currentAcctInstance) {
-		return true
-	}
-	return false
+	return accountIsPendingDeletion(currentAcctInstance) &&
+		accountIsBYOC(currentAcctInstance) &&
+		accountHasAwsv1alpha1Finalizer(currentAcctInstance)
 }
 
 // Returns true if account is BYOC and the state is not AccountReady
 func accountIsBYOCAndNotReady(currentAcctInstance *awsv1alpha1.Account) bool {
-	if accountIsBYOC(currentAcctInstance) && !accountIsReady(currentAcctInstance) {
-		return true
-	}
-	return false
+	return accountIsBYOC(currentAcctInstance) && !accountIsReady(currentAcctInstance)
 }
 
 // Returns true if account is a BYOC Account and the state is not ready OR
 // accout state is creating, and has not been claimed
 func accountReadyForInitialization(currentAcctInstance *awsv1alpha1.Account) bool {
-	if accountIsBYOCAndNotReady(currentAcctInstance) || accountIsUnclaimedAndIsCreating(currentAcctInstance) {
-		return true
-	}
-	return false
+	return accountIsBYOCAndNotReady(currentAcctInstance) ||
+		accountIsUnclaimedAndIsCreating(currentAcctInstance)
 }
 
 // Returns true if account has not set state and has not been claimed
 func accountIsUnclaimedAndHasNoState(currentAcctInstance *awsv1alpha1.Account) bool {
-	if !accountHasState(currentAcctInstance) && !accountIsClaimed(currentAcctInstance) {
-		return true
-	}
-	return false
+	return !accountHasState(currentAcctInstance) &&
+		!accountIsClaimed(currentAcctInstance)
 }
 
 // Return true if account state is AccountCreating and has not been claimed
 func accountIsUnclaimedAndIsCreating(currentAcctInstance *awsv1alpha1.Account) bool {
-	if accountIsCreating(currentAcctInstance) && !accountIsClaimed(currentAcctInstance) {
-		return true
-	}
-	return false
+	return accountIsCreating(currentAcctInstance) &&
+		!accountIsClaimed(currentAcctInstance)
 }
 
 type accountInstance interface {
