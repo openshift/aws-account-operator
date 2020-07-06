@@ -2,6 +2,7 @@ package accountclaim
 
 import (
 	"context"
+	rawError "errors"
 	"fmt"
 	"time"
 
@@ -135,6 +136,13 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 				if err != nil {
 					// If the finalize/cleanup process fails for an account we don't want to return
 					// we will flag the account with the Failed Reuse condition, and with state = Failed
+
+					// First we want to see if this was an update race condition where the credentials rotator will update the CR while the finalizer is trying to run.  If that's the case, we want to requeue and retry, before outright failing the account.
+					if errors.IsConflict(err) {
+						reqLogger.Info("Account CR Modified during CR reset.")
+						err = rawError.New(fmt.Sprintf("Account CR Modified during CR reset. %s", err.Error()))
+						return reconcile.Result{}, err
+					}
 
 					// Get account claimed by deleted accountclaim
 					failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
