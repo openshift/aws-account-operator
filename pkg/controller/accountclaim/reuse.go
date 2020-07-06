@@ -531,8 +531,5 @@ func (r *ReconcileAccountClaim) accountStatusUpdate(reqLogger logr.Logger, accou
 }
 
 func matchAccountForReuse(account *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) bool {
-	if account.Spec.LegalEntity.ID == accountClaim.Spec.LegalEntity.ID {
-		return true
-	}
-	return false
+	return account.Spec.LegalEntity.ID == accountClaim.Spec.LegalEntity.ID
 }
