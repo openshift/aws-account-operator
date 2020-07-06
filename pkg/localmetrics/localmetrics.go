@@ -42,9 +42,9 @@ type MetricsCollector struct {
 	accountClaims                   *prometheus.GaugeVec
 	accountReuseAvailable           *prometheus.GaugeVec
 	accountPoolSize                 *prometheus.GaugeVec
-	accountReadyDuration            prometheus.Summary
-	accountClaimReadyDuration       *prometheus.SummaryVec
-	accountReuseCleanupDuration     prometheus.Summary
+	accountReadyDuration            prometheus.Histogram
+	accountClaimReadyDuration       *prometheus.HistogramVec
+	accountReuseCleanupDuration     prometheus.Histogram
 	accountReuseCleanupFailureCount prometheus.Counter
 }
 
@@ -85,21 +85,24 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Help:        "Report the size of account pool cr",
 			ConstLabels: prometheus.Labels{"name": operatorName},
 		}, []string{"namespace", "pool_name"}),
-		accountReadyDuration: prometheus.NewSummary(prometheus.SummaryOpts{
+		accountReadyDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:        "aws_account_operator_account_ready_duration_seconds",
 			Help:        "The duration for account cr to get ready",
 			ConstLabels: prometheus.Labels{"name": operatorName},
+			Buckets:     []float64{1, 3, 5, 10, 15, 20, 30},
 		}),
-		accountClaimReadyDuration: prometheus.NewSummaryVec(prometheus.SummaryOpts{
+		accountClaimReadyDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:        "aws_account_operator_account_claim_ready_duration_seconds",
 			Help:        "The duration for account claim cr to get claimed",
 			ConstLabels: prometheus.Labels{"name": operatorName},
+			Buckets:     []float64{1, 3, 5, 10, 15, 20, 30},
 		}, []string{"ccs"}),
 
-		accountReuseCleanupDuration: prometheus.NewSummary(prometheus.SummaryOpts{
+		accountReuseCleanupDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:        "aws_account_operator_account_reuse_cleanup_duration_seconds",
 			Help:        "The duration for account reuse cleanup",
 			ConstLabels: prometheus.Labels{"name": operatorName},
+			Buckets:     []float64{1, 3, 5, 10, 15, 20, 30},
 		}),
 
 		accountReuseCleanupFailureCount: prometheus.NewCounter(prometheus.CounterOpts{
