@@ -1,6 +1,6 @@
 #!/bin/bash
 
-TEST_ACCOUNT="osd-staging-1"
+TEST_ACCOUNT_CR_NAME="osd-staging-1"
 TEST_NAMESPACE="aws-account-operator"
 EXIT_STATUS="PASS"
 
@@ -21,7 +21,7 @@ CONSOLE_KEYS="aws_console_login_url"
 for secret_map in "${EXPECTED_SECRETS[@]}"; do
   secret=${secret_map%%:*}
   expected_keys=${secret_map#*:}
-  test_secret="$(oc get secret osd-creds-mgmt-$TEST_ACCOUNT-$secret -n $TEST_NAMESPACE -o json | jq '.data')"
+  test_secret="$(oc get secret osd-creds-mgmt-$TEST_ACCOUNT_CR_NAME-$secret -n $TEST_NAMESPACE -o json | jq '.data')"
   
   if [ "$test_secret" == "" ]; then
     EXIT_STATUS="FAIL"
