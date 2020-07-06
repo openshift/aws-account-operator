@@ -73,7 +73,7 @@ func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountCla
 }
 
 // CreateOrFindOU will create or find an existing OU and return its ID
-func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, accountclaim *awsv1alpha1.AccountClaim, friendlyOUName string, baseID string) (string, error) {
+func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, accountClaim *awsv1alpha1.AccountClaim, friendlyOUName string, baseID string) (string, error) {
 	// Create/Find account OU
 	createCreateOrganizationalUnitInput := organizations.CreateOrganizationalUnitInput{
 		Name:     &friendlyOUName,
@@ -84,7 +84,7 @@ func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, accountclaim
 		if aerr, ok := ouErr.(awserr.Error); ok {
 			switch aerr.Code() {
 			case "DuplicateOrganizationalUnitException":
-				duplicateOUMsg := fmt.Sprintf("OU: %s Already exists", accountclaim.Spec.LegalEntity.ID)
+				duplicateOUMsg := fmt.Sprintf("OU: %s Already exists", accountClaim.Spec.LegalEntity.ID)
 				reqLogger.Info(duplicateOUMsg)
 				return findOUIDFromName(reqLogger, client, baseID, friendlyOUName)
 			default:
