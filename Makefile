@@ -59,13 +59,13 @@ delete-account:
 test-account-creation: create-account delete-account
 
 # Create account claim namespace
-.PHONY: create-account-claim-namespace
+.PHONY: create-accountclaim-namespace
 create-accountclaim-namespace:
 	# Create reuse namespace
 	@oc process -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc apply -f -
 
 # Delete account claim namespace
-.PHONY: delete-account-claim-namespace
+.PHONY: delete-accountclaim-namespace
 delete-accountclaim-namespace:
 	# Delete reuse namespace
 	@oc process -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc delete -f -
@@ -281,7 +281,7 @@ delete-ou-map:
 
 # Test aws ou logic
 .PHONY: test-aws-ou-logic
-test-aws-ou-logic: check-ou-mapping-configmap-env check-ou-mapping-configmap-env create-account-claim-namespace create-accountclaim
+test-aws-ou-logic: check-ou-mapping-configmap-env check-ou-mapping-configmap-env create-accountclaim-namespace create-accountclaim
 	# Check that account was moved correctly
 	@sleep 2; TYPE=$$(aws organizations list-parents --child-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1 | jq -r ".Parents[0].Type"); if [ "$$TYPE" == "ORGANIZATIONAL_UNIT" ]; then echo "Account move successfully"; exit 0; elif [ "$$TYPE" == "ROOT" ]; then echo "Failed to move account out of root"; exit 1; fi;
 	@aws organizations list-parents --child-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1
