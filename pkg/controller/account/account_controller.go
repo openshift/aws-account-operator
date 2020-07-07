@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -58,6 +59,8 @@ const (
 	adminAccessArn = "arn:aws:iam::aws:policy/AdministratorAccess"
 	iamUserNameUHC = "osdManagedAdmin"
 	iamUserNameSRE = "osdManagedAdminSRE"
+
+	controllerName = "account"
 )
 
 // Add creates a new Account Controller and adds it to the Manager. The Manager will set fields on the Controller
@@ -108,8 +111,15 @@ type ReconcileAccount struct {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling Account")
+	start := time.Now()
+	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
+	reqLogger.Info("Reconciling")
+
+	defer func() {
+		dur := time.Since(start)
+		localmetrics.Collector.SetReconcileDuration(controllerName, dur.Seconds())
+		reqLogger.WithValues("Duration", dur).Info("Reconcile complete")
+	}()
 
 	// Fetch the Account instance
 	currentAcctInstance := &awsv1alpha1.Account{}
