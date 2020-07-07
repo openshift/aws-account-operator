@@ -212,7 +212,15 @@ delete-ccs-2-accountclaim:
 
 # Test CCS
 .PHONY: test-ccs
-test-ccs: create-ccs-namespace create-ccs-secret create-ccs-accountclaim delete-ccs-accountclaim delete-ccs-secret delete-ccs-namespace
+test-ccs: create-ccs delete-ccs
+
+# Deploy a test CCS account
+.PHONY: create-ccs
+create-ccs: create-ccs-namespace create-ccs-secret create-ccs-accountclaim
+
+# Teardown the test CCS account
+.PHONY: delete-ccs
+delete-ccs: delete-ccs-accountclaim delete-ccs-secret delete-ccs-namespace
 
 # Create S3 bucket
 .PHONY: create-s3-bucket
