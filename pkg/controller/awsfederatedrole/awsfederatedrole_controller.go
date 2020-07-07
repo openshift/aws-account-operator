@@ -4,12 +4,14 @@ import (
 	"context"
 	goerr "errors"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 
@@ -22,6 +24,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+)
+
+const (
+	controllerName = "awsdfederatedrole"
 )
 
 var (
@@ -78,8 +84,15 @@ type ReconcileAWSFederatedRole struct {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling AWSFederatedRole")
+	start := time.Now()
+	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
+	reqLogger.Info("Reconciling ")
+
+	defer func() {
+		dur := time.Since(start)
+		localmetrics.Collector.SetReconcileDuration(controllerName, dur.Seconds())
+		reqLogger.WithValues("Duration", dur).Info("Reconcile complete")
+	}()
 
 	// Fetch the AWSFederatedRole instance
 	instance := &awsv1alpha1.AWSFederatedRole{}
