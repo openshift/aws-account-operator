@@ -16,6 +16,7 @@ package localmetrics
 
 import (
 	"context"
+	"reflect"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 
@@ -110,33 +111,43 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 	}
 }
 
+type collectorMethod string
+
+const (
+	collectorDescribe collectorMethod = "Describe"
+	collectorCollect  collectorMethod = "Collect"
+)
+
+// runOnCollectors executes the named method from the Collector interface on each Collector
+// instance in the receiver, ignoring fields that don't implement Collector. The idea is to make
+// it easier to add a new metric; you don't have to remember to add it to our Describe and Collect
+// wrappers.
+// NOTE(efried): This is simplified based on knowing things about the Collector interface:
+// - There are only two methods, Describe and Collect, enforced here by the collectorMethod consts.
+// - Both methods take exactly one argument, so no need for `args` to be variadic.
+// - Neither method returns anything, so neither does this method.
+func (c *MetricsCollector) runOnCollectors(method collectorMethod, arg interface{}) {
+	// Start reflecting
+	cValue := reflect.ValueOf(*c)
+	// For each field in our MetricsCollector receiver...
+	for i := 0; i < cValue.NumField(); i++ {
+		// ...if the field is an instance of a Collector subclass...
+		if cValue.Type().Field(i).Type.Implements(reflect.TypeOf((*prometheus.Collector)(nil)).Elem()) {
+			// ...Find and invoke the indicated method.
+			cValue.Field(i).MethodByName(string(method)).Call([]reflect.Value{reflect.ValueOf(arg)})
+		}
+	}
+}
+
 // Describe implements the prometheus.Collector interface.
 func (c *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
-	c.awsAccounts.Describe(ch)
-	c.accounts.Describe(ch)
-	c.ccsAccounts.Describe(ch)
-	c.accountClaims.Describe(ch)
-	c.accountPoolSize.Describe(ch)
-	c.accountReuseAvailable.Describe(ch)
-	c.accountReadyDuration.Describe(ch)
-	c.accountClaimReadyDuration.Describe(ch)
-	c.accountReuseCleanupDuration.Describe(ch)
-	c.accountReuseCleanupFailureCount.Describe(ch)
+	c.runOnCollectors(collectorDescribe, ch)
 }
 
 // Collect implements the prometheus.Collector interface.
 func (c *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.collect()
-	c.awsAccounts.Collect(ch)
-	c.accounts.Collect(ch)
-	c.ccsAccounts.Collect(ch)
-	c.accountClaims.Collect(ch)
-	c.accountPoolSize.Collect(ch)
-	c.accountReuseAvailable.Collect(ch)
-	c.accountReadyDuration.Collect(ch)
-	c.accountClaimReadyDuration.Collect(ch)
-	c.accountReuseCleanupDuration.Collect(ch)
-	c.accountReuseCleanupFailureCount.Collect(ch)
+	c.runOnCollectors(collectorCollect, ch)
 }
 
 // collect will cleanup the gauge metrics first, then getting all the
