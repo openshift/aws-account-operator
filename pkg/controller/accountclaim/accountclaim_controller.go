@@ -348,19 +348,6 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileAccountClaim) getAccountClaimList(reqLogger logr.Logger) (*awsv1alpha1.AccountClaimList, error) {
-	accountClaimList := &awsv1alpha1.AccountClaimList{}
-
-	listOps := &client.ListOptions{}
-	if err := r.client.List(context.TODO(), listOps, accountClaimList); err != nil {
-		reqLogger.Error(err, "unable to list account claims")
-		return accountClaimList, err
-	}
-
-	return accountClaimList, nil
-
-}
-
 func (r *ReconcileAccountClaim) getClaimedAccount(accountLink string, namespace string) (*awsv1alpha1.Account, error) {
 	account := &awsv1alpha1.Account{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: accountLink, Namespace: namespace}, account)
@@ -368,17 +355,6 @@ func (r *ReconcileAccountClaim) getClaimedAccount(accountLink string, namespace 
 		return nil, err
 	}
 	return account, nil
-}
-
-func AWSAccountIDClaimed(accountClaim *awsv1alpha1.AccountClaim, accountClaimList *awsv1alpha1.AccountClaimList) bool {
-	match := false
-	for _, ac := range accountClaimList.Items {
-		// We don't check AccountClaim names since they could be identical, namespaces are unique though
-		if ac.Spec.BYOCAWSAccountID == accountClaim.Spec.BYOCAWSAccountID && ac.Namespace != accountClaim.Namespace {
-			match = true
-		}
-	}
-	return match
 }
 
 func getUnclaimedAccount(reqLogger logr.Logger, accountList *awsv1alpha1.AccountList, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
