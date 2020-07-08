@@ -28,7 +28,7 @@ import (
 const (
 	// AccountClaimed indicates the account has been claimed in the accountClaim status
 	AccountClaimed = "AccountClaimed"
-	// AccountUnclaimed indicates teh account has not been claimed in the accountClaim status
+	// AccountUnclaimed indicates the account has not been claimed in the accountClaim status
 	AccountUnclaimed = "AccountUnclaimed"
 	// BYOCAccountFailedClaim indicates a failure to claim a CCS/BYOC account in the accountClaim status
 	BYOCAccountFailedClaim  = "BYOCAccountFailed"
