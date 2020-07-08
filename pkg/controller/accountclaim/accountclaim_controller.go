@@ -26,11 +26,14 @@ import (
 )
 
 const (
-	AccountClaimed          = "AccountClaimed"
-	AccountUnclaimed        = "AccountUnclaimed"
+	// AccountClaimed indicates the account has been claimed in the accountClaim status
+	AccountClaimed = "AccountClaimed"
+	// AccountUnclaimed indicates teh account has not been claimed in the accountClaim status
+	AccountUnclaimed = "AccountUnclaimed"
+	// BYOCAccountFailedClaim indicates a failure to claim a CCS/BYOC account in the accountClaim status
 	BYOCAccountFailedClaim  = "BYOCAccountFailed"
 	awsCredsUserName        = "aws_user_name"
-	awsCredsAccessKeyId     = "aws_access_key_id"
+	awsCredsAccessKeyID     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
 	accountClaimFinalizer   = "finalizer.aws.managed.openshift.io"
 	byocSecretFinalizer     = accountClaimFinalizer + "/byoc"
@@ -414,7 +417,7 @@ func (r *ReconcileAccountClaim) createIAMSecret(reqLogger logr.Logger, accountCl
 
 	OCMSecretName := accountClaim.Spec.AwsCredentialSecret.Name
 	OCMSecretNamespace := accountClaim.Spec.AwsCredentialSecret.Namespace
-	awsAccessKeyID := accountIAMUserSecret.Data[awsCredsAccessKeyId]
+	awsAccessKeyID := accountIAMUserSecret.Data[awsCredsAccessKeyID]
 	awsSecretAccessKey := accountIAMUserSecret.Data[awsCredsSecretAccessKey]
 
 	if string(awsAccessKeyID) == "" || string(awsSecretAccessKey) == "" {
