@@ -1,5 +1,12 @@
 apiVersion: v1
 kind: Template
+parameters:
+- name: ACCOUNT_LIMIT
+  required: true
+- name: ROOT_OU_ID
+  required: true
+- name: BASE_OU_ID
+  required: true
 metadata:
   name: aws-account-operator-configmap
 objects:
@@ -9,6 +16,6 @@ objects:
     name: aws-account-operator-configmap
     namespace: aws-account-operator
   data:
-    account-limit: ACCOUNT_LIMIT
-    root: ROOT_OU_ID
-    base: BASE_OU_ID
+    account-limit: ${ACCOUNT_LIMIT}
+    root: ${ROOT_OU_ID}
+    base: ${BASE_OU_ID}
