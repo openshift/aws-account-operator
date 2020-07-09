@@ -118,7 +118,7 @@ func main() {
 	// initialize metrics collector
 	localmetrics.Collector = localmetrics.NewMetricsCollector(mgr.GetCache())
 	switch utils.DetectDevMode {
-	case "local":
+	case utils.DevModeLocal:
 		if err := prometheus.Register(localmetrics.Collector); err != nil {
 			log.Error(err, "failed to register Prometheus metrics")
 			os.Exit(1)

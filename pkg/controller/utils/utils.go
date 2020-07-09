@@ -19,10 +19,16 @@ const (
 	Finalizer = "finalizer.aws.managed.openshift.io"
 	WaitTime  = 25
 
-	// EnvDevMode is the name of the env var we set to run locally and to skip
-	// initialization procedures that will error out and exit the operator.
-	// ex: `FORCE_DEV_MODE=local operatorsdk up local`
-	EnvDevMode = "FORCE_DEV_MODE"
+	// envDevMode is the name of the env var we set to indicate we're running in a development
+	// environment vs. production. Set it to one of the DevMode* consts defined below.
+	// For example:
+	// * Running locally: `FORCE_DEV_MODE=local operator-sdk up local`
+	// * Running in a cluster:
+	//   . Edit deploy/operator.yaml. Under .spec.template.spec.env, add:
+	//         - name: FORCE_DEV_MODE
+	//           value: cluster
+	//   . `oc apply` all the YAML files in deploy/, including the updated operator.yaml.
+	envDevMode = "FORCE_DEV_MODE"
 )
 
 // The JSON tags as captials due to requirements for the policydoc
@@ -34,9 +40,27 @@ type awsStatement struct {
 	Principal *awsv1alpha1.Principal `json:"Principal,omitempty"`
 }
 
-// DetectDevMode gets the environment variable to detect if we are running
-// locally or (future) have some other environment-specific conditions.
-var DetectDevMode string = strings.ToLower(os.Getenv(EnvDevMode))
+// devMode exists so we can pseudo-enum allowable values for the FORCE_DEV_MODE environment variable.
+type devMode string
+
+const (
+	// DevModeProduction (aka non-development mode) is the default running mode. Metrics are
+	// served from the operator at the /metrics path under the route it creates. AWS support cases
+	// are managed for real.
+	DevModeProduction devMode = ""
+	// DevModeLocal should be used when running via operator-sdk in "local" mode. Metrics are
+	// served up at http://localhost:${metricsPort}/${metricsPath} (metricsP* defined in main.go).
+	// All AWS support case interactions are skipped.
+	DevModeLocal devMode = "local"
+	// DevModeCluster should be used when doing development in a "real" cluster via a Deployment
+	// such as the one in deploy/operator.yaml. Metrics are served as normal (see
+	// DevModeProduction), but AWS support case interactions are skipped (see DevModeLocal).
+	DevModeCluster devMode = "cluster"
+)
+
+// DetectDevMode gets the envDevMode environment variable to detect if we are running
+// in production or a development environment.
+var DetectDevMode devMode = devMode(strings.ToLower(os.Getenv(envDevMode)))
 
 type awsPolicy struct {
 	Version   string
