@@ -52,6 +52,6 @@ objects:
     name: aws-account-operator-configmap
     namespace: aws-account-operator
   data:
-    account-limit: ${ACCOUNT_LIMIT}
+    account-limit: "${ACCOUNT_LIMIT}"
     root: ${ROOT_OU_ID}
     base: ${BASE_OU_ID}
