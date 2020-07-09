@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: aws-account-operator-configmap
+objects:
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: aws-account-operator-configmap
+    namespace: aws-account-operator
+  data:
+    account-limit: ACCOUNT_LIMIT
+    root: ROOT_OU_ID
+    base: BASE_OU_ID
