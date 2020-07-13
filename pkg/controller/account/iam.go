@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	"github.com/openshift/aws-account-operator/pkg/credentialwatcher"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -163,6 +164,72 @@ func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, account *awsv1alp
 	}
 	reqLogger.Info(fmt.Sprintf("Created secret %s", secret.Name))
 	return nil
+}
+
+// BuildSTSUser sets up an IAM user with the proper access and creates secrets to hold credentials
+// Takes a logger, an awsSetupClient for the signing token, an awsClient for, an account CR to set ownership of secrets, the namespace to create the secret in, and a role to assume with the creds
+// The awsSetupClient is the client for the user in the target linked account
+// The awsClient is the client for the user in the payer level account
+func (r *ReconcileAccount) BuildSTSUser(reqLogger logr.Logger, awsSetupClient awsclient.Client, awsClient awsclient.Client, account *awsv1alpha1.Account, nameSpace string, iamRole string) (string, error) {
+	reqLogger.Info("Creating IAM STS User")
+
+	// If IAM user was just created we cannot immediately create STS credentials due to an issue
+	// with eventual consisency on AWS' side
+	time.Sleep(10 * time.Second)
+
+	// Create the temporary sre-admin user credentials using STS
+	STSCredentials, STSCredentialsErr := getStsCredentials(reqLogger, awsClient, iamRole, account.Spec.AwsAccountID)
+	if STSCredentialsErr != nil {
+		reqLogger.Info("Failed to get SRE admin STSCredentials from AWS api ", "Error", STSCredentialsErr.Error())
+		return "", STSCredentialsErr
+	}
+
+	STSUserName := account.Name + "-STS"
+
+	IAMAdministratorPolicy := "arn:aws:iam::aws:policy/AdministratorAccess"
+
+	IAMPolicy := sts.PolicyDescriptorType{Arn: &IAMAdministratorPolicy}
+
+	IAMPolicyDescriptors := []*sts.PolicyDescriptorType{&IAMPolicy}
+
+	SigninTokenDuration := int64(credentialwatcher.STSCredentialsDuration)
+
+	// gets Web Console login, this policy cannot grant more permissions than the IAM user has which creates it
+	// which is why we're using awsSetupClient here and not awsClient
+	SREConsoleLoginURL, err := RequestSigninToken(reqLogger, awsSetupClient, &SigninTokenDuration, &STSUserName, IAMPolicyDescriptors, STSCredentials)
+	if err != nil {
+		reqLogger.Error(err, "Unable to create AWS signin token")
+	}
+
+	secretName := account.Name
+
+	// Create Console Secret
+	consoleSecretName := fmt.Sprintf("%s-sre-console-url", secretName)
+	consoleSecretData := map[string][]byte{
+		"aws_console_login_url": []byte(SREConsoleLoginURL),
+	}
+	userConsoleSecret := CreateSecret(consoleSecretName, nameSpace, consoleSecretData)
+	err = r.CreateSecret(reqLogger, account, userConsoleSecret)
+	if err != nil {
+		return "", err
+	}
+
+	// Create sre-cli user secret
+	cliSecretName := fmt.Sprintf("%s-sre-cli-credentials", secretName)
+	cliSecretData := map[string][]byte{
+		"aws_access_key_id":     []byte(*STSCredentials.Credentials.AccessKeyId),
+		"aws_secret_access_key": []byte(*STSCredentials.Credentials.SecretAccessKey),
+		"aws_session_token":     []byte(*STSCredentials.Credentials.SessionToken),
+	}
+
+	userSecret := CreateSecret(cliSecretName, nameSpace, cliSecretData)
+
+	err = r.CreateSecret(reqLogger, account, userSecret)
+	if err != nil {
+		return "", err
+	}
+
+	return userSecret.ObjectMeta.Name, nil
 }
 
 // getStsCredentials returns STS credentials for the specified account ARN
