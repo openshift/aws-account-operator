@@ -416,14 +416,13 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// If Account CR has `stats.rotateCredentials: true` we'll rotate the temporary credentials
 	// the secretWatcher is what updates this status field by comparing the STS credentials secret `creationTimestamp`
-	credentialsRotated := false
 	if accountNeedsCredentialsRotated(currentAcctInstance) {
 		reqLogger.Info(fmt.Sprintf("rotating CLI credentials for %s", currentAcctInstance.Name))
 		err = r.RotateCredentials(reqLogger, awsSetupClient, currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		credentialsRotated = true
+		currentAcctInstance.Status.RotateCredentials = false
 	}
 	if accountNeedsConsoleCredentialsRotated(currentAcctInstance) {
 		reqLogger.Info(fmt.Sprintf("rotating console URL credentials for %s", currentAcctInstance.Name))
@@ -431,11 +430,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		credentialsRotated = true
-	}
-	if credentialsRotated {
-		// Set `status.RotateCredentials` to false now that they have been updated
-		currentAcctInstance.Status.RotateCredentials = false
+		currentAcctInstance.Status.RotateConsoleCredentials = false
 	}
 
 	// Push the updated account to the server.
