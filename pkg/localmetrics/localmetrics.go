@@ -16,7 +16,6 @@ package localmetrics
 
 import (
 	"context"
-
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -43,12 +42,16 @@ type MetricsCollector struct {
 	accountReuseAvailable           *prometheus.GaugeVec
 	accountPoolSize                 *prometheus.GaugeVec
 	accountReadyDuration            prometheus.Histogram
-	accountClaimReadyDuration       *prometheus.HistogramVec
+	ccsAccountReadyDuration         prometheus.Histogram
+	accountClaimReadyDuration       prometheus.Histogram
+	ccsAccountClaimReadyDuration    prometheus.Histogram
 	accountReuseCleanupDuration     prometheus.Histogram
 	accountReuseCleanupFailureCount prometheus.Counter
 }
 
 func NewMetricsCollector(store cache.Cache) *MetricsCollector {
+	// representing in minutes [1 3 5 10 20 30 60 120 240 300 480 600]
+	accountDurationBuckets := []float64{60, 180, 300, 600, 1200, 1800, 3600, 7200, 14400, 18000, 28800, 36000}
 	return &MetricsCollector{
 		store: store,
 		awsAccounts: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -85,18 +88,32 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Help:        "Report the size of account pool cr",
 			ConstLabels: prometheus.Labels{"name": operatorName},
 		}, []string{"namespace", "pool_name"}),
+
 		accountReadyDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:        "aws_account_operator_account_ready_duration_seconds",
 			Help:        "The duration for account cr to get ready",
 			ConstLabels: prometheus.Labels{"name": operatorName},
-			Buckets:     []float64{1, 3, 5, 10, 15, 20, 30},
+			Buckets:     accountDurationBuckets,
 		}),
-		accountClaimReadyDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		ccsAccountReadyDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:        "aws_account_operator_account_ccs_ready_duration_seconds",
+			Help:        "The duration for ccs account cr to get ready",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+			Buckets:     []float64{5, 10, 20, 30, 60, 120, 240, 300, 480, 600},
+		}),
+
+		accountClaimReadyDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:        "aws_account_operator_account_claim_ready_duration_seconds",
 			Help:        "The duration for account claim cr to get claimed",
 			ConstLabels: prometheus.Labels{"name": operatorName},
-			Buckets:     []float64{1, 3, 5, 10, 15, 20, 30},
-		}, []string{"ccs"}),
+			Buckets:     accountDurationBuckets,
+		}),
+		ccsAccountClaimReadyDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:        "aws_account_operator_account_claim_ccs_ready_duration_seconds",
+			Help:        "The duration for ccs account claim cr to get claimed",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+			Buckets:     []float64{5, 10, 20, 30, 60, 120, 240, 300, 480, 600},
+		}),
 
 		accountReuseCleanupDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:        "aws_account_operator_account_reuse_cleanup_duration_seconds",
@@ -122,7 +139,9 @@ func (c *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	c.accountPoolSize.Describe(ch)
 	c.accountReuseAvailable.Describe(ch)
 	c.accountReadyDuration.Describe(ch)
+	c.ccsAccountReadyDuration.Describe(ch)
 	c.accountClaimReadyDuration.Describe(ch)
+	c.ccsAccountClaimReadyDuration.Describe(ch)
 	c.accountReuseCleanupDuration.Describe(ch)
 	c.accountReuseCleanupFailureCount.Describe(ch)
 }
@@ -137,7 +156,9 @@ func (c *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.accountPoolSize.Collect(ch)
 	c.accountReuseAvailable.Collect(ch)
 	c.accountReadyDuration.Collect(ch)
+	c.ccsAccountReadyDuration.Collect(ch)
 	c.accountClaimReadyDuration.Collect(ch)
+	c.ccsAccountClaimReadyDuration.Collect(ch)
 	c.accountReuseCleanupDuration.Collect(ch)
 	c.accountReuseCleanupFailureCount.Collect(ch)
 }
@@ -213,18 +234,20 @@ func (c *MetricsCollector) SetTotalAWSAccounts(total int) {
 	c.awsAccounts.Set(float64(total))
 }
 
-func (c *MetricsCollector) SetAccountReadyDuration(duration float64) {
-	c.accountReadyDuration.Observe(duration)
+func (c *MetricsCollector) SetAccountReadyDuration(ccs bool, duration float64) {
+	if ccs {
+		c.ccsAccountReadyDuration.Observe(duration)
+	} else {
+		c.accountReadyDuration.Observe(duration)
+	}
 }
 
-func (c *MetricsCollector) SetAccountClaimReadyDuration(isCCS bool, duration float64) {
-	var ccs string
-	if isCCS {
-		ccs = "true"
+func (c *MetricsCollector) SetAccountClaimReadyDuration(ccs bool, duration float64) {
+	if ccs {
+		c.ccsAccountClaimReadyDuration.Observe(duration)
 	} else {
-		ccs = "false"
+		c.accountClaimReadyDuration.Observe(duration)
 	}
-	c.accountClaimReadyDuration.WithLabelValues(ccs).Observe(duration)
 }
 
 func (c *MetricsCollector) SetAccountReusedCleanupDuration(duration float64) {
