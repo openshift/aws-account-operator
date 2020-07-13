@@ -422,7 +422,7 @@ The accountClaim-controller is triggered when an accountClaim is created in any 
 AccountClaimed          = "AccountClaimed"
 AccountUnclaimed        = "AccountUnclaimed"
 awsCredsUserName        = "aws_user_name"
-awsCredsAccessKeyId     = "aws_access_key_id"
+awsCredsAccessKeyID     = "aws_access_key_id"
 awsCredsSecretAccessKey = "aws_secret_access_key"
 ```
 
