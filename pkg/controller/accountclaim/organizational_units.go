@@ -45,7 +45,7 @@ func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountCla
 	}
 
 	// Create/Find account OU
-	OUID, err := CreateOrFindOU(reqLogger, awsClient, account, friendlyOUName, baseID)
+	OUID, err := CreateOrFindOU(reqLogger, awsClient, accountClaim, friendlyOUName, baseID)
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountCla
 }
 
 // CreateOrFindOU will create or find an existing OU and return its ID
-func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, account *awsv1alpha1.Account, friendlyOUName string, baseID string) (string, error) {
+func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, accountClaim *awsv1alpha1.AccountClaim, friendlyOUName string, baseID string) (string, error) {
 	// Create/Find account OU
 	createCreateOrganizationalUnitInput := organizations.CreateOrganizationalUnitInput{
 		Name:     &friendlyOUName,
@@ -84,7 +84,7 @@ func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, account *aws
 		if aerr, ok := ouErr.(awserr.Error); ok {
 			switch aerr.Code() {
 			case "DuplicateOrganizationalUnitException":
-				duplicateOUMsg := fmt.Sprintf("OU: %s Already exists", account.Spec.LegalEntity.ID)
+				duplicateOUMsg := fmt.Sprintf("OU: %s Already exists", accountClaim.Spec.LegalEntity.ID)
 				reqLogger.Info(duplicateOUMsg)
 				return findOUIDFromName(reqLogger, client, baseID, friendlyOUName)
 			default:
