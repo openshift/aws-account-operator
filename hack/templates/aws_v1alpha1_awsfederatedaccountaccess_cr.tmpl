@@ -5,13 +5,14 @@ parameters:
 - name: AWS_FEDERATED_ROLE_NAME
 - name: IAM_USER_SECRET
 - name: NAMESPACE
+- name: FED_USER
 metadata:
   name: test-federated-user-template
 objects:
 - apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AWSFederatedAccountAccess
   metadata:
-    name: test-federated-user
+    name: ${FED_USER}
     namespace: ${NAMESPACE}
   spec:
     externalCustomerAWSIAMARN: "${AWS_IAM_ARN}"
