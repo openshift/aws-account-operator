@@ -52,7 +52,6 @@ type awsUserSecret struct {
 	Data struct {
 		AccessKeyID     string `yaml:"aws_access_key_id"`
 		SecretAccessKey string `yaml:"aws_secret_access_key"`
-		SessionToken    string `yaml:"aws_session_token"`
 	} `yaml:"data"`
 }
 
@@ -179,7 +178,7 @@ func getFederatedAccountAccessCR(t *testing.T, cr string, accountAccessCR *feder
 
 // Fills awsUserSecret struct from the secret
 func getSecretCredentials(t *testing.T, secret *awsUserSecret) {
-	ocSecret := exec.Command("oc", "get", "secret", "-n", "aws-account-operator", "-o", "yaml", "osd-creds-mgmt-osd-staging-1-sre-cli-credentials")
+	ocSecret := exec.Command("oc", "get", "secret", "-n", "aws-account-operator", "-o", "yaml", "osd-creds-mgmt-osd-staging-1-osdmanagedadminsre-secret")
 	secretYAML, err := ocSecret.CombinedOutput()
 	if err != nil {
 		t.Fatal("Unable to obtain sre-cli-credentials")
@@ -202,13 +201,13 @@ func getAWSIAMClient(t *testing.T, awsCreds awsUserSecret) (*iam.IAM, error) {
 		return nil, err
 	}
 
-	sessionToken, err := base64.StdEncoding.DecodeString(awsCreds.Data.SessionToken)
-	if err != nil {
-		return nil, err
-	}
-
 	s, err := session.NewSession(&aws.Config{
-		Credentials: credentials.NewStaticCredentials(string(accessKeyID), string(secretAccessKey), string(sessionToken)),
+		Credentials: credentials.NewCredentials(&credentials.StaticProvider{
+			Value: credentials.Value{
+				AccessKeyID:     string(accessKeyID),
+				SecretAccessKey: string(secretAccessKey),
+			},
+		}),
 	})
 	if err != nil {
 		return nil, err
