@@ -72,7 +72,7 @@ func Add(mgr manager.Manager) error {
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileAccount{
-		Client:           mgr.GetClient(),
+		Client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: awsclient.GetAWSClient,
 	}
@@ -99,8 +99,6 @@ var _ reconcile.Reconciler = &ReconcileAccount{}
 
 // ReconcileAccount reconciles a Account object
 type ReconcileAccount struct {
-	// This client, initialized using mgr.Client() above, is a split client
-	// that reads objects from the cache and writes to the apiserver
 	Client           kubeclientpkg.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder func(kubeClient kubeclientpkg.Client, input awsclient.NewAwsClientInput) (awsclient.Client, error)

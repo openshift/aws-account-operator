@@ -57,7 +57,7 @@ func Add(mgr manager.Manager) error {
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileAWSFederatedAccountAccess{
-		client: mgr.GetClient(),
+		client: utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme: mgr.GetScheme(),
 	}
 }
