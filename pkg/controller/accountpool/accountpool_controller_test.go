@@ -1,15 +1,17 @@
 package accountpool
 
 import (
+	"reflect"
+
 	"github.com/golang/mock/gomock"
 	awsaccountapis "github.com/openshift/aws-account-operator/pkg/apis"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -43,6 +45,7 @@ func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
 
 func TestReconcileAccountPool(t *testing.T) {
 	awsaccountapis.AddToScheme(scheme.Scheme)
+	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
 	tests := []struct {
 		name                  string
 		localObjects          []runtime.Object

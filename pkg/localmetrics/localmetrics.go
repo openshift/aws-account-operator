@@ -47,6 +47,7 @@ type MetricsCollector struct {
 	ccsAccountClaimReadyDuration    prometheus.Histogram
 	accountReuseCleanupDuration     prometheus.Histogram
 	accountReuseCleanupFailureCount prometheus.Counter
+	reconcileDuration               *prometheus.HistogramVec
 }
 
 func NewMetricsCollector(store cache.Cache) *MetricsCollector {
@@ -82,7 +83,7 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 
 		// pool_name is not a good label because it may cause
 		// high cardinality. But in our use case it is okay
-		// since we only has one account pool in the cluster.
+		// since we only have one account pool in the cluster.
 		accountPoolSize: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "aws_account_operator_account_pool_size",
 			Help:        "Report the size of account pool cr",
@@ -127,6 +128,12 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Help:        "Number of account reuse cleanup failures",
 			ConstLabels: prometheus.Labels{"name": operatorName},
 		}),
+		reconcileDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:        "aws_account_operator_reconcile_duration",
+			Help:        "Distribution of the number of seconds a Reconcile takes, broken down by controller",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+			Buckets:     []float64{0.001, 0.01, 0.1, 1, 10, 30, 60, 120, 240},
+		}, []string{"controller"}),
 	}
 }
 
@@ -144,6 +151,7 @@ func (c *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	c.ccsAccountClaimReadyDuration.Describe(ch)
 	c.accountReuseCleanupDuration.Describe(ch)
 	c.accountReuseCleanupFailureCount.Describe(ch)
+	c.reconcileDuration.Describe(ch)
 }
 
 // Collect implements the prometheus.Collector interface.
@@ -161,6 +169,7 @@ func (c *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.ccsAccountClaimReadyDuration.Collect(ch)
 	c.accountReuseCleanupDuration.Collect(ch)
 	c.accountReuseCleanupFailureCount.Collect(ch)
+	c.reconcileDuration.Collect(ch)
 }
 
 // collect will cleanup the gauge metrics first, then getting all the
@@ -256,4 +265,8 @@ func (c *MetricsCollector) SetAccountReusedCleanupDuration(duration float64) {
 
 func (c *MetricsCollector) AddAccountReuseCleanupFailure() {
 	c.accountReuseCleanupFailureCount.Inc()
+}
+
+func (c *MetricsCollector) SetReconcileDuration(controller string, duration float64) {
+	c.reconcileDuration.WithLabelValues(controller).Observe(duration)
 }

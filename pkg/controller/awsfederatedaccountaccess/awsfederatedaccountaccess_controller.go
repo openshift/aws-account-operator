@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -17,6 +18,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -30,6 +32,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+)
+
+const (
+	controllerName = "awsfederatedaccountaccess"
 )
 
 // Custom errors
@@ -87,8 +93,15 @@ type ReconcileAWSFederatedAccountAccess struct {
 // Reconcile reads that state of the cluster for a AWSFederatedAccountAccess object and makes changes based on the state read
 // and what is in the AWSFederatedAccountAccess.Spec
 func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling AWSFederatedAccountAccess")
+	start := time.Now()
+	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
+	reqLogger.Info("Reconciling")
+
+	defer func() {
+		dur := time.Since(start)
+		localmetrics.Collector.SetReconcileDuration(controllerName, dur.Seconds())
+		reqLogger.WithValues("Duration", dur).Info("Reconcile complete")
+	}()
 
 	// Fetch the AWSFederatedAccountAccess instance
 	currentFAA := &awsv1alpha1.AWSFederatedAccountAccess{}
