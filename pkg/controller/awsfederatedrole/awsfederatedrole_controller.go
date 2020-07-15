@@ -86,7 +86,7 @@ type ReconcileAWSFederatedRole struct {
 func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	start := time.Now()
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling ")
+	reqLogger.Info("Reconciling")
 
 	defer func() {
 		dur := time.Since(start)
