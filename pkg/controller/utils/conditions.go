@@ -114,6 +114,7 @@ func SetAccountCondition(
 	reason string,
 	message string,
 	updateConditionCheck UpdateConditionCheck,
+	ccs bool,
 ) []awsv1alpha1.AccountCondition {
 	now := metav1.Now()
 	existingCondition := FindAccountCondition(conditions, conditionType)
@@ -153,7 +154,7 @@ func SetAccountCondition(
 		creatingCondition := FindAccountCondition(conditions, awsv1alpha1.AccountCreating)
 		if creatingCondition != nil {
 			readyDuration := now.Sub(creatingCondition.LastProbeTime.Time)
-			localmetrics.Collector.SetAccountReadyDuration(readyDuration.Seconds())
+			localmetrics.Collector.SetAccountReadyDuration(ccs, readyDuration.Seconds())
 		}
 	}
 

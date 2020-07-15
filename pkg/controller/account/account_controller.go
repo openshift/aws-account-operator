@@ -605,7 +605,9 @@ func SetAccountStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, me
 		corev1.ConditionTrue,
 		state,
 		message,
-		utils.UpdateConditionNever)
+		utils.UpdateConditionNever,
+		awsAccount.Spec.BYOC,
+	)
 	awsAccount.Status.State = state
 	reqLogger.Info(fmt.Sprintf("Account %s status updated", awsAccount.Name))
 }
