@@ -3,6 +3,8 @@ package accountclaim
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/organizations"
@@ -121,8 +123,15 @@ func MoveAccount(reqLogger logr.Logger, client awsclient.Client, account *awsv1a
 				if check {
 					return awsv1alpha1.ErrAccAlreadyInOU
 				}
+			case "ConcurrentModificationException":
+				// if we encounter a race condition we simply try again after a random sleep interval
+				r := rand.Intn(5)
+				ConcurrentModificationExceptionMsg := fmt.Sprintf("CreateOrganizationalUnit:ConcurrentModificationException: Race condition while attempting to move Account: %s to OU: %s, trying again in %d seconds", account.Spec.AwsAccountID, OUID, r)
+				reqLogger.Info(ConcurrentModificationExceptionMsg)
+				time.Sleep(time.Duration(r) * time.Second)
+				MoveAccount(reqLogger, client, account, OUID, parentID)
 			default:
-				unexpectedErrorMsg := fmt.Sprintf("CreateOrganizationalUnit: Unexpected AWS Error when attempting to move AWS Account: %s to OU: %s", account.Spec.AwsAccountID, aerr.Code())
+				unexpectedErrorMsg := fmt.Sprintf("CreateOrganizationalUnit: Unexpected AWS Error when attempting to move AWS Account: %s to OU: %s, Error: %s", account.Spec.AwsAccountID, OUID, aerr.Code())
 				reqLogger.Info(unexpectedErrorMsg)
 			}
 		}
