@@ -52,7 +52,7 @@ type MetricsCollector struct {
 	accountReuseCleanupDuration     prometheus.Histogram
 	accountReuseCleanupFailureCount prometheus.Counter
 	reconcileDuration               *prometheus.HistogramVec
-	apiCallCount                    *prometheus.CounterVec
+	apiCallDuration                 *prometheus.HistogramVec
 }
 
 func NewMetricsCollector(store cache.Cache) *MetricsCollector {
@@ -140,10 +140,14 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Buckets:     []float64{0.001, 0.01, 0.1, 1, 10, 30, 60, 120, 240},
 		}, []string{"controller"}),
 
-		apiCallCount: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name:        "aws_account_operator_api_requests_total",
-			Help:        "Counter incremented for each API request.",
+		// apiCallDuration times API requests. Histogram also gives us a _count metric for free.
+		apiCallDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:        "aws_account_operator_api_request_duration_seconds",
+			Help:        "Distribution of the number of seconds an API request takes",
 			ConstLabels: prometheus.Labels{"name": operatorName},
+			// We really don't care about quantiles, but omitting Buckets results in defaults.
+			// This minimizes the number of unused data points we store.
+			Buckets: []float64{1},
 		}, []string{"controller", "method", "resource", "status"}),
 	}
 }
@@ -163,7 +167,7 @@ func (c *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	c.accountReuseCleanupDuration.Describe(ch)
 	c.accountReuseCleanupFailureCount.Describe(ch)
 	c.reconcileDuration.Describe(ch)
-	c.apiCallCount.Describe(ch)
+	c.apiCallDuration.Describe(ch)
 }
 
 // Collect implements the prometheus.Collector interface.
@@ -182,7 +186,7 @@ func (c *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.accountReuseCleanupDuration.Collect(ch)
 	c.accountReuseCleanupFailureCount.Collect(ch)
 	c.reconcileDuration.Collect(ch)
-	c.apiCallCount.Collect(ch)
+	c.apiCallDuration.Collect(ch)
 }
 
 // collect will cleanup the gauge metrics first, then getting all the
@@ -284,13 +288,18 @@ func (c *MetricsCollector) SetReconcileDuration(controller string, duration floa
 	c.reconcileDuration.WithLabelValues(controller).Observe(duration)
 }
 
-func (c *MetricsCollector) AddAPICall(controller string, req *http.Request, resp *http.Response) {
-	c.apiCallCount.With(prometheus.Labels{
+// AddAPICall observes metrics for a call to an external API
+// - param controller: The name of the controller making the API call
+// - param req: The HTTP Request structure
+// - param resp: The HTTP Response structure
+// - param duration: The number of seconds the call took.
+func (c *MetricsCollector) AddAPICall(controller string, req *http.Request, resp *http.Response, duration float64) {
+	c.apiCallDuration.With(prometheus.Labels{
 		"controller": controller,
 		"method":     req.Method,
 		"resource":   resourceFrom(req.URL),
 		"status":     resp.Status,
-	}).Inc()
+	}).Observe(duration)
 }
 
 // resourceFrom normalizes an API request URL, including removing individual namespace and
@@ -304,8 +313,7 @@ func (c *MetricsCollector) AddAPICall(controller string, req *http.Request, resp
 func resourceFrom(url *neturl.URL) (resource string) {
 	defer func() {
 		// If we can't parse, return a general bucket. This includes paths that don't start with
-		// /api or /apis, or paths with fewer than the expected number of components (e.g.
-		// discovery URLs).
+		// /api or /apis.
 		if r := recover(); r != nil {
 			// TODO(efried): Should we be logging these? I guess if we start to see a lot of them...
 			resource = "{OTHER}"

@@ -3,6 +3,7 @@ package utils
 import (
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
@@ -70,12 +71,13 @@ type ControllerMetricsTripper struct {
 // RoundTrip implements the http RoundTripper interface. We simply call the wrapped RoundTripper
 // and register the call with our apiCallCount metric.
 func (cmt *ControllerMetricsTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	start := time.Now()
 	// Call the nested RoundTripper.
 	resp, err := cmt.RoundTripper.RoundTrip(req)
 
 	// Count this call, if it worked (where "worked" includes HTTP errors).
 	if err == nil {
-		localmetrics.Collector.AddAPICall(cmt.Controller, req, resp)
+		localmetrics.Collector.AddAPICall(cmt.Controller, req, resp, time.Since(start).Seconds())
 	}
 
 	return resp, err
