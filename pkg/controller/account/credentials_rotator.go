@@ -25,9 +25,10 @@ func (r *ReconcileAccount) RotateCredentials(reqLogger logr.Logger, awsSetupClie
 
 	//var awsAssumedRoleClient awsclient.Client
 	var roleToAssume string
+	accountIAMID := account.Labels[fmt.Sprintf("%s", awsv1alpha1.IAMUserIDLabel)]
 
 	if account.Spec.BYOC {
-		roleToAssume = byocRole
+		roleToAssume = fmt.Sprintf("%s-%s", byocRole, accountIAMID)
 	} else {
 		roleToAssume = awsv1alpha1.AccountOperatorIAMRole
 	}
@@ -101,9 +102,10 @@ func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSe
 
 	//var awsAssumedRoleClient awsclient.Client
 	var roleToAssume string
+	accountIAMID := account.Labels[fmt.Sprintf("%s", awsv1alpha1.IAMUserIDLabel)]
 
 	if account.Spec.BYOC {
-		roleToAssume = byocRole
+		roleToAssume = fmt.Sprintf("%s-%s", byocRole, accountIAMID)
 	} else {
 		roleToAssume = awsv1alpha1.AccountOperatorIAMRole
 	}
