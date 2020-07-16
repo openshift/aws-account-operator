@@ -51,8 +51,6 @@ type MetricsCollector struct {
 }
 
 func NewMetricsCollector(store cache.Cache) *MetricsCollector {
-	// representing in minutes [1 3 5 10 20 30 60 120 240 300 480 600]
-	accountDurationBuckets := []float64{60, 180, 300, 600, 1200, 1800, 3600, 7200, 14400, 18000, 28800, 36000}
 	return &MetricsCollector{
 		store: store,
 		awsAccounts: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -94,7 +92,8 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Name:        "aws_account_operator_account_ready_duration_seconds",
 			Help:        "The duration for account cr to get ready",
 			ConstLabels: prometheus.Labels{"name": operatorName},
-			Buckets:     accountDurationBuckets,
+			// representing in minutes [1 3 5 10 20 30 60 120 240 300 480 600]
+			Buckets: []float64{60, 180, 300, 600, 1200, 1800, 3600, 7200, 14400, 18000, 28800, 36000},
 		}),
 		ccsAccountReadyDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:        "aws_account_operator_account_ccs_ready_duration_seconds",
@@ -107,7 +106,7 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Name:        "aws_account_operator_account_claim_ready_duration_seconds",
 			Help:        "The duration for account claim cr to get claimed",
 			ConstLabels: prometheus.Labels{"name": operatorName},
-			Buckets:     accountDurationBuckets,
+			Buckets:     []float64{1, 5, 10, 20, 30, 45, 60},
 		}),
 		ccsAccountClaimReadyDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:        "aws_account_operator_account_claim_ccs_ready_duration_seconds",
@@ -129,10 +128,10 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			ConstLabels: prometheus.Labels{"name": operatorName},
 		}),
 		reconcileDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:        "aws_account_operator_reconcile_duration",
+			Name:        "aws_account_operator_reconcile_duration_seconds",
 			Help:        "Distribution of the number of seconds a Reconcile takes, broken down by controller",
 			ConstLabels: prometheus.Labels{"name": operatorName},
-			Buckets:     []float64{0.001, 0.01, 0.1, 1, 10, 30, 60, 120, 240},
+			Buckets:     []float64{0.001, 0.01, 0.1, 1, 5, 10, 20},
 		}, []string{"controller"}),
 	}
 }
