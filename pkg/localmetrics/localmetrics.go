@@ -106,7 +106,7 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Name:        "aws_account_operator_account_claim_ready_duration_seconds",
 			Help:        "The duration for account claim cr to get claimed",
 			ConstLabels: prometheus.Labels{"name": operatorName},
-			Buckets:     []float64{1, 5, 10, 20, 30, 45, 60},
+			Buckets:     []float64{1, 5, 10, 20, 30, 45, 60, 120},
 		}),
 		ccsAccountClaimReadyDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:        "aws_account_operator_account_claim_ccs_ready_duration_seconds",
