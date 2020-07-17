@@ -100,6 +100,9 @@ var ErrNonexistentOU = errors.New("OUWithNameNotFound")
 // ErrAccAlreadyInOU indicates that an account is already in an OU
 var ErrAccAlreadyInOU = errors.New("ErrAccAlreadyInOU")
 
+// ErrAccMoveRaceCondition indicates a race condition while moving the account
+var ErrAccMoveRaceCondition = errors.New("ErrAccMoveRaceCondition")
+
 // ErrChildNotFound indicates that a child was not found inside an OU
 var ErrChildNotFound = errors.New("ChildNotFoundInOU")
 

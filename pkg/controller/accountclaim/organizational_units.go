@@ -52,15 +52,20 @@ func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountCla
 	err = MoveAccount(reqLogger, awsClient, account, OUID, rootID)
 	if err != nil {
 		// If error was cause by the account already being inside the OU, simply update the accountclaim cr and returns
-		if err == awsv1alpha1.ErrAccAlreadyInOU {
+		switch err {
+		case awsv1alpha1.ErrAccAlreadyInOU:
 			// Log account already in desired location
 			accountMovedMsg := fmt.Sprintf("OU: Account %s was already in the desired OU %s", account.Name, account.Spec.LegalEntity.ID)
 			reqLogger.Info(accountMovedMsg)
 			// Update accountclaim spec
 			accountClaim.Spec.AccountOU = OUID
 			return r.specUpdate(reqLogger, accountClaim)
+		case awsv1alpha1.ErrAccMoveRaceCondition:
+			// Simply return the error since we want a requeue
+			return awsv1alpha1.ErrAccMoveRaceCondition
+		default:
+			return err
 		}
-		return err
 	}
 
 	// Log account moved successfully
@@ -122,10 +127,10 @@ func MoveAccount(reqLogger logr.Logger, client awsclient.Client, account *awsv1a
 					return awsv1alpha1.ErrAccAlreadyInOU
 				}
 			case "ConcurrentModificationException":
-				// if we encounter a race condition we simply log the condition and return
+				// if we encounter a race condition we can assume that the account has already been moved, therefore we simply log the condition and requeue
 				ConcurrentModificationExceptionMsg := fmt.Sprintf("OU:CreateOrganizationalUnit:ConcurrentModificationException: Race condition while attempting to move Account: %s to OU: %s", account.Spec.AwsAccountID, OUID)
 				reqLogger.Info(ConcurrentModificationExceptionMsg)
-				return nil
+				return awsv1alpha1.ErrAccMoveRaceCondition
 			default:
 				unexpectedErrorMsg := fmt.Sprintf("CreateOrganizationalUnit: Unexpected AWS Error when attempting to move AWS Account: %s to OU: %s, Error: %s", account.Spec.AwsAccountID, OUID, aerr.Code())
 				reqLogger.Info(unexpectedErrorMsg)

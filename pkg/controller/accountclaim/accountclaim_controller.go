@@ -324,6 +324,9 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	if accountClaim.Spec.AccountOU == "" || accountClaim.Spec.AccountOU == "ROOT" {
 		err = MoveAccountToOU(r, reqLogger, accountClaim, unclaimedAccount)
 		if err != nil {
+			if err == awsv1alpha1.ErrAccMoveRaceCondition {
+				return reconcile.Result{Requeue: true}, nil
+			}
 			return reconcile.Result{}, err
 		}
 	}
