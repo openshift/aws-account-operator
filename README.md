@@ -10,10 +10,14 @@
     - [1.3. Workflow](#13-workflow)
     - [1.4. Testing your AWS account credentials with the CLI](#14-testing-your-aws-account-credentials-with-the-cli)
     - [1.5. Local Development](#15-local-development)
+    - [1.5.1 Operator Install](#151-operator-install)
+    - [1.5.2 Running the Operator and Local Development Mode](#152-running-the-operator-and-local-development-mode)
   - [2. The Custom Resources](#2-the-custom-resources)
     - [2.1. AccountPool CR](#21-accountpool-cr)
     - [2.2. Account CR](#22-account-cr)
     - [2.3. AccountClaim CR](#23-accountclaim-cr)
+    - [2.4. AWSFederatedRole CR](#24-awsfederatedrole-cr)
+    - [2.4. AWSFederatedAccountAccess CR](#24-awsfederatedaccountaccess-cr)
   - [3. The controllers](#3-the-controllers)
     - [3.1. AccountPool Controller](#31-accountpool-controller)
       - [3.1.1. Constants and Globals](#311-constants-and-globals)
@@ -30,6 +34,16 @@
       - [3.3.2. Spec](#332-spec)
       - [3.3.3. Status](#333-status)
       - [3.3.4. Metrics](#334-metrics)
+    - [3.4 AWSFederatedRole Controller](#34-awsfederatedrole-controller)
+      - [3.4.1. Constants and Globals](#341-constants-and-globals)
+      - [3.4.2. Spec](#342-spec)
+      - [3.4.3. Status](#343-status)
+      - [3.4.4. Metrics](#344-metrics)
+    - [3.5 AWSFederatedAccountAccess Controller](#35-awsfederatedaccountaccess-controller)
+      - [3.5.1. Constants and Globals](#351-constants-and-globals)
+      - [3.5.2. Spec](#352-spec)
+      - [3.5.3. Status](#353-status)
+      - [3.4.4. Metrics](#344-metrics-1)
   - [4. Special Items in main.go](#4-special-items-in-maingo)
     - [4.1 Constants](#41-constants)
 
@@ -77,6 +91,28 @@ Permissions to allow the user to interact with the support center:
 
 ```
 
+
+The operator also needs a configmap that has:
+Account Limit: The soft limit of AWS Accounts which is the number compared against when creating new accounts
+Base: Base OU ID to place accounts in when claimed
+Root: Root OU ID to create new OUs under
+
+```json
+{
+    "apiVersion": "v1",
+    "data": {
+        "account-limit": "4801",
+        "base": "ou-0wd6-tmsbvahq",
+        "root": "r-0wd6"
+    },
+    "kind": "ConfigMap",
+    "metadata": {
+        "creationTimestamp": "2020-04-30T19:50:05Z",
+        "name": "aws-account-operator-configmap",
+        "namespace": "aws-account-operator",
+    }
+}
+```
 ### 1.3. Workflow
 
 First, an AccountPool must be created to specify the number of desired accounts to be ready. The operator then goes and creates that number of accounts.
