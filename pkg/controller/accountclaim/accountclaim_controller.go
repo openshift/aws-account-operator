@@ -488,7 +488,7 @@ func updateClaimedAccountFields(reqLogger logr.Logger, awsAccount *awsv1alpha1.A
 }
 
 func setAccountClaimStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
-	message := fmt.Sprintf("Account claimed by %s", awsAccount.Name)
+	message := fmt.Sprintf("Account claim fulfilled by %s", awsAccount.Name)
 	awsAccountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
 		awsAccountClaim.Status.Conditions,
 		awsv1alpha1.AccountClaimed,
