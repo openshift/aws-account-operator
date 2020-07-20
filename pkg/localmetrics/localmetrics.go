@@ -301,7 +301,9 @@ func (c *MetricsCollector) AddAPICall(controller string, req *http.Request, resp
 	}).Observe(duration)
 }
 
-// resourceFrom normalizes an API request URL, including removing individual namespace and
+// resourceFrom normalizes an API Request.
+// If the Request is to an AWS service, we just return the Host, which indicates which service.
+// Otherwise, we assume the request is for a kube resource, and we remove individual namespace and
 // resource names, to yield a string of the form:
 //     $group/$version/$kind[/{NAME}[/...]]
 // or
@@ -319,6 +321,13 @@ func resourceFrom(url *neturl.URL) (resource string) {
 		}
 	}()
 
+	// Special case for AWS URLs: just record the host, which tells us which service we hit
+	if strings.Contains(url.Host, ".amazonaws.") {
+		resource = url.Host
+		return
+	}
+
+	// Otherwise we're dealing with a kube resource. Normalize the URL.
 	tokens := strings.Split(url.Path[1:], "/")
 
 	// First normalize to $group/$version/...

@@ -143,7 +143,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		return reconcile.Result{}, nil
 	}
 	// Setup AWS client
-	awsClient, err := r.awsClientBuilder.GetClient(r.client, awsclient.NewAwsClientInput{
+	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 		SecretName: awsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",

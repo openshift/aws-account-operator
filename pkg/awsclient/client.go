@@ -16,13 +16,16 @@ package awsclient
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go/service/route53/route53iface"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/golang/mock/gomock"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
@@ -356,8 +359,9 @@ func (c *awsClient) ChangeResourceRecordSets(input *route53.ChangeResourceRecord
 	return c.route53client.ChangeResourceRecordSets(input)
 }
 
-// newClient creates our client wrapper object for the actual AWS clients we use.
-func newClient(awsAccessID, awsAccessSecret, token, region string) (Client, error) {
+// NewClient creates our client wrapper object for the actual AWS clients we use.
+// If controllerName is nonempty, metrics are collected timing and counting each AWS request.
+func newClient(controllerName, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
 	awsConfig := &aws.Config{Region: aws.String(region)}
 	awsConfig.Credentials = credentials.NewStaticCredentials(
 		awsAccessID, awsAccessSecret, token)
@@ -365,6 +369,23 @@ func newClient(awsAccessID, awsAccessSecret, token, region string) (Client, erro
 	s, err := session.NewSession(awsConfig)
 	if err != nil {
 		return nil, err
+	}
+
+	// Time (and count) calls to AWS.
+	// But only from controllers, signalled by a nonempty controllerName.
+	if controllerName != "" {
+		// NOTE(efried): We can't count on the returned client being used by a single thread, so we
+		// create a separate timer for each request.
+		timers := make(map[*request.Request]time.Time)
+		// Validate is the first phase of a request. Start the timer as early as possible (as the first handler there).
+		s.Handlers.Validate.PushFront(func(r *request.Request) {
+			timers[r] = time.Now()
+		})
+		// Complete is the last phase of a request. Stop the timer as late as possible (as the last handler there).
+		s.Handlers.Complete.PushBack(func(r *request.Request) {
+			defer func() { delete(timers, r) }()
+			localmetrics.Collector.AddAPICall(controllerName, r.HTTPRequest, r.HTTPResponse, time.Since(timers[r]).Seconds())
+		})
 	}
 
 	return &awsClient{
@@ -380,7 +401,7 @@ func newClient(awsAccessID, awsAccessSecret, token, region string) (Client, erro
 
 // Builder implementations know how to produce a Client.
 type Builder interface {
-	GetClient(kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error)
+	GetClient(controllerName string, kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error)
 }
 
 // RealBuilder is a Builder implementation that knows how to produce a real AWS Client (i.e. one
@@ -392,7 +413,7 @@ type RealBuilder struct{}
 // Pass in token if sessions requires a token
 // if it includes a secretName and nameSpace it will create credentials from that secret data
 // If it includes awsCredsSecretIDKey and awsCredsSecretAccessKey it will build credentials from those
-func (rp *RealBuilder) GetClient(kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error) {
+func (rp *RealBuilder) GetClient(controllerName string, kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error) {
 
 	// error if region is not included
 	if input.AwsRegion == "" {
@@ -421,7 +442,7 @@ func (rp *RealBuilder) GetClient(kubeClient kubeclientpkg.Client, input NewAwsCl
 				input.SecretName, awsCredsSecretAccessKey)
 		}
 
-		awsClient, err := newClient(string(accessKeyID), string(secretAccessKey), input.AwsToken, input.AwsRegion)
+		awsClient, err := newClient(controllerName, string(accessKeyID), string(secretAccessKey), input.AwsToken, input.AwsRegion)
 		if err != nil {
 			return nil, err
 		}
@@ -432,7 +453,7 @@ func (rp *RealBuilder) GetClient(kubeClient kubeclientpkg.Client, input NewAwsCl
 		return nil, fmt.Errorf("getAWSClient: NoAwsCredentials or Secret %v", input)
 	}
 
-	awsClient, err := newClient(input.AwsCredsSecretIDKey, input.AwsCredsSecretAccessKey, input.AwsToken, input.AwsRegion)
+	awsClient, err := newClient(controllerName, input.AwsCredsSecretIDKey, input.AwsCredsSecretAccessKey, input.AwsToken, input.AwsRegion)
 	if err != nil {
 		return nil, err
 	}
@@ -453,7 +474,7 @@ type MockBuilder struct {
 // The returned client is a singleton for any given MockBuilder instance, so you can do e.g.
 //    mp.GetClient(...).EXPECT()...
 // and then when the code uses a client created via GetClient(), it'll be using the same client.
-func (mp *MockBuilder) GetClient(kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error) {
+func (mp *MockBuilder) GetClient(controllerName string, kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error) {
 	if mp.cachedClient == nil {
 		mp.cachedClient = mock.NewMockClient(mp.MockController)
 	}
@@ -466,7 +487,7 @@ func GetMockClient(b Builder) *mock.MockClient {
 	// Make sure this is only called from tests
 	_ = b.(*MockBuilder)
 	// The arguments don't matter. This returns a Client
-	c, _ := b.GetClient(nil, NewAwsClientInput{})
+	c, _ := b.GetClient("", nil, NewAwsClientInput{})
 	// What we want is a MockClient
 	return c.(*mock.MockClient)
 }
