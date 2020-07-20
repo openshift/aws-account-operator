@@ -60,9 +60,6 @@ func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountCla
 			// Update accountclaim spec
 			accountClaim.Spec.AccountOU = OUID
 			return r.specUpdate(reqLogger, accountClaim)
-		case awsv1alpha1.ErrAccMoveRaceCondition:
-			// Simply return the error since we want a requeue
-			return awsv1alpha1.ErrAccMoveRaceCondition
 		}
 		return err
 	}
