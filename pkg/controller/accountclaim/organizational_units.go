@@ -63,9 +63,8 @@ func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountCla
 		case awsv1alpha1.ErrAccMoveRaceCondition:
 			// Simply return the error since we want a requeue
 			return awsv1alpha1.ErrAccMoveRaceCondition
-		default:
-			return err
 		}
+		return err
 	}
 
 	// Log account moved successfully
