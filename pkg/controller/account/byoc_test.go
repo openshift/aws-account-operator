@@ -22,11 +22,12 @@ var _ = Describe("Byoc", func() {
 		mockAWSClient *mock.MockClient
 		policyFake    *iam.AttachedPolicy
 		userARN       string
+		ctrl          *gomock.Controller
 	)
 
 	BeforeEach(func() {
 		nullLogger = testutils.NullLogger{}
-		ctrl := gomock.NewController(GinkgoT())
+		ctrl = gomock.NewController(GinkgoT())
 		mockAWSClient = mock.NewMockClient(ctrl)
 		policyFake = &iam.AttachedPolicy{
 			PolicyArn:  aws.String("arn:aws:iam::123456789012:policy/ManagedPolicyName"),
@@ -35,34 +36,38 @@ var _ = Describe("Byoc", func() {
 		userARN = "arn:aws:iam::123456789012:user/JohnDoe"
 	})
 
+	AfterEach(func() {
+		ctrl.Finish()
+	})
+
 	Context("Testing GetExistingRole", func() {
 		It("Returns the role when role exists", func() {
-			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(&iam.GetRoleOutput{Role: &iam.Role{RoleId: aws.String("AROA1234567890EXAMPLE")}}, nil).AnyTimes()
+			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(&iam.GetRoleOutput{Role: &iam.Role{RoleId: aws.String("AROA1234567890EXAMPLE")}}, nil)
 			_, err := GetExistingRole(nullLogger, "roleName", mockAWSClient)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("Catches the error when role doesn't exist", func() {
-			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(nil, awserr.New(iam.ErrCodeNoSuchEntityException, "Role does not exist", nil)).AnyTimes()
+			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(nil, awserr.New(iam.ErrCodeNoSuchEntityException, "Role does not exist", nil))
 			role, err := GetExistingRole(nullLogger, "roleName", mockAWSClient)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(role).To(BeEquivalentTo(&iam.GetRoleOutput{}))
 		})
 
 		It("Throws error on AWS Service Failure", func() {
-			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(nil, awserr.New(iam.ErrCodeServiceFailureException, "AWS Service Failure", nil)).AnyTimes()
+			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(nil, awserr.New(iam.ErrCodeServiceFailureException, "AWS Service Failure", nil))
 			_, err := GetExistingRole(nullLogger, "roleName", mockAWSClient)
 			Expect(err).To(HaveOccurred())
 		})
 
 		It("Throws error on Unexpected AWS Error", func() {
-			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(nil, awserr.New("ErrorCodeThatDoesntExist", "No such thing", nil)).AnyTimes()
+			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(nil, awserr.New("ErrorCodeThatDoesntExist", "No such thing", nil))
 			_, err := GetExistingRole(nullLogger, "roleName", mockAWSClient)
 			Expect(err).To(HaveOccurred())
 		})
 
 		It("Throws error on non-aws Error", func() {
-			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(nil, errors.New("NonAWSError")).AnyTimes()
+			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(nil, errors.New("NonAWSError"))
 			_, err := GetExistingRole(nullLogger, "roleName", mockAWSClient)
 			Expect(err).To(HaveOccurred())
 		})
@@ -70,13 +75,13 @@ var _ = Describe("Byoc", func() {
 
 	Context("Testing GetAttachedPolicies", func() {
 		It("Throws an error on any AWS error", func() {
-			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(nil, awserr.New("AWSError", "Some AWS Error", nil)).AnyTimes()
+			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(nil, awserr.New("AWSError", "Some AWS Error", nil))
 			_, err := GetAttachedPolicies(nullLogger, "roleName", mockAWSClient)
 			Expect(err).To(HaveOccurred())
 		})
 
 		It("Throws an error on any Non-AWS error", func() {
-			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(nil, errors.New("NonAWSError")).AnyTimes()
+			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(nil, errors.New("NonAWSError"))
 			_, err := GetAttachedPolicies(nullLogger, "roleName", mockAWSClient)
 			Expect(err).To(HaveOccurred())
 		})
@@ -85,7 +90,7 @@ var _ = Describe("Byoc", func() {
 			response := &iam.ListAttachedRolePoliciesOutput{
 				AttachedPolicies: []*iam.AttachedPolicy{policyFake},
 			}
-			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(response, nil).AnyTimes()
+			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(response, nil)
 			policyList, err := GetAttachedPolicies(nullLogger, "roleName", mockAWSClient)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(policyList.AttachedPolicies).To(HaveLen(1))
@@ -94,19 +99,19 @@ var _ = Describe("Byoc", func() {
 
 	Context("Testing DetachPolicyFromRole", func() {
 		It("Works properly without error", func() {
-			mockAWSClient.EXPECT().DetachRolePolicy(gomock.Any()).Return(&iam.DetachRolePolicyOutput{}, nil).AnyTimes()
+			mockAWSClient.EXPECT().DetachRolePolicy(gomock.Any()).Return(&iam.DetachRolePolicyOutput{}, nil)
 			err := DetachPolicyFromRole(nullLogger, policyFake, "roleName", mockAWSClient)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("Throws an error on any AWS error", func() {
-			mockAWSClient.EXPECT().DetachRolePolicy(gomock.Any()).Return(nil, awserr.New("AWSError", "Some AWS Error", nil)).AnyTimes()
+			mockAWSClient.EXPECT().DetachRolePolicy(gomock.Any()).Return(nil, awserr.New("AWSError", "Some AWS Error", nil))
 			err := DetachPolicyFromRole(nullLogger, policyFake, "roleName", mockAWSClient)
 			Expect(err).To(HaveOccurred())
 		})
 
 		It("Throws an error on any Non-AWS error", func() {
-			mockAWSClient.EXPECT().DetachRolePolicy(gomock.Any()).Return(nil, errors.New("NonAWSError")).AnyTimes()
+			mockAWSClient.EXPECT().DetachRolePolicy(gomock.Any()).Return(nil, errors.New("NonAWSError"))
 			err := DetachPolicyFromRole(nullLogger, policyFake, "roleName", mockAWSClient)
 			Expect(err).To(HaveOccurred())
 		})
@@ -114,19 +119,19 @@ var _ = Describe("Byoc", func() {
 
 	Context("Testing DeleteRole", func() {
 		It("Works properly without error", func() {
-			mockAWSClient.EXPECT().DeleteRole(gomock.Any()).Return(&iam.DeleteRoleOutput{}, nil).AnyTimes()
+			mockAWSClient.EXPECT().DeleteRole(gomock.Any()).Return(&iam.DeleteRoleOutput{}, nil)
 			err := DeleteRole(nullLogger, "roleName", mockAWSClient)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("Throws an error on any AWS error", func() {
-			mockAWSClient.EXPECT().DeleteRole(gomock.Any()).Return(nil, awserr.New("AWSError", "Some AWS Error", nil)).AnyTimes()
+			mockAWSClient.EXPECT().DeleteRole(gomock.Any()).Return(nil, awserr.New("AWSError", "Some AWS Error", nil))
 			err := DeleteRole(nullLogger, "roleName", mockAWSClient)
 			Expect(err).To(HaveOccurred())
 		})
 
 		It("Throws an error on any Non-AWS error", func() {
-			mockAWSClient.EXPECT().DeleteRole(gomock.Any()).Return(nil, errors.New("NonAWSError")).AnyTimes()
+			mockAWSClient.EXPECT().DeleteRole(gomock.Any()).Return(nil, errors.New("NonAWSError"))
 			err := DeleteRole(nullLogger, "roleName", mockAWSClient)
 			Expect(err).To(HaveOccurred())
 		})
@@ -134,20 +139,20 @@ var _ = Describe("Byoc", func() {
 
 	Context("Testing CreateRole", func() {
 		It("Works properly without error", func() {
-			mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(&iam.CreateRoleOutput{Role: &iam.Role{RoleId: aws.String("AROA1234567890EXAMPLE")}}, nil).AnyTimes()
+			mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(&iam.CreateRoleOutput{Role: &iam.Role{RoleId: aws.String("AROA1234567890EXAMPLE")}}, nil)
 			roleID, err := CreateRole(nullLogger, "roleName", userARN, mockAWSClient, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(roleID).To(Equal("AROA1234567890EXAMPLE"))
 		})
 
 		It("Throws an error on any AWS error", func() {
-			mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(nil, awserr.New("AWSError", "Some AWS Error", nil)).AnyTimes()
+			mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(nil, awserr.New("AWSError", "Some AWS Error", nil))
 			_, err := CreateRole(nullLogger, "roleName", userARN, mockAWSClient, nil)
 			Expect(err).To(HaveOccurred())
 		})
 
 		It("Throws an error on any Non-AWS error", func() {
-			mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(nil, errors.New("NonAWSError")).AnyTimes()
+			mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(nil, errors.New("NonAWSError"))
 			_, err := CreateRole(nullLogger, "roleName", userARN, mockAWSClient, nil)
 			Expect(err).To(HaveOccurred())
 		})
