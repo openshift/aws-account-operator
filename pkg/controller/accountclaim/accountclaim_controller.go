@@ -274,6 +274,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 	if accountClaim.Status.State == "" {
 		message := "Attempting to claim account"
+		reqLogger.Info(message)
 		accountClaim.Status.State = awsv1alpha1.ClaimStatusPending
 
 		accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
@@ -293,6 +294,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 	listOps := &client.ListOptions{Namespace: awsv1alpha1.AccountCrNamespace}
 	if err = r.client.List(context.TODO(), listOps, accountList); err != nil {
+		reqLogger.Error(err, "Unable to get accountList")
 		return reconcile.Result{}, err
 	}
 

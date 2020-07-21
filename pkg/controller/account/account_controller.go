@@ -457,7 +457,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 // BuildAccount take all parameters required and uses those to make an aws call to CreateAccount. It returns an account ID and and error
 func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account) (string, error) {
-
 	reqLogger.Info("Creating Account")
 
 	email := formatAccountEmail(account.Name)
@@ -582,6 +581,7 @@ func checkAWSAccountsLimitReached(r *ReconcileAccount, reqLogger logr.Logger, cu
 	} else {
 		if limit, ok := instance.Data["account-limit"]; ok {
 			if i, err := strconv.Atoi(limit); err == nil {
+				reqLogger.Info(fmt.Sprintf("Amount of Current Accounts: %d -- Account Limit: %d", currentAccounts, i))
 				return i <= currentAccounts, nil
 			}
 			unexpectedErrorMsg := fmt.Sprintf("Account: Failed to convert ConfigMap 'account-limit' string field to int, account limit defaulting to 100")
