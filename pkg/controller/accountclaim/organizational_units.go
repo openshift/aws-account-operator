@@ -18,7 +18,7 @@ import (
 // MoveAccountToOU takes care of all the logic surrounding moving an account into an OU
 func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
 	// aws client
-	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
+	awsClient, err := r.awsClientBuilder.GetClient(r.client, awsclient.NewAwsClientInput{
 		SecretName: controllerutils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",

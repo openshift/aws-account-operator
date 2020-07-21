@@ -57,8 +57,9 @@ func Add(mgr manager.Manager) error {
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileAWSFederatedAccountAccess{
-		client: utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
-		scheme: mgr.GetScheme(),
+		client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
+		scheme:           mgr.GetScheme(),
+		awsClientBuilder: &awsclient.RealBuilder{},
 	}
 }
 
@@ -86,8 +87,9 @@ var _ reconcile.Reconciler = &ReconcileAWSFederatedAccountAccess{}
 type ReconcileAWSFederatedAccountAccess struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client client.Client
-	scheme *runtime.Scheme
+	client           client.Client
+	scheme           *runtime.Scheme
+	awsClientBuilder awsclient.Builder
 }
 
 // Reconcile reads that state of the cluster for a AWSFederatedAccountAccess object and makes changes based on the state read
@@ -200,7 +202,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	}
 
 	// Get aws client
-	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
+	awsClient, err := r.awsClientBuilder.GetClient(r.client, awsclient.NewAwsClientInput{
 		SecretName: currentFAA.Spec.AWSCustomerCredentialSecret.Name,
 		NameSpace:  currentFAA.Spec.AWSCustomerCredentialSecret.Namespace,
 		AwsRegion:  "us-east-1",
@@ -586,7 +588,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 	roleName := currentFAA.Spec.AWSFederatedRole.Name + "-" + uidLabel
 
 	// Build AWS client from root secret
-	rootAwsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
+	rootAwsClient, err := r.awsClientBuilder.GetClient(r.client, awsclient.NewAwsClientInput{
 		SecretName: "aws-account-operator-credentials",
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
@@ -607,7 +609,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 		return err
 	}
 
-	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
+	awsClient, err := r.awsClientBuilder.GetClient(r.client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *assumeRoleOutput.Credentials.AccessKeyId,
 		AwsCredsSecretAccessKey: *assumeRoleOutput.Credentials.SecretAccessKey,
 		AwsToken:                *assumeRoleOutput.Credentials.SessionToken,

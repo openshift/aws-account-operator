@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
@@ -53,8 +54,9 @@ func Add(mgr manager.Manager) error {
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileAccountClaim{
-		client: utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
-		scheme: mgr.GetScheme(),
+		client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
+		scheme:           mgr.GetScheme(),
+		awsClientBuilder: &awsclient.RealBuilder{},
 	}
 }
 
@@ -89,8 +91,9 @@ var _ reconcile.Reconciler = &ReconcileAccountClaim{}
 type ReconcileAccountClaim struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client client.Client
-	scheme *runtime.Scheme
+	client           client.Client
+	scheme           *runtime.Scheme
+	awsClientBuilder awsclient.Builder
 }
 
 // Reconcile reads that state of the cluster for a AccountClaim object and makes changes based on the state read

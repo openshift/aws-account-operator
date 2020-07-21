@@ -19,6 +19,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/route53/route53iface"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/golang/mock/gomock"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -36,6 +37,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts/stsiface"
 	"github.com/aws/aws-sdk-go/service/support"
 	"github.com/aws/aws-sdk-go/service/support/supportiface"
+	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
@@ -354,8 +356,8 @@ func (c *awsClient) ChangeResourceRecordSets(input *route53.ChangeResourceRecord
 	return c.route53client.ChangeResourceRecordSets(input)
 }
 
-// NewClient creates our client wrapper object for the actual AWS clients we use.
-func NewClient(awsAccessID, awsAccessSecret, token, region string) (Client, error) {
+// newClient creates our client wrapper object for the actual AWS clients we use.
+func newClient(awsAccessID, awsAccessSecret, token, region string) (Client, error) {
 	awsConfig := &aws.Config{Region: aws.String(region)}
 	awsConfig.Credentials = credentials.NewStaticCredentials(
 		awsAccessID, awsAccessSecret, token)
@@ -376,12 +378,21 @@ func NewClient(awsAccessID, awsAccessSecret, token, region string) (Client, erro
 	}, nil
 }
 
-// GetAWSClient generates an awsclient
+// Builder implementations know how to produce a Client.
+type Builder interface {
+	GetClient(kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error)
+}
+
+// RealBuilder is a Builder implementation that knows how to produce a real AWS Client (i.e. one
+// that really talks to the AWS APIs).
+type RealBuilder struct{}
+
+// GetClient generates a real awsclient
 // function must include region
 // Pass in token if sessions requires a token
 // if it includes a secretName and nameSpace it will create credentials from that secret data
 // If it includes awsCredsSecretIDKey and awsCredsSecretAccessKey it will build credentials from those
-func GetAWSClient(kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error) {
+func (rp *RealBuilder) GetClient(kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error) {
 
 	// error if region is not included
 	if input.AwsRegion == "" {
@@ -410,7 +421,7 @@ func GetAWSClient(kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Cli
 				input.SecretName, awsCredsSecretAccessKey)
 		}
 
-		awsClient, err := NewClient(string(accessKeyID), string(secretAccessKey), input.AwsToken, input.AwsRegion)
+		awsClient, err := newClient(string(accessKeyID), string(secretAccessKey), input.AwsToken, input.AwsRegion)
 		if err != nil {
 			return nil, err
 		}
@@ -421,9 +432,41 @@ func GetAWSClient(kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Cli
 		return nil, fmt.Errorf("getAWSClient: NoAwsCredentials or Secret %v", input)
 	}
 
-	awsClient, err := NewClient(input.AwsCredsSecretIDKey, input.AwsCredsSecretAccessKey, input.AwsToken, input.AwsRegion)
+	awsClient, err := newClient(input.AwsCredsSecretIDKey, input.AwsCredsSecretAccessKey, input.AwsToken, input.AwsRegion)
 	if err != nil {
 		return nil, err
 	}
 	return awsClient, nil
+}
+
+// MockBuilder is a Builder implementation that knows how to produce a mocked AWS Client for
+// testing purposes. To facilitate use of the mocks, this Builder's GetClient method always
+// returns the same Client.
+type MockBuilder struct {
+	MockController *gomock.Controller
+	// cachedClient gives this singleton behavior.
+	cachedClient Client
+}
+
+// GetClient generates a mocked AWS client using the embedded MockController.
+// The arguments are ignored, and the error is always nil.
+// The returned client is a singleton for any given MockBuilder instance, so you can do e.g.
+//    mp.GetClient(...).EXPECT()...
+// and then when the code uses a client created via GetClient(), it'll be using the same client.
+func (mp *MockBuilder) GetClient(kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error) {
+	if mp.cachedClient == nil {
+		mp.cachedClient = mock.NewMockClient(mp.MockController)
+	}
+	return mp.cachedClient, nil
+}
+
+// GetMockClient is a convenience method to be called only from tests. It returns the (singleton)
+// mocked AWS Client as a MockClient so it can be EXPECT()ed upon.
+func GetMockClient(b Builder) *mock.MockClient {
+	// Make sure this is only called from tests
+	_ = b.(*MockBuilder)
+	// The arguments don't matter. This returns a Client
+	c, _ := b.GetClient(nil, NewAwsClientInput{})
+	// What we want is a MockClient
+	return c.(*mock.MockClient)
 }
