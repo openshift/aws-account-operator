@@ -581,7 +581,7 @@ func checkAWSAccountsLimitReached(r *ReconcileAccount, reqLogger logr.Logger, cu
 	} else {
 		if limit, ok := instance.Data["account-limit"]; ok {
 			if i, err := strconv.Atoi(limit); err == nil {
-				reqLogger.Info(fmt.Sprintf("Amount of Current Accounts: %d -- Account Limit: %d", currentAccounts, i))
+				reqLogger.Info(fmt.Sprintf("Number of Current Accounts: %d -- Account Limit: %d", currentAccounts, i))
 				return i <= currentAccounts, nil
 			}
 			unexpectedErrorMsg := fmt.Sprintf("Account: Failed to convert ConfigMap 'account-limit' string field to int, account limit defaulting to 100")
