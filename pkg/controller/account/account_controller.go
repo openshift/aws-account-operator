@@ -177,7 +177,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				case "local":
 					log.Info("Running Locally, Skipping Support Case Creation.")
 				default:
-					caseID, err := createCase(reqLogger, currentAcctInstance.Spec.AwsAccountID, awsSetupClient)
+					caseID, err := createCase(reqLogger, currentAcctInstance, awsSetupClient)
 					if err != nil {
 						return reconcile.Result{}, err
 					}

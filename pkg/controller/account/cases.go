@@ -25,10 +25,20 @@ const (
 	intervalBetweenChecksMinutes  = 10
 )
 
-func createCase(reqLogger logr.Logger, accountID string, client awsclient.Client) (string, error) {
+func createCase(reqLogger logr.Logger, account *v1alpha1.Account, client awsclient.Client) (string, error) {
+	accountID := account.Spec.AwsAccountID
+
 	// Initialize basic communication body and case subject
 	caseCommunicationBody := fmt.Sprintf(
-		"Hello AWS,\n\nPlease enable Enterprise Support on AWS account %s.\n\nOnce this has been completed and the default EC2 limits are ready for use, please resolve this support case. Please do not set the case to Pending Customer Action.\n\nThanks.", accountID,
+		`Hello AWS,
+
+Please enable Enterprise Support on AWS account %s.
+
+Once this has been completed and the default EC2 limits are ready for use, please resolve this support case. Please do not set the case to Pending Customer Action.
+
+Thanks.
+
+[rh-internal-account-name: %s]`, accountID, account.Name,
 	)
 
 	caseSubject := fmt.Sprintf("Add account %s to Enterprise Support", accountID)
