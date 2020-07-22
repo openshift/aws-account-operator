@@ -253,6 +253,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 			if !accountHasAwsAccountID(currentAcctInstance) {
 				// before doing anything make sure we are not over the limit if we are just error
+				if totalaccountwatcher.TotalAccountWatcher.Total == 0 {
+					reqLogger.Error(awsv1alpha1.ErrAccountWatcherNoTotal, "AccountWatcher has not run successfully yet")
+					return reconcile.Result{}, awsv1alpha1.ErrAccountWatcherNoTotal
+				}
 				if ok, _ := checkAWSAccountsLimitReached(r, reqLogger, totalaccountwatcher.TotalAccountWatcher.Total); ok {
 					reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached", "Account Total", totalaccountwatcher.TotalAccountWatcher.Total)
 					return reconcile.Result{}, awsv1alpha1.ErrAwsAccountLimitExceeded
