@@ -45,7 +45,8 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileAWSFederatedRole{client: mgr.GetClient(),
+	return &ReconcileAWSFederatedRole{
+		client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: awsclient.NewClient}
 }

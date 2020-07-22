@@ -16,6 +16,10 @@ package localmetrics
 
 import (
 	"context"
+	"net/http"
+	neturl "net/url"
+	"strings"
+
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -48,6 +52,7 @@ type MetricsCollector struct {
 	accountReuseCleanupDuration     prometheus.Histogram
 	accountReuseCleanupFailureCount prometheus.Counter
 	reconcileDuration               *prometheus.HistogramVec
+	apiCallDuration                 *prometheus.HistogramVec
 }
 
 func NewMetricsCollector(store cache.Cache) *MetricsCollector {
@@ -133,6 +138,16 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			ConstLabels: prometheus.Labels{"name": operatorName},
 			Buckets:     []float64{0.001, 0.01, 0.1, 1, 5, 10, 20},
 		}, []string{"controller"}),
+
+		// apiCallDuration times API requests. Histogram also gives us a _count metric for free.
+		apiCallDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:        "aws_account_operator_api_request_duration_seconds",
+			Help:        "Distribution of the number of seconds an API request takes",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+			// We really don't care about quantiles, but omitting Buckets results in defaults.
+			// This minimizes the number of unused data points we store.
+			Buckets: []float64{1},
+		}, []string{"controller", "method", "resource", "status"}),
 	}
 }
 
@@ -151,6 +166,7 @@ func (c *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	c.accountReuseCleanupDuration.Describe(ch)
 	c.accountReuseCleanupFailureCount.Describe(ch)
 	c.reconcileDuration.Describe(ch)
+	c.apiCallDuration.Describe(ch)
 }
 
 // Collect implements the prometheus.Collector interface.
@@ -169,6 +185,7 @@ func (c *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.accountReuseCleanupDuration.Collect(ch)
 	c.accountReuseCleanupFailureCount.Collect(ch)
 	c.reconcileDuration.Collect(ch)
+	c.apiCallDuration.Collect(ch)
 }
 
 // collect will cleanup the gauge metrics first, then getting all the
@@ -268,4 +285,76 @@ func (c *MetricsCollector) AddAccountReuseCleanupFailure() {
 
 func (c *MetricsCollector) SetReconcileDuration(controller string, duration float64) {
 	c.reconcileDuration.WithLabelValues(controller).Observe(duration)
+}
+
+// AddAPICall observes metrics for a call to an external API
+// - param controller: The name of the controller making the API call
+// - param req: The HTTP Request structure
+// - param resp: The HTTP Response structure
+// - param duration: The number of seconds the call took.
+func (c *MetricsCollector) AddAPICall(controller string, req *http.Request, resp *http.Response, duration float64) {
+	c.apiCallDuration.With(prometheus.Labels{
+		"controller": controller,
+		"method":     req.Method,
+		"resource":   resourceFrom(req.URL),
+		"status":     resp.Status,
+	}).Observe(duration)
+}
+
+// resourceFrom normalizes an API request URL, including removing individual namespace and
+// resource names, to yield a string of the form:
+//     $group/$version/$kind[/{NAME}[/...]]
+// or
+//     $group/$version/namespaces/{NAMESPACE}/$kind[/{NAME}[/...]]
+// ...where $foo is variable, {FOO} is actually {FOO}, and [foo] is optional.
+// This is so we can use it as a dimension for the apiCallCount metric, without ending up
+// with separate labels for each {namespace x name}.
+func resourceFrom(url *neturl.URL) (resource string) {
+	defer func() {
+		// If we can't parse, return a general bucket. This includes paths that don't start with
+		// /api or /apis.
+		if r := recover(); r != nil {
+			// TODO(efried): Should we be logging these? I guess if we start to see a lot of them...
+			resource = "{OTHER}"
+		}
+	}()
+
+	tokens := strings.Split(url.Path[1:], "/")
+
+	// First normalize to $group/$version/...
+	switch tokens[0] {
+	case "api":
+		// Core resources: /api/$version/...
+		// => core/$version/...
+		tokens[0] = "core"
+	case "apis":
+		// Extensions: /apis/$group/$version/...
+		// => $group/$version/...
+		tokens = tokens[1:]
+	default:
+		// Something else. Punt.
+		panic(1)
+	}
+
+	// Single resource, non-namespaced (including a namespace itself): $group/$version/$kind/$name
+	if len(tokens) == 4 {
+		// Factor out the resource name
+		tokens[3] = "{NAME}"
+	}
+
+	// Kind or single resource, namespaced: $group/$version/namespaces/$nsname/$kind[/$name[/...]]
+	if len(tokens) > 4 && tokens[2] == "namespaces" {
+		// Factor out the namespace name
+		tokens[3] = "{NAMESPACE}"
+
+		// Single resource, namespaced: $group/$version/namespaces/$nsname/$kind/$name[/...]
+		if len(tokens) > 5 {
+			// Factor out the resource name
+			tokens[5] = "{NAME}"
+		}
+	}
+
+	resource = strings.Join(tokens, "/")
+
+	return
 }
