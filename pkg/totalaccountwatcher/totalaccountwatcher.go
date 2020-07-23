@@ -1,12 +1,11 @@
 package totalaccountwatcher
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
-
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/organizations"
@@ -15,6 +14,10 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
 // ErrAwsAccountLimitExceeded indicates the organization account limit has been reached.
@@ -26,10 +29,11 @@ var TotalAccountWatcher *totalAccountWatcher
 var log = logf.Log.WithName("aws-account-operator")
 
 type totalAccountWatcher struct {
-	watchInterval time.Duration
-	AwsClient     awsclient.Client
-	client        client.Client
-	Total         int
+	watchInterval        time.Duration
+	AwsClient            awsclient.Client
+	client               client.Client
+	Total                int
+	AccountsCanBeCreated bool
 }
 
 // Initialize creates a global instance of the TotalAccountWatcher
@@ -65,6 +69,8 @@ func NewTotalAccountWatcher(
 		watchInterval: watchInterval,
 		AwsClient:     AwsClient,
 		client:        client,
+		// Initialize this to be false by default
+		AccountsCanBeCreated: false,
 	}
 }
 
@@ -92,7 +98,9 @@ func (s *totalAccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 	accountTotal, err := TotalAwsAccounts()
 	if err != nil {
 		log.Error(err, "Failed to get account list with error code")
-		return nil
+		// Stop account creation while we can't talk to AWS
+		TotalAccountWatcher.AccountsCanBeCreated = false
+		return err
 	}
 	localmetrics.Collector.SetTotalAWSAccounts(accountTotal)
 
@@ -101,6 +109,15 @@ func (s *totalAccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 		TotalAccountWatcher.Total = accountTotal
 	}
 
+	// AccountsCanBeCreated is a bool that returns the opposite of accountLimitReached.
+	// If the account limit is reached, we do NOT want to create accounts.  However, if the
+	// account limit has NOT been reached, then account creation can happen.
+	limitReached, err := accountLimitReached(s.client, log, accountTotal)
+	if err != nil {
+		TotalAccountWatcher.AccountsCanBeCreated = false
+		return err
+	}
+	TotalAccountWatcher.AccountsCanBeCreated = (!limitReached)
 	return nil
 }
 
@@ -129,4 +146,35 @@ func TotalAwsAccounts() (int, error) {
 	}
 
 	return accountTotal, nil
+}
+
+// accountLimitReached returns True if our account limit is reached or False if the account limit is not reached and we can create accounts.
+func accountLimitReached(kubeClient client.Client, log logr.Logger, currentAccounts int) (bool, error) {
+	limit, err := getAwsAccountLimit(kubeClient)
+	if err != nil {
+		log.Error(err, "There was an error getting the limits.  Using the default value.")
+		return true, err
+	}
+	return currentAccounts >= limit, err
+}
+
+// getAwsAccountLimit gets the limit from the ConfigMap or on error returns a default value.
+func getAwsAccountLimit(kubeClient client.Client) (int, error) {
+	configMap := &corev1.ConfigMap{}
+	err := kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, configMap)
+	if err != nil {
+		return -1, err
+	}
+
+	limitStr, ok := configMap.Data["account-limit"]
+	if !ok {
+		return -1, awsv1alpha1.ErrInvalidConfigMap
+	}
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		return -1, err
+	}
+
+	return limit, nil
 }
