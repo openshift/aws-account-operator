@@ -22,6 +22,8 @@ import (
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 
+	"github.com/openshift/operator-custom-metrics/pkg/wrappers"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -51,7 +53,7 @@ type MetricsCollector struct {
 	ccsAccountClaimReadyDuration    prometheus.Histogram
 	accountReuseCleanupDuration     prometheus.Histogram
 	accountReuseCleanupFailureCount prometheus.Counter
-	reconcileDuration               *prometheus.HistogramVec
+	ReconcileDuration               *prometheus.HistogramVec
 	apiCallDuration                 *prometheus.HistogramVec
 }
 
@@ -132,12 +134,7 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Help:        "Number of account reuse cleanup failures",
 			ConstLabels: prometheus.Labels{"name": operatorName},
 		}),
-		reconcileDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:        "aws_account_operator_reconcile_duration_seconds",
-			Help:        "Distribution of the number of seconds a Reconcile takes, broken down by controller",
-			ConstLabels: prometheus.Labels{"name": operatorName},
-			Buckets:     []float64{0.001, 0.01, 0.1, 1, 5, 10, 20},
-		}, []string{"controller"}),
+		ReconcileDuration: wrappers.NewReconcileTimer(operatorName),
 
 		// apiCallDuration times API requests. Histogram also gives us a _count metric for free.
 		apiCallDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -165,7 +162,7 @@ func (c *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	c.ccsAccountClaimReadyDuration.Describe(ch)
 	c.accountReuseCleanupDuration.Describe(ch)
 	c.accountReuseCleanupFailureCount.Describe(ch)
-	c.reconcileDuration.Describe(ch)
+	c.ReconcileDuration.Describe(ch)
 	c.apiCallDuration.Describe(ch)
 }
 
@@ -184,7 +181,7 @@ func (c *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.ccsAccountClaimReadyDuration.Collect(ch)
 	c.accountReuseCleanupDuration.Collect(ch)
 	c.accountReuseCleanupFailureCount.Collect(ch)
-	c.reconcileDuration.Collect(ch)
+	c.ReconcileDuration.Collect(ch)
 	c.apiCallDuration.Collect(ch)
 }
 
@@ -281,10 +278,6 @@ func (c *MetricsCollector) SetAccountReusedCleanupDuration(duration float64) {
 
 func (c *MetricsCollector) AddAccountReuseCleanupFailure() {
 	c.accountReuseCleanupFailureCount.Inc()
-}
-
-func (c *MetricsCollector) SetReconcileDuration(controller string, duration float64) {
-	c.reconcileDuration.WithLabelValues(controller).Observe(duration)
 }
 
 // AddAPICall observes metrics for a call to an external API
