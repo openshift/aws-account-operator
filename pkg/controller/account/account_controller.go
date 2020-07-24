@@ -104,10 +104,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 var _ reconcile.Reconciler = &ReconcileAccount{}
 
 // ReconcileAccount reconciles a Account object
-type reconcileAccount struct {
-	wrappers.TimedReconciler
-}
-
 type ReconcileAccount struct {
 	Client           kubeclientpkg.Client
 	scheme           *runtime.Scheme
