@@ -174,9 +174,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			// If the supportCaseID is blank and Account State = PendingVerification, create a case
 			if !accountHasSupportCaseID(currentAcctInstance) {
 				switch utils.DetectDevMode {
-				case "local":
-					log.Info("Running Locally, Skipping Support Case Creation.")
-				default:
+				case utils.DevModeProduction:
 					caseID, err := createCase(reqLogger, currentAcctInstance, awsSetupClient)
 					if err != nil {
 						return reconcile.Result{}, err
@@ -198,22 +196,24 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 					// This will requeue verification for between 30 and 60 (30+30) seconds, depending on the account
 					return reconcile.Result{RequeueAfter: time.Duration(intervalAfterCaseCreationSecs+randomInterval) * time.Second}, nil
+				default:
+					log.Info("Running in development mode, Skipping Support Case Creation.")
 				}
 			}
 
 			var resolved bool
 
 			switch utils.DetectDevMode {
-			case "local":
-				log.Info("Running Locally, Skipping case resolution check")
-				resolved = true
-			default:
+			case utils.DevModeProduction:
 				resolvedScoped, err := checkCaseResolution(reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
 				if err != nil {
 					reqLogger.Error(err, "Error checking for Case Resolution")
 					return reconcile.Result{}, err
 				}
 				resolved = resolvedScoped
+			default:
+				log.Info("Running in development mode, Skipping case resolution check")
+				resolved = true
 			}
 
 			// Case Resolved, account is Ready
@@ -268,9 +268,8 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				SetAccountStatus(reqLogger, currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, AccountCreating)
 				err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 
-				switch utils.DetectDevMode {
-				case "local":
-					log.Info("Running Locally, manually creating a case ID number: 11111111")
+				if utils.DetectDevMode != utils.DevModeProduction {
+					log.Info("Running in development mode, manually creating a case ID number: 11111111")
 					currentAcctInstance.Status.SupportCaseID = "11111111"
 				}
 

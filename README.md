@@ -9,9 +9,10 @@
     - [1.2. Requirements](#12-requirements)
     - [1.3. Workflow](#13-workflow)
     - [1.4. Testing your AWS account credentials with the CLI](#14-testing-your-aws-account-credentials-with-the-cli)
-    - [1.5. Local Development](#15-local-development)
+    - [1.5. Development](#15-development)
     - [1.5.1 Operator Install](#151-operator-install)
-    - [1.5.2 Running the Operator and Local Development Mode](#152-running-the-operator-and-local-development-mode)
+      - [1.5.1.1 Local Mode](#1511-local-mode)
+      - [1.5.1.2 Cluster Mode](#1512-cluster-mode)
   - [2. The Custom Resources](#2-the-custom-resources)
     - [2.1. AccountPool CR](#21-accountpool-cr)
     - [2.2. Account CR](#22-account-cr)
@@ -128,26 +129,65 @@ The below commands can be used to test payer account credentials where we create
 2. `aws organizations list-accounts --profile=orgtest | jq '.[][] | select(.Name=="username-cli-test")'`
 3. `aws sts assume-role --role-arn arn:aws:iam::<ID>:role/OrganizationAccountAccessRole --role-session-name username-cli-test --profile=orgtest`
 
-### 1.5. Local Development
+### 1.5. Development
+
+It is recommended to let the operator know when you're running it for testing purposes.
+This has benefits such as skipping AWS support case creation.
+This is done by setting `FORCE_DEV_MODE` in the operator's environment.
+This is handled for you if you use one of the `make deploy-*` targets described below.
 
 ### 1.5.1 Operator Install
 
-The operator can be installed locally on a Minishift or Code-Ready-Containers (CRC) cluster (or a private OpenShift cluster).  On a new local cluster, running the Makefile `deploy` target (passing the Access Key ID and Secret Access Key) will install the operator, and create all the necessary OpenShift CRDs and secrets for it to work locally.
+The operator can be installed into various cluster and pseudo-cluster environments. Depending which you choose, you can run in "local" mode or in "cluster" mode. The former is known to work in a Minishift or Code-Ready-Containers (CRC) cluster, or a private OpenShift cluster. The latter is known to work in a real OSD cluster. You can try to mix and match; it might work.
 
-You must be logged into the cluster as an administrator, or otherwise have permissions to create namespaces and deploy CRDs.  For Minishift, this can be done:
+Both modes share predeployment steps. These can be done via `make predeploy`, which requires your access key credentials. You must be logged into the cluster as an administrator, or otherwise have permissions to create namespaces and deploy CRDs. For Minishift, this can be done:
 
 ```sh
 oc login -u system:admin
-OPERATOR_ACCESS_KEY_ID="YOUR_ACCESS_KEY_ID" OPERATOR_SECRET_ACCESS_KEY="YOUR_SECRET_ACCESS_KEY" make deploy
+OPERATOR_ACCESS_KEY_ID="YOUR_ACCESS_KEY_ID" OPERATOR_SECRET_ACCESS_KEY="YOUR_SECRET_ACCESS_KEY" make predeploy
 ```
 
-This only needs to be done once for an individual local cluster.
+This does the following:
+- Ensures existence of the namespace in which the operator will run.
+- Installs the [credentials described above](#12-requirements).
+- Installs the operator's [Custom Resource Definitions](deploy/crds).
+- Creates an initially zero-size [accountpool CR](hack/files/aws_v1alpha1_zero_size_accountpool.yaml).
 
-### 1.5.2 Running the Operator and Local Development Mode
+Predeployment only needs to be done once, unless you are modifying the above artifacts.
 
-When developing locally using operator-sdk you may not have a metrics service running and other stages of the code may not want to be run.  We have introduced the ability to set the environment variable `FORCE_DEV_MODE` to account for these edge cases. Set the dev mode to `local` when running locally.
+#### 1.5.1.1 Local Mode
 
-ex: `FORCE_DEV_MODE=local operator-sdk up local --namespace=aws-account-operator`
+"Local" development mode differs from production in the following ways:
+- AWS support case management is skipped. Your Accounts will get an artificial case number.
+- Metrics are served from your local system at http://localhost:8080/metrics
+
+On a local cluster, after [predeploying](#151-operator-install), running
+
+```sh
+make deploy-local
+```
+
+will invoke the `operator-sdk` executable in `local` mode with the `FORCE_DEV_MODE=local` environment variable.
+(**Note:** This currently relies on `operator-sdk` at version 0.5.0. The syntax of the executable has changed over time, so this `make` target may not work with other versions.)
+
+#### 1.5.1.2 Cluster Mode
+
+In "cluster" development mode, as in local mode, AWS support case management is skipped.
+However, metrics are served from within the cluster just as they are in a production deployment.
+
+Once logged into the cluster, after [predeploying](#151-operator-install), running
+
+```sh
+make deploy-cluster
+```
+
+will do the following:
+- Create the necessary service accounts, cluster roles, and cluster role bindings.
+- Create the operator Deployment, including `FORCE_DEV_MODE=cluster` in the environment of the operator's container.
+
+**Note:** `make deploy-cluster` will deploy the development image created by the `make build` target. As you iterate, you will need to `make build` and `make push` each time before you `make deploy-cluster`.
+
+As with local mode, you must be logged into the cluster as an administrator, or otherwise have permissions to create namespaces and deploy CRDs.
 
 ## 2. The Custom Resources
 

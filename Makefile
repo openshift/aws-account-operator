@@ -279,8 +279,8 @@ deploy-aws-account-operator-credentials:
 	$(eval ID=$(shell echo -n ${OPERATOR_ACCESS_KEY_ID} | base64 ))
 	$(eval KEY=$(shell echo -n ${OPERATOR_SECRET_ACCESS_KEY} | base64))
 
-.PHONY: deploy-aws-account-operator
-deploy-aws-account-operator:
+.PHONY: predeploy-aws-account-operator
+predeploy-aws-account-operator:
 # Create aws-account-operator namespace
 	@oc get namespace ${NAMESPACE} || oc new-project ${NAMESPACE}
 # Create the aws-account-operator-credentials secret
@@ -290,8 +290,24 @@ deploy-aws-account-operator:
 # Create zero size account pool
 	@oc apply -f hack/files/aws_v1alpha1_zero_size_accountpool.yaml
 
-.PHONY: deploy
-deploy: check-aws-credentials deploy-aws-account-operator-credentials deploy-aws-account-operator
+.PHONY: predeploy
+predeploy: check-aws-credentials deploy-aws-account-operator-credentials predeploy-aws-account-operator
+
+.PHONY: deploy-local
+deploy-local: FORCE_DEV_MODE?=local
+deploy-local:
+	@operator-sdk up local --namespace=$(OPERATOR_NAMESPACE)
+
+.PHONY: deploy-cluster
+deploy-cluster: FORCE_DEV_MODE?=cluster
+deploy-cluster: isclean
+# Deploy things like service account, roles, etc.
+# TODO(efried): Filtering out operator.yaml here is icky, but necessary so we can do the substitutions.
+#               Revisit when templating mentioned below is done.
+	@ls deploy/*.yaml | grep -v operator.yaml | xargs -L1 oc apply -f
+# Deploy the operator resource, using our dev image and the appropriate (or requested) dev mode
+# TODO(efried): template this, but without having to maintain an almost-copy of operator.yaml
+	@hack/scripts/edit_operator_yaml_for_dev.py $(OPERATOR_IMAGE_URI) "$(FORCE_DEV_MODE)" | oc apply -f -
 
 .PHONY: .check-aws-credentials
 check-aws-credentials:
