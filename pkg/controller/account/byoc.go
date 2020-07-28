@@ -16,7 +16,7 @@ import (
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
 
 const (
@@ -84,6 +84,7 @@ func (r *ReconcileAccount) initializeNewBYOCAccount(reqLogger logr.Logger, curre
 	if !accountHasState(currentAcctInstance) {
 		tags := awsclient.AWSTags.BuildTags(currentAcctInstance).GetIAMTags()
 		roleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn, currentAccInstanceID, tags)
+
 		if err != nil {
 			r.accountClaimBYOCError(reqLogger, accountClaim, err)
 			return "", err
@@ -141,17 +142,21 @@ func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.C
 
 	// Create the base role
 	roleID, croleErr := CreateRole(reqLogger, byocInstanceIDRole, principalARN, byocAWSClient, tags)
-	if err != nil {
+	if croleErr != nil {
 		return roleID, croleErr
 	}
-	reqLogger.Info(fmt.Sprintf("New RoleID: %s", roleID))
+	reqLogger.Info(fmt.Sprintf("New RoleID created: %s", roleID))
 
 	reqLogger.Info(fmt.Sprintf("Attaching policy %s to role %s", policyArn, byocInstanceIDRole))
 	// Attach the specified policy to the BYOC role
-	_, err = byocAWSClient.AttachRolePolicy(&iam.AttachRolePolicyInput{
+	_, attachErr := byocAWSClient.AttachRolePolicy(&iam.AttachRolePolicyInput{
 		RoleName:  aws.String(byocInstanceIDRole),
 		PolicyArn: aws.String(policyArn),
 	})
+
+	if attachErr != nil {
+		return roleID, attachErr
+	}
 
 	reqLogger.Info(fmt.Sprintf("Checking if policy %s has been attached", policyArn))
 
@@ -198,10 +203,10 @@ func CreateRole(reqLogger logr.Logger, byocRole string, principalARN string, byo
 
 	reqLogger.Info(fmt.Sprintf("Creating role: %s", byocRole))
 	createRoleOutput, err := byocAWSClient.CreateRole(&iam.CreateRoleInput{
+		Tags:                     tags,
 		RoleName:                 aws.String(byocRole),
 		Description:              aws.String("AdminAccess for BYOC"),
 		AssumeRolePolicyDocument: aws.String(string(jsonAssumeRolePolicyDoc)),
-		Tags: tags,
 	})
 	if err != nil {
 		return "", err
@@ -344,15 +349,14 @@ func (r *ReconcileAccount) getBYOCClient(currentAcct *awsv1alpha1.Account) (awsc
 }
 
 func (r *ReconcileAccount) accountClaimBYOCError(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, claimError error) {
-
-	message := fmt.Sprintf("BYOC Account Failed: %+v", claimError)
-	accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
+	message := fmt.Sprintf("CCS Account Failed: %+v", claimError)
+	accountClaim.Status.Conditions = utils.SetAccountClaimCondition(
 		accountClaim.Status.Conditions,
 		awsv1alpha1.AccountClaimed,
 		corev1.ConditionTrue,
 		"AccountFailed",
 		message,
-		controllerutils.UpdateConditionNever,
+		utils.UpdateConditionIfReasonOrMessageChange,
 		accountClaim.Spec.BYOCAWSAccountID != "",
 	)
 	accountClaim.Status.State = awsv1alpha1.ClaimStatusError
