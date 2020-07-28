@@ -30,10 +30,10 @@ var log = logf.Log.WithName("aws-account-operator")
 
 type totalAccountWatcher struct {
 	watchInterval        time.Duration
-	AwsClient            awsclient.Client
+	awsClient            awsclient.Client
 	client               client.Client
-	Total                int
-	AccountsCanBeCreated bool
+	total                int
+	accountsCanBeCreated bool
 }
 
 // Initialize creates a global instance of the TotalAccountWatcher
@@ -44,7 +44,7 @@ func Initialize(client client.Client, watchInterval time.Duration) {
 	// IBuilder in their struct and uses it to GetClient() dynamically as needed. This one grabs a
 	// single client one time and stores it in a global.
 	builder := &awsclient.Builder{}
-	AwsClient, err := builder.GetClient("", client, awsclient.NewAwsClientInput{
+	awsClient, err := builder.GetClient("", client, awsclient.NewAwsClientInput{
 		SecretName: controllerutils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
@@ -55,22 +55,22 @@ func Initialize(client client.Client, watchInterval time.Duration) {
 		return
 	}
 
-	TotalAccountWatcher = NewTotalAccountWatcher(client, AwsClient, watchInterval)
+	TotalAccountWatcher = NewTotalAccountWatcher(client, awsClient, watchInterval)
 	TotalAccountWatcher.UpdateTotalAccounts(log)
 }
 
 // NewTotalAccountWatcher returns a new instance of the TotalAccountWatcher interface
 func NewTotalAccountWatcher(
 	client client.Client,
-	AwsClient awsclient.Client,
+	awsClient awsclient.Client,
 	watchInterval time.Duration,
 ) *totalAccountWatcher {
 	return &totalAccountWatcher{
 		watchInterval: watchInterval,
-		AwsClient:     AwsClient,
+		awsClient:     awsClient,
 		client:        client,
 		// Initialize this to be false by default
-		AccountsCanBeCreated: false,
+		accountsCanBeCreated: false,
 	}
 }
 
@@ -95,18 +95,18 @@ func (s *totalAccountWatcher) Start(log logr.Logger, stopCh <-chan struct{}) {
 // UpdateTotalAccounts will update the TotalAccountWatcher's total field
 func (s *totalAccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 
-	accountTotal, err := TotalAwsAccounts()
+	accountTotal, err := s.getTotalAwsAccounts()
 	if err != nil {
 		log.Error(err, "Failed to get account list with error code")
 		// Stop account creation while we can't talk to AWS
-		TotalAccountWatcher.AccountsCanBeCreated = false
+		s.accountsCanBeCreated = false
 		return err
 	}
 	localmetrics.Collector.SetTotalAWSAccounts(accountTotal)
 
-	if accountTotal != TotalAccountWatcher.Total {
-		log.Info(fmt.Sprintf("Updating total from %d to %d", TotalAccountWatcher.Total, accountTotal))
-		TotalAccountWatcher.Total = accountTotal
+	if accountTotal != s.total {
+		log.Info(fmt.Sprintf("Updating total from %d to %d", s.total, accountTotal))
+		s.total = accountTotal
 	}
 
 	// AccountsCanBeCreated is a bool that returns the opposite of accountLimitReached.
@@ -114,27 +114,27 @@ func (s *totalAccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 	// account limit has NOT been reached, then account creation can happen.
 	limitReached, err := accountLimitReached(s.client, log, accountTotal)
 	if err != nil {
-		TotalAccountWatcher.AccountsCanBeCreated = false
+		s.accountsCanBeCreated = false
 		return err
 	}
-	TotalAccountWatcher.AccountsCanBeCreated = (!limitReached)
+	s.accountsCanBeCreated = (!limitReached)
 	return nil
 }
 
 // TotalAwsAccounts returns the total number of aws accounts in the aws org
-func TotalAwsAccounts() (int, error) {
+func (s *totalAccountWatcher) getTotalAwsAccounts() (int, error) {
 	var nextToken *string
 
 	accountTotal := 0
 	// Ensure we paginate through the account list
 	for {
-		awsAccountList, err := TotalAccountWatcher.AwsClient.ListAccounts(&organizations.ListAccountsInput{NextToken: nextToken})
+		awsAccountList, err := s.awsClient.ListAccounts(&organizations.ListAccountsInput{NextToken: nextToken})
 		if err != nil {
 			errMsg := "Error getting a list of accounts"
 			if aerr, ok := err.(awserr.Error); ok {
 				errMsg = aerr.Message()
 			}
-			return TotalAccountWatcher.Total, errors.New(errMsg)
+			return s.total, errors.New(errMsg)
 		}
 		accountTotal += len(awsAccountList.Accounts)
 
@@ -146,6 +146,11 @@ func TotalAwsAccounts() (int, error) {
 	}
 
 	return accountTotal, nil
+}
+
+// AccountsCanBeCreated returns whether we can create accounts or not
+func (s *totalAccountWatcher) AccountsCanBeCreated() bool {
+	return s.accountsCanBeCreated
 }
 
 // accountLimitReached returns True if our account limit is reached or False if the account limit is not reached and we can create accounts.

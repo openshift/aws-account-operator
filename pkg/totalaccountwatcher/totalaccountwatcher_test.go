@@ -48,9 +48,9 @@ func TestAccountWatcherCreation(t *testing.T) {
 		defer mocks.mockCtrl.Finish()
 
 		totalAccountWatcher := NewTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
-		totalAccountWatcher.AwsClient = mocks.mockAWSClient
+		totalAccountWatcher.awsClient = mocks.mockAWSClient
 
-		if totalAccountWatcher.AccountsCanBeCreated {
+		if totalAccountWatcher.AccountsCanBeCreated() {
 			t.Error("Account Should Not be able to be created by default")
 		}
 	})
@@ -136,7 +136,7 @@ func TestTotalAwsAccounts(t *testing.T) {
 
 			// Act
 			TotalAccountWatcher = NewTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
-			total, err := TotalAwsAccounts()
+			total, err := TotalAccountWatcher.getTotalAwsAccounts()
 
 			// Assert
 			if test.errorExpected {
@@ -369,7 +369,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				defer mocks.mockCtrl.Finish()
 
 				TotalAccountWatcher = NewTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
-				TotalAccountWatcher.AwsClient = mocks.mockAWSClient
+				TotalAccountWatcher.awsClient = mocks.mockAWSClient
 				err := TotalAccountWatcher.UpdateTotalAccounts(nullLogger)
 
 				if test.expectErr && err == nil {
@@ -378,9 +378,9 @@ func TestTotalAccountsUpdate(t *testing.T) {
 					)
 				}
 
-				if TotalAccountWatcher.AccountsCanBeCreated != test.expected {
+				if TotalAccountWatcher.AccountsCanBeCreated() != test.expected {
 					t.Error(
-						"got:", TotalAccountWatcher.AccountsCanBeCreated,
+						"got:", TotalAccountWatcher.AccountsCanBeCreated(),
 						"expected:", test.expected,
 					)
 				}
