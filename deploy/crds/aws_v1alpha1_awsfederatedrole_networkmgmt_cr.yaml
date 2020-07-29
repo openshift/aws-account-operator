@@ -101,7 +101,6 @@ spec:
           - "arn:aws:ec2:*:*:vpc/*"
           - "arn:aws:ec2:*:*:transit-gateway-attachment/*"
 
-
       # START Targeted Statements
       # AWS VPN
       - effect: Allow
@@ -120,6 +119,16 @@ spec:
           - "ec2:DisableVgwRoutePropagation"
         resource: 
           - "*"
+      # AWS VPC Peering
+      - effect: Allow
+        action:
+          - "ec2:CreateRoute"
+          - "ec2:CreateVpcPeeringConnection"
+          - "ec2:DeleteRoute"
+          - "ec2:DeleteVpcPeeringConnection"
+        resource:
+          - "*"
+      # AWS TAGS
       - effect: Allow
         action:
           - "ec2:CreateTags"
@@ -128,7 +137,7 @@ spec:
           - "arn:aws:ec2:*:*:customer-gateway/*"
           - "arn:aws:ec2:*:*:vpn-gateway/*"
           - "arn:aws:ec2:*:*:vpn-connection/*"
-
+          - "arn:aws:ec2:*:*:vpc-peering-connection/*"
 
   # list of  AWS managed
   awsManagedPolicies:
