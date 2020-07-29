@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/golang/mock/gomock"
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
@@ -27,13 +29,14 @@ var _ = Describe("AccountClaim", func() {
 		namespace    = "myAccountClaimNamespace"
 		accountClaim *awsv1alpha1.AccountClaim
 		r            *ReconcileAccountClaim
-		fakeClient   client.Client
+		ctrl         *gomock.Controller
 	)
 
 	apis.AddToScheme(scheme.Scheme)
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
 
 	BeforeEach(func() {
+		ctrl = gomock.NewController(GinkgoT())
 		region := awsv1alpha1.AwsRegions{
 			Name: "us-east-1",
 		}
@@ -53,22 +56,27 @@ var _ = Describe("AccountClaim", func() {
 				},
 			},
 		}
+
+		// Create the reconciler with a mocking AWS client Builder.
+		r = &ReconcileAccountClaim{
+			// Test cases need to set fakeClient.
+			scheme: scheme.Scheme,
+			awsClientBuilder: &awsclient.MockBuilder{
+				MockController: ctrl,
+			},
+		}
 	})
 
-	JustBeforeEach(func() {
-		// Objects to track in the fake client.
-		objs := []runtime.Object{accountClaim}
-		fakeClient = fake.NewFakeClient(objs...)
+	AfterEach(func() {
+		ctrl.Finish()
 	})
 
 	Context("Reconcile", func() {
 		It("should reconcile correctly", func() {
-			r = &ReconcileAccountClaim{
-				client: fakeClient,
-				scheme: scheme.Scheme,
-				// TODO(efried): Mock this!
-				awsClientBuilder: &awsclient.RealBuilder{},
-			}
+			// Objects to track in the fake client.
+			objs := []runtime.Object{accountClaim}
+			r.client = fake.NewFakeClient(objs...)
+
 			req := reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      name,
@@ -80,7 +88,7 @@ var _ = Describe("AccountClaim", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			ac := awsv1alpha1.AccountClaim{}
-			err = fakeClient.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+			err = r.client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ac.Spec).To(Equal(accountClaim.Spec))
 		})
@@ -103,16 +111,9 @@ var _ = Describe("AccountClaim", func() {
 			}
 
 			objs := []runtime.Object{accountClaim, account}
-			fakeClient = fake.NewFakeClient(objs...)
-			cl := &possiblyErroringFakeCtrlRuntimeClient{
-				fakeClient,
+			r.client = &possiblyErroringFakeCtrlRuntimeClient{
+				fake.NewFakeClient(objs...),
 				true,
-			}
-			r = &ReconcileAccountClaim{
-				client: cl,
-				scheme: scheme.Scheme,
-				// TODO(efried): Mock this!
-				awsClientBuilder: &awsclient.RealBuilder{},
 			}
 			req := reconcile.Request{
 				NamespacedName: types.NamespacedName{
@@ -120,6 +121,17 @@ var _ = Describe("AccountClaim", func() {
 					Namespace: namespace,
 				},
 			}
+
+			// TODO: As written, this is just triggering error paths for each of the cleanup
+			//       funcs, proving that errors in those cleanups don't propagate up to Reconcile.
+			//       Once that's fixed, these will need to be changed to do more realistic things.
+			mockAWSClient := awsclient.GetMockClient(r.awsClientBuilder)
+			// Use a bogus error, just so we can fail AWS calls.
+			theErr := awserr.NewBatchError("foo", "bar", []error{})
+			mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(nil, theErr)
+			mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(nil, theErr)
+			mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any()).Return(nil, theErr)
+			mockAWSClient.EXPECT().DescribeVolumes(gomock.Any()).Return(nil, theErr)
 
 			_, err := r.Reconcile(req)
 
