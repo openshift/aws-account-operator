@@ -6,6 +6,7 @@ import (
 
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/test/fixtures"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -62,7 +63,12 @@ var _ = Describe("AccountClaim", func() {
 
 	Context("Reconcile", func() {
 		It("should reconcile correctly", func() {
-			r = &ReconcileAccountClaim{client: fakeClient, scheme: scheme.Scheme}
+			r = &ReconcileAccountClaim{
+				client: fakeClient,
+				scheme: scheme.Scheme,
+				// TODO(efried): Mock this!
+				awsClientBuilder: &awsclient.RealBuilder{},
+			}
 			req := reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      name,
@@ -102,7 +108,12 @@ var _ = Describe("AccountClaim", func() {
 				fakeClient,
 				true,
 			}
-			r = &ReconcileAccountClaim{client: cl, scheme: scheme.Scheme}
+			r = &ReconcileAccountClaim{
+				client: cl,
+				scheme: scheme.Scheme,
+				// TODO(efried): Mock this!
+				awsClientBuilder: &awsclient.RealBuilder{},
+			}
 			req := reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      name,

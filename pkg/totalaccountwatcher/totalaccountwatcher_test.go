@@ -114,7 +114,6 @@ func TestTotalAwsAccounts(t *testing.T) {
 
 			// Act
 			TotalAccountWatcher = NewTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
-			TotalAccountWatcher.AwsClient = mocks.mockAWSClient
 			total, err := TotalAwsAccounts()
 
 			// Assert

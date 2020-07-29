@@ -48,7 +48,8 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileAWSFederatedRole{
 		client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme:           mgr.GetScheme(),
-		awsClientBuilder: awsclient.NewClient}
+		awsClientBuilder: &awsclient.RealBuilder{},
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -77,7 +78,7 @@ type ReconcileAWSFederatedRole struct {
 	// that reads objects from the cache and writes to the apiserver
 	client           client.Client
 	scheme           *runtime.Scheme
-	awsClientBuilder func(awsAccessID, awsAccessSecret, token, region string) (awsclient.Client, error)
+	awsClientBuilder awsclient.Builder
 }
 
 // Reconcile reads that state of the cluster for a AWSFederatedRole object and makes changes based on the state read
@@ -142,7 +143,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		return reconcile.Result{}, nil
 	}
 	// Setup AWS client
-	awsClient, err := awsclient.GetAWSClient(r.client, awsclient.NewAwsClientInput{
+	awsClient, err := r.awsClientBuilder.GetClient(r.client, awsclient.NewAwsClientInput{
 		SecretName: awsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",

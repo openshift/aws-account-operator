@@ -76,7 +76,7 @@ func TestFederatedAccessRolePermissions(t *testing.T) {
 	awsSecret := awsUserSecret{}
 	getSecretCredentials(t, &awsSecret)
 
-	iamClient, err := getAWSClient(t, awsSecret)
+	iamClient, err := getAWSIAMClient(t, awsSecret)
 	if err != nil {
 		t.Fatal("Unable to get AWS Client", err)
 	}
@@ -191,7 +191,7 @@ func getSecretCredentials(t *testing.T, secret *awsUserSecret) {
 }
 
 // Gets AWS Client using passed in credentials struct
-func getAWSClient(t *testing.T, awsCreds awsUserSecret) (*iam.IAM, error) {
+func getAWSIAMClient(t *testing.T, awsCreds awsUserSecret) (*iam.IAM, error) {
 	accessKeyID, err := base64.StdEncoding.DecodeString(awsCreds.Data.AccessKeyID)
 	if err != nil {
 		return nil, err
