@@ -10,6 +10,12 @@ parameters:
   value: staging
 - name: IMAGE_TAG
   value: latest
+- name: ACCOUNT_LIMIT
+  required: true
+- name: ROOT_OU_ID
+  required: true
+- name: BASE_OU_ID
+  required: true
 
 objects:
 - apiVersion: operators.coreos.com/v1alpha1
@@ -39,3 +45,13 @@ objects:
     name: aws-account-operator
     source: aws-account-operator-catalog
     sourceNamespace: aws-account-operator
+
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: aws-account-operator-configmap
+    namespace: aws-account-operator
+  data:
+    account-limit: "${ACCOUNT_LIMIT}"
+    root: ${ROOT_OU_ID}
+    base: ${BASE_OU_ID}
