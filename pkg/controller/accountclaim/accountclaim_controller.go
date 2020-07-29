@@ -56,7 +56,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileAccountClaim{
 		client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme:           mgr.GetScheme(),
-		awsClientBuilder: &awsclient.RealBuilder{},
+		awsClientBuilder: &awsclient.Builder{},
 	}
 }
 
@@ -93,7 +93,7 @@ type ReconcileAccountClaim struct {
 	// that reads objects from the cache and writes to the apiserver
 	client           client.Client
 	scheme           *runtime.Scheme
-	awsClientBuilder awsclient.Builder
+	awsClientBuilder awsclient.IBuilder
 }
 
 // Reconcile reads that state of the cluster for a AccountClaim object and makes changes based on the state read

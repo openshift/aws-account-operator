@@ -57,7 +57,7 @@ var _ = Describe("AccountClaim", func() {
 			},
 		}
 
-		// Create the reconciler with a mocking AWS client Builder.
+		// Create the reconciler with a mocking AWS client IBuilder.
 		r = &ReconcileAccountClaim{
 			// Test cases need to set fakeClient.
 			scheme: scheme.Scheme,
