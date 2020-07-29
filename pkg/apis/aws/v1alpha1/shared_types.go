@@ -58,6 +58,9 @@ var CoveredRegions = map[string]map[string]string{
 // ErrAwsAccountLimitExceeded indicates the orgnization account limit has been reached.
 var ErrAwsAccountLimitExceeded = errors.New("AccountLimitExceeded")
 
+// ErrAccountWatcherNoTotal indicates the TotalAccountWatcher has not run successfully yet.
+var ErrAccountWatcherNoTotal = errors.New("AccountWatcherHasNoTotal")
+
 // ErrAwsInternalFailure indicates that there was an internal failure on the aws api
 var ErrAwsInternalFailure = errors.New("InternalFailure")
 

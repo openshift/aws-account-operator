@@ -88,6 +88,7 @@ func (s *totalAccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 	accountTotal, err := TotalAwsAccounts()
 	if err != nil {
 		log.Error(err, "Failed to get account list with error code")
+		return nil
 	}
 	localmetrics.Collector.SetTotalAWSAccounts(accountTotal)
 
