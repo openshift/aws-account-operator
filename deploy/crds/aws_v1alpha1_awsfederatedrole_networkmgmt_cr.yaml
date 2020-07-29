@@ -128,6 +128,16 @@ spec:
           - "ec2:DeleteVpcPeeringConnection"
         resource:
           - "*"
+      # AWS Direct Connect
+      - effect: Allow
+        action:
+          - "ec2:CreateVpnGateway"
+          - "directconnect:*"
+          - "ec2:DeleteVpnGateway"
+          - "ec2:AttachVpnGateway"
+          - "ec2:DetachVpnGateway"
+        resource:
+          - "*"
       # AWS TAGS
       - effect: Allow
         action:
@@ -138,7 +148,9 @@ spec:
           - "arn:aws:ec2:*:*:vpn-gateway/*"
           - "arn:aws:ec2:*:*:vpn-connection/*"
           - "arn:aws:ec2:*:*:vpc-peering-connection/*"
+          - "arn:aws:ec2:*:*:vpn-gateway/*"
 
   # list of  AWS managed
   awsManagedPolicies:
     - "AmazonEC2ReadOnlyAccess"
+
