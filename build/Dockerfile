@@ -3,7 +3,7 @@ COPY . /go/src/github.com/openshift/aws-account-operator
 WORKDIR /go/src/github.com/openshift/aws-account-operator
 RUN make gobuild
 
-FROM registry.svc.ci.openshift.org/openshift/origin-v4.0:base
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
 ENV OPERATOR_BIN=aws-account-operator
 
 WORKDIR /root/
