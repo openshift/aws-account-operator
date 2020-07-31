@@ -52,9 +52,9 @@ const (
 	AccountFailed = "Failed"
 	// AccountReady indicates account creation is ready
 	AccountReady = "Ready"
-	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
-	AccountPendingVerification = "PendingVerification"
-	byocRole                   = "BYOCAdminAccess"
+	// AccountSupportCasePending indicates AWS support case (Ticket) is pending
+	AccountSupportCasePending = "SupportCasePending"
+	byocRole                  = "BYOCAdminAccess"
 
 	adminAccessArn = "arn:aws:iam::aws:policy/AdministratorAccess"
 	iamUserNameUHC = "osdManagedAdmin"
@@ -168,10 +168,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	} else {
 		// Normal account creation
 
-		// Test PendingVerification state creating support case and checking for case status
-		if accountIsPendingVerification(currentAcctInstance) {
+		// Test SupportCasePending state creating support case and checking for case status
+		if accountIsSupportCasePending(currentAcctInstance) {
 
-			// If the supportCaseID is blank and Account State = PendingVerification, create a case
+			// If the supportCaseID is blank and Account State = SupportCasePending, create a case
 			if !accountHasSupportCaseID(currentAcctInstance) {
 				switch utils.DetectDevMode {
 				case utils.DevModeProduction:
@@ -183,7 +183,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 					// Update supportCaseId in CR
 					currentAcctInstance.Status.SupportCaseID = caseID
-					SetAccountStatus(reqLogger, currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
+					SetAccountStatus(reqLogger, currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountSupportCasePending, AccountSupportCasePending)
 					err = r.statusUpdate(reqLogger, currentAcctInstance)
 					if err != nil {
 						return reconcile.Result{}, err
@@ -423,11 +423,11 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		} else {
 			if utils.FindAccountCondition(currentAcctInstance.Status.Conditions, awsv1alpha1.AccountReady) != nil {
-				SetAccountStatus(reqLogger, currentAcctInstance, "Account support case already resolved, Account Ready", awsv1alpha1.AccountReady, "Ready")
-				reqLogger.Info("Account support case already resolved, Account Ready")
+				SetAccountStatus(reqLogger, currentAcctInstance, "Account AWS support case resolved, Account Ready", awsv1alpha1.AccountReady, "Ready")
+				reqLogger.Info("Account AWS support case resolved, Account Ready")
 			} else {
-				SetAccountStatus(reqLogger, currentAcctInstance, "Account pending AWS limits verification", awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
-				reqLogger.Info("Account pending AWS limits verification")
+				SetAccountStatus(reqLogger, currentAcctInstance, "Account AWS support case pending resolution", awsv1alpha1.AccountSupportCasePending, AccountSupportCasePending)
+				reqLogger.Info("Account AWS support case pending resolution")
 			}
 		}
 		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
@@ -652,8 +652,8 @@ func accountHasSupportCaseID(currentAcctInstance *awsv1alpha1.Account) bool {
 	return currentAcctInstance.Status.SupportCaseID != ""
 }
 
-func accountIsPendingVerification(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Status.State == AccountPendingVerification
+func accountIsSupportCasePending(currentAcctInstance *awsv1alpha1.Account) bool {
+	return currentAcctInstance.Status.State == AccountSupportCasePending
 }
 
 func accountIsReady(currentAcctInstance *awsv1alpha1.Account) bool {

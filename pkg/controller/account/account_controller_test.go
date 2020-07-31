@@ -270,20 +270,20 @@ func TestAccountHasSupportCaseID(t *testing.T) {
 	}
 }
 
-// Test accountIsPendingVerification
-func TestAccountIsPendingVerification(t *testing.T) {
+// Test accountIsSupportCasePending
+func TestAccountIsSupportCasePending(t *testing.T) {
 	tests := []struct {
 		name     string
 		expected bool
 		acct     *testAccountBuilder
 	}{
 		{
-			name:     "Account is pending verification",
-			acct:     newTestAccountBuilder().WithState(awsv1alpha1.AccountPendingVerification),
+			name:     "Account is pending AWS support case resolution",
+			acct:     newTestAccountBuilder().WithState(awsv1alpha1.AccountSupportCasePending),
 			expected: true,
 		},
 		{
-			name:     "Account is not pending verificatio",
+			name:     "Account is not pending support case resolution",
 			acct:     newTestAccountBuilder(),
 			expected: false,
 		},
@@ -292,7 +292,7 @@ func TestAccountIsPendingVerification(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsPendingVerification(&test.acct.acct)
+				result := accountIsSupportCasePending(&test.acct.acct)
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,

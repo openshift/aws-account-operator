@@ -68,7 +68,7 @@ Thanks.
 				returnErr = v1alpha1.ErrAwsFailedCreateSupportCase
 			}
 
-			controllerutils.LogAwsError(reqLogger, "New AWS Error while creating case", returnErr, caseErr)
+			controllerutils.LogAwsError(reqLogger, "New AWS Error while creating AWS support case", returnErr, caseErr)
 		}
 		return "", returnErr
 	}
