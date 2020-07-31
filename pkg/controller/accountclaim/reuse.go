@@ -37,6 +37,15 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		if !accountClaim.Spec.BYOC {
 			reqLogger.Error(err, "Failed to get claimed account")
 			return err
+		} else {
+			// Cleanup BYOC secret
+			err = r.removeBYOCSecretFinalizer(accountClaim)
+			if err != nil {
+				reqLogger.Error(err, "Failed to remove BYOC secret finalizer")
+				return err
+			}
+
+			return nil
 		}
 
 	}
