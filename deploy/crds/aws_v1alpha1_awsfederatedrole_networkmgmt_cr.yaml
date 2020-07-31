@@ -119,6 +119,7 @@ spec:
           - "ec2:DisableVgwRoutePropagation"
         resource: 
           - "*"
+
       # AWS VPC Peering
       - effect: Allow
         action:
@@ -128,6 +129,7 @@ spec:
           - "ec2:DeleteVpcPeeringConnection"
         resource:
           - "*"
+
       # AWS Direct Connect
       - effect: Allow
         action:
@@ -138,6 +140,21 @@ spec:
           - "ec2:DetachVpnGateway"
         resource:
           - "*"
+      - effect: Allow
+        action:
+          - "iam:CreateServiceLinkedRole"
+        resource:
+          - "arn:aws:iam::*:role/aws-service-role/transitgateway.amazonaws.com/*"
+        condition:
+          StringLike:
+            "iam:AWSServiceName": "transitgateway.amazonaws.com"
+      - effect: Allow
+        action:
+          - "iam:AttachRolePolicy"
+          - "iam:PutRolePolicy"
+        resource:
+          - "arn:aws:iam::*:role/aws-service-role/transitgateway.amazonaws.com/*"
+
       # AWS TAGS
       - effect: Allow
         action:
