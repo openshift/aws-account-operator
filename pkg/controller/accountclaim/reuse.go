@@ -32,8 +32,13 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 	// Get account claimed by deleted accountclaim
 	reusedAccount, err := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
 	if err != nil {
-		reqLogger.Error(err, "Failed to get claimed account")
-		return err
+
+		// This check ensures that if a BYOC Account CR gets deleted, the rest of the BYOC finalizer logic can still run
+		if !accountClaim.Spec.BYOC {
+			reqLogger.Error(err, "Failed to get claimed account")
+			return err
+		}
+
 	}
 	var awsClientInput awsclient.NewAwsClientInput
 
