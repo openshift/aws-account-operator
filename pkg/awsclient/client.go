@@ -399,21 +399,21 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 	}, nil
 }
 
-// Builder implementations know how to produce a Client.
-type Builder interface {
+// IBuilder implementations know how to produce a Client.
+type IBuilder interface {
 	GetClient(controllerName string, kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error)
 }
 
-// RealBuilder is a Builder implementation that knows how to produce a real AWS Client (i.e. one
+// Builder is an IBuilder implementation that knows how to produce a real AWS Client (i.e. one
 // that really talks to the AWS APIs).
-type RealBuilder struct{}
+type Builder struct{}
 
 // GetClient generates a real awsclient
 // function must include region
 // Pass in token if sessions requires a token
 // if it includes a secretName and nameSpace it will create credentials from that secret data
 // If it includes awsCredsSecretIDKey and awsCredsSecretAccessKey it will build credentials from those
-func (rp *RealBuilder) GetClient(controllerName string, kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error) {
+func (rp *Builder) GetClient(controllerName string, kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error) {
 
 	// error if region is not included
 	if input.AwsRegion == "" {
@@ -460,8 +460,8 @@ func (rp *RealBuilder) GetClient(controllerName string, kubeClient kubeclientpkg
 	return awsClient, nil
 }
 
-// MockBuilder is a Builder implementation that knows how to produce a mocked AWS Client for
-// testing purposes. To facilitate use of the mocks, this Builder's GetClient method always
+// MockBuilder is an IBuilder implementation that knows how to produce a mocked AWS Client for
+// testing purposes. To facilitate use of the mocks, this IBuilder's GetClient method always
 // returns the same Client.
 type MockBuilder struct {
 	MockController *gomock.Controller
@@ -483,7 +483,7 @@ func (mp *MockBuilder) GetClient(controllerName string, kubeClient kubeclientpkg
 
 // GetMockClient is a convenience method to be called only from tests. It returns the (singleton)
 // mocked AWS Client as a MockClient so it can be EXPECT()ed upon.
-func GetMockClient(b Builder) *mock.MockClient {
+func GetMockClient(b IBuilder) *mock.MockClient {
 	// Make sure this is only called from tests
 	_ = b.(*MockBuilder)
 	// The arguments don't matter. This returns a Client

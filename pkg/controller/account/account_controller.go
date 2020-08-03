@@ -74,7 +74,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &ReconcileAccount{
 		Client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme:           mgr.GetScheme(),
-		awsClientBuilder: &awsclient.RealBuilder{},
+		awsClientBuilder: &awsclient.Builder{},
 	}
 }
 
@@ -101,7 +101,7 @@ var _ reconcile.Reconciler = &ReconcileAccount{}
 type ReconcileAccount struct {
 	Client           kubeclientpkg.Client
 	scheme           *runtime.Scheme
-	awsClientBuilder awsclient.Builder
+	awsClientBuilder awsclient.IBuilder
 }
 
 // Reconcile reads that state of the cluster for a Account object and makes changes based on the state read
