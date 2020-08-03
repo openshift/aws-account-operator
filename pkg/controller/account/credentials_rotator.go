@@ -129,7 +129,7 @@ func (r *ReconcileAccount) RotateConsoleCredentials(reqLogger logr.Logger, awsSe
 	SigninTokenDuration := int64(credentialwatcher.STSCredentialsDuration)
 
 	// Create new awsClient with SRE IAM credentials so we can generate STS and Federation tokens from it
-	SREAWSClient, err := r.awsClientBuilder.GetClient(r.Client, awsclient.NewAwsClientInput{
+	SREAWSClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: account.Name + "-" + strings.ToLower(iamUserNameSRE) + "-secret",
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",

@@ -51,7 +51,7 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, account *awsv1alpha1.Account, region string, ami string, ec2Notifications chan string, ec2Errors chan string, creds *sts.AssumeRoleOutput) error {
 	reqLogger.Info(fmt.Sprintf("Initializing region: %s", region))
 
-	awsClient, err := r.awsClientBuilder.GetClient(r.Client, awsclient.NewAwsClientInput{
+	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
 		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
 		AwsToken:                *creds.Credentials.SessionToken,

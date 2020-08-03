@@ -10,6 +10,7 @@ import (
 func TestPathParse(t *testing.T) {
 	tests := []struct {
 		name     string
+		host     string
 		path     string
 		expected string
 	}{
@@ -78,10 +79,16 @@ func TestPathParse(t *testing.T) {
 			path:     "",
 			expected: "{OTHER}",
 		},
+		{
+			name:     "an AWS host",
+			host:     "foo.amazonaws.com",
+			path:     "/this/should/be/ignored",
+			expected: "foo.amazonaws.com",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result := resourceFrom(&neturl.URL{Path: test.path})
+			result := resourceFrom(&neturl.URL{Path: test.path, Host: test.host})
 			assert.Equal(t, test.expected, result)
 		})
 	}

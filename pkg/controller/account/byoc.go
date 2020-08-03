@@ -336,7 +336,7 @@ func (r *ReconcileAccount) getBYOCClient(currentAcct *awsv1alpha1.Account) (awsc
 	}
 
 	// Get credentials
-	byocAWSClient, err := r.awsClientBuilder.GetClient(r.Client, awsclient.NewAwsClientInput{
+	byocAWSClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: accountClaim.Spec.BYOCSecretRef.Name,
 		NameSpace:  accountClaim.Spec.BYOCSecretRef.Namespace,
 		AwsRegion:  "us-east-1",

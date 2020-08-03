@@ -40,7 +40,7 @@ func Initialize(client client.Client, watchInterval time.Duration) {
 	// Builder in their struct and uses it to GetClient() dynamically as needed. This one grabs a
 	// single client one time and stores it in a global.
 	builder := &awsclient.RealBuilder{}
-	AwsClient, err := builder.GetClient(client, awsclient.NewAwsClientInput{
+	AwsClient, err := builder.GetClient("", client, awsclient.NewAwsClientInput{
 		SecretName: controllerutils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",

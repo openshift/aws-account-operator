@@ -202,7 +202,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	}
 
 	// Get aws client
-	awsClient, err := r.awsClientBuilder.GetClient(r.client, awsclient.NewAwsClientInput{
+	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 		SecretName: currentFAA.Spec.AWSCustomerCredentialSecret.Name,
 		NameSpace:  currentFAA.Spec.AWSCustomerCredentialSecret.Namespace,
 		AwsRegion:  "us-east-1",
@@ -588,7 +588,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 	roleName := currentFAA.Spec.AWSFederatedRole.Name + "-" + uidLabel
 
 	// Build AWS client from root secret
-	rootAwsClient, err := r.awsClientBuilder.GetClient(r.client, awsclient.NewAwsClientInput{
+	rootAwsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 		SecretName: "aws-account-operator-credentials",
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
@@ -609,7 +609,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 		return err
 	}
 
-	awsClient, err := r.awsClientBuilder.GetClient(r.client, awsclient.NewAwsClientInput{
+	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *assumeRoleOutput.Credentials.AccessKeyId,
 		AwsCredsSecretAccessKey: *assumeRoleOutput.Credentials.SecretAccessKey,
 		AwsToken:                *assumeRoleOutput.Credentials.SessionToken,

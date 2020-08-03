@@ -72,7 +72,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		}
 	}
 
-	awsClient, err := r.awsClientBuilder.GetClient(r.client, awsClientInput)
+	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsClientInput)
 
 	if err != nil {
 		connErr := fmt.Sprintf("Unable to create aws client for region %s", clusterAwsRegion)

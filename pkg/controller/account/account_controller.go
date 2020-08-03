@@ -147,7 +147,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	// We expect this secret to exist in the same namespace Account CR's are created
-	awsSetupClient, err := r.awsClientBuilder.GetClient(r.Client, awsclient.NewAwsClientInput{
+	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
@@ -346,7 +346,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				break
 			}
 		}
-		awsAssumedRoleClient, err := r.awsClientBuilder.GetClient(r.Client, awsclient.NewAwsClientInput{
+		awsAssumedRoleClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 			AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
 			AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
 			AwsToken:                *creds.Credentials.SessionToken,
@@ -393,7 +393,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Create new awsClient with SRE IAM credentials so we can generate STS and Federation tokens from it
-		SREAWSClient, err := r.awsClientBuilder.GetClient(r.Client, awsclient.NewAwsClientInput{
+		SREAWSClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 			SecretName: *SREIAMUserSecret,
 			NameSpace:  awsv1alpha1.AccountCrNamespace,
 			AwsRegion:  "us-east-1",
