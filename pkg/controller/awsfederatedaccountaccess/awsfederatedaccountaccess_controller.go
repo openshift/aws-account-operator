@@ -574,13 +574,23 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 	// Get the UID
 	uidLabel, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
 	if !ok {
+
+		if currentFAA.Status.State != awsv1alpha1.AWSFederatedAccountStateReady {
+			log.Info("UID Label missing with CR not ready, removing finalizer")
+			return nil
+		}
 		labelErr := fmt.Sprintf("Unable to get UID label")
 		return errors.New(labelErr)
+
 	}
 
 	// Get the AWS Account ID
 	accountIDLabel, ok := currentFAA.Labels[awsv1alpha1.AccountIDLabel]
 	if !ok {
+		if currentFAA.Status.State != awsv1alpha1.AWSFederatedAccountStateReady {
+			log.Info("AWS Account ID Label missing with CR not ready, removing finalizer")
+			return nil
+		}
 		labelErr := fmt.Sprintf("Unable to get AWS Account ID label")
 		return errors.New(labelErr)
 	}
