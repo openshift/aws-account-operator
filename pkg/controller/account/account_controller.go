@@ -253,12 +253,8 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 			if !accountHasAwsAccountID(currentAcctInstance) {
 				// before doing anything make sure we are not over the limit if we are just error
-				if totalaccountwatcher.TotalAccountWatcher.Total == 0 {
-					reqLogger.Error(awsv1alpha1.ErrAccountWatcherNoTotal, "AccountWatcher has not run successfully yet")
-					return reconcile.Result{}, awsv1alpha1.ErrAccountWatcherNoTotal
-				}
-				if ok, _ := checkAWSAccountsLimitReached(r, reqLogger, totalaccountwatcher.TotalAccountWatcher.Total); ok {
-					reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached", "Account Total", totalaccountwatcher.TotalAccountWatcher.Total)
+				if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
+					reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached")
 					return reconcile.Result{}, awsv1alpha1.ErrAwsAccountLimitExceeded
 				}
 
@@ -571,28 +567,6 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 	}
 
 	return accountStatus, nil
-}
-
-func checkAWSAccountsLimitReached(r *ReconcileAccount, reqLogger logr.Logger, currentAccounts int) (bool, error) {
-	instance := &corev1.ConfigMap{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, instance)
-	if err != nil {
-		unexpectedErrorMsg := fmt.Sprintf("%s: Failed to retrieve default ConfigMap, account limit defaulting to 100", awsv1alpha1.ErrMissingDefaultConfigMap)
-		reqLogger.Info(unexpectedErrorMsg)
-	} else {
-		if limit, ok := instance.Data["account-limit"]; ok {
-			if i, err := strconv.Atoi(limit); err == nil {
-				reqLogger.Info(fmt.Sprintf("Number of Current Accounts: %d -- Account Limit: %d", currentAccounts, i))
-				return i <= currentAccounts, nil
-			}
-			unexpectedErrorMsg := fmt.Sprintf("Account: Failed to convert ConfigMap 'account-limit' string field to int, account limit defaulting to 100")
-			reqLogger.Info(unexpectedErrorMsg)
-		} else {
-			unexpectedErrorMsg := fmt.Sprintf("%s: Default ConfigMap missing 'account-limit' field, account limit defaulting to 100", awsv1alpha1.ErrInvalidConfigMap)
-			reqLogger.Info(unexpectedErrorMsg)
-		}
-	}
-	return awsv1alpha1.DefaultConfigMapAccountLimit <= currentAccounts, err
 }
 
 func formatAccountEmail(name string) string {
