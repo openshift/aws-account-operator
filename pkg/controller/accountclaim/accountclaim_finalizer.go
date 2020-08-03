@@ -9,6 +9,7 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	corev1 "k8s.io/api/core/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 )
 
 func (r *ReconcileAccountClaim) addFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
@@ -69,6 +70,10 @@ func (r *ReconcileAccountClaim) removeBYOCSecretFinalizer(accountClaim *awsv1alp
 			Namespace: accountClaim.Spec.BYOCSecretRef.Namespace},
 		byocSecret)
 	if err != nil {
+		// If the secret can't be found, don't error, just return
+		if k8serr.IsNotFound(err) {
+			return nil
+		}
 		return err
 	}
 
