@@ -13,7 +13,6 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	"github.com/openshift/aws-account-operator/pkg/controller"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
-	"github.com/openshift/aws-account-operator/pkg/credentialwatcher"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 	"github.com/openshift/operator-custom-metrics/pkg/metrics"
@@ -145,24 +144,17 @@ func main() {
 		}
 	}
 
-	// Define stopCh which we'll use to notify the secretWatcher (any any other routine)
+	// Define stopCh which we'll use to notify the accountWatcher (any any other routine)
 	// to stop work. This channel can also be used to signal routines to complete any cleanup
 	// work
 	stopCh := signals.SetupSignalHandler()
 
+	// Initialize the TotalAccountWatcher
 	accountWatcherClient, err := client.New(cfg, client.Options{})
 	if err != nil {
 		log.Error(err, "")
 	}
-
-	// Initialize the SecretWatcher
-	credentialwatcher.Initialize(mgr.GetClient(), secretWatcherScanInterval)
-
 	totalaccountwatcher.Initialize(accountWatcherClient, totalWatcherInterval)
-
-	// Start the secret watcher
-	go credentialwatcher.SecretWatcher.Start(log, stopCh)
-
 	go totalaccountwatcher.TotalAccountWatcher.Start(log, stopCh)
 
 	log.Info("Starting the Cmd.")

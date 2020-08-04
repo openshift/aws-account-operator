@@ -13,14 +13,10 @@ EXIT_STATUS=$EXIT_PASS
 EXPECTED_SECRETS=(
   "osdmanagedadminsre-secret:OSDMASRE_SECRET_KEYS"
   "secret:SECRET_KEYS"
-  "sre-cli-credentials:SRE_CLI_KEYS"
-  "sre-console-url:CONSOLE_KEYS"
 )
 
 OSDMASRE_SECRET_KEYS="aws_access_key_id aws_secret_access_key aws_user_name"
 SECRET_KEYS="aws_access_key_id aws_secret_access_key aws_user_name"
-SRE_CLI_KEYS="aws_access_key_id aws_secret_access_key aws_session_token"
-CONSOLE_KEYS="aws_console_login_url"
 
 for secret_map in "${EXPECTED_SECRETS[@]}"; do
   test_secret_validity=false

@@ -18,7 +18,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -365,45 +364,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		// Create SRE IAM user and return the credentials
-		SREIAMUserSecret, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserSRE, request.Namespace)
+		// Create SRE IAM user, we don't care about the credentials because they're saved inside of the build func
+		_, err = r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserSRE, request.Namespace)
 		if err != nil {
 			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build IAM SRE user: %s", iamUserSRE))
-			return reconcile.Result{}, err
-		}
-
-		// Intermittently our secret wont be ready before the next call, lets ensure it exists
-		for i := 0; i < 10; i++ {
-			secret := &corev1.Secret{}
-			err := r.Client.Get(context.TODO(), types.NamespacedName{Name: *SREIAMUserSecret, Namespace: request.Namespace}, secret)
-			if err != nil {
-				if k8serr.IsNotFound(err) {
-					reqLogger.Info("SREIAMUserSecret not ready, trying again")
-					time.Sleep(time.Duration(time.Duration(i*1) * time.Second))
-				} else {
-					reqLogger.Error(err, "unable to retrieve SREIAMUserSecret secret")
-					return reconcile.Result{}, err
-				}
-			}
-
-		}
-
-		// Create new awsClient with SRE IAM credentials so we can generate STS and Federation tokens from it
-		SREAWSClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-			SecretName: *SREIAMUserSecret,
-			NameSpace:  awsv1alpha1.AccountCrNamespace,
-			AwsRegion:  "us-east-1",
-		})
-		if err != nil {
-			var returnErr error
-			utils.LogAwsError(reqLogger, "Unable to create AWS connection with SRE credentials", returnErr, err)
-			return reconcile.Result{}, err
-		}
-
-		// Create STS CLI Credentials for SRE
-		_, err = r.BuildSTSUser(reqLogger, SREAWSClient, awsSetupClient, currentAcctInstance, request.Namespace, roleToAssume)
-		if err != nil {
-			r.setStatusFailed(reqLogger, currentAcctInstance, fmt.Sprintf("Failed to build SRE STS credentials: %s", iamUserSRE))
 			return reconcile.Result{}, err
 		}
 
@@ -431,23 +395,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-	}
-
-	// If Account CR has `stats.rotateCredentials: true` we'll rotate the temporary credentials
-	// the secretWatcher is what updates this status field by comparing the STS credentials secret `creationTimestamp`
-	if accountNeedsCredentialsRotated(currentAcctInstance) {
-		reqLogger.Info(fmt.Sprintf("rotating CLI credentials for %s", currentAcctInstance.Name))
-		err = r.RotateCredentials(reqLogger, awsSetupClient, currentAcctInstance)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-	}
-	if accountNeedsConsoleCredentialsRotated(currentAcctInstance) {
-		reqLogger.Info(fmt.Sprintf("rotating console URL credentials for %s", currentAcctInstance.Name))
-		err = r.RotateConsoleCredentials(reqLogger, awsSetupClient, currentAcctInstance)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
 	}
 	return reconcile.Result{}, nil
 }
@@ -672,15 +619,6 @@ func accountHasAwsAccountID(currentAcctInstance *awsv1alpha1.Account) bool {
 	return currentAcctInstance.Spec.AwsAccountID != ""
 }
 
-// Returns true if Status.RotateCredentials is true
-func accountNeedsCredentialsRotated(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Status.RotateCredentials
-}
-
-// Returns true if Status.RotateConsoleCredentials is true
-func accountNeedsConsoleCredentialsRotated(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Status.RotateConsoleCredentials
-}
 func accountIsReadyUnclaimedAndHasClaimLink(currentAcctInstance *awsv1alpha1.Account) bool {
 	return accountIsReady(currentAcctInstance) &&
 		accountHasClaimLink(currentAcctInstance) &&
