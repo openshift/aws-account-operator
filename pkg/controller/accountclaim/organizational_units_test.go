@@ -68,10 +68,11 @@ func TestFindOUIDFromName(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// build mock
 			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
 			mocks := mock.NewMockClient(ctrl)
 			mocks.EXPECT().ListOrganizationalUnitsForParent(&organizations.ListOrganizationalUnitsForParentInput{
 				ParentId: &test.parentID,
-			}).AnyTimes().Return(test.listOUForParentOut, test.listOUForParentErr)
+			}).Return(test.listOUForParentOut, test.listOUForParentErr)
 			reqLogger := log.WithValues()
 			// Test
 			ouID, err := test.findOUIDFromNameFunc(reqLogger, mocks, test.parentID, test.ouName)
