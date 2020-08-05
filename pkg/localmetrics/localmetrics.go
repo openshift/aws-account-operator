@@ -293,11 +293,17 @@ func (c *MetricsCollector) SetReconcileDuration(controller string, duration floa
 // - param resp: The HTTP Response structure
 // - param duration: The number of seconds the call took.
 func (c *MetricsCollector) AddAPICall(controller string, req *http.Request, resp *http.Response, duration float64) {
+	var status string
+	if resp == nil {
+		status = "{ERROR}"
+	} else {
+		status = resp.Status
+	}
 	c.apiCallDuration.With(prometheus.Labels{
 		"controller": controller,
 		"method":     req.Method,
 		"resource":   resourceFrom(req.URL),
-		"status":     resp.Status,
+		"status":     status,
 	}).Observe(duration)
 }
 
