@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	//	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -102,7 +101,7 @@ func buildContextList(stmt statement) []*iam.ContextEntry {
 
 	// first check for conditions
 	for key, condition := range stmt.Condition {
-		if key == "StringEquals" {
+		if key == "StringEquals" || key == "StringLike" {
 			for contextKey, contextValue := range condition {
 				contextList = append(contextList, &iam.ContextEntry{
 					ContextKeyName:   aws.String(contextKey),
@@ -129,6 +128,7 @@ func testAction(t *testing.T, iamClient *iam.IAM, roleARN string, stmt statement
 	actions := buildActionList(stmt)
 	context := buildContextList(stmt)
 	resources := buildResourceList(stmt)
+	t.Logf("Action: %v\nContext: %v\nResources: %v", logPointerList(actions), context, logPointerList(resources))
 	input := &iam.SimulatePrincipalPolicyInput{
 		PolicySourceArn: aws.String(roleARN),
 		ActionNames:     actions,
@@ -146,6 +146,15 @@ func testAction(t *testing.T, iamClient *iam.IAM, roleARN string, stmt statement
 	if err != nil {
 		t.Fatal("Could not simulate policy.", err)
 	}
+}
+
+// Log Pointers
+func logPointerList(list []*string) []string {
+	retList := []string{}
+	for _, v := range list {
+		retList = append(retList, *v)
+	}
+	return retList
 }
 
 // Unmarshals YAML from File
