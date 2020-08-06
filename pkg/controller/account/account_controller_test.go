@@ -222,7 +222,7 @@ func TestAccountHasState(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountHasState(&test.acct.acct)
+				result := test.acct.acct.HasState()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -257,7 +257,7 @@ func TestAccountHasSupportCaseID(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountHasSupportCaseID(&test.acct.acct)
+				result := test.acct.acct.HasSupportCaseID()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -292,7 +292,7 @@ func TestAccountIsPendingVerification(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsPendingVerification(&test.acct.acct)
+				result := test.acct.acct.IsPendingVerification()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -327,7 +327,7 @@ func TestAccountIsReady(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsReady(&test.acct.acct)
+				result := test.acct.acct.IsReady()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -362,7 +362,7 @@ func TestAccountIsFailed(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsFailed(&test.acct.acct)
+				result := test.acct.acct.IsFailed()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -397,7 +397,7 @@ func TestAccountIsCreating(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsCreating(&test.acct.acct)
+				result := test.acct.acct.IsCreating()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -432,7 +432,7 @@ func TestAccountIsClaimed(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsClaimed(&test.acct.acct)
+				result := test.acct.acct.IsClaimed()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -467,7 +467,7 @@ func TestAccountHasClaimLink(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountHasClaimLink(&test.acct.acct)
+				result := test.acct.acct.HasClaimLink()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -512,7 +512,7 @@ func TestAccountCreatingToolong(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountCreatingTooLong(&test.acct.acct)
+				result := test.acct.acct.IsCreating() && test.acct.acct.IsOlderThan(createPendTime)
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -547,7 +547,7 @@ func TestAccountIsPendingDeletion(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsPendingDeletion(&test.acct.acct)
+				result := test.acct.acct.IsPendingDeletion()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -587,7 +587,7 @@ func TestAccountIsBYOC(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsBYOC(&test.acct.acct)
+				result := test.acct.acct.IsBYOC()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -632,7 +632,7 @@ func TestAccountHasAwsv1alpha1Finalizer(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountHasAwsv1alpha1Finalizer(&test.acct.acct)
+				result := test.acct.acct.HasAwsv1alpha1Finalizer()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -667,7 +667,7 @@ func TestAccountHasAwsAccountID(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountHasAwsAccountID(&test.acct.acct)
+				result := test.acct.acct.HasAwsAccountID()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -712,7 +712,7 @@ func TestAccountIsReadyUnclaimedAndHasClaimLink(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsReadyUnclaimedAndHasClaimLink(&test.acct.acct)
+				result := test.acct.acct.IsReadyUnclaimedAndHasClaimLink()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -762,7 +762,7 @@ func TestAccountIsBYOCPendingDeletionWithFinalizer(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsBYOCPendingDeletionWithFinalizer(&test.acct.acct)
+				result := test.acct.acct.IsBYOCPendingDeletionWithFinalizer()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -807,7 +807,7 @@ func TestAccountIsBYOCAndNotReady(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsBYOCAndNotReady(&test.acct.acct)
+				result := test.acct.acct.IsBYOCAndNotReady()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -862,7 +862,7 @@ func TestAccountReadyForInitialization(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountReadyForInitialization(&test.acct.acct)
+				result := test.acct.acct.ReadyForInitialization()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -907,7 +907,7 @@ func TestAccountIsUnclaimedAndHasNoState(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsUnclaimedAndHasNoState(&test.acct.acct)
+				result := test.acct.acct.IsUnclaimedAndHasNoState()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -952,7 +952,7 @@ func TestAccountIsUnclaimedAndCreating(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := accountIsUnclaimedAndIsCreating(&test.acct.acct)
+				result := test.acct.acct.IsUnclaimedAndIsCreating()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,

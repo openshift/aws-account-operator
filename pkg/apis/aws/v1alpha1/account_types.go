@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -133,4 +135,132 @@ type AccountList struct {
 
 func init() {
 	SchemeBuilder.Register(&Account{}, &AccountList{})
+}
+
+// Helper Functions
+
+//IsFailed returns true if an account is in a failed state
+func (a *Account) IsFailed() bool {
+	return a.Status.State == string(AccountFailed)
+}
+
+//HasState returns true if an account has a state set at all
+func (a *Account) HasState() bool {
+	return a.Status.State != ""
+}
+
+//HasSupportCaseID returns true if an account has a SupportCaseID Set
+func (a *Account) HasSupportCaseID() bool {
+	return a.Status.SupportCaseID != ""
+}
+
+//IsPendingVerification returns true if the account is in a PendingVerification state
+func (a *Account) IsPendingVerification() bool {
+	return a.Status.State == string(AccountPendingVerification)
+}
+
+//IsReady returns true if an account is ready
+func (a *Account) IsReady() bool {
+	return a.Status.State == string(AccountReady)
+}
+
+//IsCreating returns true if an account is creating
+func (a *Account) IsCreating() bool {
+	return a.Status.State == string(AccountCreating)
+}
+
+//HasClaimLink returns true if an accounts claim link is not empty
+func (a *Account) HasClaimLink() bool {
+	return a.Spec.ClaimLink != ""
+}
+
+//IsClaimed returns true if account Status.Claimed is false
+func (a *Account) IsClaimed() bool {
+	return a.Status.Claimed
+}
+
+//IsPendingDeletion returns true if a DeletionTimestamp has been set
+func (a *Account) IsPendingDeletion() bool {
+	return a.DeletionTimestamp != nil
+}
+
+//IsBYOC returns true if account is a BYOC account
+func (a *Account) IsBYOC() bool {
+	return a.Spec.BYOC
+}
+
+//HasAwsAccountID returns true if awsAccountID is set
+func (a *Account) HasAwsAccountID() bool {
+	return a.Spec.AwsAccountID != ""
+}
+
+//IsReadyUnclaimedAndHasClaimLink returns true if an account is ready, unclaimed, and has a claim link
+func (a *Account) IsReadyUnclaimedAndHasClaimLink() bool {
+	return a.IsReady() &&
+		a.HasClaimLink() &&
+		!a.IsClaimed()
+}
+
+//HasAwsv1alpha1Finalizer returns true if the awsv1alpha1 finalizer is set on the account
+func (a *Account) HasAwsv1alpha1Finalizer() bool {
+	for _, v := range a.GetFinalizers() {
+		if v == AccountFinalizer {
+			return true
+		}
+	}
+	return false
+}
+
+//IsOlderThan takes a parameter of a time and returns true if the creation timestamp is longer than
+//the passed in time.
+func (a *Account) IsOlderThan(maxDuration time.Duration) bool {
+	return time.Now().Sub(a.GetCreationTimestamp().Time) > maxDuration
+}
+
+//IsBYOCPendingDeletionWithFinalizer returns true if account is a BYOC Account,
+// has been marked for deletion (deletion timestamp set), and has a finalizer set.
+func (a *Account) IsBYOCPendingDeletionWithFinalizer() bool {
+	return a.IsPendingDeletion() &&
+		a.IsBYOC() &&
+		a.HasAwsv1alpha1Finalizer()
+}
+
+//IsBYOCAndNotReady returns true if account is BYOC and the state is not AccountReady
+func (a *Account) IsBYOCAndNotReady() bool {
+	return a.IsBYOC() && !a.IsReady()
+}
+
+//ReadyForInitialization returns true if account is a BYOC Account and the state is not ready OR
+// accout state is creating, and has not been claimed
+func (a *Account) ReadyForInitialization() bool {
+	return a.IsBYOCAndNotReady() ||
+		a.IsUnclaimedAndIsCreating()
+}
+
+//IsUnclaimedAndHasNoState returns true if account has not set state and has not been claimed
+func (a *Account) IsUnclaimedAndHasNoState() bool {
+	return !a.HasState() &&
+		!a.IsClaimed()
+}
+
+//IsUnclaimedAndIsCreating returns true if account state is AccountCreating and has not been claimed
+func (a *Account) IsUnclaimedAndIsCreating() bool {
+	return a.IsCreating() &&
+		!a.IsClaimed()
+}
+
+//IsInitializingRegions returns true if the account state is InitalizingRegions
+func (a *Account) IsInitializingRegions() bool {
+	return a.Status.State == AccountInitializingRegions
+}
+
+// FindCondition finds in the condition that has the
+// specified condition type in the given list. If none exists, then returns nil.
+func (a *Account) GetCondition(conditionType AccountConditionType) *AccountCondition {
+	for i, condition := range a.Status.Conditions {
+		if condition.Type == conditionType {
+			return &a.Status.Conditions[i]
+		}
+	}
+	return nil
 }

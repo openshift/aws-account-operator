@@ -9,6 +9,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// =====
+// TODO This entire UpdateConditionCheck Block could probably be refactored into the structs by way of it's own package.
+
 // UpdateConditionCheck tests whether a condition should be updated from the
 // old condition to the new condition. Returns true if the condition should
 // be updated.
@@ -43,7 +46,11 @@ func shouldUpdateCondition(
 	return updateConditionCheck(oldReason, oldMessage, newReason, newMessage)
 }
 
+// TODO: End UpdateConditionCheck Block
+// =====
+
 // SetAccountClaimCondition sets a condition on a AccountClaim resource's status
+// TODO: this should probably be handled within the AccountClaim struct
 func SetAccountClaimCondition(
 	conditions []awsv1alpha1.AccountClaimCondition,
 	conditionType awsv1alpha1.AccountClaimConditionType,
@@ -97,6 +104,7 @@ func SetAccountClaimCondition(
 
 // FindAccountClaimCondition finds in the condition that has the
 // specified condition type in the given list. If none exists, then returns nil.
+// TODO: this should probably be handled within the AccountClaim struct
 func FindAccountClaimCondition(conditions []awsv1alpha1.AccountClaimCondition, conditionType awsv1alpha1.AccountClaimConditionType) *awsv1alpha1.AccountClaimCondition {
 	for i, condition := range conditions {
 		if condition.Type == conditionType {
@@ -107,6 +115,7 @@ func FindAccountClaimCondition(conditions []awsv1alpha1.AccountClaimCondition, c
 }
 
 // SetAccountCondition sets a condition on a Account resource's status
+// TODO: This should probably be handled within the Account Struct
 func SetAccountCondition(
 	conditions []awsv1alpha1.AccountCondition,
 	conditionType awsv1alpha1.AccountConditionType,
@@ -163,6 +172,7 @@ func SetAccountCondition(
 
 // FindAccountCondition finds in the condition that has the
 // specified condition type in the given list. If none exists, then returns nil.
+// TODO: this should be moved to the account struct
 func FindAccountCondition(conditions []awsv1alpha1.AccountCondition, conditionType awsv1alpha1.AccountConditionType) *awsv1alpha1.AccountCondition {
 	for i, condition := range conditions {
 		if condition.Type == conditionType {
@@ -173,6 +183,7 @@ func FindAccountCondition(conditions []awsv1alpha1.AccountCondition, conditionTy
 }
 
 // SetAWSFederatedRoleCondition sets a condition on a AWSFederatedRole resource's status
+// TODO: This should be moved to the FederatedRole CR
 func SetAWSFederatedRoleCondition(
 	conditions []awsv1alpha1.AWSFederatedRoleCondition,
 	conditionType awsv1alpha1.AWSFederatedRoleConditionType,
@@ -217,6 +228,7 @@ func SetAWSFederatedRoleCondition(
 
 // FindAWSFederatedRoleCondition Condition finds in the condition that has the
 // specified condition type in the given list. If none exists, then returns nil.
+// TODO: this should be moved to the FederatedRole struct
 func FindAWSFederatedRoleCondition(conditions []awsv1alpha1.AWSFederatedRoleCondition, conditionType awsv1alpha1.AWSFederatedRoleConditionType) *awsv1alpha1.AWSFederatedRoleCondition {
 	for i, condition := range conditions {
 		if condition.Type == conditionType {
@@ -227,6 +239,7 @@ func FindAWSFederatedRoleCondition(conditions []awsv1alpha1.AWSFederatedRoleCond
 }
 
 // SetAWSFederatedAccountAccessCondition sets a condition on a Account resource's status
+// TODO: this should be moved to the FederatedAccountAccess struct
 func SetAWSFederatedAccountAccessCondition(
 	conditions []awsv1alpha1.AWSFederatedAccountAccessCondition,
 	conditionType awsv1alpha1.AWSFederatedAccountAccessConditionType,
@@ -271,6 +284,7 @@ func SetAWSFederatedAccountAccessCondition(
 
 // FindAWSFederatedAccountAccessCondition Condition finds in the condition that has the
 // specified condition type in the given list. If none exists, then returns nil.
+// TODO: This should be moved to the AccountAccess struct
 func FindAWSFederatedAccountAccessCondition(conditions []awsv1alpha1.AWSFederatedAccountAccessCondition, conditionType awsv1alpha1.AWSFederatedAccountAccessConditionType) *awsv1alpha1.AWSFederatedAccountAccessCondition {
 	for i, condition := range conditions {
 		if condition.Type == conditionType {
@@ -285,6 +299,7 @@ const (
 )
 
 // SetBYOCAccountClaimStatusAWSAccountInUse Sets the Status.State and appends an account Status.Condition
+// TODO: Do we still need this?
 func SetBYOCAccountClaimStatusAWSAccountInUse(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) {
 	message := fmt.Sprintf("AWS Account %s already in use", accountClaim.Spec.BYOCAWSAccountID)
 	accountClaim.Status.Conditions = SetAccountClaimCondition(
