@@ -33,7 +33,7 @@ func (rwm *reconcilerWithMetrics) Reconcile(request reconcile.Request) (reconcil
 	start := time.Now()
 	result, err := rwm.wrappedReconciler.Reconcile(request)
 	dur := time.Since(start)
-	localmetrics.Collector.SetReconcileDuration(rwm.controllerName, dur.Seconds())
+	localmetrics.Collector.SetReconcileDuration(rwm.controllerName, dur.Seconds(), err)
 
 	rwm.logger.WithValues("Duration", dur).Info("Reconcile complete")
 	return result, err
