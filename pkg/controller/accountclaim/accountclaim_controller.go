@@ -10,7 +10,6 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
-	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -52,11 +51,11 @@ func Add(mgr manager.Manager) error {
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	reconciler := &ReconcileAccountClaim{
-		client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
+		client:           controllerutils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
-	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
+	return controllerutils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -117,7 +116,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	// Add finalizer to the CR in case it's not present (e.g. old accounts)
-	if !utils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
+	if !controllerutils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
 		err := r.addFinalizer(reqLogger, accountClaim)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -128,7 +127,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 	// Check if accountClaim is being deleted, this will trigger the account reuse workflow
 	if accountClaim.DeletionTimestamp != nil {
-		if utils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
+		if controllerutils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
 			// Only do AWS cleanup and account reset if accountLink is not empty
 			// We will not attempt AWS cleanup if the account is BYOC since we're not going to reuse these accounts
 			if accountClaim.Spec.AccountLink != "" {
@@ -184,7 +183,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			// Create a new account with BYOC flag
 			newAccount := account.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
 			populateBYOCSpec(newAccount, accountClaim)
-			utils.AddFinalizer(newAccount, "finalizer.aws.managed.openshift.io")
+			controllerutils.AddFinalizer(newAccount, "finalizer.aws.managed.openshift.io")
 
 			// Create the new account
 			err = r.client.Create(context.TODO(), newAccount)

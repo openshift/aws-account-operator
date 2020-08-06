@@ -15,7 +15,6 @@ import (
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 
 	corev1 "k8s.io/api/core/v1"
@@ -55,7 +54,7 @@ func Add(mgr manager.Manager) error {
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	reconciler := &ReconcileAWSFederatedAccountAccess{
-		client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
+		client:           controllerutils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
@@ -166,14 +165,14 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	// Check if the FAA has the uid label
 	if !hasLabel(currentFAA, awsv1alpha1.UIDLabel) {
 		// Generate a new UID
-		uid := utils.GenerateShortUID()
+		uid := controllerutils.GenerateShortUID()
 
 		reqLogger.Info(fmt.Sprintf("Adding UID %s to AccountAccess %s", uid, currentFAA.Name))
 		newLabel := map[string]string{"uid": uid}
 
 		// Join the new UID label with any current labels
 		if currentFAA.Labels != nil {
-			currentFAA.Labels = utils.JoinLabelMaps(currentFAA.Labels, newLabel)
+			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 		} else {
 			currentFAA.Labels = newLabel
 		}
@@ -208,7 +207,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	gciOut, err := awsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
 	if err != nil {
 		SetStatuswithCondition(currentFAA, "Failed to get account ID information", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
-		utils.LogAwsError(log, fmt.Sprintf("Failed to get account ID information for '%s'", currentFAA.Name), err, err)
+		controllerutils.LogAwsError(log, fmt.Sprintf("Failed to get account ID information for '%s'", currentFAA.Name), err, err)
 		err := r.client.Status().Update(context.TODO(), currentFAA)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
@@ -227,7 +226,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 
 		// Join the new UID label with any current labels
 		if currentFAA.Labels != nil {
-			currentFAA.Labels = utils.JoinLabelMaps(currentFAA.Labels, newLabel)
+			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 		} else {
 			currentFAA.Labels = newLabel
 		}
@@ -481,7 +480,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMRole(awsClient aws
 				return role, nil
 			default:
 				// Handle unexpected AWS API errors
-				utils.LogAwsError(reqLogger, "createOrUpdateIAMRole: Unexpected AWS Error creating IAM Role", nil, err)
+				controllerutils.LogAwsError(reqLogger, "createOrUpdateIAMRole: Unexpected AWS Error creating IAM Role", nil, err)
 				return nil, err
 			}
 		}
