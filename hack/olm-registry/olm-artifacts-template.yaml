@@ -16,9 +16,7 @@ parameters:
   required: true
 - name: BASE_OU_ID
   required: true
-- name: ACCOUNT_POOL_NAME
-  required: true
-- name: ACCOUNT_POOL_NAMESPACE
+- name: ACCOUNT_POOL_SIZE
   required: true
 
 objects:
@@ -63,7 +61,7 @@ objects:
 - apiVersion: v1
   kind: AccountPool
   metadata:
-    name: ${ACCOUNT_POOL_NAME}
-    namespace: ${ACCOUNT_POOL_NAMESPACE}
+    name: aws-account-operator-accountpool
+    namespace: aws-account-operator-accountpool-namespace
   spec:
-    poolSize: 0
+    poolSize: "${ACCOUNT_POOL_SIZE}"
