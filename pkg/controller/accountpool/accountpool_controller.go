@@ -3,12 +3,10 @@ package accountpool
 import (
 	"context"
 	"fmt"
-	"time"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
-	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -36,9 +34,10 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileAccountPool{
+	reconciler := &ReconcileAccountPool{
 		client: utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme: mgr.GetScheme()}
+	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -81,15 +80,7 @@ type ReconcileAccountPool struct {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	start := time.Now()
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling")
-
-	defer func() {
-		dur := time.Since(start)
-		localmetrics.Collector.SetReconcileDuration(controllerName, dur.Seconds())
-		reqLogger.WithValues("Duration", dur).Info("Reconcile complete")
-	}()
 
 	// Fetch the AccountPool instance
 	currentAccountPool := &awsv1alpha1.AccountPool{}
