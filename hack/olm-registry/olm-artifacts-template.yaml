@@ -62,6 +62,6 @@ objects:
   kind: AccountPool
   metadata:
     name: aws-account-operator-accountpool
-    namespace: aws-account-operator-accountpool-namespace
+    namespace: aws-account-operator
   spec:
     poolSize: "${ACCOUNT_POOL_SIZE}"
