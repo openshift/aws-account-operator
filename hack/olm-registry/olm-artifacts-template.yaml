@@ -16,6 +16,8 @@ parameters:
   required: true
 - name: BASE_OU_ID
   required: true
+- name: ACCOUNT_POOL_SIZE
+  required: true
 
 objects:
 - apiVersion: operators.coreos.com/v1alpha1
@@ -55,3 +57,11 @@ objects:
     account-limit: "${ACCOUNT_LIMIT}"
     root: ${ROOT_OU_ID}
     base: ${BASE_OU_ID}
+
+- apiVersion: v1
+  kind: AccountPool
+  metadata:
+    name: aws-account-operator-accountpool
+    namespace: aws-account-operator
+  spec:
+    poolSize: "${ACCOUNT_POOL_SIZE}"
