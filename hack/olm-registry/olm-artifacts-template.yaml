@@ -58,7 +58,7 @@ objects:
     root: ${ROOT_OU_ID}
     base: ${BASE_OU_ID}
 
-- apiVersion: v1
+- apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AccountPool
   metadata:
     name: aws-account-operator-accountpool
