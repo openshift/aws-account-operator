@@ -30,7 +30,7 @@ objects:
     sourceType: grpc
     image: ${REGISTRY_IMG}:${CHANNEL}-${IMAGE_TAG}
     displayName: aws-account-operator Registry
-    publisher: SRE 
+    publisher: SRE
 
 - apiVersion: operators.coreos.com/v1alpha2
   kind: OperatorGroup
@@ -150,7 +150,7 @@ objects:
             - "route53resolver:ListResolverRuleAssociations"
             - "route53resolver:ListResolverRules"
             - "directconnect:*"
-          resource: 
+          resource:
             - "*"
         - effect: Allow
           action:
@@ -182,7 +182,7 @@ objects:
             - "ec2:DeleteVpnConnection"
             - "ec2:EnableVgwRoutePropagation"
             - "ec2:DisableVgwRoutePropagation"
-          resource: 
+          resource:
             - "*"
         - effect: Allow
           action:
@@ -230,7 +230,7 @@ objects:
           action:
           - "aws-portal:ViewAccount"
           - "aws-portal:ViewBilling"
-          resource: 
+          resource:
           - "*"
     awsManagedPolicies:
     - "AWSAccountUsageReportAccess"
