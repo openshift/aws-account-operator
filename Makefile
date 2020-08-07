@@ -284,7 +284,7 @@ deploy-aws-account-operator-credentials: check-aws-credentials
 .PHONY: predeploy-aws-account-operator
 predeploy-aws-account-operator:
 # Create aws-account-operator namespace
-	@oc get namespace ${NAMESPACE} || oc new-project ${NAMESPACE}
+	@oc get namespace ${NAMESPACE} && oc project ${NAMESPACE} || oc new-project ${NAMESPACE}
 # Create aws-account-operator CRDs
 	@ls deploy/crds/*crd.yaml | xargs -L1 oc apply -f
 # Create zero size account pool
