@@ -157,9 +157,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	// Remove finalizer if account CR is BYOC as the accountclaim controller will delete the account CR
 	// when the accountClaim CR is deleted as its set as the owner reference
 	if accountIsBYOCPendingDeletionWithFinalizer(currentAcctInstance) {
-		// Remove finalizer to unlock deletion of the accountClaim
-		err = r.removeFinalizer(reqLogger, currentAcctInstance, awsv1alpha1.AccountFinalizer)
+		reqLogger.Info("removing account finalizer")
+		err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
 		if err != nil {
+			reqLogger.Error(err, "failed removing account finalizer")
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{}, nil
@@ -198,7 +199,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			utils.SetAccountStatus(currentAcctInstance, msg, v1alpha1.AccountCreating, AccountCreating)
 			// The status update will trigger another Reconcile, but be explicit. The requests get
 			// collapsed anyway.
-			return reconcile.Result{Requeue: true}, r.statusUpdate(reqLogger, currentAcctInstance)
+			return reconcile.Result{Requeue: true}, r.statusUpdate(currentAcctInstance)
 		}
 		// The goroutines happened in this invocation. Time out if that has taken too long.
 		if accountOlderThan(currentAcctInstance, initPendTime) {
@@ -220,18 +221,30 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		AwsRegion:  "us-east-1",
 	})
 	if err != nil {
-		reqLogger.Error(err, "Failed to get AWS client")
+		reqLogger.Error(err, "failed building AWS client")
 		return reconcile.Result{}, err
 	}
-	var byocRoleID string
-
+	var ccsRoleID string
 	// If the account is BYOC, needs some different set up
 	if newBYOCAccount(currentAcctInstance) {
-		byocRoleID, err = r.initializeNewBYOCAccount(reqLogger, currentAcctInstance, awsSetupClient, adminAccessArn)
-		if err != nil || byocRoleID == "" {
-			r.setStateFailed(reqLogger, currentAcctInstance, err.Error())
-			reqLogger.Error(err, "Failed setting up new BYOC account")
-			return reconcile.Result{}, err
+		// Need these to use = below, otherwise ccsRoleID fails syntax check as "unused"
+		var result reconcile.Result
+		var initErr error
+
+		ccsRoleID, result, initErr = r.initializeNewCCSAccount(reqLogger, currentAcctInstance, awsSetupClient, adminAccessArn)
+		if initErr != nil {
+			// TODO: If we have recoverable results from above, how do we allow them to requeue if state is failed
+			r.setStateFailed(reqLogger, currentAcctInstance, initErr.Error())
+			reqLogger.Error(initErr, "failed initializing new CCS account")
+			return result, initErr
+		}
+		utils.SetAccountStatus(currentAcctInstance, AccountCreating, awsv1alpha1.AccountCreating, AccountCreating)
+		updateErr := r.statusUpdate(currentAcctInstance)
+		if updateErr != nil {
+			// TODO: Validate this is retryable
+			// TODO: Should be re-entrant because account will not have state
+			reqLogger.Info("failed updating account state, retrying", "desired state", AccountCreating)
+			return reconcile.Result{}, updateErr
 		}
 	} else {
 		// Normal account creation
@@ -247,13 +260,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 					if err != nil {
 						return reconcile.Result{}, err
 					}
-					reqLogger.Info("Case created", "CaseID", caseID)
+					reqLogger.Info("case created", "CaseID", caseID)
 
 					// Update supportCaseId in CR
 					currentAcctInstance.Status.SupportCaseID = caseID
 					utils.SetAccountStatus(currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
-					err = r.statusUpdate(reqLogger, currentAcctInstance)
+					err = r.statusUpdate(currentAcctInstance)
 					if err != nil {
+						reqLogger.Error(err, "failed to update account state, retrying", "desired state", AccountPendingVerification)
 						return reconcile.Result{}, err
 					}
 
@@ -286,10 +300,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 			// Case Resolved, account is Ready
 			if resolved {
-				reqLogger.Info(fmt.Sprintf("Case %s resolved", currentAcctInstance.Status.SupportCaseID))
+				reqLogger.Info("case resolved", "caseID", currentAcctInstance.Status.SupportCaseID)
 
 				utils.SetAccountStatus(currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, AccountReady)
-				err = r.statusUpdate(reqLogger, currentAcctInstance)
+				err = r.statusUpdate(currentAcctInstance)
 				if err != nil {
 					return reconcile.Result{}, err
 				}
@@ -297,17 +311,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			}
 
 			// Case not Resolved, log info and try again in pre-defined interval
-			reqLogger.Info(fmt.Sprintf(`Case %s not resolved,
-			trying again in %d minutes`,
-				currentAcctInstance.Status.SupportCaseID,
-				intervalBetweenChecksMinutes))
+			reqLogger.Info("case not yet resolved, retrying", "caseID", currentAcctInstance.Status.SupportCaseID, "retry delay", intervalBetweenChecksMinutes)
 			return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
 		}
 
 		// Update account Status.Claimed to true if the account is ready and the claim link is not empty
 		if accountIsReadyUnclaimedAndHasClaimLink(currentAcctInstance) {
 			currentAcctInstance.Status.Claimed = true
-			return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
+			return reconcile.Result{}, r.statusUpdate(currentAcctInstance)
 		}
 
 		// see if in creating for longer then default wait time
@@ -334,8 +345,8 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				}
 
 				// set state creating if the account was able to create
-				utils.SetAccountStatus(currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, AccountCreating)
-				err = r.statusUpdate(reqLogger, currentAcctInstance)
+				utils.SetAccountStatus(currentAcctInstance, AccountCreating, awsv1alpha1.AccountCreating, AccountCreating)
+				err = r.statusUpdate(currentAcctInstance)
 
 				if err != nil {
 					return reconcile.Result{}, err
@@ -361,7 +372,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 				// set state creating if the account was already created
 				utils.SetAccountStatus(currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, AccountCreating)
-				err = r.statusUpdate(reqLogger, currentAcctInstance)
+				err = r.statusUpdate(currentAcctInstance)
 
 				if err != nil {
 					return reconcile.Result{}, err
@@ -374,7 +385,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	// Account init for both BYOC and Non-BYOC
 	if accountReadyForInitialization(currentAcctInstance) {
 
-		reqLogger.Info(fmt.Sprintf("Initalizing account: %s AWS ID: %s", currentAcctInstance.Name, currentAcctInstance.Spec.AwsAccountID))
+		reqLogger.Info("initializing account", "awsAccountID", currentAcctInstance.Spec.AwsAccountID)
 		var roleToAssume string
 		var iamUserUHC = iamUserNameUHC
 		var iamUserSRE = iamUserNameSRE
@@ -405,9 +416,9 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			// If this is a BYOC account, check that BYOCAdminAccess role
 			// was the one used in the AssumedRole
 			// RoleID must exist in the AssumeRoleID string
-			match, _ := matchSubstring(byocRoleID, *creds.AssumedRoleUser.AssumedRoleId)
-			if byocRoleID != "" && match == false {
-				reqLogger.Info(fmt.Sprintf("Assumed RoleID:Session string does not match new RoleID: %s, %s", *creds.AssumedRoleUser.AssumedRoleId, byocRoleID))
+			match, _ := matchSubstring(ccsRoleID, *creds.AssumedRoleUser.AssumedRoleId)
+			if ccsRoleID != "" && match == false {
+				reqLogger.Info(fmt.Sprintf("Assumed RoleID:Session string does not match new RoleID: %s, %s", *creds.AssumedRoleUser.AssumedRoleId, ccsRoleID))
 				reqLogger.Info(fmt.Sprintf("Sleeping %d seconds", i))
 				time.Sleep(time.Duration(i) * time.Second)
 			} else {
@@ -450,7 +461,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		// We're about to kick off region init in a goroutine. This status makes subsequent
 		// Reconciles ignore the Account (unless it stays in this state for too long).
 		utils.SetAccountStatus(currentAcctInstance, "Initializing Regions", awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
-		if err := r.statusUpdate(reqLogger, currentAcctInstance); err != nil {
+		if err := r.statusUpdate(currentAcctInstance); err != nil {
 			// statusUpdate logs
 			return reconcile.Result{}, err
 		}
@@ -489,7 +500,7 @@ func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctIns
 		}
 	}
 
-	if err := r.statusUpdate(reqLogger, currentAcctInstance); err != nil {
+	if err := r.statusUpdate(currentAcctInstance); err != nil {
 		// If this happens, the Account should eventually get set to Failed by the
 		// accountOlderThan check in the main controller.
 		reqLogger.Error(err, "asyncRegionInit failed to update status")
@@ -507,7 +518,7 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 		switch orgErr {
 		case awsv1alpha1.ErrAwsFailedCreateAccount:
 			utils.SetAccountStatus(account, "Failed to create AWS Account", awsv1alpha1.AccountFailed, AccountFailed)
-			err := r.statusUpdate(reqLogger, account)
+			err := r.statusUpdate(account)
 			if err != nil {
 				return "", err
 			}
@@ -533,7 +544,7 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 		reqLogger.Error(err, "Unable to get updated Account object after status update")
 	}
 
-	reqLogger.Info("Account Created")
+	reqLogger.Info("account created successfully")
 
 	return *orgOutput.CreateAccountStatus.AccountId, nil
 }
@@ -615,12 +626,8 @@ func formatAccountEmail(name string) string {
 	return email
 }
 
-func (r *ReconcileAccount) statusUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+func (r *ReconcileAccount) statusUpdate(account *awsv1alpha1.Account) error {
 	err := r.Client.Status().Update(context.TODO(), account)
-	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", account.Name))
-	}
-	reqLogger.Info(fmt.Sprintf("Status updated for %s", account.Name))
 	return err
 }
 
@@ -638,7 +645,11 @@ func (r *ReconcileAccount) setStateFailed(reqLogger logr.Logger, currentAcctInst
 	}
 
 	// Apply the update
-	err = r.statusUpdate(reqLogger, currentAcctInstance)
+	err = r.statusUpdate(currentAcctInstance)
+	if err != nil {
+		reqLogger.Error(err, "failed to update status")
+	}
+	// TODO: Need to cause this to requeue again
 	return err
 }
 
@@ -646,6 +657,7 @@ func (r *ReconcileAccount) getAccountClaim(account *awsv1alpha1.Account) (*awsv1
 	accountClaim := &awsv1alpha1.AccountClaim{}
 	err := r.Client.Get(context.TODO(), types.NamespacedName{
 		Name: account.Spec.ClaimLink, Namespace: account.Spec.ClaimLinkNamespace}, accountClaim)
+
 	if err != nil {
 		return nil, err
 	}
@@ -659,7 +671,7 @@ func (r *ReconcileAccount) setAccountClaimError(reqLogger logr.Logger, currentAc
 			// If the accountClaim is not found, no need to update the accountClaim
 			return nil
 		}
-		reqLogger.Error(err, fmt.Sprintf("Unable to get accountClaim for %s", currentAccountInstance.Name))
+		reqLogger.Error(err, "unable to get accountclaim")
 		return err
 	}
 
@@ -691,7 +703,7 @@ func (r *ReconcileAccount) setAccountClaimError(reqLogger logr.Logger, currentAc
 	// Update the *accountClaim* status (not the account status)
 	err = r.Client.Status().Update(context.TODO(), accountClaim)
 	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", accountClaim.Name))
+		reqLogger.Error(err, "failed to update accountclaim status", "accountclaim", accountClaim.Name)
 	}
 
 	return err
