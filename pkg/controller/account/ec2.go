@@ -85,7 +85,7 @@ func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, account *awsv
 	return nil
 }
 
-// BuildAndDestroyEC2Instances runs and ec2 instance and terminates it
+// BuildAndDestroyEC2Instances runs an ec2 instance and terminates it
 func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, ami string) error {
 
 	instanceID, err := CreateEC2Instance(reqLogger, account, awsClient, ami)
@@ -240,7 +240,7 @@ func TerminateEC2Instance(reqLogger logr.Logger, client awsclient.Client, instan
 		InstanceIds: aws.StringSlice([]string{instanceID}),
 	})
 	if err != nil {
-		controllerutils.LogAwsError(reqLogger, "New AWS Error while describing EC2 instance", nil, err)
+		controllerutils.LogAwsError(reqLogger, "New AWS Error while terminating EC2 instance", nil, err)
 		return err
 	}
 
