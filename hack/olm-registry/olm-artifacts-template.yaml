@@ -66,4 +66,4 @@ objects:
     name: ${ACCOUNT_POOL_NAME}
     namespace: aws-account-operator
   spec:
-    poolSize: ${ACCOUNT_POOL_SIZE}
+    poolSize: ${{ACCOUNT_POOL_SIZE}}
