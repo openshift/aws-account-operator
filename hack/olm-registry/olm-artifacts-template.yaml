@@ -18,6 +18,8 @@ parameters:
   required: true
 - name: ACCOUNT_POOL_SIZE
   required: true
+- name: ACCOUNT_POOL_NAME
+  required: true
 
 objects:
 - apiVersion: operators.coreos.com/v1alpha1
@@ -61,7 +63,7 @@ objects:
 - apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AccountPool
   metadata:
-    name: aws-account-operator-accountpool
+    name: ${ACCOUNT_POOL_NAME}
     namespace: aws-account-operator
   spec:
     poolSize: "${ACCOUNT_POOL_SIZE}"
