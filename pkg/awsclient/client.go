@@ -374,17 +374,11 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 	// Time (and count) calls to AWS.
 	// But only from controllers, signalled by a nonempty controllerName.
 	if controllerName != "" {
-		// NOTE(efried): We can't count on the returned client being used by a single thread, so we
-		// create a separate timer for each request.
-		timers := make(map[*request.Request]time.Time)
-		// Validate is the first phase of a request. Start the timer as early as possible (as the first handler there).
-		s.Handlers.Validate.PushFront(func(r *request.Request) {
-			timers[r] = time.Now()
-		})
-		// Complete is the last phase of a request. Stop the timer as late as possible (as the last handler there).
+		// The AWS SDK sets Request.Time to Now() when the request is initialized.
+		// We time the whole call, from that point until as late as possible, by adding a handler
+		// at the end of the `Complete` phase, which is the last available phase of the request.
 		s.Handlers.Complete.PushBack(func(r *request.Request) {
-			defer func() { delete(timers, r) }()
-			localmetrics.Collector.AddAPICall(controllerName, r.HTTPRequest, r.HTTPResponse, time.Since(timers[r]).Seconds())
+			localmetrics.Collector.AddAPICall(controllerName, r.HTTPRequest, r.HTTPResponse, time.Since(r.Time).Seconds())
 		})
 	}
 
