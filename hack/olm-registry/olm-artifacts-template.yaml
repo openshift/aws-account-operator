@@ -212,27 +212,28 @@ objects:
           - "arn:aws:ec2:*:*:vpc-peering-connection/*"
           - "arn:aws:ec2:*:*:vpn-gateway/*"
   awsManagedPolicies:
+  - "AmazonEC2ReadOnlyAccess"
 
-apiVersion: aws.managed.openshift.io/v1alpha1
-kind: AWSFederatedRole
-metadata:
-  name: read-only
-  namespace: aws-account-operator
-spec:
-  roleDisplayName: Read only
-  roleDescription: User may view all AWS resources for this cluster, but not modify, create or delete resources.
-  awsCustomPolicy:
-    name:  BillingReadOnlyAccess
-    description: Description of BillingReadOnlyAccess
-    awsStatements:
-      - effect: Allow
-        action:
-        - "aws-portal:ViewAccount"
-        - "aws-portal:ViewBilling"
-        resource: 
-        - "*"
-  awsManagedPolicies:
-   - "AWSAccountUsageReportAccess"
-   - "AmazonEC2ReadOnlyAccess"
-   - "AmazonS3ReadOnlyAccess"
-   - "IAMReadOnlyAccess"
+- apiVersion: aws.managed.openshift.io/v1alpha1
+  kind: AWSFederatedRole
+  metadata:
+    name: read-only
+    namespace: aws-account-operator
+  spec:
+    roleDisplayName: Read only
+    roleDescription: User may view all AWS resources for this cluster, but not modify, create or delete resources.
+    awsCustomPolicy:
+      name:  BillingReadOnlyAccess
+      description: Description of BillingReadOnlyAccess
+      awsStatements:
+        - effect: Allow
+          action:
+          - "aws-portal:ViewAccount"
+          - "aws-portal:ViewBilling"
+          resource: 
+          - "*"
+    awsManagedPolicies:
+    - "AWSAccountUsageReportAccess"
+    - "AmazonEC2ReadOnlyAccess"
+    - "AmazonS3ReadOnlyAccess"
+    - "IAMReadOnlyAccess"
