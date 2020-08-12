@@ -71,148 +71,148 @@ objects:
 - apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AWSFederatedRole
   metadata:
-  name: network-mgmt
-  namespace: aws-account-operator
+    name: network-mgmt
+    namespace: aws-account-operator
   spec:
-  roleDisplayName: Network management
-  roleDescription: User can view all AWS resources, and can edit VPC related resources to enable services such as IPsec VPN and VPC peering.
-  awsCustomPolicy:
-    name:  CustomerAdministratorAccess
-    description: Description of CustomerAdministratorAccess
-    awsStatements:
-      - effect: Allow
-        action:
-          - "ec2:AcceptVpcPeeringConnection"
-          - "ec2:AttachVpnGateway"
-          - "ec2:CreateCustomerGateway"
-          - "ec2:CreateRoute"
-          - "ec2:CreateTags"
-          - "ec2:CreateVPCEndpoint"
-          - "ec2:CreateVpcPeeringConnection"
-          - "ec2:CreateVpnConnection"
-          - "ec2:CreateVpnConnectionRoute"
-          - "ec2:CreateVpnGateway"
-          - "ec2:DeleteVpcPeeringConnection"
-          - "ec2:DeleteVpnConnection"
-          - "ec2:DeleteVpnConnectionRoute"
-          - "ec2:DeleteVpnGateway"
-          - "ec2:DescribeAvailabilityZones"
-          - "ec2:DescribeRouteTables"
-          - "ec2:DescribeSubnets"
-          - "ec2:DescribeTransitGatewayAttachments"
-          - "ec2:DescribeTransitGatewayVpcAttachments"
-          - "ec2:DescribeTransitGateways"
-          - "ec2:DescribeVPCEndpoints"
-          - "ec2:DescribeVpcPeeringConnections"
-          - "ec2:DescribeVpcs"
-          - "ec2:DescribeVpnConnections"
-          - "ec2:DescribeVpnGateways"
-          - "ec2:CreateVpnConnection"
-          - "ec2:CreateTags"
-          - "ec2:CreateRoute"
-          - "ec2:DescribeRouteTables"
-          - "ec2:DetachVpnGateway"
-          - "ec2:ModifyVpcPeeringConnectionOptions"
-          - "ec2:RejectVpcPeeringConnection"
-          - "ec2:DisableVgwRoutePropagation"
-          - "ec2:EnableVgwRoutePropagation"
-          - "guardduty:GetDetector"
-          - "guardduty:GetFindings"
-          - "guardduty:GetFindingsStatistics"
-          - "guardduty:GetFreeTrialStatistics"
-          - "guardduty:GetIPSet"
-          - "guardduty:GetInvitationsCount"
-          - "guardduty:GetMasterAccount"
-          - "guardduty:GetMembers"
-          - "guardduty:GetThreatIntelSet"
-          - "guardduty:ListDetectors"
-          - "guardduty:ListFilters"
-          - "guardduty:ListFindings"
-          - "guardduty:ListIPSets"
-          - "guardduty:ListInvitations"
-          - "guardduty:ListMembers"
-          - "guardduty:ListThreatIntelSets"
-          - "ram:AcceptResourceShareInvitation"
-          - "ram:DeleteResourceShare"
-          - "ram:GetResourcePolicies"
-          - "ram:GetResourceShareAssociations"
-          - "ram:GetResourceShareInvitations"
-          - "ram:GetResourceShares"
-          - "ram:ListPendingInvitationResources"
-          - "ram:ListPrincipals"
-          - "ram:ListResources"
-          - "ram:RejectResourceShareInvitation"
-          - "route53resolver:AssociateResolverRule"
-          - "route53resolver:DeleteResolverRule"
-          - "route53resolver:DisassociateResolverRule"
-          - "route53resolver:GetResolverRule"
-          - "route53resolver:GetResolverRuleAssociation"
-          - "route53resolver:ListResolverRuleAssociations"
-          - "route53resolver:ListResolverRules"
-          - "directconnect:*"
-        resource: 
-          - "*"
-      - effect: Allow
-        action:
-          - "ram:*"
-        resource:
-          - "*"
-        condition:
-          StringEquals:
-            ram:RequestedResourceType: route53resolver:ResolverRule
-      - effect: Allow
-        action:
-          - "ec2:CreateTransitGatewayVpcAttachment"
-        resource:
-          - "arn:aws:ec2:*:*:subnet/*"
-          - "arn:aws:ec2:*:*:transit-gateway/*"
-          - "arn:aws:ec2:*:*:vpc/*"
-          - "arn:aws:ec2:*:*:transit-gateway-attachment/*"
-      - effect: Allow
-        action:
-          - "ec2:CreateCustomerGateway"
-          - "ec2:DeleteCustomerGateway"
-          - "ec2:CreateVpnGateway"
-          - "ec2:AttachVpnGateway"
-          - "ec2:DetachVpnGateway"
-          - "ec2:DeleteVpnGateway"
-          - "ec2:CreateVpnConnection"
-          - "ec2:ModifyVpnConnection"
-          - "ec2:ModifyVpnTunnelOptions"
-          - "ec2:DeleteVpnConnection"
-          - "ec2:EnableVgwRoutePropagation"
-          - "ec2:DisableVgwRoutePropagation"
-        resource: 
-          - "*"
-      - effect: Allow
-        action:
-          - "ec2:CreateRoute"
-          - "ec2:CreateVpcPeeringConnection"
-          - "ec2:DeleteRoute"
-          - "ec2:DeleteVpcPeeringConnection"
-        resource:
-          - "*"
-      - effect: Allow
-        action:
-          - "ec2:CreateVpnGateway"
-          - "directconnect:*"
-          - "ec2:DeleteVpnGateway"
-          - "ec2:AttachVpnGateway"
-          - "ec2:DetachVpnGateway"
-        resource:
-          - "*"
-      - effect: Allow
-        action:
-          - "ec2:CreateTags"
-          - "ec2:DeleteTags"
-        resource:
-          - "arn:aws:ec2:*:*:customer-gateway/*"
-          - "arn:aws:ec2:*:*:vpn-gateway/*"
-          - "arn:aws:ec2:*:*:vpn-connection/*"
-          - "arn:aws:ec2:*:*:vpc-peering-connection/*"
-          - "arn:aws:ec2:*:*:vpn-gateway/*"
-  awsManagedPolicies:
-  - "AmazonEC2ReadOnlyAccess"
+    roleDisplayName: Network management
+    roleDescription: User can view all AWS resources, and can edit VPC related resources to enable services such as IPsec VPN and VPC peering.
+    awsCustomPolicy:
+      name:  CustomerAdministratorAccess
+      description: Description of CustomerAdministratorAccess
+      awsStatements:
+        - effect: Allow
+          action:
+            - "ec2:AcceptVpcPeeringConnection"
+            - "ec2:AttachVpnGateway"
+            - "ec2:CreateCustomerGateway"
+            - "ec2:CreateRoute"
+            - "ec2:CreateTags"
+            - "ec2:CreateVPCEndpoint"
+            - "ec2:CreateVpcPeeringConnection"
+            - "ec2:CreateVpnConnection"
+            - "ec2:CreateVpnConnectionRoute"
+            - "ec2:CreateVpnGateway"
+            - "ec2:DeleteVpcPeeringConnection"
+            - "ec2:DeleteVpnConnection"
+            - "ec2:DeleteVpnConnectionRoute"
+            - "ec2:DeleteVpnGateway"
+            - "ec2:DescribeAvailabilityZones"
+            - "ec2:DescribeRouteTables"
+            - "ec2:DescribeSubnets"
+            - "ec2:DescribeTransitGatewayAttachments"
+            - "ec2:DescribeTransitGatewayVpcAttachments"
+            - "ec2:DescribeTransitGateways"
+            - "ec2:DescribeVPCEndpoints"
+            - "ec2:DescribeVpcPeeringConnections"
+            - "ec2:DescribeVpcs"
+            - "ec2:DescribeVpnConnections"
+            - "ec2:DescribeVpnGateways"
+            - "ec2:CreateVpnConnection"
+            - "ec2:CreateTags"
+            - "ec2:CreateRoute"
+            - "ec2:DescribeRouteTables"
+            - "ec2:DetachVpnGateway"
+            - "ec2:ModifyVpcPeeringConnectionOptions"
+            - "ec2:RejectVpcPeeringConnection"
+            - "ec2:DisableVgwRoutePropagation"
+            - "ec2:EnableVgwRoutePropagation"
+            - "guardduty:GetDetector"
+            - "guardduty:GetFindings"
+            - "guardduty:GetFindingsStatistics"
+            - "guardduty:GetFreeTrialStatistics"
+            - "guardduty:GetIPSet"
+            - "guardduty:GetInvitationsCount"
+            - "guardduty:GetMasterAccount"
+            - "guardduty:GetMembers"
+            - "guardduty:GetThreatIntelSet"
+            - "guardduty:ListDetectors"
+            - "guardduty:ListFilters"
+            - "guardduty:ListFindings"
+            - "guardduty:ListIPSets"
+            - "guardduty:ListInvitations"
+            - "guardduty:ListMembers"
+            - "guardduty:ListThreatIntelSets"
+            - "ram:AcceptResourceShareInvitation"
+            - "ram:DeleteResourceShare"
+            - "ram:GetResourcePolicies"
+            - "ram:GetResourceShareAssociations"
+            - "ram:GetResourceShareInvitations"
+            - "ram:GetResourceShares"
+            - "ram:ListPendingInvitationResources"
+            - "ram:ListPrincipals"
+            - "ram:ListResources"
+            - "ram:RejectResourceShareInvitation"
+            - "route53resolver:AssociateResolverRule"
+            - "route53resolver:DeleteResolverRule"
+            - "route53resolver:DisassociateResolverRule"
+            - "route53resolver:GetResolverRule"
+            - "route53resolver:GetResolverRuleAssociation"
+            - "route53resolver:ListResolverRuleAssociations"
+            - "route53resolver:ListResolverRules"
+            - "directconnect:*"
+          resource: 
+            - "*"
+        - effect: Allow
+          action:
+            - "ram:*"
+          resource:
+            - "*"
+          condition:
+            StringEquals:
+              ram:RequestedResourceType: route53resolver:ResolverRule
+        - effect: Allow
+          action:
+            - "ec2:CreateTransitGatewayVpcAttachment"
+          resource:
+            - "arn:aws:ec2:*:*:subnet/*"
+            - "arn:aws:ec2:*:*:transit-gateway/*"
+            - "arn:aws:ec2:*:*:vpc/*"
+            - "arn:aws:ec2:*:*:transit-gateway-attachment/*"
+        - effect: Allow
+          action:
+            - "ec2:CreateCustomerGateway"
+            - "ec2:DeleteCustomerGateway"
+            - "ec2:CreateVpnGateway"
+            - "ec2:AttachVpnGateway"
+            - "ec2:DetachVpnGateway"
+            - "ec2:DeleteVpnGateway"
+            - "ec2:CreateVpnConnection"
+            - "ec2:ModifyVpnConnection"
+            - "ec2:ModifyVpnTunnelOptions"
+            - "ec2:DeleteVpnConnection"
+            - "ec2:EnableVgwRoutePropagation"
+            - "ec2:DisableVgwRoutePropagation"
+          resource: 
+            - "*"
+        - effect: Allow
+          action:
+            - "ec2:CreateRoute"
+            - "ec2:CreateVpcPeeringConnection"
+            - "ec2:DeleteRoute"
+            - "ec2:DeleteVpcPeeringConnection"
+          resource:
+            - "*"
+        - effect: Allow
+          action:
+            - "ec2:CreateVpnGateway"
+            - "directconnect:*"
+            - "ec2:DeleteVpnGateway"
+            - "ec2:AttachVpnGateway"
+            - "ec2:DetachVpnGateway"
+          resource:
+            - "*"
+        - effect: Allow
+          action:
+            - "ec2:CreateTags"
+            - "ec2:DeleteTags"
+          resource:
+            - "arn:aws:ec2:*:*:customer-gateway/*"
+            - "arn:aws:ec2:*:*:vpn-gateway/*"
+            - "arn:aws:ec2:*:*:vpn-connection/*"
+            - "arn:aws:ec2:*:*:vpc-peering-connection/*"
+            - "arn:aws:ec2:*:*:vpn-gateway/*"
+    awsManagedPolicies:
+      - "AmazonEC2ReadOnlyAccess"
 
 - apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AWSFederatedRole
