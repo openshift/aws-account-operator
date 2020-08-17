@@ -19,7 +19,9 @@ import (
 
 // InitializeSupportedRegions concurrently calls InitializeRegion to create instances in all supported regions
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
-func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions map[string]map[string]string, creds *sts.AssumeRoleOutput) error {
+// NOTE: This function does not have any returns. In particular, error conditions from the
+// goroutines are logged, but do not result in a failure up the stack.
+func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions map[string]map[string]string, creds *sts.AssumeRoleOutput) {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
 	ec2Notifications, ec2Errors := make(chan string), make(chan string)
 
@@ -43,8 +45,6 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 	}
 
 	reqLogger.Info("Completed initializing all supported regions")
-
-	return nil
 }
 
 // InitializeRegion sets up a connection to the AWS `region` and then creates and terminates an EC2 instance
