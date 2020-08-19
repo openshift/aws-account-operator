@@ -32,8 +32,7 @@ const (
 	AccountClaimed = "AccountClaimed"
 	// AccountUnclaimed indicates the account has not been claimed in the accountClaim status
 	AccountUnclaimed = "AccountUnclaimed"
-	// BYOCAccountFailedClaim indicates a failure to claim a CCS/BYOC account in the accountClaim status
-	BYOCAccountFailedClaim  = "BYOCAccountFailed"
+
 	awsCredsUserName        = "aws_user_name"
 	awsCredsAccessKeyID     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
@@ -179,7 +178,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	if accountClaim.Spec.BYOC {
-		reqLogger.Info("Reconciling BYOC AccountClaim")
+		reqLogger.Info("Reconciling CCS AccountClaim")
 
 		// Ensure BYOC secret has finalizer
 		reqLogger.Info("Ensuring byoc secret has finalizer")
@@ -222,12 +221,12 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		if byocAccount.Status.State != string(awsv1alpha1.AccountReady) {
 			if byocAccount.Status.State == string(awsv1alpha1.AccountFailed) {
 				accountClaim.Status.State = awsv1alpha1.ClaimStatusError
-				message := "BYOC account failed"
+				message := "CCS Account Failed"
 				accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
 					accountClaim.Status.Conditions,
-					awsv1alpha1.BYOCAccountClaimFailed,
+					awsv1alpha1.CCSAccountClaimFailed,
 					corev1.ConditionTrue,
-					BYOCAccountFailedClaim,
+					string(awsv1alpha1.CCSAccountClaimFailed),
 					message,
 					controllerutils.UpdateConditionNever,
 					accountClaim.Spec.BYOCAWSAccountID != "",

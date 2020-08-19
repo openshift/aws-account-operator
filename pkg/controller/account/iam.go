@@ -60,7 +60,7 @@ func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, account *awsv1alp
 	createErr := r.Client.Create(context.TODO(), secret)
 	if createErr != nil {
 		failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret %s", secret.Name)
-		SetAccountStatus(reqLogger, account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
+		utils.SetAccountStatus(account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return err
@@ -369,7 +369,7 @@ func (r *ReconcileAccount) RotateIAMAccessKeys(reqLogger logr.Logger, awsClient 
 		reqLogger.Error(err, errMsg)
 		// TODO: We should move this status update to the main reconcile where BuildIAMUser is called
 		// This would mean we can remove reqLogger and the awsv1alpha1 account reference to keep things cleaner
-		SetAccountStatus(reqLogger, account, errMsg, awsv1alpha1.AccountFailed, AccountFailed)
+		utils.SetAccountStatus(account, errMsg, awsv1alpha1.AccountFailed, AccountFailed)
 		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return nil, err

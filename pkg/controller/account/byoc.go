@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -60,20 +59,20 @@ func (r *ReconcileAccount) initializeNewBYOCAccount(reqLogger logr.Logger, curre
 	client, accountClaim, err := r.getBYOCClient(currentAcctInstance)
 	if err != nil {
 		if accountClaim != nil {
-			r.accountClaimBYOCError(reqLogger, accountClaim, err)
+			r.setAccountClaimError(reqLogger, currentAcctInstance, err.Error())
 		}
 		return "", err
 	}
 
 	err = validateBYOCClaim(accountClaim)
 	if err != nil {
-		r.accountClaimBYOCError(reqLogger, accountClaim, err)
+		r.setAccountClaimError(reqLogger, currentAcctInstance, err.Error())
 		return "", err
 	}
 
 	err = claimBYOCAccount(r, reqLogger, currentAcctInstance)
 	if err != nil {
-		r.accountClaimBYOCError(reqLogger, accountClaim, err)
+		r.setAccountClaimError(reqLogger, currentAcctInstance, err.Error())
 		return "", err
 	}
 
@@ -86,13 +85,13 @@ func (r *ReconcileAccount) initializeNewBYOCAccount(reqLogger logr.Logger, curre
 		roleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn, currentAccInstanceID, tags)
 
 		if err != nil {
-			r.accountClaimBYOCError(reqLogger, accountClaim, err)
+			r.setAccountClaimError(reqLogger, currentAcctInstance, err.Error())
 			return "", err
 		}
 
 		reqLogger.Info("Updating BYOC to creating")
 		currentAcctInstance.Status.State = AccountCreating
-		SetAccountStatus(reqLogger, currentAcctInstance, "BYOC Account Creating", awsv1alpha1.AccountCreating, AccountCreating)
+		utils.SetAccountStatus(currentAcctInstance, "BYOC Account Creating", awsv1alpha1.AccountCreating, AccountCreating)
 		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
 		if err != nil {
 			return roleID, err
@@ -264,7 +263,7 @@ func GetAttachedPolicies(reqLogger logr.Logger, byocRole string, byocAWSClient a
 			default:
 				reqLogger.Error(
 					aerr,
-					fmt.Sprintf(aerr.Error()),
+					aerr.Error(),
 				)
 				return &iam.ListAttachedRolePoliciesOutput{}, err
 			}
@@ -289,9 +288,9 @@ func DetachPolicyFromRole(reqLogger logr.Logger, policy *iam.AttachedPolicy, byo
 			default:
 				reqLogger.Error(
 					aerr,
-					fmt.Sprintf(aerr.Error()),
+					aerr.Error(),
 				)
-				reqLogger.Error(err, fmt.Sprintf("%v", err))
+				reqLogger.Error(err, err.Error())
 			}
 		}
 	}
@@ -312,9 +311,9 @@ func DeleteRole(reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.
 			default:
 				reqLogger.Error(
 					aerr,
-					fmt.Sprintf(aerr.Error()),
+					aerr.Error(),
 				)
-				reqLogger.Error(err, fmt.Sprintf("%v", err))
+				reqLogger.Error(err, err.Error())
 			}
 		}
 	}
@@ -346,24 +345,6 @@ func (r *ReconcileAccount) getBYOCClient(currentAcct *awsv1alpha1.Account) (awsc
 	}
 
 	return byocAWSClient, accountClaim, nil
-}
-
-func (r *ReconcileAccount) accountClaimBYOCError(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, claimError error) {
-	message := fmt.Sprintf("CCS Account Failed: %+v", claimError)
-	accountClaim.Status.Conditions = utils.SetAccountClaimCondition(
-		accountClaim.Status.Conditions,
-		awsv1alpha1.AccountClaimed,
-		corev1.ConditionTrue,
-		"AccountFailed",
-		message,
-		utils.UpdateConditionIfReasonOrMessageChange,
-		accountClaim.Spec.BYOCAWSAccountID != "",
-	)
-	accountClaim.Status.State = awsv1alpha1.ClaimStatusError
-	err := r.Client.Status().Update(context.TODO(), accountClaim)
-	if err != nil {
-		reqLogger.Error(err, "Error updating BYOC Account Claim")
-	}
 }
 
 func validateBYOCClaim(accountClaim *awsv1alpha1.AccountClaim) error {

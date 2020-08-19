@@ -15,7 +15,6 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 )
@@ -155,7 +154,7 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 	reusedAccount.Status.Claimed = false
 	reusedAccount.Status.Reused = true
 	conditionMsg := fmt.Sprintf("Account Reuse - %s", conditionStatus)
-	account.SetAccountStatus(reqLogger, reusedAccount, conditionMsg, accountState, conditionStatus)
+	utils.SetAccountStatus(reusedAccount, conditionMsg, accountState, conditionStatus)
 	err = r.accountStatusUpdate(reqLogger, reusedAccount)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update account status for reuse")
