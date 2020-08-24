@@ -294,9 +294,8 @@ predeploy-aws-account-operator:
 predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials
 
 .PHONY: deploy-local
-deploy-local: FORCE_DEV_MODE?=local
 deploy-local:
-	@operator-sdk up local --namespace=$(OPERATOR_NAMESPACE)
+	@FORCE_DEV_MODE=local operator-sdk up local --namespace=$(OPERATOR_NAMESPACE)
 
 .PHONY: deploy-cluster
 deploy-cluster: FORCE_DEV_MODE?=cluster
