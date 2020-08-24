@@ -98,6 +98,8 @@ const (
 	// AccountInitializingRegions indicates we've kicked off the process of creating and terminating
 	// instances in all supported regions
 	AccountInitializingRegions = "InitializingRegions"
+	// AccountQuotaIncreaseRequested is set when a quota increase has been requested
+	AccountQuotaIncreaseRequested AccountConditionType = "QuotaIncreaseRequested"
 )
 
 // +genclient

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,10 +9,13 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -195,4 +199,14 @@ func AccountCRHasIAMUserIDLabel(accountCR *awsv1alpha1.Account) bool {
 	}
 
 	return false
+}
+
+// GetOperatorConfigMap retrieves the default configMap data for the AWS Account Operator from Kubernetes
+func GetOperatorConfigMap(kubeClient client.Client) (*corev1.ConfigMap, error) {
+	configMap := &corev1.ConfigMap{}
+	err := kubeClient.Get(
+		context.TODO(),
+		types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace,
+			Name: awsv1alpha1.DefaultConfigMap}, configMap)
+	return configMap, err
 }

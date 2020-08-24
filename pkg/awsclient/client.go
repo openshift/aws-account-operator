@@ -20,6 +20,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/route53/route53iface"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go/service/servicequotas"
+	"github.com/aws/aws-sdk-go/service/servicequotas/servicequotasiface"
 	"github.com/golang/mock/gomock"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 
@@ -120,16 +122,23 @@ type Client interface {
 	DeleteHostedZone(*route53.DeleteHostedZoneInput) (*route53.DeleteHostedZoneOutput, error)
 	ListResourceRecordSets(*route53.ListResourceRecordSetsInput) (*route53.ListResourceRecordSetsOutput, error)
 	ChangeResourceRecordSets(*route53.ChangeResourceRecordSetsInput) (*route53.ChangeResourceRecordSetsOutput, error)
+
+	// Service Quota
+	GetServiceQuota(*servicequotas.GetServiceQuotaInput) (*servicequotas.GetServiceQuotaOutput, error)
+	RequestServiceQuotaIncrease(*servicequotas.RequestServiceQuotaIncreaseInput) (*servicequotas.RequestServiceQuotaIncreaseOutput, error)
+	ListRequestedServiceQuotaChangeHistory(*servicequotas.ListRequestedServiceQuotaChangeHistoryInput) (*servicequotas.ListRequestedServiceQuotaChangeHistoryOutput, error)
+	ListRequestedServiceQuotaChangeHistoryByQuota(*servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaInput) (*servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput, error)
 }
 
 type awsClient struct {
-	ec2Client     ec2iface.EC2API
-	iamClient     iamiface.IAMAPI
-	orgClient     organizationsiface.OrganizationsAPI
-	stsClient     stsiface.STSAPI
-	supportClient supportiface.SupportAPI
-	s3Client      s3iface.S3API
-	route53client route53iface.Route53API
+	ec2Client           ec2iface.EC2API
+	iamClient           iamiface.IAMAPI
+	orgClient           organizationsiface.OrganizationsAPI
+	stsClient           stsiface.STSAPI
+	supportClient       supportiface.SupportAPI
+	s3Client            s3iface.S3API
+	route53client       route53iface.Route53API
+	serviceQuotasClient servicequotasiface.ServiceQuotasAPI
 }
 
 // NewAwsClientInput input for new aws client
@@ -359,6 +368,22 @@ func (c *awsClient) ChangeResourceRecordSets(input *route53.ChangeResourceRecord
 	return c.route53client.ChangeResourceRecordSets(input)
 }
 
+func (c *awsClient) GetServiceQuota(input *servicequotas.GetServiceQuotaInput) (*servicequotas.GetServiceQuotaOutput, error) {
+	return c.serviceQuotasClient.GetServiceQuota(input)
+}
+
+func (c *awsClient) RequestServiceQuotaIncrease(input *servicequotas.RequestServiceQuotaIncreaseInput) (*servicequotas.RequestServiceQuotaIncreaseOutput, error) {
+	return c.serviceQuotasClient.RequestServiceQuotaIncrease(input)
+}
+
+func (c *awsClient) ListRequestedServiceQuotaChangeHistory(input *servicequotas.ListRequestedServiceQuotaChangeHistoryInput) (*servicequotas.ListRequestedServiceQuotaChangeHistoryOutput, error) {
+	return c.serviceQuotasClient.ListRequestedServiceQuotaChangeHistory(input)
+}
+
+func (c *awsClient) ListRequestedServiceQuotaChangeHistoryByQuota(input *servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaInput) (*servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput, error) {
+	return c.serviceQuotasClient.ListRequestedServiceQuotaChangeHistoryByQuota(input)
+}
+
 // NewClient creates our client wrapper object for the actual AWS clients we use.
 // If controllerName is nonempty, metrics are collected timing and counting each AWS request.
 func newClient(controllerName, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
@@ -383,13 +408,14 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 	}
 
 	return &awsClient{
-		ec2Client:     ec2.New(s),
-		iamClient:     iam.New(s),
-		orgClient:     organizations.New(s),
-		stsClient:     sts.New(s),
-		supportClient: support.New(s),
-		s3Client:      s3.New(s),
-		route53client: route53.New(s),
+		ec2Client:           ec2.New(s),
+		iamClient:           iam.New(s),
+		orgClient:           organizations.New(s),
+		route53client:       route53.New(s),
+		s3Client:            s3.New(s),
+		stsClient:           sts.New(s),
+		supportClient:       support.New(s),
+		serviceQuotasClient: servicequotas.New(s, aws.NewConfig()),
 	}, nil
 }
 

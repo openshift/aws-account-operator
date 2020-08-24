@@ -38,6 +38,13 @@ var log = logf.Log.WithName("controller_account")
 
 const (
 	awsInstanceType = "t2.micro"
+
+	// Service Quota-related constants
+	// vCPUQuotaCode
+	vCPUQuotaCode = "L-1216C47A"
+	// vCPUServiceCode
+	vCPUServiceCode = "ec2"
+
 	// createPendTime is the maximum time we allow an Account to sit in Creating state before we
 	// time out and set it to Failed.
 	createPendTime = utils.WaitTime * time.Minute
@@ -682,10 +689,6 @@ func (r *ReconcileAccount) setStateFailed(reqLogger logr.Logger, currentAcctInst
 
 	// Apply the update
 	err = r.statusUpdate(currentAcctInstance)
-	if err != nil {
-		reqLogger.Error(err, "failed to update status")
-	}
-	// TODO: Need to cause this to requeue again
 	return err
 }
 
