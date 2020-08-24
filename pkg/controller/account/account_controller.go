@@ -43,6 +43,13 @@ const (
 	awsCredsSecretAccessKey = "aws_secret_access_key"
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
+
+	// Service Quota-related constants
+	// vCPUQuotaCode
+	vCPUQuotaCode = "L-1216C47A"
+	// vCPUServiceCode
+	vCPUServiceCode = "ec2"
+
 	// createPendTime is the maximum time we allow an Account to sit in Creating state before we
 	// time out and set it to Failed.
 	createPendTime = utils.WaitTime * time.Minute
@@ -198,7 +205,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			utils.SetAccountStatus(currentAcctInstance, msg, v1alpha1.AccountCreating, AccountCreating)
 			// The status update will trigger another Reconcile, but be explicit. The requests get
 			// collapsed anyway.
-			return reconcile.Result{Requeue: true}, r.statusUpdate(reqLogger, currentAcctInstance)
+			return reconcile.Result{Requeue: true}, r.statusUpdate(currentAcctInstance)
 		}
 		// The goroutines happened in this invocation. Time out if that has taken too long.
 		if accountOlderThan(currentAcctInstance, initPendTime) {
@@ -252,7 +259,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 					// Update supportCaseId in CR
 					currentAcctInstance.Status.SupportCaseID = caseID
 					utils.SetAccountStatus(currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
-					err = r.statusUpdate(reqLogger, currentAcctInstance)
+					err = r.statusUpdate(currentAcctInstance)
 					if err != nil {
 						return reconcile.Result{}, err
 					}
@@ -289,7 +296,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				reqLogger.Info(fmt.Sprintf("Case %s resolved", currentAcctInstance.Status.SupportCaseID))
 
 				utils.SetAccountStatus(currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, AccountReady)
-				err = r.statusUpdate(reqLogger, currentAcctInstance)
+				err = r.statusUpdate(currentAcctInstance)
 				if err != nil {
 					return reconcile.Result{}, err
 				}
@@ -307,7 +314,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		// Update account Status.Claimed to true if the account is ready and the claim link is not empty
 		if accountIsReadyUnclaimedAndHasClaimLink(currentAcctInstance) {
 			currentAcctInstance.Status.Claimed = true
-			return reconcile.Result{}, r.statusUpdate(reqLogger, currentAcctInstance)
+			return reconcile.Result{}, r.statusUpdate(currentAcctInstance)
 		}
 
 		// see if in creating for longer then default wait time
@@ -335,7 +342,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 				// set state creating if the account was able to create
 				utils.SetAccountStatus(currentAcctInstance, "Attempting to create account", awsv1alpha1.AccountCreating, AccountCreating)
-				err = r.statusUpdate(reqLogger, currentAcctInstance)
+				err = r.statusUpdate(currentAcctInstance)
 
 				if err != nil {
 					return reconcile.Result{}, err
@@ -361,7 +368,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 				// set state creating if the account was already created
 				utils.SetAccountStatus(currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, AccountCreating)
-				err = r.statusUpdate(reqLogger, currentAcctInstance)
+				err = r.statusUpdate(currentAcctInstance)
 
 				if err != nil {
 					return reconcile.Result{}, err
@@ -450,7 +457,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		// We're about to kick off region init in a goroutine. This status makes subsequent
 		// Reconciles ignore the Account (unless it stays in this state for too long).
 		utils.SetAccountStatus(currentAcctInstance, "Initializing Regions", awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
-		if err := r.statusUpdate(reqLogger, currentAcctInstance); err != nil {
+		if err := r.statusUpdate(currentAcctInstance); err != nil {
 			// statusUpdate logs
 			return reconcile.Result{}, err
 		}
@@ -489,7 +496,7 @@ func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctIns
 		}
 	}
 
-	if err := r.statusUpdate(reqLogger, currentAcctInstance); err != nil {
+	if err := r.statusUpdate(currentAcctInstance); err != nil {
 		// If this happens, the Account should eventually get set to Failed by the
 		// accountOlderThan check in the main controller.
 		reqLogger.Error(err, "asyncRegionInit failed to update status")
@@ -507,7 +514,7 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 		switch orgErr {
 		case awsv1alpha1.ErrAwsFailedCreateAccount:
 			utils.SetAccountStatus(account, "Failed to create AWS Account", awsv1alpha1.AccountFailed, AccountFailed)
-			err := r.statusUpdate(reqLogger, account)
+			err := r.statusUpdate(account)
 			if err != nil {
 				return "", err
 			}
@@ -615,12 +622,8 @@ func formatAccountEmail(name string) string {
 	return email
 }
 
-func (r *ReconcileAccount) statusUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+func (r *ReconcileAccount) statusUpdate(account *awsv1alpha1.Account) error {
 	err := r.Client.Status().Update(context.TODO(), account)
-	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", account.Name))
-	}
-	reqLogger.Info(fmt.Sprintf("Status updated for %s", account.Name))
 	return err
 }
 
@@ -638,7 +641,7 @@ func (r *ReconcileAccount) setStateFailed(reqLogger logr.Logger, currentAcctInst
 	}
 
 	// Apply the update
-	err = r.statusUpdate(reqLogger, currentAcctInstance)
+	err = r.statusUpdate(currentAcctInstance)
 	return err
 }
 
@@ -700,6 +703,25 @@ func (r *ReconcileAccount) setAccountClaimError(reqLogger logr.Logger, currentAc
 func matchSubstring(roleID, role string) (bool, error) {
 	matched, err := regexp.MatchString(roleID, role)
 	return matched, err
+}
+
+// getConfigDataByKey gets the desired key from the default configmap or returns an empty string and error
+func getConfigDataByKey(kubeClient client.Client, key string) (string, error) {
+	configMap := &corev1.ConfigMap{}
+	err := kubeClient.Get(
+		context.TODO(),
+		types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace,
+			Name: awsv1alpha1.DefaultConfigMap}, configMap)
+	if err != nil {
+		return "", err
+	}
+
+	value, ok := configMap.Data[key]
+	if !ok {
+		return "", awsv1alpha1.ErrInvalidConfigMap
+	}
+
+	return value, nil
 }
 
 // Returns true if account CR is Failed

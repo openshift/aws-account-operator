@@ -34,6 +34,14 @@
   version = "1.0.0"
 
 [[projects]]
+  digest = "1:2ecce1cd3d45e8a682c4d4f6185d636e13fa52f11a8661c39efed3a42e64f66d"
+  name = "github.com/avast/retry-go"
+  packages = ["."]
+  pruneopts = "NT"
+  revision = "a8f6dc7e8f46a5d11c01d9da1e887bb5a51fd107"
+  version = "v2.6.0"
+
+[[projects]]
   digest = "1:5091dfd89af51f89aff22ed4d5ebf3ea6eb93d332fa1f40a7c0c8d504a6c1abb"
   name = "github.com/aws/aws-sdk-go"
   packages = [
@@ -90,6 +98,8 @@
     "service/s3/internal/arn",
     "service/s3/s3iface",
     "service/s3/s3manager",
+    "service/servicequotas",
+    "service/servicequotas/servicequotasiface",
     "service/sts",
     "service/sts/stsiface",
     "service/support",
@@ -1133,6 +1143,7 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/avast/retry-go",
     "github.com/aws/aws-sdk-go/aws",
     "github.com/aws/aws-sdk-go/aws/awserr",
     "github.com/aws/aws-sdk-go/aws/credentials",
@@ -1149,6 +1160,8 @@
     "github.com/aws/aws-sdk-go/service/s3",
     "github.com/aws/aws-sdk-go/service/s3/s3iface",
     "github.com/aws/aws-sdk-go/service/s3/s3manager",
+    "github.com/aws/aws-sdk-go/service/servicequotas",
+    "github.com/aws/aws-sdk-go/service/servicequotas/servicequotasiface",
     "github.com/aws/aws-sdk-go/service/sts",
     "github.com/aws/aws-sdk-go/service/sts/stsiface",
     "github.com/aws/aws-sdk-go/service/support",

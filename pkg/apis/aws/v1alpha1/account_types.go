@@ -26,7 +26,7 @@ const (
 	accountStatusPendingVerification AccountStateStatus = "PendingVerification"
 	// AccountCrNamespace namespace where AWS accounts will be created
 	AccountCrNamespace = "aws-account-operator"
-	// IAM Role name for IAM user creating resources in account
+	// AccountOperatorIAMRole is the name for IAM user creating resources in account
 	AccountOperatorIAMRole = "OrganizationAccountAccessRole"
 	// AccountFinalizer is the string finalizer name
 	AccountFinalizer = "finalizer.aws.managed.openshift.io"
@@ -102,6 +102,8 @@ const (
 	// AccountInitializingRegions indicates we've kicked off the process of creating and terminating
 	// instances in all supported regions
 	AccountInitializingRegions = "InitializingRegions"
+	// AccountQuotaIncreaseRequested is set when a quota increase has been requested
+	AccountQuotaIncreaseRequested AccountConditionType = "QuotaIncreaseRequested"
 )
 
 // +genclient

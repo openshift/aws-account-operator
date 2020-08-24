@@ -3,11 +3,13 @@ package account
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/servicequotas"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
 	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -15,6 +17,8 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+
+	retry "github.com/avast/retry-go"
 )
 
 // InitializeSupportedRegions concurrently calls InitializeRegion to create instances in all supported regions
@@ -29,9 +33,15 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 	defer close(ec2Notifications)
 	defer close(ec2Errors)
 
+	// We should not bomb out just because we can't retrieve the vCPU value
+	// and we'll just continue with a "0"
+	// Errors are logged already in getDesiredVCPUValue
+	vCPUQuota, _ := r.getDesiredVCPUValue(reqLogger)
+	reqLogger.Info("retrieved desired vCPU quota value from configMap", "quota.vcpu", vCPUQuota)
+
 	// Create go routines to initialize regions in parallel
 	for region := range regions {
-		go r.InitializeRegion(reqLogger, account, region, regions[region]["initializationAMI"], ec2Notifications, ec2Errors, creds)
+		go r.InitializeRegion(reqLogger, account, region, regions[region]["initializationAMI"], vCPUQuota, ec2Notifications, ec2Errors, creds)
 	}
 
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished
@@ -48,8 +58,21 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 }
 
 // InitializeRegion sets up a connection to the AWS `region` and then creates and terminates an EC2 instance
-func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, account *awsv1alpha1.Account, region string, ami string, ec2Notifications chan string, ec2Errors chan string, creds *sts.AssumeRoleOutput) error {
-	reqLogger.Info(fmt.Sprintf("Initializing region: %s", region))
+func (r *ReconcileAccount) InitializeRegion(
+	reqLogger logr.Logger,
+	account *awsv1alpha1.Account,
+	region string,
+	ami string,
+	vCPUQuota float64,
+	ec2Notifications chan string,
+	ec2Errors chan string,
+	creds *sts.AssumeRoleOutput,
+) error {
+	var err error
+	var quotaIncreaseRequired bool
+	var caseID string
+
+	reqLogger.Info("initializing region", "region", region)
 
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
@@ -58,13 +81,56 @@ func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, account *awsv
 		AwsRegion:               region,
 	})
 	if err != nil {
-		connErr := fmt.Sprintf("Unable to connect to region: %s when attempting to initialize it", region)
+		connErr := fmt.Sprintf("unable to connect to region %s when attempting to initialize it", region)
 		reqLogger.Error(err, connErr)
 		// Notify Error channel that this region has errored and to move on
 		ec2Errors <- connErr
 
 		return err
 	}
+
+	// If the quota is 0, there was an error and we cannot act on it
+	if vCPUQuota != 0 {
+		// Check if a request is necessary
+		// If there are errors, this will return false, and will not continue to try
+		// to set the quota
+		quotaIncreaseRequired, err = getVCPUQuota(awsClient, vCPUQuota)
+		if err != nil {
+			reqLogger.Error(err, "failed retriving current vCPU quota from AWS")
+		}
+	}
+
+	if quotaIncreaseRequired {
+		caseID, err = checkQuotaRequestHistory(awsClient, vCPUQuota)
+		if err != nil {
+			reqLogger.Error(err, "failed retriving quota change history")
+		}
+
+		// If a Case ID was found, log it - the request was already submitted
+		if caseID != "" {
+			reqLogger.Info("found matching quota change request", "caseID", caseID)
+		}
+
+		// If there is not matching request already,
+		// and there were no errors trying to retrieve them,
+		// then request a quota increase
+		if caseID == "" && err == nil {
+			caseID, err = setVCPUQuota(awsClient, vCPUQuota)
+			if err != nil {
+				reqLogger.Error(err, "failed requesting vCPU quota increase")
+			}
+		}
+
+		// If the caseID is set, a quota increase was requested, either just now or previously. Log it.
+		// Can't update account conditions from within the asyncRegionInit goroutine, because
+		// the account is being updated elsewhere and will conflict.
+		if caseID != "" {
+			reqLogger.Info("quota increase request submitted successfully", "region", region, "caseID", caseID)
+		}
+	}
+
+	// Unset err to be explicit for use below
+	err = nil
 
 	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, ami)
 
@@ -206,7 +272,7 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 }
 
 // DescribeEC2Instances returns the InstanceState code
-func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instanceId string) (int, error) {
+func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instanceID string) (int, error) {
 	// States and codes
 	// 0 : pending
 	// 16 : running
@@ -216,7 +282,7 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instan
 	// 80 : stopped
 
 	result, err := client.DescribeInstanceStatus(&ec2.DescribeInstanceStatusInput{
-		InstanceIds: aws.StringSlice([]string{instanceId}),
+		InstanceIds: aws.StringSlice([]string{instanceID}),
 	})
 
 	if err != nil {
@@ -257,4 +323,244 @@ func ListEC2InstanceStatus(reqLogger logr.Logger, client awsclient.Client) (*ec2
 	}
 
 	return result, nil
+}
+
+// getDesiredVCPUValue retrieves the desired quota information from the operator configmap and converts it to a float64
+func (r *ReconcileAccount) getDesiredVCPUValue(reqLogger logr.Logger) (float64, error) {
+	var err error
+	var vCPUQuota float64
+
+	v, err := getConfigDataByKey(r.Client, "quota.vcpu")
+	if err != nil {
+		reqLogger.Error(err, "failed getting desired vCPU quota from configmap data")
+		return vCPUQuota, err
+	}
+
+	vCPUQuota, err = strconv.ParseFloat(v, 64)
+	if err != nil {
+		reqLogger.Error(err, "failed converting vCPU quota from configmap string to float64")
+		return vCPUQuota, err
+	}
+
+	return vCPUQuota, nil
+}
+
+// getVCPUQUota returns the current set vCPU quota for the region
+func getVCPUQuota(client awsclient.Client, desiredQuota float64) (bool, error) {
+	var result *servicequotas.GetServiceQuotaOutput
+
+	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
+	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
+	retry.DefaultDelay = 3 * time.Second
+	retry.DefaultAttempts = uint(5)
+	err := retry.Do(
+		func() (err error) {
+			// Get the current existing quota setting
+			result, err = client.GetServiceQuota(
+				&servicequotas.GetServiceQuotaInput{
+					QuotaCode:   aws.String(vCPUQuotaCode),
+					ServiceCode: aws.String(vCPUServiceCode),
+				},
+			)
+			return err
+		},
+
+		// Retry if we receive some specific errors: access denied, rate limit or server-side error
+		retry.RetryIf(func(err error) bool {
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
+				case "AccessDeniedException":
+					return true
+				case "ServiceException":
+					return true
+				case "TooManyRequestsException":
+					return true
+				}
+			}
+			// Otherwise, do not retry
+			return false
+		}),
+	)
+
+	// Regardless of errors, if we got the result for the actual quota,
+	// then compare it to the desired quota.
+	if result.Quota != nil {
+		if *result.Quota.Value < desiredQuota {
+			return true, err
+		}
+	}
+
+	// Otherwise return false (doesn't need increase) and any errors
+	return false, err
+}
+
+// setRegionVCPUQuota sets the AWS quota limit for vCPUs in the region
+// This just sends the request, and checks that it was submitted, and does not wait
+func setVCPUQuota(client awsclient.Client, desiredQuota float64) (string, error) {
+	// Request a service quota increase for vCPU quota
+	var result *servicequotas.RequestServiceQuotaIncreaseOutput
+
+	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
+	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
+	retry.DefaultDelay = 3 * time.Second
+	retry.DefaultAttempts = uint(5)
+	err := retry.Do(
+		func() (err error) {
+			result, err = client.RequestServiceQuotaIncrease(
+				&servicequotas.RequestServiceQuotaIncreaseInput{
+					DesiredValue: aws.Float64(desiredQuota),
+					ServiceCode:  aws.String(vCPUServiceCode),
+					QuotaCode:    aws.String(vCPUQuotaCode),
+				})
+			return err
+		},
+
+		retry.RetryIf(func(err error) bool {
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
+				case "AccessDeniedException":
+					return true
+				case "TooManyRequestsException":
+					// Retry
+					return true
+				case "ServiceException":
+					// Retry
+					return true
+				}
+			}
+			// Otherwise, do not retry
+			return false
+		}),
+	)
+
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			if aerr.Code() == "ResourceAlreadyExistsExeption" {
+				// This error means a request has already been submitted, and we do not have the CaseID, but
+				// we should also *not* return an error - this is a no-op.
+				return "", nil
+			}
+		}
+	}
+
+	// If the RequestedQuota is nil, something went wrong
+	if result.RequestedQuota == nil {
+		err := fmt.Errorf("failed submitting quota request; response from server is nil")
+		return "", err
+
+	}
+
+	// If we were returned a Case ID, then the request was submitted
+	if result.RequestedQuota.CaseId == nil {
+		err := fmt.Errorf("returned CaseID is nil")
+		return "", err
+
+	}
+
+	return *result.RequestedQuota.CaseId, nil
+
+}
+
+// checkQuotaRequestHistory checks to see if a request for a quota increase has already been submitted
+// This is not ideal, as each region has to check the history, since we have to intialize by region
+// Ideally this would happen outside the region-specific init, but this requires the awsclient for the
+// specific region.
+func checkQuotaRequestHistory(awsClient awsclient.Client, vCPUQuota float64) (string, error) {
+	var err error
+	var nextToken *string
+	var caseID string
+
+	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
+	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
+	retry.DefaultDelay = 3 * time.Second
+	retry.DefaultAttempts = uint(5)
+
+	for {
+		// This returns with pagination, so we have to iterate over the pagination data
+
+		var output *servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput
+		var err error
+		var submitted bool
+
+		err = retry.Do(
+			func() (err error) {
+				// Get a (possibly paginated) list of quota change requests by quota
+				output, err = awsClient.ListRequestedServiceQuotaChangeHistoryByQuota(
+					&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaInput{
+						NextToken:   nextToken,
+						ServiceCode: aws.String(vCPUServiceCode),
+						QuotaCode:   aws.String(vCPUQuotaCode),
+					},
+				)
+				return err
+			},
+
+			// Retry if we receive some specific errors: access denied, rate limit or server-side error
+			retry.RetryIf(func(err error) bool {
+				if aerr, ok := err.(awserr.Error); ok {
+					switch aerr.Code() {
+					// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
+					case "AccessDeniedException":
+						return true
+					case "ServiceException":
+						return true
+					case "TooManyRequestsException":
+						return true
+					}
+				}
+				// Otherwise, do not retry
+				return false
+			}),
+		)
+
+		if err != nil {
+			// Return an error if retrieving the change history fails
+			return "", err
+		}
+
+		// Check all the returned requests to see if one matches the quota increase we'd request
+		// If so, it's already been submitted
+		for _, change := range output.RequestedQuotas {
+			if changeRequestMatches(change, vCPUQuota) {
+				submitted = true
+				caseID = *change.CaseId
+				break
+			}
+		}
+
+		// If request has already been submitted, then break out
+		if submitted {
+			break
+		}
+
+		// If NextToken is empty, no more to try.  Break out
+		if output.NextToken == nil {
+			break
+		}
+
+		// Set NextToken to retrieve the next page and loop again
+		nextToken = output.NextToken
+	}
+
+	return caseID, err
+
+}
+
+// changeRequestMatches returns true if the QuotaCode, ServiceCode and desired value match
+func changeRequestMatches(change *servicequotas.RequestedServiceQuotaChange, quota float64) bool {
+	if *change.ServiceCode != vCPUServiceCode {
+		return false
+	}
+
+	if *change.QuotaCode != vCPUQuotaCode {
+		return false
+	}
+
+	if *change.DesiredValue != quota {
+		return false
+	}
+
+	return true
 }
