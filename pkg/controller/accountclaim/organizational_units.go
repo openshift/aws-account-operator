@@ -2,6 +2,7 @@ package accountclaim
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -79,6 +80,13 @@ func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, accountClaim
 	createCreateOrganizationalUnitInput := organizations.CreateOrganizationalUnitInput{
 		Name:     &friendlyOUName,
 		ParentId: &baseID,
+	}
+	// Explicitly checking due to nil pointer errors in the call to client.CreateOrganizationalUnit(&createCreateOrganizationalUnitInput)
+	if &createCreateOrganizationalUnitInput == nil {
+		return "", errors.New(("Organization Unit Input is Nil"))
+	}
+	if createCreateOrganizationalUnitInput.Name == nil || createCreateOrganizationalUnitInput.ParentId == nil {
+		return "", errors.New(("Organization Unit Input fields are Nil"))
 	}
 	ouOutput, ouErr := client.CreateOrganizationalUnit(&createCreateOrganizationalUnitInput)
 	if ouErr != nil {
