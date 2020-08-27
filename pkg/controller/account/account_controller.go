@@ -171,14 +171,45 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, nil
 	}
 
-	// Ignore accounts for which we're (asynchronously) initializing regions -- unless they've been
-	// in that state for too long.
+	// Detect accounts for which we kicked off asynchronous region initialization
 	if accountIsInitializingRegions(currentAcctInstance) {
+		// Detect whether we set the InitializingRegions condition in *this* invocation of the
+		// operator or a previous one.
+		if regionInitStale(currentAcctInstance) {
+			// This means the region init goroutine(s) for this account were still running when an
+			// earlier invocation of the operator died. We want to recover those, so set them back
+			// to Creating, which should cause us to hit the region init code path again.
+			msg := "Recovering from stale region initialization."
+			// We're no longer InitializingRegions
+			utils.SetAccountCondition(
+				currentAcctInstance.Status.Conditions,
+				awsv1alpha1.AccountInitializingRegions,
+				// Switch the Condition off
+				corev1.ConditionFalse,
+				AccountInitializingRegions,
+				msg,
+				// Make sure the existing condition is updated
+				utils.UpdateConditionAlways,
+				currentAcctInstance.Spec.BYOC)
+			// TODO(efried): This doesn't change the lastTransitionTime, which it really should.
+			// In fact, since the Creating condition is guaranteed to already be present, this
+			// is currently not doing anything more than
+			//    currentAcctInstance.Status.State = AccountCreating
+			utils.SetAccountStatus(currentAcctInstance, msg, v1alpha1.AccountCreating, AccountCreating)
+			// The status update will trigger another Reconcile, but be explicit. The requests get
+			// collapsed anyway.
+			return reconcile.Result{Requeue: true}, r.statusUpdate(reqLogger, currentAcctInstance)
+		}
+		// The goroutines happened in this invocation. Time out if that has taken too long.
 		if accountOlderThan(currentAcctInstance, initPendTime) {
 			errMsg := fmt.Sprintf("Initializing regions for longer than %d seconds", initPendTime)
 			return reconcile.Result{}, r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
 		}
+		// Otherwise give it a chance to finish.
 		reqLogger.Info(fmt.Sprintf("Account %s is initializing regions. Ignoring.", currentAcctInstance.Name))
+		// No need to requeue. If the goroutine finishes, it changes the state, which will trigger
+		// a Reconcile. If it hangs forever, we'll eventually get a freebie periodic Reconcile
+		// that will hit the timeout condition above.
 		return reconcile.Result{}, nil
 	}
 
@@ -700,6 +731,16 @@ func accountIsCreating(currentAcctInstance *awsv1alpha1.Account) bool {
 
 func accountIsInitializingRegions(currentAcctInstance *awsv1alpha1.Account) bool {
 	return currentAcctInstance.Status.State == AccountInitializingRegions
+}
+
+func regionInitStale(currentAcctInstance *awsv1alpha1.Account) bool {
+	cond := utils.FindAccountCondition(currentAcctInstance.Status.Conditions, awsv1alpha1.AccountInitializingRegions)
+	if cond == nil {
+		// Assuming the caller checks accountIsInitializingRegions beforehand, this really should
+		// never happen.
+		return false
+	}
+	return cond.LastTransitionTime.Before(utils.GetOperatorStartTime())
 }
 
 func accountHasClaimLink(currentAcctInstance *awsv1alpha1.Account) bool {

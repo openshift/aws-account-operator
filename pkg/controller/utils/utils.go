@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -30,6 +31,31 @@ const (
 	//   . `oc apply` all the YAML files in deploy/, including the updated operator.yaml.
 	envDevMode = "FORCE_DEV_MODE"
 )
+
+// operatorStartTime is (roughly) the time at which the operator came up.
+// It can be used e.g. to discover whether CR conditions occurred during the lifetime of this
+// invocation or a previous one.
+var operatorStartTime metav1.Time
+
+// InitOperatorStartTime should be invoked exactly once, early in operator bringup, before
+// controllers are started. The value can subsequently be retrieved via GetOperatorStartTime().
+// Returns an error if the time was already initialized.
+func InitOperatorStartTime() error {
+	if !operatorStartTime.IsZero() {
+		// Don't do this. No, really.
+		return errors.New("Attempt to initialize start time twice")
+	}
+	operatorStartTime = metav1.Now()
+	return nil
+}
+
+// GetOperatorStartTime returns the time at which the operator was brought up, assuming said
+// bringup was well-behaved and invoked InitOperatorStartTime(). If not, this will return the
+// zero time.
+func GetOperatorStartTime() *metav1.Time {
+	// Should we panic if operatorStartTime.IsZero()?
+	return &operatorStartTime
+}
 
 // The JSON tags as captials due to requirements for the policydoc
 type awsStatement struct {

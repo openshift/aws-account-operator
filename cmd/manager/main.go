@@ -71,6 +71,15 @@ func main() {
 
 	printVersion()
 
+	// This is used by controllers to detect whether conditions happened during the current
+	// invocation of the operator or a previous one. Thus it *must* be done before controllers
+	// are started.
+	// It must also be done exactly once -- see the docstring.
+	if err := utils.InitOperatorStartTime(); err != nil {
+		log.Error(err, "")
+		os.Exit(1)
+	}
+
 	// Get a config to talk to the apiserver
 	cfg, err := config.GetConfig()
 	if err != nil {
