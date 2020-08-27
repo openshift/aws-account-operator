@@ -24,7 +24,7 @@ REMOVED_VERSIONS=""
 if [[ "$REMOVE_UNDEPLOYED" == true ]]; then
     DEPLOYED_HASH=$(
         curl -s "https://gitlab.cee.redhat.com/service/app-interface/raw/master/data/services/osd-operators/cicd/saas/saas-aws-account-operator.yaml" | \
-            docker run --rm -i evns/yq -r '.resourceTemplates[]|select(.name="aws-account-operator").targets[]|select(.namespace["$ref"]=="/services/osd-operators/namespaces/aws-account-operator-production.yml")|.ref'
+            docker run --rm -i quay.io/openshift-sre/yq -r '.resourceTemplates[]|select(.name="aws-account-operator").targets[]|select(.namespace["$ref"]=="/services/osd-operators/namespaces/aws-account-operator-production.yml")|.ref'
     )
 
     delete=false
