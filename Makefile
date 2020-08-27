@@ -49,7 +49,7 @@ create-account: check-aws-account-id-env
 # Delete account
 .PHONY: delete-account
 delete-account:
-	# Create Account
+	# Delete Account
 	test/integration/api/delete_account.sh
 	# Delete Secrets
 	test/integration/api/delete_account_secrets.sh

@@ -99,6 +99,9 @@ const (
 	AccountPendingVerification AccountConditionType = "PendingVerification"
 	// AccountReused is set when account is reused
 	AccountReused AccountConditionType = "Reused"
+	// AccountInitializingRegions indicates we've kicked off the process of creating and terminating
+	// instances in all supported regions
+	AccountInitializingRegions = "InitializingRegions"
 )
 
 // +genclient

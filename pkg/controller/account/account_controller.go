@@ -43,7 +43,26 @@ const (
 	awsCredsSecretAccessKey = "aws_secret_access_key"
 	awsAMI                  = "ami-000db10762d0c4c05"
 	awsInstanceType         = "t2.micro"
-	createPendTime          = utils.WaitTime * time.Minute
+	// createPendTime is the maximum time we allow an Account to sit in Creating state before we
+	// time out and set it to Failed.
+	createPendTime = utils.WaitTime * time.Minute
+	// initPendTime is the maximum time we allow between Account creation and the end of region
+	// initialization.
+	// NOTE(efried): We use quite a long timeout here. Within reason, we would rather go too
+	// long than too short.
+	// - We want to give region init every opportunity to finish. We ignore the Account anyway,
+	//   regardless of whether it's failed or initializing; but if we set it to Failed too soon,
+	//   and the goroutine actually finishes, it will (*should*) bounce off of the
+	//   resourceVersion.
+	// - The async region init takes a theoretical maximum of WaitTime * 2 minutes plus a handful
+	//   of AWS API calls. See asyncRegionInit.
+	// - Ideally it would be nice to start timing from right before we kicked off the region
+	//   init, but for simplicity we just use the Account's creation time. So we add the
+	//   maximum time it could take in the Creating state, which is WaitTime minutes (see
+	//   accountCreatingTooLong).
+	// - We add an extra WaitTime for other miscellaneous steps that are otherwise not
+	//   accounted for, hopefully with plenty of buffer.
+	initPendTime = utils.WaitTime * time.Minute * time.Duration(4)
 
 	// AccountPending indicates an account is pending
 	AccountPending = "Pending"
@@ -51,6 +70,9 @@ const (
 	AccountCreating = "Creating"
 	// AccountFailed indicates account creation has failed
 	AccountFailed = "Failed"
+	// AccountInitializingRegions indicates we've kicked off the process of creating and terminating
+	// instances in all supported regions
+	AccountInitializingRegions = "InitializingRegions"
 	// AccountReady indicates account creation is ready
 	AccountReady = "Ready"
 	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
@@ -145,7 +167,18 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// Log accounts that have failed and don't attempt to reconcile them
 	if accountIsFailed(currentAcctInstance) {
-		reqLogger.Info(fmt.Sprintf("Account %s is failed ignoring", currentAcctInstance.Name))
+		reqLogger.Info(fmt.Sprintf("Account %s is failed. Ignoring.", currentAcctInstance.Name))
+		return reconcile.Result{}, nil
+	}
+
+	// Ignore accounts for which we're (asynchronously) initializing regions -- unless they've been
+	// in that state for too long.
+	if accountIsInitializingRegions(currentAcctInstance) {
+		if accountOlderThan(currentAcctInstance, initPendTime) {
+			errMsg := fmt.Sprintf("Initializing regions for longer than %d seconds", initPendTime)
+			return reconcile.Result{}, r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+		}
+		reqLogger.Info(fmt.Sprintf("Account %s is initializing regions. Ignoring.", currentAcctInstance.Name))
 		return reconcile.Result{}, nil
 	}
 
@@ -383,35 +416,53 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		// Initialize all supported regions by creating and terminating an instance in each
-		err = r.InitializeSupportedRegions(reqLogger, currentAcctInstance, awsv1alpha1.CoveredRegions, creds)
-		if err != nil {
-			errMsg := fmt.Sprintf("Unable to build or destroy ec2 instances: %s", err)
-			r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+		// We're about to kick off region init in a goroutine. This status makes subsequent
+		// Reconciles ignore the Account (unless it stays in this state for too long).
+		utils.SetAccountStatus(currentAcctInstance, "Initializing Regions", awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
+		if err := r.statusUpdate(reqLogger, currentAcctInstance); err != nil {
+			// statusUpdate logs
 			return reconcile.Result{}, err
 		}
 
-		if accountIsBYOC(currentAcctInstance) {
-			utils.SetAccountStatus(currentAcctInstance, "BYOC Account Ready", awsv1alpha1.AccountReady, AccountReady)
-
-		} else {
-			if utils.FindAccountCondition(currentAcctInstance.Status.Conditions, awsv1alpha1.AccountReady) != nil {
-				msg := "Account support case already resolved; Account Ready"
-				utils.SetAccountStatus(currentAcctInstance, msg, awsv1alpha1.AccountReady, AccountReady)
-				reqLogger.Info(msg)
-			} else {
-				msg := "Account pending AWS limits verification"
-				utils.SetAccountStatus(currentAcctInstance, msg, awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
-				reqLogger.Info(msg)
-			}
-		}
-		err = r.statusUpdate(reqLogger, currentAcctInstance)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
+		// This initializes supported regions, and updates Account state when that's done. There is
+		// no error checking at this level.
+		go r.asyncRegionInit(reqLogger, currentAcctInstance, creds)
 	}
 	return reconcile.Result{}, nil
+}
+
+// asyncRegionInit initializes supported regions by creating and destroying an instance in each.
+// Upon completion, it *always* sets the Account status to either Ready or PendingVerification.
+// There is no mechanism for this func to report errors to its parent. The only error paths
+// currently possible are:
+// - The Status update fails.
+// - This goroutine dies in some horrible and unpredictable way.
+// In either case we would expect the main reconciler to eventually notice that the Account has
+// been in the InitializingRegions state for too long, and set it to Failed.
+func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput) {
+	// Initialize all supported regions by creating and terminating an instance in each
+	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, awsv1alpha1.CoveredRegions, creds)
+
+	if accountIsBYOC(currentAcctInstance) {
+		utils.SetAccountStatus(currentAcctInstance, "BYOC Account Ready", awsv1alpha1.AccountReady, AccountReady)
+
+	} else {
+		if utils.FindAccountCondition(currentAcctInstance.Status.Conditions, awsv1alpha1.AccountReady) != nil {
+			msg := "Account support case already resolved; Account Ready"
+			utils.SetAccountStatus(currentAcctInstance, msg, awsv1alpha1.AccountReady, AccountReady)
+			reqLogger.Info(msg)
+		} else {
+			msg := "Account pending AWS limits verification"
+			utils.SetAccountStatus(currentAcctInstance, msg, awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
+			reqLogger.Info(msg)
+		}
+	}
+
+	if err := r.statusUpdate(reqLogger, currentAcctInstance); err != nil {
+		// If this happens, the Account should eventually get set to Failed by the
+		// accountOlderThan check in the main controller.
+		reqLogger.Error(err, "asyncRegionInit failed to update status")
+	}
 }
 
 // BuildAccount take all parameters required and uses those to make an aws call to CreateAccount. It returns an account ID and and error
@@ -647,13 +698,20 @@ func accountIsCreating(currentAcctInstance *awsv1alpha1.Account) bool {
 	return currentAcctInstance.Status.State == AccountCreating
 }
 
+func accountIsInitializingRegions(currentAcctInstance *awsv1alpha1.Account) bool {
+	return currentAcctInstance.Status.State == AccountInitializingRegions
+}
+
 func accountHasClaimLink(currentAcctInstance *awsv1alpha1.Account) bool {
 	return currentAcctInstance.Spec.ClaimLink != ""
 }
 
+func accountOlderThan(currentAcctInstance *awsv1alpha1.Account, minutes time.Duration) bool {
+	return time.Now().Sub(currentAcctInstance.GetCreationTimestamp().Time) > minutes
+}
+
 func accountCreatingTooLong(currentAcctInstance *awsv1alpha1.Account) bool {
-	return accountIsCreating(currentAcctInstance) &&
-		time.Now().Sub(currentAcctInstance.GetCreationTimestamp().Time) > createPendTime
+	return accountIsCreating(currentAcctInstance) && accountOlderThan(currentAcctInstance, createPendTime)
 }
 
 // Returns true if account Status.Claimed is false
