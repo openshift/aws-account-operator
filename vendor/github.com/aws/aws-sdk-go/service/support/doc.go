@@ -8,7 +8,15 @@
 // enables you to manage your AWS Support cases programmatically. It uses HTTP
 // methods that return results in JSON format.
 //
-// The AWS Support service also exposes a set of Trusted Advisor (http://aws.amazon.com/premiumsupport/trustedadvisor/)
+//    * You must have a Business or Enterprise support plan to use the AWS Support
+//    API.
+//
+//    * If you call the AWS Support API from an account that does not have a
+//    Business or Enterprise support plan, the SubscriptionRequiredException
+//    error message appears. For information about changing your support plan,
+//    see AWS Support (http://aws.amazon.com/premiumsupport/).
+//
+// The AWS Support service also exposes a set of AWS Trusted Advisor (http://aws.amazon.com/premiumsupport/trustedadvisor/)
 // features. You can retrieve a list of checks and their descriptions, get check
 // results, specify checks to refresh, and get the refresh status of checks.
 //
@@ -35,7 +43,7 @@
 //
 //    * Using the checkId for a specific check returned by DescribeTrustedAdvisorChecks,
 //    you can call DescribeTrustedAdvisorCheckResult to obtain the results for
-//    the check you specified.
+//    the check that you specified.
 //
 //    * DescribeTrustedAdvisorCheckSummaries returns summarized results for
 //    one or more Trusted Advisor checks.
@@ -47,9 +55,9 @@
 //    of one or more checks.
 //
 // For authentication of requests, AWS Support uses Signature Version 4 Signing
-// Process (http://docs.aws.amazon.com/general/latest/gr/signature-version-4.html).
+// Process (https://docs.aws.amazon.com/general/latest/gr/signature-version-4.html).
 //
-// See About the AWS Support API (http://docs.aws.amazon.com/awssupport/latest/user/Welcome.html)
+// See About the AWS Support API (https://docs.aws.amazon.com/awssupport/latest/user/Welcome.html)
 // in the AWS Support User Guide for information about how to use this service
 // to create and manage your support cases, and how to call Trusted Advisor
 // for results of checks on your resources.

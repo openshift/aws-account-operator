@@ -26,7 +26,7 @@ import (
 //    // myFunc uses an SDK service client to make a request to
 //    // Amazon Personalize.
 //    func myFunc(svc personalizeiface.PersonalizeAPI) bool {
-//        // Make svc.CreateCampaign request
+//        // Make svc.CreateBatchInferenceJob request
 //    }
 //
 //    func main() {
@@ -42,7 +42,7 @@ import (
 //    type mockPersonalizeClient struct {
 //        personalizeiface.PersonalizeAPI
 //    }
-//    func (m *mockPersonalizeClient) CreateCampaign(input *personalize.CreateCampaignInput) (*personalize.CreateCampaignOutput, error) {
+//    func (m *mockPersonalizeClient) CreateBatchInferenceJob(input *personalize.CreateBatchInferenceJobInput) (*personalize.CreateBatchInferenceJobOutput, error) {
 //        // mock response/functionality
 //    }
 //
@@ -60,6 +60,10 @@ import (
 // and waiters. Its suggested to use the pattern above for testing, or using
 // tooling to generate mocks to satisfy the interfaces.
 type PersonalizeAPI interface {
+	CreateBatchInferenceJob(*personalize.CreateBatchInferenceJobInput) (*personalize.CreateBatchInferenceJobOutput, error)
+	CreateBatchInferenceJobWithContext(aws.Context, *personalize.CreateBatchInferenceJobInput, ...request.Option) (*personalize.CreateBatchInferenceJobOutput, error)
+	CreateBatchInferenceJobRequest(*personalize.CreateBatchInferenceJobInput) (*request.Request, *personalize.CreateBatchInferenceJobOutput)
+
 	CreateCampaign(*personalize.CreateCampaignInput) (*personalize.CreateCampaignOutput, error)
 	CreateCampaignWithContext(aws.Context, *personalize.CreateCampaignInput, ...request.Option) (*personalize.CreateCampaignOutput, error)
 	CreateCampaignRequest(*personalize.CreateCampaignInput) (*request.Request, *personalize.CreateCampaignOutput)
@@ -79,6 +83,10 @@ type PersonalizeAPI interface {
 	CreateEventTracker(*personalize.CreateEventTrackerInput) (*personalize.CreateEventTrackerOutput, error)
 	CreateEventTrackerWithContext(aws.Context, *personalize.CreateEventTrackerInput, ...request.Option) (*personalize.CreateEventTrackerOutput, error)
 	CreateEventTrackerRequest(*personalize.CreateEventTrackerInput) (*request.Request, *personalize.CreateEventTrackerOutput)
+
+	CreateFilter(*personalize.CreateFilterInput) (*personalize.CreateFilterOutput, error)
+	CreateFilterWithContext(aws.Context, *personalize.CreateFilterInput, ...request.Option) (*personalize.CreateFilterOutput, error)
+	CreateFilterRequest(*personalize.CreateFilterInput) (*request.Request, *personalize.CreateFilterOutput)
 
 	CreateSchema(*personalize.CreateSchemaInput) (*personalize.CreateSchemaOutput, error)
 	CreateSchemaWithContext(aws.Context, *personalize.CreateSchemaInput, ...request.Option) (*personalize.CreateSchemaOutput, error)
@@ -108,6 +116,10 @@ type PersonalizeAPI interface {
 	DeleteEventTrackerWithContext(aws.Context, *personalize.DeleteEventTrackerInput, ...request.Option) (*personalize.DeleteEventTrackerOutput, error)
 	DeleteEventTrackerRequest(*personalize.DeleteEventTrackerInput) (*request.Request, *personalize.DeleteEventTrackerOutput)
 
+	DeleteFilter(*personalize.DeleteFilterInput) (*personalize.DeleteFilterOutput, error)
+	DeleteFilterWithContext(aws.Context, *personalize.DeleteFilterInput, ...request.Option) (*personalize.DeleteFilterOutput, error)
+	DeleteFilterRequest(*personalize.DeleteFilterInput) (*request.Request, *personalize.DeleteFilterOutput)
+
 	DeleteSchema(*personalize.DeleteSchemaInput) (*personalize.DeleteSchemaOutput, error)
 	DeleteSchemaWithContext(aws.Context, *personalize.DeleteSchemaInput, ...request.Option) (*personalize.DeleteSchemaOutput, error)
 	DeleteSchemaRequest(*personalize.DeleteSchemaInput) (*request.Request, *personalize.DeleteSchemaOutput)
@@ -119,6 +131,10 @@ type PersonalizeAPI interface {
 	DescribeAlgorithm(*personalize.DescribeAlgorithmInput) (*personalize.DescribeAlgorithmOutput, error)
 	DescribeAlgorithmWithContext(aws.Context, *personalize.DescribeAlgorithmInput, ...request.Option) (*personalize.DescribeAlgorithmOutput, error)
 	DescribeAlgorithmRequest(*personalize.DescribeAlgorithmInput) (*request.Request, *personalize.DescribeAlgorithmOutput)
+
+	DescribeBatchInferenceJob(*personalize.DescribeBatchInferenceJobInput) (*personalize.DescribeBatchInferenceJobOutput, error)
+	DescribeBatchInferenceJobWithContext(aws.Context, *personalize.DescribeBatchInferenceJobInput, ...request.Option) (*personalize.DescribeBatchInferenceJobOutput, error)
+	DescribeBatchInferenceJobRequest(*personalize.DescribeBatchInferenceJobInput) (*request.Request, *personalize.DescribeBatchInferenceJobOutput)
 
 	DescribeCampaign(*personalize.DescribeCampaignInput) (*personalize.DescribeCampaignOutput, error)
 	DescribeCampaignWithContext(aws.Context, *personalize.DescribeCampaignInput, ...request.Option) (*personalize.DescribeCampaignOutput, error)
@@ -144,6 +160,10 @@ type PersonalizeAPI interface {
 	DescribeFeatureTransformationWithContext(aws.Context, *personalize.DescribeFeatureTransformationInput, ...request.Option) (*personalize.DescribeFeatureTransformationOutput, error)
 	DescribeFeatureTransformationRequest(*personalize.DescribeFeatureTransformationInput) (*request.Request, *personalize.DescribeFeatureTransformationOutput)
 
+	DescribeFilter(*personalize.DescribeFilterInput) (*personalize.DescribeFilterOutput, error)
+	DescribeFilterWithContext(aws.Context, *personalize.DescribeFilterInput, ...request.Option) (*personalize.DescribeFilterOutput, error)
+	DescribeFilterRequest(*personalize.DescribeFilterInput) (*request.Request, *personalize.DescribeFilterOutput)
+
 	DescribeRecipe(*personalize.DescribeRecipeInput) (*personalize.DescribeRecipeOutput, error)
 	DescribeRecipeWithContext(aws.Context, *personalize.DescribeRecipeInput, ...request.Option) (*personalize.DescribeRecipeOutput, error)
 	DescribeRecipeRequest(*personalize.DescribeRecipeInput) (*request.Request, *personalize.DescribeRecipeOutput)
@@ -163,6 +183,13 @@ type PersonalizeAPI interface {
 	GetSolutionMetrics(*personalize.GetSolutionMetricsInput) (*personalize.GetSolutionMetricsOutput, error)
 	GetSolutionMetricsWithContext(aws.Context, *personalize.GetSolutionMetricsInput, ...request.Option) (*personalize.GetSolutionMetricsOutput, error)
 	GetSolutionMetricsRequest(*personalize.GetSolutionMetricsInput) (*request.Request, *personalize.GetSolutionMetricsOutput)
+
+	ListBatchInferenceJobs(*personalize.ListBatchInferenceJobsInput) (*personalize.ListBatchInferenceJobsOutput, error)
+	ListBatchInferenceJobsWithContext(aws.Context, *personalize.ListBatchInferenceJobsInput, ...request.Option) (*personalize.ListBatchInferenceJobsOutput, error)
+	ListBatchInferenceJobsRequest(*personalize.ListBatchInferenceJobsInput) (*request.Request, *personalize.ListBatchInferenceJobsOutput)
+
+	ListBatchInferenceJobsPages(*personalize.ListBatchInferenceJobsInput, func(*personalize.ListBatchInferenceJobsOutput, bool) bool) error
+	ListBatchInferenceJobsPagesWithContext(aws.Context, *personalize.ListBatchInferenceJobsInput, func(*personalize.ListBatchInferenceJobsOutput, bool) bool, ...request.Option) error
 
 	ListCampaigns(*personalize.ListCampaignsInput) (*personalize.ListCampaignsOutput, error)
 	ListCampaignsWithContext(aws.Context, *personalize.ListCampaignsInput, ...request.Option) (*personalize.ListCampaignsOutput, error)
@@ -198,6 +225,10 @@ type PersonalizeAPI interface {
 
 	ListEventTrackersPages(*personalize.ListEventTrackersInput, func(*personalize.ListEventTrackersOutput, bool) bool) error
 	ListEventTrackersPagesWithContext(aws.Context, *personalize.ListEventTrackersInput, func(*personalize.ListEventTrackersOutput, bool) bool, ...request.Option) error
+
+	ListFilters(*personalize.ListFiltersInput) (*personalize.ListFiltersOutput, error)
+	ListFiltersWithContext(aws.Context, *personalize.ListFiltersInput, ...request.Option) (*personalize.ListFiltersOutput, error)
+	ListFiltersRequest(*personalize.ListFiltersInput) (*request.Request, *personalize.ListFiltersOutput)
 
 	ListRecipes(*personalize.ListRecipesInput) (*personalize.ListRecipesOutput, error)
 	ListRecipesWithContext(aws.Context, *personalize.ListRecipesInput, ...request.Option) (*personalize.ListRecipesOutput, error)
