@@ -60,7 +60,7 @@ func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountCla
 		return err
 	}
 	err = validateValue(&ouID)
-	if err == nil {
+	if err != nil {
 		return err
 	}
 
