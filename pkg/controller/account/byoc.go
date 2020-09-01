@@ -1,7 +1,6 @@
 package account
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,12 +9,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/go-logr/logr"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
 
 const (
@@ -49,56 +46,60 @@ func claimBYOCAccount(r *ReconcileAccount, reqLogger logr.Logger, currentAcctIns
 	if !accountIsClaimed(currentAcctInstance) {
 		reqLogger.Info("Marking BYOC account claimed")
 		currentAcctInstance.Status.Claimed = true
-		return r.statusUpdate(reqLogger, currentAcctInstance)
+		return r.statusUpdate(currentAcctInstance)
 	}
 
 	return nil
 }
 
-func (r *ReconcileAccount) initializeNewBYOCAccount(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, adminAccessArn string) (string, error) {
-	client, accountClaim, err := r.getBYOCClient(currentAcctInstance)
-	if err != nil {
+func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, account *awsv1alpha1.Account, awsSetupClient awsclient.Client, adminAccessArn string) (string, reconcile.Result, error) {
+	accountClaim, acctClaimErr := r.getAccountClaim(account)
+	if acctClaimErr != nil {
+		// TODO: Unrecoverable
+		// TODO: set helpful error message
+		return "", reconcile.Result{}, acctClaimErr
+	}
+
+	client, clientErr := r.getCCSClient(account, accountClaim)
+	if clientErr != nil {
 		if accountClaim != nil {
-			r.setAccountClaimError(reqLogger, currentAcctInstance, err.Error())
+			r.setAccountClaimError(reqLogger, account, clientErr.Error())
 		}
-		return "", err
+		// TODO: Recoverable?
+		return "", reconcile.Result{}, clientErr
 	}
 
-	err = validateBYOCClaim(accountClaim)
-	if err != nil {
-		r.setAccountClaimError(reqLogger, currentAcctInstance, err.Error())
-		return "", err
+	validateErr := validateBYOCClaim(accountClaim)
+	if validateErr != nil {
+		r.setAccountClaimError(reqLogger, account, validateErr.Error())
+		// TODO: Recoverable?
+		return "", reconcile.Result{}, validateErr
 	}
 
-	err = claimBYOCAccount(r, reqLogger, currentAcctInstance)
-	if err != nil {
-		r.setAccountClaimError(reqLogger, currentAcctInstance, err.Error())
-		return "", err
+	claimErr := claimBYOCAccount(r, reqLogger, account)
+	if claimErr != nil {
+		r.setAccountClaimError(reqLogger, account, claimErr.Error())
+		// TODO: Recoverable?
+		return "", reconcile.Result{}, claimErr
 	}
 
-	currentAccInstanceID := currentAcctInstance.Labels[fmt.Sprintf("%s", awsv1alpha1.IAMUserIDLabel)]
+	accountID := account.Labels[fmt.Sprintf("%s", awsv1alpha1.IAMUserIDLabel)]
 
 	// Create access key and role for BYOC account
 	var roleID string
-	if !accountHasState(currentAcctInstance) {
-		tags := awsclient.AWSTags.BuildTags(currentAcctInstance).GetIAMTags()
-		roleID, err = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn, currentAccInstanceID, tags)
+	var roleErr error
+	if !accountHasState(account) {
+		tags := awsclient.AWSTags.BuildTags(account).GetIAMTags()
+		roleID, roleErr = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn, accountID, tags)
 
-		if err != nil {
-			r.setAccountClaimError(reqLogger, currentAcctInstance, err.Error())
-			return "", err
-		}
-
-		reqLogger.Info("Updating BYOC to creating")
-		currentAcctInstance.Status.State = AccountCreating
-		utils.SetAccountStatus(currentAcctInstance, "BYOC Account Creating", awsv1alpha1.AccountCreating, AccountCreating)
-		err = r.Client.Status().Update(context.TODO(), currentAcctInstance)
-		if err != nil {
-			return roleID, err
+		if roleErr != nil {
+			r.setAccountClaimError(reqLogger, account, roleErr.Error())
+			// TODO: Can this be requeued?
+			// TODO: Check idempotency/workflow to return here
+			return "", reconcile.Result{Requeue: true}, roleErr
 		}
 	}
-
-	return roleID, nil
+	return roleID, reconcile.Result{}, nil
 }
 
 // Create role for BYOC IAM user to assume
@@ -320,31 +321,18 @@ func DeleteRole(reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.
 	return err
 }
 
-func (r *ReconcileAccount) getBYOCClient(currentAcct *awsv1alpha1.Account) (awsclient.Client, *awsv1alpha1.AccountClaim, error) {
-	// Get associated AccountClaim
-	accountClaim := &awsv1alpha1.AccountClaim{}
-
-	err := r.Client.Get(context.TODO(),
-		types.NamespacedName{Name: currentAcct.Spec.ClaimLink, Namespace: currentAcct.Spec.ClaimLinkNamespace},
-		accountClaim)
-	if err != nil {
-		if k8serr.IsNotFound(err) {
-			return nil, nil, err
-		}
-		return nil, nil, err
-	}
-
+func (r *ReconcileAccount) getCCSClient(currentAcct *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) (awsclient.Client, error) {
 	// Get credentials
-	byocAWSClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+	ccsAWSClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: accountClaim.Spec.BYOCSecretRef.Name,
 		NameSpace:  accountClaim.Spec.BYOCSecretRef.Namespace,
 		AwsRegion:  "us-east-1",
 	})
 	if err != nil {
-		return nil, accountClaim, err
+		return nil, err
 	}
 
-	return byocAWSClient, accountClaim, nil
+	return ccsAWSClient, nil
 }
 
 func validateBYOCClaim(accountClaim *awsv1alpha1.AccountClaim) error {
