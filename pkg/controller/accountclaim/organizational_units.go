@@ -236,9 +236,8 @@ func checkOUMapping(cMap *corev1.ConfigMap) (string, string, error) {
 	return cMap.Data["base"], cMap.Data["root"], nil
 }
 
-// Validate functions serve as a mean to ensure that the fields we want have a value that is not nil or empty strings
+// Validate functions serve as a mean to ensure that the fields that require a value do
 func validateOrganizationalUnitInput(input *organizations.CreateOrganizationalUnitInput) error {
-	// Explicitly checking due to nil pointer errors in the call to client.CreateOrganizationalUnit(&createCreateOrganizationalUnitInput)
 	if input == nil || validateValue(input.Name) != nil || validateValue(input.ParentId) != nil {
 		return awsv1alpha1.ErrUnexpectedValue
 	}
@@ -254,7 +253,7 @@ func validateListChildrenInput(input *organizations.ListChildrenInput) error {
 
 func validateMoveAccount(input *organizations.MoveAccountInput) error {
 	if input == nil || validateValue(input.AccountId) != nil || validateValue(input.DestinationParentId) != nil || validateValue(input.SourceParentId) != nil {
-		return nil
+		return awsv1alpha1.ErrUnexpectedValue
 	}
 	return nil
 }
