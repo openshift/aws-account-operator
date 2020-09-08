@@ -206,7 +206,7 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 }
 
 // DescribeEC2Instances returns the InstanceState code
-func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instanceId string) (int, error) {
+func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instanceID string) (int, error) {
 	// States and codes
 	// 0 : pending
 	// 16 : running
@@ -216,7 +216,7 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instan
 	// 80 : stopped
 
 	result, err := client.DescribeInstanceStatus(&ec2.DescribeInstanceStatusInput{
-		InstanceIds: aws.StringSlice([]string{instanceId}),
+		InstanceIds: aws.StringSlice([]string{instanceID}),
 	})
 
 	if err != nil {
