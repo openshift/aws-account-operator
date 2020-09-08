@@ -168,7 +168,8 @@ make deploy-local
 ```
 
 will invoke the `operator-sdk` executable in `local` mode with the `FORCE_DEV_MODE=local` environment variable.
-(**Note:** This currently relies on `operator-sdk` at version 0.5.0. The syntax of the executable has changed over time, so this `make` target may not work with other versions.)
+(**Note:** This currently relies on `operator-sdk` at version [0.8.x](https://github.com/operator-framework/operator-sdk/blob/v0.8.x/doc/user/install-operator-sdk.md).
+The syntax of the executable has changed over time, so this `make` target may not work with other versions.)
 
 #### 1.5.1.2 Cluster Mode
 
