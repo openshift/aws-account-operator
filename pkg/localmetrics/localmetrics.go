@@ -18,6 +18,7 @@ import (
 	"context"
 	"net/http"
 	neturl "net/url"
+	"strconv"
 	"strings"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -137,7 +138,7 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Help:        "Distribution of the number of seconds a Reconcile takes, broken down by controller",
 			ConstLabels: prometheus.Labels{"name": operatorName},
 			Buckets:     []float64{0.001, 0.01, 0.1, 1, 5, 10, 20},
-		}, []string{"controller"}),
+		}, []string{"controller", "error"}),
 
 		// apiCallDuration times API requests. Histogram also gives us a _count metric for free.
 		apiCallDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -283,8 +284,8 @@ func (c *MetricsCollector) AddAccountReuseCleanupFailure() {
 	c.accountReuseCleanupFailureCount.Inc()
 }
 
-func (c *MetricsCollector) SetReconcileDuration(controller string, duration float64) {
-	c.reconcileDuration.WithLabelValues(controller).Observe(duration)
+func (c *MetricsCollector) SetReconcileDuration(controller string, duration float64, err error) {
+	c.reconcileDuration.WithLabelValues(controller, strconv.FormatBool(err != nil)).Observe(duration)
 }
 
 // AddAPICall observes metrics for a call to an external API
