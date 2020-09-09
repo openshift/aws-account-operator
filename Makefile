@@ -291,7 +291,7 @@ predeploy-aws-account-operator:
 	@oc apply -f hack/files/aws_v1alpha1_zero_size_accountpool.yaml
 
 .PHONY: predeploy
-predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials
+predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map
 
 .PHONY: deploy-local
 deploy-local:
@@ -320,8 +320,8 @@ endif
 # Test apply ou map cr
 .PHONY: create-ou-map
 create-ou-map:
-	# Create OU map
-	@oc process -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -f hack/templates/aws_v1alpha1_configmap.tmpl | oc apply -f -
+# Create OU map
+	@oc process -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -p ACCOUNTLIMIT="0" -f hack/templates/aws_v1alpha1_configmap.tmpl | oc apply -f -
 
 # Test delete ou map cr
 .PHONY: delete-ou-map
