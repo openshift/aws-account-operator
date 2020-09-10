@@ -148,7 +148,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// Remove finalizer if account CR is BYOC as the accountclaim controller will delete the account CR
 	// when the accountClaim CR is deleted as its set as the owner reference
-	if accountIsBYOCPendingDeletionWithFinalizer(currentAcctInstance) {
+	if currentAcctInstance.IsBYOCPendingDeletionWithFinalizer() {
 		reqLogger.Info("removing account finalizer")
 		err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
 		if err != nil {
@@ -159,13 +159,13 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	// Log accounts that have failed and don't attempt to reconcile them
-	if accountIsFailed(currentAcctInstance) {
+	if currentAcctInstance.IsFailed() {
 		reqLogger.Info(fmt.Sprintf("Account %s is failed. Ignoring.", currentAcctInstance.Name))
 		return reconcile.Result{}, nil
 	}
 
 	// Detect accounts for which we kicked off asynchronous region initialization
-	if accountIsInitializingRegions(currentAcctInstance) {
+	if currentAcctInstance.IsInitializingRegions() {
 		// Detect whether we set the InitializingRegions condition in *this* invocation of the
 		// operator or a previous one.
 		if regionInitStale(currentAcctInstance) {
@@ -194,7 +194,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{Requeue: true}, r.statusUpdate(currentAcctInstance)
 		}
 		// The goroutines happened in this invocation. Time out if that has taken too long.
-		if accountOlderThan(currentAcctInstance, initPendTime) {
+		if currentAcctInstance.IsOlderThan(initPendTime) {
 			errMsg := fmt.Sprintf("Initializing regions for longer than %d seconds", initPendTime)
 			return reconcile.Result{}, r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
 		}
@@ -242,10 +242,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		// Normal account creation
 
 		// Test PendingVerification state creating support case and checking for case status
-		if accountIsPendingVerification(currentAcctInstance) {
+		if currentAcctInstance.IsPendingVerification() {
 
 			// If the supportCaseID is blank and Account State = PendingVerification, create a case
-			if !accountHasSupportCaseID(currentAcctInstance) {
+			if !currentAcctInstance.HasSupportCaseID() {
 				switch utils.DetectDevMode {
 				case utils.DevModeProduction:
 					caseID, err := createCase(reqLogger, currentAcctInstance, awsSetupClient)
@@ -308,22 +308,22 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 
 		// Update account Status.Claimed to true if the account is ready and the claim link is not empty
-		if accountIsReadyUnclaimedAndHasClaimLink(currentAcctInstance) {
+		if currentAcctInstance.IsReadyUnclaimedAndHasClaimLink() {
 			currentAcctInstance.Status.Claimed = true
 			return reconcile.Result{}, r.statusUpdate(currentAcctInstance)
 		}
 
 		// see if in creating for longer then default wait time
-		if accountCreatingTooLong(currentAcctInstance) {
+		if currentAcctInstance.IsCreating() && currentAcctInstance.IsOlderThan(createPendTime) {
 			errMsg := fmt.Sprintf("Creation pending for longer then %d minutes", utils.WaitTime)
 			r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
 		}
 
-		if accountIsUnclaimedAndHasNoState(currentAcctInstance) {
+		if currentAcctInstance.IsUnclaimedAndHasNoState() {
 			// Initialize the awsAccountID var here since we only use it now inside this condition
 			var awsAccountID string
 
-			if !accountHasAwsAccountID(currentAcctInstance) {
+			if !currentAcctInstance.HasAwsAccountID() {
 				// before doing anything make sure we are not over the limit if we are just error
 				if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
 					reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached")
@@ -375,14 +375,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	// Account init for both BYOC and Non-BYOC
-	if accountReadyForInitialization(currentAcctInstance) {
+	if currentAcctInstance.ReadyForInitialization() {
 
 		reqLogger.Info("initializing account", "awsAccountID", currentAcctInstance.Spec.AwsAccountID)
 		var roleToAssume string
 		var iamUserUHC = iamUserNameUHC
 		var iamUserSRE = iamUserNameSRE
 
-		if accountIsBYOC(currentAcctInstance) {
+		if currentAcctInstance.IsBYOC() {
 			// Use the same ID applied to the account name for IAM usernames
 			currentAccInstanceID := currentAcctInstance.Labels[fmt.Sprintf("%s", awsv1alpha1.IAMUserIDLabel)]
 			iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
@@ -477,11 +477,11 @@ func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctIns
 	// Initialize all supported regions by creating and terminating an instance in each
 	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, awsv1alpha1.CoveredRegions, creds)
 
-	if accountIsBYOC(currentAcctInstance) {
+	if currentAcctInstance.IsBYOC() {
 		utils.SetAccountStatus(currentAcctInstance, "BYOC Account Ready", awsv1alpha1.AccountReady, AccountReady)
 
 	} else {
-		if utils.FindAccountCondition(currentAcctInstance.Status.Conditions, awsv1alpha1.AccountReady) != nil {
+		if currentAcctInstance.GetCondition(awsv1alpha1.AccountReady) != nil {
 			msg := "Account support case already resolved; Account Ready"
 			utils.SetAccountStatus(currentAcctInstance, msg, awsv1alpha1.AccountReady, AccountReady)
 			reqLogger.Info(msg)
@@ -670,7 +670,7 @@ func (r *ReconcileAccount) setAccountClaimError(reqLogger logr.Logger, currentAc
 	var reason string
 	var conditionType awsv1alpha1.AccountClaimConditionType
 
-	if accountIsBYOC(currentAccountInstance) {
+	if currentAccountInstance.IsBYOC() {
 		message = fmt.Sprintf("CCS Account Failed: %s", message)
 		conditionType = awsv1alpha1.CCSAccountClaimFailed
 		reason = string(awsv1alpha1.CCSAccountClaimFailed)
@@ -706,122 +706,12 @@ func matchSubstring(roleID, role string) (bool, error) {
 	return matched, err
 }
 
-// Returns true if account CR is Failed
-func accountIsFailed(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Status.State == AccountFailed
-}
-
-// Returns true of there is no state set
-func accountHasState(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Status.State != ""
-}
-
-// Returns true of there is no Status.SupportCaseID set
-func accountHasSupportCaseID(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Status.SupportCaseID != ""
-}
-
-func accountIsPendingVerification(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Status.State == AccountPendingVerification
-}
-
-func accountIsReady(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Status.State == AccountReady
-}
-
-func accountIsCreating(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Status.State == AccountCreating
-}
-
-func accountIsInitializingRegions(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Status.State == AccountInitializingRegions
-}
-
 func regionInitStale(currentAcctInstance *awsv1alpha1.Account) bool {
-	cond := utils.FindAccountCondition(currentAcctInstance.Status.Conditions, awsv1alpha1.AccountInitializingRegions)
+	cond := currentAcctInstance.GetCondition(awsv1alpha1.AccountInitializingRegions)
 	if cond == nil {
 		// Assuming the caller checks accountIsInitializingRegions beforehand, this really should
 		// never happen.
 		return false
 	}
 	return cond.LastTransitionTime.Before(utils.GetOperatorStartTime())
-}
-
-func accountHasClaimLink(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Spec.ClaimLink != ""
-}
-
-func accountOlderThan(currentAcctInstance *awsv1alpha1.Account, minutes time.Duration) bool {
-	return time.Now().Sub(currentAcctInstance.GetCreationTimestamp().Time) > minutes
-}
-
-func accountCreatingTooLong(currentAcctInstance *awsv1alpha1.Account) bool {
-	return accountIsCreating(currentAcctInstance) && accountOlderThan(currentAcctInstance, createPendTime)
-}
-
-// Returns true if account Status.Claimed is false
-func accountIsClaimed(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Status.Claimed
-}
-
-// Returns true if a DeletionTimestamp has been set
-func accountIsPendingDeletion(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.DeletionTimestamp != nil
-}
-
-// Returns true of Spec.BYOC is true, ie: account is a BYOC account
-func accountIsBYOC(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Spec.BYOC
-}
-
-// Returns true if the awsv1alpha1 finalizer is set on the account
-func accountHasAwsv1alpha1Finalizer(currentAcctInstance *awsv1alpha1.Account) bool {
-	return utils.Contains(currentAcctInstance.GetFinalizers(), awsv1alpha1.AccountFinalizer)
-}
-
-// Returns true if awsAccountID is set
-func accountHasAwsAccountID(currentAcctInstance *awsv1alpha1.Account) bool {
-	return currentAcctInstance.Spec.AwsAccountID != ""
-}
-
-func accountIsReadyUnclaimedAndHasClaimLink(currentAcctInstance *awsv1alpha1.Account) bool {
-	return accountIsReady(currentAcctInstance) &&
-		accountHasClaimLink(currentAcctInstance) &&
-		!accountIsClaimed(currentAcctInstance)
-}
-
-// Returns true if account is a BYOC Account, has been marked for deletion (deletion
-// timestamp set), and has a finalizer set.
-func accountIsBYOCPendingDeletionWithFinalizer(currentAcctInstance *awsv1alpha1.Account) bool {
-	return accountIsPendingDeletion(currentAcctInstance) &&
-		accountIsBYOC(currentAcctInstance) &&
-		accountHasAwsv1alpha1Finalizer(currentAcctInstance)
-}
-
-// Returns true if account is BYOC and the state is not AccountReady
-func accountIsBYOCAndNotReady(currentAcctInstance *awsv1alpha1.Account) bool {
-	return accountIsBYOC(currentAcctInstance) && !accountIsReady(currentAcctInstance)
-}
-
-// Returns true if account is a BYOC Account and the state is not ready OR
-// accout state is creating, and has not been claimed
-func accountReadyForInitialization(currentAcctInstance *awsv1alpha1.Account) bool {
-	return accountIsBYOCAndNotReady(currentAcctInstance) ||
-		accountIsUnclaimedAndIsCreating(currentAcctInstance)
-}
-
-// Returns true if account has not set state and has not been claimed
-func accountIsUnclaimedAndHasNoState(currentAcctInstance *awsv1alpha1.Account) bool {
-	return !accountHasState(currentAcctInstance) &&
-		!accountIsClaimed(currentAcctInstance)
-}
-
-// Return true if account state is AccountCreating and has not been claimed
-func accountIsUnclaimedAndIsCreating(currentAcctInstance *awsv1alpha1.Account) bool {
-	return accountIsCreating(currentAcctInstance) &&
-		!accountIsClaimed(currentAcctInstance)
-}
-
-type accountInstance interface {
-	accountIsUnclaimedAndIsCreating() bool
 }

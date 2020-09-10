@@ -33,8 +33,8 @@ var roleID = ""
 // BYOC Accounts are determined by having no state set OR not being claimed
 // Returns true if either are true AND Spec.BYOC is true
 func newBYOCAccount(currentAcctInstance *awsv1alpha1.Account) bool {
-	if accountIsBYOC(currentAcctInstance) {
-		if !accountHasState(currentAcctInstance) || !accountIsClaimed(currentAcctInstance) {
+	if currentAcctInstance.IsBYOC() {
+		if !currentAcctInstance.HasState() || !currentAcctInstance.IsClaimed() {
 			return true
 		}
 	}
@@ -43,7 +43,7 @@ func newBYOCAccount(currentAcctInstance *awsv1alpha1.Account) bool {
 
 // Checks whether or not the current account instance is claimed, and does so if not
 func claimBYOCAccount(r *ReconcileAccount, reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) error {
-	if !accountIsClaimed(currentAcctInstance) {
+	if !currentAcctInstance.IsClaimed() {
 		reqLogger.Info("Marking BYOC account claimed")
 		currentAcctInstance.Status.Claimed = true
 		return r.statusUpdate(currentAcctInstance)
@@ -88,7 +88,7 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 	// Create access key and role for BYOC account
 	var roleID string
 	var roleErr error
-	if !accountHasState(account) {
+	if !account.HasState() {
 		tags := awsclient.AWSTags.BuildTags(account).GetIAMTags()
 		roleID, roleErr = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn, accountID, tags)
 
