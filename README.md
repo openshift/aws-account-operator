@@ -23,11 +23,13 @@ export OSD_STAGING_1_OU_BASE_ID=
 
 [direnv](https://direnv.net) is what some team members use, and you can add the above block (with variables filled in) into a `.envrc` file (make sure `.envrc` is in your global git ignore as well) and upon entry to the `aws-account-operator` folder the env vars inside the file will be loaded automatically, and unset when you leave the folder.
 
-Next, get your AWS Credentials for the payer account you will be using and export the access key and secret as follows:
-```
+Next, get your AWS Credentials for the payer account you will be using and export the access key and secret using the following environment variables:
+
+```txt
 OPERATOR_ACCESS_KEY_ID
 OPERATOR_SECRET_ACCESS_KEY
 ```
+
 These only need to be set the first time you deploy the operator locally.  Then, run `make predeploy`.
 
 Then, you should be able to run `operator-sdk up local --namespace aws-account-operator`, and you're up and running.
@@ -36,7 +38,7 @@ Then, you should be able to run `operator-sdk up local --namespace aws-account-o
 
 To test that everything's working correctly, we have a set of "acceptance" tests that we've compiled into a single make target:
 
-```
+```shell
 make test-all
 ```
 
