@@ -15,6 +15,9 @@
 package config
 
 const (
-	OperatorName      string = "aws-account-operator"
+	// OperatorName stores the name used by this code for the AWS Account Operator
+	OperatorName string = "aws-account-operator"
+
+	// OperatorNamespace stores a string indicating the Kubernetes namespace in which the operator runs
 	OperatorNamespace string = "aws-account-operator"
 )

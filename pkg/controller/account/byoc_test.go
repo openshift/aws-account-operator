@@ -26,7 +26,6 @@ var _ = Describe("Byoc", func() {
 	)
 
 	BeforeEach(func() {
-		nullLogger = testutils.NullLogger{}
 		ctrl = gomock.NewController(GinkgoT())
 		mockAWSClient = mock.NewMockClient(ctrl)
 		policyFake = &iam.AttachedPolicy{

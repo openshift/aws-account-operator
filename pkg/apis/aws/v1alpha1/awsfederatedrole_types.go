@@ -68,6 +68,7 @@ type AWSFederatedRoleStatus struct {
 	Conditions []AWSFederatedRoleCondition `json:"conditions"`
 }
 
+// AWSFederatedRoleCondition is a Kubernetes condition type for tracking AWS Federated Role status changes
 type AWSFederatedRoleCondition struct {
 	// Type is the type of the condition.
 	Type AWSFederatedRoleConditionType `json:"type"`

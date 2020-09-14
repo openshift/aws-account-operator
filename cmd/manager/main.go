@@ -39,11 +39,9 @@ import (
 
 // Change below variables to serve metrics on different host or port.
 var (
-	metricsPort               = "8080"
-	metricsPath               = "/metrics"
-	secretWatcherScanInterval = time.Duration(1) * time.Minute
-	hours                     = 1
-	totalWatcherInterval      = time.Duration(15) * time.Minute
+	metricsPort          = "8080"
+	metricsPath          = "/metrics"
+	totalWatcherInterval = time.Duration(15) * time.Minute
 )
 
 var log = logf.Log.WithName("cmd")
@@ -193,6 +191,11 @@ func initOperatorConfigMapVars(kubeClient client.Client) {
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
 	})
+
+	if err != nil {
+		log.Error(err, "failed creating AWS client")
+		return
+	}
 
 	// Check if config map exists.
 	cm := &corev1.ConfigMap{}

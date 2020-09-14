@@ -1,6 +1,7 @@
 package accountpool
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/golang/mock/gomock"
@@ -25,14 +26,6 @@ type mocks struct {
 	mockCtrl       *gomock.Controller
 }
 
-// create fake client to mock API calls
-func newTestReconciler() *ReconcileAccountPool {
-	return &ReconcileAccountPool{
-		client: fake.NewFakeClient(),
-		scheme: scheme.Scheme,
-	}
-}
-
 // setupDefaultMocks is an easy way to setup all of the default mocks
 func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
 	mocks := &mocks{
@@ -44,7 +37,11 @@ func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
 }
 
 func TestReconcileAccountPool(t *testing.T) {
-	awsaccountapis.AddToScheme(scheme.Scheme)
+	err := awsaccountapis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		fmt.Printf("failed adding to scheme in accountpoot_controller_test.go")
+	}
+
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
 	tests := []struct {
 		name                  string
@@ -179,6 +176,9 @@ func TestReconcileAccountPool(t *testing.T) {
 
 			ap := awsv1alpha1.AccountPool{}
 			err := mocks.fakeKubeClient.Get(context.TODO(), types.NamespacedName{Name: "test", Namespace: "test"}, &ap)
+			if err != nil {
+				fmt.Printf("Failed returning mock accountPool in accountpool controller tests")
+			}
 
 			_, err = rap.Reconcile(reconcile.Request{
 				NamespacedName: types.NamespacedName{
@@ -239,11 +239,7 @@ func verifyAccountCreated(c client.Client, expected *awsv1alpha1.AccountPool) bo
 
 	ap.Status.UnclaimedAccounts = unclaimedAccountCount
 
-	if !reflect.DeepEqual(ap, *expected) {
-		return false
-	}
-
-	return true
+	return reflect.DeepEqual(ap, *expected)
 }
 
 func TestUpdateAccountPoolStatus(t *testing.T) {
@@ -289,13 +285,4 @@ func TestUpdateAccountPoolStatus(t *testing.T) {
 	if updateAccountPoolStatus(&testAccountPoolCR, 1, 1) {
 		t.Error("AccountPool status doesn't need updating, but function returns true")
 	}
-}
-
-func stringInSlice(a string, list []string) bool {
-	for _, b := range list {
-		if b == a {
-			return true
-		}
-	}
-	return false
 }

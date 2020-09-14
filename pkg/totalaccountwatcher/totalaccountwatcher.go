@@ -55,12 +55,15 @@ func Initialize(client client.Client, watchInterval time.Duration) {
 		return
 	}
 
-	TotalAccountWatcher = NewTotalAccountWatcher(client, awsClient, watchInterval)
-	TotalAccountWatcher.UpdateTotalAccounts(log)
+	TotalAccountWatcher = newTotalAccountWatcher(client, awsClient, watchInterval)
+	err = TotalAccountWatcher.UpdateTotalAccounts(log)
+	if err != nil {
+		log.Error(err, "failed updating total accounts count")
+	}
 }
 
-// NewTotalAccountWatcher returns a new instance of the TotalAccountWatcher interface
-func NewTotalAccountWatcher(
+// newTotalAccountWatcher returns a new instance of the TotalAccountWatcher interface
+func newTotalAccountWatcher(
 	client client.Client,
 	awsClient awsclient.Client,
 	watchInterval time.Duration,

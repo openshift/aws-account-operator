@@ -47,7 +47,7 @@ func TestAccountWatcherCreation(t *testing.T) {
 		// after mocks is defined
 		defer mocks.mockCtrl.Finish()
 
-		totalAccountWatcher := NewTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
+		totalAccountWatcher := newTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
 		totalAccountWatcher.awsClient = mocks.mockAWSClient
 
 		if totalAccountWatcher.AccountsCanBeCreated() {
@@ -135,7 +135,7 @@ func TestTotalAwsAccounts(t *testing.T) {
 			defer mocks.mockCtrl.Finish()
 
 			// Act
-			TotalAccountWatcher = NewTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
+			TotalAccountWatcher = newTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
 			total, err := TotalAccountWatcher.getTotalAwsAccounts()
 
 			// Assert
@@ -368,7 +368,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				nullLogger := testutils.NullLogger{}
 				defer mocks.mockCtrl.Finish()
 
-				TotalAccountWatcher = NewTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
+				TotalAccountWatcher = newTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
 				TotalAccountWatcher.awsClient = mocks.mockAWSClient
 				err := TotalAccountWatcher.UpdateTotalAccounts(nullLogger)
 

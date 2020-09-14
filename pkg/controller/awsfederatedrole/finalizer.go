@@ -69,9 +69,5 @@ func isFederatedRoleReferenced(awsFederatedAccountAccess *awsv1alpha1.AWSFederat
 	referencedRoleNamespacedName := types.NamespacedName{Name: awsFederatedAccountAccess.Spec.AWSFederatedRole.Name, Namespace: awsFederatedAccountAccess.Spec.AWSFederatedRole.Namespace}
 	roleNamespacedName := types.NamespacedName{Name: awsFederatedRole.Name, Namespace: awsFederatedRole.Namespace}
 
-	if reflect.DeepEqual(referencedRoleNamespacedName, roleNamespacedName) {
-		return true
-	}
-
-	return false
+	return reflect.DeepEqual(referencedRoleNamespacedName, roleNamespacedName)
 }

@@ -18,20 +18,11 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 )
 
-const (
-	byocPolicy        = "BYOCEC2Policy"
-	arnIAMPrefix      = "arn:aws:iam::"
-	byocUserArnSuffix = ":user/byocSetupUser"
-)
-
 // ErrBYOCAccountIDMissing is an error for missing Account ID
 var ErrBYOCAccountIDMissing = errors.New("BYOCAccountIDMissing")
 
 // ErrBYOCSecretRefMissing is an error for missing Secret References
 var ErrBYOCSecretRefMissing = errors.New("BYOCSecretRefMissing")
-
-// Placeholder for the unique role id created by createRole
-var roleID = ""
 
 // BYOC Accounts are determined by having no state set OR not being claimed
 // Returns true if either are true AND Spec.BYOC is true
@@ -66,7 +57,10 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 	client, clientErr := r.getCCSClient(account, accountClaim)
 	if clientErr != nil {
 		if accountClaim != nil {
-			r.setAccountClaimError(reqLogger, account, clientErr.Error())
+			claimErr := r.setAccountClaimError(reqLogger, account, clientErr.Error())
+			if claimErr != nil {
+				reqLogger.Error(claimErr, "failed setting accountClaim error state")
+			}
 		}
 		// TODO: Recoverable?
 		return "", reconcile.Result{}, clientErr
@@ -74,19 +68,25 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 
 	validateErr := validateBYOCClaim(accountClaim)
 	if validateErr != nil {
-		r.setAccountClaimError(reqLogger, account, validateErr.Error())
+		claimErr := r.setAccountClaimError(reqLogger, account, validateErr.Error())
+		if claimErr != nil {
+			reqLogger.Error(claimErr, "failed setting accountClaim error state")
+		}
 		// TODO: Recoverable?
 		return "", reconcile.Result{}, validateErr
 	}
 
 	claimErr := claimBYOCAccount(r, reqLogger, account)
 	if claimErr != nil {
-		r.setAccountClaimError(reqLogger, account, claimErr.Error())
+		claimErr := r.setAccountClaimError(reqLogger, account, claimErr.Error())
+		if claimErr != nil {
+			reqLogger.Error(claimErr, "failed setting accountClaim error state")
+		}
 		// TODO: Recoverable?
 		return "", reconcile.Result{}, claimErr
 	}
 
-	accountID := account.Labels[fmt.Sprintf("%s", awsv1alpha1.IAMUserIDLabel)]
+	accountID := account.Labels[awsv1alpha1.IAMUserIDLabel]
 
 	// Get SRE Access ARN from configmap
 	cm := &corev1.ConfigMap{}
@@ -110,7 +110,10 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		roleID, roleErr = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn, accountID, tags, SREAccessARN)
 
 		if roleErr != nil {
-			r.setAccountClaimError(reqLogger, account, roleErr.Error())
+			claimErr := r.setAccountClaimError(reqLogger, account, roleErr.Error())
+			if claimErr != nil {
+				reqLogger.Error(claimErr, "failed setting accountClaim error state")
+			}
 			// TODO: Can this be requeued?
 			// TODO: Check idempotency/workflow to return here
 			return "", reconcile.Result{Requeue: true}, roleErr

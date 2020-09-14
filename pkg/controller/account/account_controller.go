@@ -36,12 +36,7 @@ import (
 var log = logf.Log.WithName("controller_account")
 
 const (
-	// AwsLimit tracks the hard limit to the number of accounts; exported for use in cmd/manager/main.go
-	awsCredsUserName        = "aws_user_name"
-	awsCredsSecretIDKey     = "aws_access_key_id"
-	awsCredsSecretAccessKey = "aws_secret_access_key"
-	awsAMI                  = "ami-000db10762d0c4c05"
-	awsInstanceType         = "t2.micro"
+	awsInstanceType = "t2.micro"
 	// createPendTime is the maximum time we allow an Account to sit in Creating state before we
 	// time out and set it to Failed.
 	createPendTime = utils.WaitTime * time.Minute
@@ -225,7 +220,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		ccsRoleID, result, initErr = r.initializeNewCCSAccount(reqLogger, currentAcctInstance, awsSetupClient, adminAccessArn)
 		if initErr != nil {
 			// TODO: If we have recoverable results from above, how do we allow them to requeue if state is failed
-			r.setStateFailed(reqLogger, currentAcctInstance, initErr.Error())
+			stateErr := r.setStateFailed(reqLogger, currentAcctInstance, initErr.Error())
+			if stateErr != nil {
+				reqLogger.Error(stateErr, "failed setting account state", "desiredState", "Failed")
+			}
 			reqLogger.Error(initErr, "failed initializing new CCS account")
 			return result, initErr
 		}
@@ -265,6 +263,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 					// After creating the support case requeue the request. To avoid flooding and being blacklisted by AWS when
 					// starting the operator with a large AccountPool, add a randomInterval (between 0 and 30 secs) to the regular wait time
 					randomInterval, err := strconv.Atoi(currentAcctInstance.Spec.AwsAccountID)
+					if err != nil {
+						reqLogger.Error(err, "failed converting AwsAccountID string to int")
+						return reconcile.Result{}, err
+					}
 					randomInterval %= 30
 
 					// This will requeue verification for between 30 and 60 (30+30) seconds, depending on the account
@@ -315,7 +317,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		// see if in creating for longer then default wait time
 		if currentAcctInstance.IsCreating() && currentAcctInstance.IsOlderThan(createPendTime) {
 			errMsg := fmt.Sprintf("Creation pending for longer then %d minutes", utils.WaitTime)
-			r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+			stateErr := r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+			if stateErr != nil {
+				reqLogger.Error(stateErr, "failed setting account state", "desiredState", "Failed")
+			}
 		}
 
 		if currentAcctInstance.IsUnclaimedAndHasNoState() {
@@ -384,7 +389,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		if currentAcctInstance.IsBYOC() {
 			// Use the same ID applied to the account name for IAM usernames
-			currentAccInstanceID := currentAcctInstance.Labels[fmt.Sprintf("%s", awsv1alpha1.IAMUserIDLabel)]
+			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
 			iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
 			iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
 			byocRoleToAssume := fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
@@ -401,7 +406,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			creds, credsErr = getStsCredentials(reqLogger, awsSetupClient, roleToAssume, currentAcctInstance.Spec.AwsAccountID)
 			if credsErr != nil {
 				errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s: %s", currentAcctInstance.Spec.AwsAccountID, credsErr)
-				r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+				stateErr := r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+				if stateErr != nil {
+					reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
+				}
 				return reconcile.Result{}, credsErr
 			}
 
@@ -409,7 +417,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			// was the one used in the AssumedRole
 			// RoleID must exist in the AssumeRoleID string
 			match, _ := matchSubstring(ccsRoleID, *creds.AssumedRoleUser.AssumedRoleId)
-			if ccsRoleID != "" && match == false {
+			if ccsRoleID != "" && !match {
 				reqLogger.Info(fmt.Sprintf("Assumed RoleID:Session string does not match new RoleID: %s, %s", *creds.AssumedRoleUser.AssumedRoleId, ccsRoleID))
 				reqLogger.Info(fmt.Sprintf("Sleeping %d seconds", i))
 				time.Sleep(time.Duration(i) * time.Second)
@@ -426,14 +434,20 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		if err != nil {
 			reqLogger.Info(err.Error())
 			errMsg := fmt.Sprintf("Failed to assume role: %s", err)
-			r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+			stateErr := r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+			if stateErr != nil {
+				reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
+			}
 			return reconcile.Result{}, err
 		}
 
 		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
 		if err != nil {
 			errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
-			r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+			stateErr := r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+			if stateErr != nil {
+				reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
+			}
 			return reconcile.Result{}, err
 		}
 		currentAcctInstance.Spec.IAMUserSecret = *secretName
@@ -446,7 +460,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		_, err = r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserSRE, request.Namespace)
 		if err != nil {
 			errMsg := fmt.Sprintf("Failed to build IAM SRE user %s: %s", iamUserSRE, err)
-			r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+			stateErr := r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+			if stateErr != nil {
+				reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
+			}
 			return reconcile.Result{}, err
 		}
 

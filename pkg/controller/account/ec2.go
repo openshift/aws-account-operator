@@ -30,7 +30,7 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 
 	// Create go routines to initialize regions in parallel
 	for region := range regions {
-		go r.InitializeRegion(reqLogger, account, region, regions[region]["initializationAMI"], ec2Notifications, ec2Errors, creds)
+		go r.InitializeRegion(reqLogger, account, region, regions[region]["initializationAMI"], ec2Notifications, ec2Errors, creds) //nolint:errcheck // Unable to do anything with the returned error
 	}
 
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished

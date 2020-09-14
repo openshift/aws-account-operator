@@ -18,17 +18,9 @@ const (
 	AccountStatusRequested AccountStateStatus = "Requested"
 	// AccountStatusClaimed const for Claimed status
 	AccountStatusClaimed AccountStateStatus = "Claimed"
-	// AccountStatusTransfering const for Transfering status
-	accountStatusTransfering AccountStateStatus = "Transfering"
-	// AccountStatusTransfered const for Transfering status
-	accountStatusTransfered AccountStateStatus = "Transfered"
-	// AccountStatusDeleting const for Deleting status
-	accountStatusDeleting AccountStateStatus = "Deleting"
-	// AccountStatusPendingVerification const for Pending Verification status
-	accountStatusPendingVerification AccountStateStatus = "PendingVerification"
 	// AccountCrNamespace namespace where AWS accounts will be created
 	AccountCrNamespace = "aws-account-operator"
-	// AccountOperatorIAMRole name for IAM user creating resources in account
+	// AccountOperatorIAMRole is the name for IAM user creating resources in account
 	AccountOperatorIAMRole = "OrganizationAccountAccessRole"
 	// SREAccessRoleName for CCS Account Access
 	SREAccessRoleName = "RH-SRE-CCS-Access"
@@ -216,7 +208,7 @@ func (a *Account) HasAwsv1alpha1Finalizer() bool {
 //IsOlderThan takes a parameter of a time and returns true if the creation timestamp is longer than
 //the passed in time.
 func (a *Account) IsOlderThan(maxDuration time.Duration) bool {
-	return time.Now().Sub(a.GetCreationTimestamp().Time) > maxDuration
+	return time.Since(a.GetCreationTimestamp().Time) > maxDuration
 }
 
 //IsBYOCPendingDeletionWithFinalizer returns true if account is a BYOC Account,
@@ -256,7 +248,7 @@ func (a *Account) IsInitializingRegions() bool {
 	return a.Status.State == AccountInitializingRegions
 }
 
-// FindCondition finds in the condition that has the
+// GetCondition finds the condition that has the
 // specified condition type in the given list. If none exists, then returns nil.
 func (a *Account) GetCondition(conditionType AccountConditionType) *AccountCondition {
 	for i, condition := range a.Status.Conditions {

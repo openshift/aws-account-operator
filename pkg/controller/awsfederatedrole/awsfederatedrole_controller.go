@@ -32,7 +32,7 @@ var (
 	log           = logf.Log.WithName("controller_awsfederatedrole")
 	awsSecretName = "aws-account-operator-credentials"
 
-	ErrInvalidManagedPolicy = goerr.New("InvalidManagedPolicy")
+	errInvalidManagedPolicy = goerr.New("InvalidManagedPolicy")
 )
 
 // Add creates a new AWSFederatedRole Controller and adds it to the Manager. The Manager will set fields on the Controller
@@ -139,12 +139,19 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
 	})
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 
 	// Validates Custom IAM Policy
 
 	log.Info("Validating Custom Policies")
 	// Build custom policy in AWS-valid JSON and converts to string
 	jsonPolicy, err := utils.MarshalIAMPolicy(*instance)
+	if err != nil {
+		reqLogger.Error(err, "failed marshalling IAM Policy", "instanceRoleName", instance.Spec.RoleDisplayName)
+		return reconcile.Result{}, err
+	}
 
 	// If AWSCustomPolicy and AWSManagedPolicies don't exist, update condition and exit
 	if len(instance.Spec.AWSManagedPolicies) == 0 && instance.Spec.AWSCustomPolicy.Name == "" {
@@ -236,7 +243,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 				log.Error(err, "Error updating conditions")
 				return reconcile.Result{}, err
 			}
-			log.Error(ErrInvalidManagedPolicy, fmt.Sprintf("Managed Policy %s does not exist", policy))
+			log.Error(errInvalidManagedPolicy, fmt.Sprintf("Managed Policy %s does not exist", policy))
 			return reconcile.Result{}, nil
 		}
 	}
@@ -263,8 +270,8 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 func getAllPolicies(awsClient awsclient.Client) ([]iam.Policy, error) {
 
 	var policies []iam.Policy
-	truncated := true
-	marker := ""
+	var truncated bool
+	var marker string
 	// The first request shouldn't have a marker
 	input := &iam.ListPoliciesInput{}
 

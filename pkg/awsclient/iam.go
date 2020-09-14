@@ -12,6 +12,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
 
+// ListIAMUserTags returns a list of the tags assigned to an IAM user in AWS
 func ListIAMUserTags(reqLogger logr.Logger, client Client, userName string) (*iam.ListUserTagsOutput, error) {
 	input := &iam.ListUserTagsInput{
 		UserName: aws.String(userName),
@@ -39,6 +40,7 @@ func ListIAMUserTags(reqLogger logr.Logger, client Client, userName string) (*ia
 	return result, nil
 }
 
+// ListIAMUsers returns an *iam.User list of users from the current account
 func ListIAMUsers(reqLogger logr.Logger, client Client) ([]*iam.User, error) {
 	input := &iam.ListUsersInput{}
 	// List of IAM users to return
@@ -76,7 +78,7 @@ func ListIAMUsers(reqLogger logr.Logger, client Client) ([]*iam.User, error) {
 
 }
 
-// checkIAMUserExists checks if a given IAM user exists within an account
+// CheckIAMUserExists checks if a given IAM user exists within an account
 // Takes a logger, an AWS client for the target account, and a target IAM username
 func CheckIAMUserExists(reqLogger logr.Logger, client Client, userName string) (bool, *iam.GetUserOutput, error) {
 	// Retry when getting IAM user information
@@ -174,6 +176,7 @@ func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Ac
 	return createUserOutput, err
 }
 
+// ListIAMRoles returns an *iam.Role list of roles in the AWS account
 func ListIAMRoles(reqLogger logr.Logger, client Client) ([]*iam.Role, error) {
 
 	// List of IAM roles to return
@@ -186,9 +189,7 @@ func ListIAMRoles(reqLogger logr.Logger, client Client) ([]*iam.Role, error) {
 			return nil, err
 		}
 
-		for _, role := range output.Roles {
-			iamRoleList = append(iamRoleList, role)
-		}
+		iamRoleList = append(iamRoleList, output.Roles...)
 
 		if *output.IsTruncated {
 			marker = output.Marker

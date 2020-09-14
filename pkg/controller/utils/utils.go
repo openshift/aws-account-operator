@@ -17,8 +17,11 @@ import (
 )
 
 const (
+	// Finalizer is a constant containing the Kubernetes finalizer used by the AWS Account Operator
 	Finalizer = "finalizer.aws.managed.openshift.io"
-	WaitTime  = 25
+
+	// WaitTime is the default wait time for an account to become ready, before erroring
+	WaitTime = 25
 
 	// envDevMode is the name of the env var we set to indicate we're running in a development
 	// environment vs. production. Set it to one of the DevMode* consts defined below.
@@ -144,6 +147,7 @@ func LogAwsError(logger logr.Logger, errMsg string, customError error, err error
 	}
 }
 
+// Contains returns true a list of strings includes a specific string
 func Contains(list []string, s string) bool {
 	for _, v := range list {
 		if v == s {
@@ -153,6 +157,7 @@ func Contains(list []string, s string) bool {
 	return false
 }
 
+// Remove removes a string from a list of strings
 func Remove(list []string, s string) []string {
 	for i, v := range list {
 		if v == s {
@@ -164,8 +169,7 @@ func Remove(list []string, s string) []string {
 
 // GenerateShortUID Generates a short UID
 func GenerateShortUID() string {
-	UID := rand.String(6)
-	return fmt.Sprintf("%s", UID)
+	return rand.String(6)
 }
 
 // GenerateLabel returns a ObjectMeta Labels
