@@ -45,23 +45,10 @@ const (
 	// createPendTime is the maximum time we allow an Account to sit in Creating state before we
 	// time out and set it to Failed.
 	createPendTime = utils.WaitTime * time.Minute
-	// initPendTime is the maximum time we allow between Account creation and the end of region
-	// initialization.
-	// NOTE(efried): We use quite a long timeout here. Within reason, we would rather go too
-	// long than too short.
-	// - We want to give region init every opportunity to finish. We ignore the Account anyway,
-	//   regardless of whether it's failed or initializing; but if we set it to Failed too soon,
-	//   and the goroutine actually finishes, it will (*should*) bounce off of the
-	//   resourceVersion.
-	// - The async region init takes a theoretical maximum of WaitTime * 2 minutes plus a handful
-	//   of AWS API calls. See asyncRegionInit.
-	// - Ideally it would be nice to start timing from right before we kicked off the region
-	//   init, but for simplicity we just use the Account's creation time. So we add the
-	//   maximum time it could take in the Creating state, which is WaitTime minutes (see
-	//   accountCreatingTooLong).
-	// - We add an extra WaitTime for other miscellaneous steps that are otherwise not
-	//   accounted for, hopefully with plenty of buffer.
-	initPendTime = utils.WaitTime * time.Minute * time.Duration(4)
+	// regionInitTime is the maximum time we allow an account CR to be in the InitializingRegions
+	// state. This is based on async region init taking a theoretical maximum of WaitTime * 2
+	// minutes plus a handful of AWS API calls (see asyncRegionInit).
+	regionInitTime = (utils.WaitTime * time.Duration(2)) + time.Minute
 
 	// AccountPending indicates an account is pending
 	AccountPending = "Pending"
@@ -166,12 +153,24 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// Detect accounts for which we kicked off asynchronous region initialization
 	if currentAcctInstance.IsInitializingRegions() {
+		irCond := currentAcctInstance.GetCondition(awsv1alpha1.AccountInitializingRegions)
+		if irCond == nil {
+			// This should never happen: the thing that made IsInitializingRegions true
+			// also added the Condition.
+			errMsg := "Unexpectedly couldn't find the InitializingRegions Condition"
+			return reconcile.Result{}, r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
+		}
 		// Detect whether we set the InitializingRegions condition in *this* invocation of the
 		// operator or a previous one.
-		if regionInitStale(currentAcctInstance) {
+		if irCond.LastTransitionTime.Before(utils.GetOperatorStartTime()) {
 			// This means the region init goroutine(s) for this account were still running when an
 			// earlier invocation of the operator died. We want to recover those, so set them back
 			// to Creating, which should cause us to hit the region init code path again.
+			// TODO(efried): There's still a small hole here: If the controller was dead for
+			// too long, this can still land us in `accountCreatingTooLong` and fail the Account.
+			// At the time of this writing, that specifically applies to a) non-CCS accounts, and
+			// b) more than 25 minutes between initial Account creation and the Reconcile after
+			// this one.
 			msg := "Recovering from stale region initialization."
 			// We're no longer InitializingRegions
 			utils.SetAccountCondition(
@@ -194,8 +193,8 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{Requeue: true}, r.statusUpdate(currentAcctInstance)
 		}
 		// The goroutines happened in this invocation. Time out if that has taken too long.
-		if currentAcctInstance.IsOlderThan(initPendTime) {
-			errMsg := fmt.Sprintf("Initializing regions for longer than %d seconds", initPendTime)
+		if time.Since(irCond.LastTransitionTime.Time) > regionInitTime {
+			errMsg := fmt.Sprintf("Initializing regions for longer than %d seconds", regionInitTime/time.Second)
 			return reconcile.Result{}, r.setStateFailed(reqLogger, currentAcctInstance, errMsg)
 		}
 		// Otherwise give it a chance to finish.
@@ -704,14 +703,4 @@ func (r *ReconcileAccount) setAccountClaimError(reqLogger logr.Logger, currentAc
 func matchSubstring(roleID, role string) (bool, error) {
 	matched, err := regexp.MatchString(roleID, role)
 	return matched, err
-}
-
-func regionInitStale(currentAcctInstance *awsv1alpha1.Account) bool {
-	cond := currentAcctInstance.GetCondition(awsv1alpha1.AccountInitializingRegions)
-	if cond == nil {
-		// Assuming the caller checks accountIsInitializingRegions beforehand, this really should
-		// never happen.
-		return false
-	}
-	return cond.LastTransitionTime.Before(utils.GetOperatorStartTime())
 }
