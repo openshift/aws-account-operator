@@ -327,7 +327,8 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				// before doing anything make sure we are not over the limit if we are just error
 				if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
 					reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached")
-					return reconcile.Result{}, awsv1alpha1.ErrAwsAccountLimitExceeded
+					// We don't expect the limit to change very frequently, so wait a while before requeueing to avoid hot lopping.
+					return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(15) * time.Minute}, nil
 				}
 
 				// Build Aws Account
