@@ -9,8 +9,12 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/iam"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/openshift/aws-account-operator/pkg/apis"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
@@ -19,6 +23,8 @@ import (
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -158,12 +164,17 @@ func main() {
 	// work
 	stopCh := signals.SetupSignalHandler()
 
-	// Initialize the TotalAccountWatcher
-	accountWatcherClient, err := client.New(cfg, client.Options{})
+	// Define an awsClient for any processes that need to run during operator startup or independent routines to use
+	awsClient, err := client.New(cfg, client.Options{})
 	if err != nil {
 		log.Error(err, "")
 	}
-	totalaccountwatcher.Initialize(accountWatcherClient, totalWatcherInterval)
+
+	// Initialize our ConfigMap with default values if necessary.
+	initOperatorConfigMapVars(awsClient)
+
+	// Initialize the TotalAccountWatcher
+	totalaccountwatcher.Initialize(awsClient, totalWatcherInterval)
 	go totalaccountwatcher.TotalAccountWatcher.Start(log, stopCh)
 
 	log.Info("Starting the Cmd.")
@@ -172,5 +183,39 @@ func main() {
 	if err := mgr.Start(stopCh); err != nil {
 		log.Error(err, "Manager exited non-zero")
 		os.Exit(1)
+	}
+}
+
+func initOperatorConfigMapVars(kubeClient client.Client) {
+	builder := &awsclient.Builder{}
+	awsClient, err := builder.GetClient("", kubeClient, awsclient.NewAwsClientInput{
+		SecretName: utils.AwsSecretName,
+		NameSpace:  awsv1alpha1.AccountCrNamespace,
+		AwsRegion:  "us-east-1",
+	})
+
+	// Check if config map exists.
+	cm := &corev1.ConfigMap{}
+	err = kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	if err != nil {
+		log.Error(err, "There was an error getting the default configmap.")
+		return
+	}
+
+	// Get the SRE Admin Access role for CCS Accounts and populate the role name into the configmap
+	role, err := awsClient.GetRole(&iam.GetRoleInput{
+		RoleName: aws.String(awsv1alpha1.SREAccessRoleName),
+	})
+	if err != nil {
+		log.Error(err, "There was an error getting the SRE CCS Access Role")
+		return
+	}
+	cm.Data["CCS-Access-Arn"] = *role.Role.Arn
+
+	// Apply the changes to the ConfigMap
+	err = kubeClient.Update(context.TODO(), cm)
+	if err != nil {
+		log.Error(err, "There was an error updating the configmap.")
+		return
 	}
 }

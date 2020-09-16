@@ -1,6 +1,7 @@
 package account
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -85,12 +88,26 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 
 	accountID := account.Labels[fmt.Sprintf("%s", awsv1alpha1.IAMUserIDLabel)]
 
+	// Get SRE Access ARN from configmap
+	cm := &corev1.ConfigMap{}
+	cmErr := r.Client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	if cmErr != nil {
+		reqLogger.Error(cmErr, "There was an error getting the ConfigMap to get the SRE Access Role")
+		return "", reconcile.Result{}, cmErr
+	}
+
+	SREAccessARN := cm.Data["CCS-Access-Arn"]
+	if SREAccessARN == "" {
+		reqLogger.Error(awsv1alpha1.ErrInvalidConfigMap, "configmap key missing", "keyName", "CCS-Access-Arn")
+		return "", reconcile.Result{}, cmErr
+	}
+
 	// Create access key and role for BYOC account
 	var roleID string
 	var roleErr error
 	if !account.HasState() {
 		tags := awsclient.AWSTags.BuildTags(account).GetIAMTags()
-		roleID, roleErr = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn, accountID, tags)
+		roleID, roleErr = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn, accountID, tags, SREAccessARN)
 
 		if roleErr != nil {
 			r.setAccountClaimError(reqLogger, account, roleErr.Error())
@@ -103,13 +120,14 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 }
 
 // Create role for BYOC IAM user to assume
-func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.Client, byocAWSClient awsclient.Client, policyArn string, instanceID string, tags []*iam.Tag) (roleID string, err error) {
+func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.Client, byocAWSClient awsclient.Client, policyArn string, instanceID string, tags []*iam.Tag, SREAccessARN string) (roleID string, err error) {
 	getUserOutput, err := awsSetupClient.GetUser(&iam.GetUserInput{})
 	if err != nil {
 		reqLogger.Error(err, "Failed to get non-BYOC IAM User info")
 		return roleID, err
 	}
 	principalARN := *getUserOutput.User.Arn
+	accessArnList := []string{principalARN, SREAccessARN}
 
 	byocInstanceIDRole := fmt.Sprintf("%s-%s", byocRole, instanceID)
 
@@ -141,7 +159,7 @@ func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.C
 	}
 
 	// Create the base role
-	roleID, croleErr := CreateRole(reqLogger, byocInstanceIDRole, principalARN, byocAWSClient, tags)
+	roleID, croleErr := CreateRole(reqLogger, byocInstanceIDRole, accessArnList, byocAWSClient, tags)
 	if croleErr != nil {
 		return roleID, croleErr
 	}
@@ -180,7 +198,7 @@ func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.C
 }
 
 // CreateRole creates the role with the correct assume policy for BYOC for a given roleName
-func CreateRole(reqLogger logr.Logger, byocRole string, principalARN string, byocAWSClient awsclient.Client, tags []*iam.Tag) (string, error) {
+func CreateRole(reqLogger logr.Logger, byocRole string, accessArnList []string, byocAWSClient awsclient.Client, tags []*iam.Tag) (string, error) {
 	assumeRolePolicyDoc := struct {
 		Version   string
 		Statement []awsStatement
@@ -190,7 +208,7 @@ func CreateRole(reqLogger logr.Logger, byocRole string, principalARN string, byo
 			Effect: "Allow",
 			Action: []string{"sts:AssumeRole"},
 			Principal: &awsv1alpha1.Principal{
-				AWS: principalARN,
+				AWS: accessArnList,
 			},
 		}},
 	}

@@ -52,7 +52,7 @@ type StatementEntry struct {
 // Principal  contains the aws account id for the principle entity of a role
 type Principal struct {
 	// aws account id
-	AWS string `json:"AWS"`
+	AWS []string `json:"AWS"`
 }
 
 // Condition contains the aws Condition map to use for IAM roles
