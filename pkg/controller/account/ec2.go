@@ -13,7 +13,6 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
 
@@ -70,7 +69,7 @@ func (r *ReconcileAccount) InitializeRegion(reqLogger logr.Logger, account *awsv
 
 	if err != nil {
 		createErr := fmt.Sprintf("Unable to create instance in region: %s", region)
-		utils.LogAwsError(reqLogger, createErr, nil, err)
+		controllerutils.LogAwsError(reqLogger, createErr, nil, err)
 		// Notify Error channel that this region has errored and to move on
 		ec2Errors <- createErr
 
