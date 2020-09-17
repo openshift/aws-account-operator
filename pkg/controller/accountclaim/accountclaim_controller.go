@@ -2,7 +2,6 @@ package accountclaim
 
 import (
 	"context"
-	rawError "errors"
 	"fmt"
 	"time"
 
@@ -11,8 +10,9 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -31,7 +31,6 @@ const (
 	// AccountUnclaimed indicates the account has not been claimed in the accountClaim status
 	AccountUnclaimed = "AccountUnclaimed"
 
-	awsCredsUserName        = "aws_user_name"
 	awsCredsAccessKeyID     = "aws_access_key_id"
 	awsCredsSecretAccessKey = "aws_secret_access_key"
 	accountClaimFinalizer   = "finalizer.aws.managed.openshift.io"
@@ -105,7 +104,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	accountClaim := &awsv1alpha1.AccountClaim{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, accountClaim)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serr.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
@@ -137,10 +136,9 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 					// we will flag the account with the Failed Reuse condition, and with state = Failed
 
 					// First we want to see if this was an update race condition where the credentials rotator will update the CR while the finalizer is trying to run.  If that's the case, we want to requeue and retry, before outright failing the account.
-					if errors.IsConflict(err) {
+					if k8serr.IsConflict(err) {
 						reqLogger.Info("Account CR Modified during CR reset.")
-						err = rawError.New(fmt.Sprintf("Account CR Modified during CR reset. %s", err.Error()))
-						return reconcile.Result{}, err
+						return reconcile.Result{}, errors.Wrap(err, "account CR modified during reset")
 					}
 
 					// Get account claimed by deleted accountclaim
@@ -372,9 +370,9 @@ func getUnclaimedAccount(reqLogger logr.Logger, accountList *awsv1alpha1.Account
 	// Range through accounts and select the first one that doesn't have a claim link
 	for _, account := range accountList.Items {
 
-		if account.Status.Claimed == false && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
+		if !account.Status.Claimed && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
 			// Check for a reused account with matching legalEntity
-			if account.Status.Reused == true {
+			if account.Status.Reused {
 				if matchAccountForReuse(&account, accountClaim) {
 					reusedAccountFound = true
 					reusedAccount = account
@@ -443,7 +441,7 @@ func (r *ReconcileAccountClaim) checkIAMSecretExists(name string, namespace stri
 	secret := corev1.Secret{}
 	secretObjectKey := client.ObjectKey{Name: name, Namespace: namespace}
 	err := r.client.Get(context.TODO(), secretObjectKey, &secret)
-	if err != nil {
+	if err != nil { //nolint; gosimple // Ignores false-positive S1008 gosimple notice
 		return false
 	}
 	return true

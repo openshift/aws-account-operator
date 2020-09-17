@@ -275,9 +275,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 
 	awsManagedPolicyNames := []string{}
 	// Add all aws managed policy names to a array
-	for _, policy := range requestedRole.Spec.AWSManagedPolicies {
-		awsManagedPolicyNames = append(awsManagedPolicyNames, policy)
-	}
+	awsManagedPolicyNames = append(awsManagedPolicyNames, requestedRole.Spec.AWSManagedPolicies...)
 	// Get policy arns for managed policies
 	policyArns := createPolicyArns(accountID, awsManagedPolicyNames, true)
 	// Get custom policy arns
@@ -509,7 +507,7 @@ func (r *ReconcileAWSFederatedAccountAccess) attachIAMPolices(awsClient awsclien
 func createPolicyArns(accountID string, policyNames []string, awsManaged bool) []string {
 	awsPolicyArnPrefix := ""
 
-	if awsManaged == true {
+	if awsManaged {
 		awsPolicyArnPrefix = "arn:aws:iam::aws:policy/"
 	} else {
 		awsPolicyArnPrefix = fmt.Sprintf("arn:aws:iam::%s:policy/", accountID)
@@ -640,7 +638,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 				default:
 					reqLogger.Error(
 						aerr,
-						fmt.Sprintf(aerr.Error()),
+						fmt.Sprint(aerr.Error()),
 					)
 					reqLogger.Error(err, fmt.Sprintf("%v", err))
 					return err
@@ -658,7 +656,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 					default:
 						reqLogger.Error(
 							aerr,
-							fmt.Sprintf(aerr.Error()),
+							fmt.Sprint(aerr.Error()),
 						)
 						reqLogger.Error(err, fmt.Sprintf("%v", err))
 						return err
@@ -676,7 +674,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 						default:
 							reqLogger.Error(
 								aerr,
-								fmt.Sprintf(aerr.Error()),
+								fmt.Sprint(aerr.Error()),
 							)
 							reqLogger.Error(err, fmt.Sprintf("%v", err))
 							return err
@@ -703,7 +701,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			default:
-				reqLogger.Error(aerr, fmt.Sprintf(aerr.Error()))
+				reqLogger.Error(aerr, fmt.Sprint(aerr.Error()))
 				return err
 			}
 		} else {
@@ -725,7 +723,7 @@ func (r *ReconcileAWSFederatedAccountAccess) deleteNonAttachedCustomPolicy(reqLo
 			if aerr, ok := err.(awserr.Error); ok {
 				switch aerr.Code() {
 				default:
-					reqLogger.Error(aerr, fmt.Sprintf(aerr.Error()))
+					reqLogger.Error(aerr, fmt.Sprint(aerr.Error()))
 					return err
 				}
 			}
@@ -739,7 +737,7 @@ func (r *ReconcileAWSFederatedAccountAccess) deleteNonAttachedCustomPolicy(reqLo
 					if aerr, ok := err.(awserr.Error); ok {
 						switch aerr.Code() {
 						default:
-							reqLogger.Error(aerr, fmt.Sprintf(aerr.Error()))
+							reqLogger.Error(aerr, fmt.Sprint(aerr.Error()))
 							return err
 						}
 					}

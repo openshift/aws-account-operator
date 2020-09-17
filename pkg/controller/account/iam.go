@@ -21,11 +21,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// Type for JSON response from Federation end point
-type awsSigninTokenResponse struct {
-	SigninToken string
-}
-
 // Type that represents JSON object of an AWS permissions statement
 type awsStatement struct {
 	Effect    string                 `json:"Effect"`
@@ -137,59 +132,6 @@ func deleteAllAccessKeys(client awsclient.Client, iamUser *iam.User) error {
 	}
 
 	return nil
-}
-
-// checkIAMUserExists checks if a given IAM user exists within an account
-// Takes a logger, an AWS client for the target account, and a target IAM username
-func checkIAMUserExists(reqLogger logr.Logger, client awsclient.Client, userName string) (bool, *iam.GetUserOutput, error) {
-	// Retry when getting IAM user information
-	// Sometimes we see a delay before credentials are ready to be user resulting in the AWS API returning 404's
-	var iamGetUserOutput *iam.GetUserOutput
-	var err error
-
-	attempt := 1
-	for i := 0; i < 10; i++ {
-		// check if username exists for this account
-		iamGetUserOutput, err = client.GetUser(&iam.GetUserInput{
-			UserName: aws.String(userName),
-		})
-
-		attempt++
-		// handle errors
-		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				case iam.ErrCodeNoSuchEntityException:
-					return false, nil, nil
-				case "InvalidClientTokenId":
-					invalidTokenMsg := fmt.Sprintf("Invalid Token error from AWS when attempting get IAM user %s, trying again", userName)
-					reqLogger.Info(invalidTokenMsg)
-					if attempt == 10 {
-						return false, nil, err
-					}
-				case "AccessDenied":
-					checkUserMsg := fmt.Sprintf("AWS Error while checking IAM user %s exists, trying again", userName)
-					utils.LogAwsError(reqLogger, checkUserMsg, nil, err)
-					// We may have bad credentials so return an error if so
-					if attempt == 10 {
-						return false, nil, err
-					}
-				default:
-					utils.LogAwsError(reqLogger, "checkIAMUserExists: Unexpected AWS Error when checking IAM user exists", nil, err)
-					return false, nil, err
-				}
-				time.Sleep(time.Duration(time.Duration(attempt*5) * time.Second))
-			} else {
-				return false, nil, fmt.Errorf("Unable to check if user %s exists error: %s", userName, err)
-			}
-		} else {
-			// Break for loop if no errors present.
-			break
-		}
-	}
-
-	// User exists return
-	return true, iamGetUserOutput, nil
 }
 
 // CreateIAMUser creates a new IAM user in the target AWS account

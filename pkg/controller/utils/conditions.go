@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
@@ -295,6 +296,7 @@ func FindAWSFederatedAccountAccessCondition(conditions []awsv1alpha1.AWSFederate
 }
 
 const (
+	// AwsSecretName is a constant for the name of the Kubernetes secret that holds the AWS Credentials
 	AwsSecretName = "aws-account-operator-credentials"
 )
 

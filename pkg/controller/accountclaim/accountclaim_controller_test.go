@@ -2,6 +2,7 @@ package accountclaim
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -32,7 +33,10 @@ var _ = Describe("AccountClaim", func() {
 		ctrl         *gomock.Controller
 	)
 
-	apis.AddToScheme(scheme.Scheme)
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		fmt.Printf("failed adding apis to scheme in account controller tests")
+	}
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
 
 	BeforeEach(func() {
@@ -136,7 +140,7 @@ var _ = Describe("AccountClaim", func() {
 			_, err := r.Reconcile(req)
 
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("Account CR Modified during CR reset. Conflict"))
+			Expect(err.Error()).To(Equal("account CR modified during reset: Conflict"))
 		})
 	})
 })

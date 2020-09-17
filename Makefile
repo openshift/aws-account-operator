@@ -40,6 +40,10 @@ endif
 .PHONY: docker-build
 docker-build: build
 
+.PHONY: lint
+lint:
+	golangci-lint run
+
 # Create account
 .PHONY: create-account
 create-account: check-aws-account-id-env
@@ -341,4 +345,4 @@ test-aws-ou-logic: check-ou-mapping-configmap-env check-ou-mapping-configmap-env
 
 #s Test all
 .PHONY: test-all
-test-all: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic 
+test-all: lint test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic 

@@ -36,17 +36,15 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		if !accountClaim.Spec.BYOC {
 			reqLogger.Error(err, "Failed to get claimed account")
 			return err
-		} else {
-			// Cleanup BYOC secret
-			err = r.removeBYOCSecretFinalizer(accountClaim)
-			if err != nil {
-				reqLogger.Error(err, "Failed to remove BYOC secret finalizer")
-				return err
-			}
-
-			return nil
+		}
+		// Cleanup BYOC secret
+		err = r.removeBYOCSecretFinalizer(accountClaim)
+		if err != nil {
+			reqLogger.Error(err, "Failed to remove BYOC secret finalizer")
+			return err
 		}
 
+		return nil
 	}
 	var awsClientInput awsclient.NewAwsClientInput
 
@@ -89,7 +87,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		reqLogger.Info(fmt.Sprintf("Account: %s has no label", reusedAccount.Name))
 	}
 
-	if reusedAccount.Spec.BYOC == true {
+	if reusedAccount.Spec.BYOC {
 		err := r.client.Delete(context.TODO(), reusedAccount)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete BYOC account from accountclaim cleanup")
@@ -113,7 +111,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		reqLogger.Error(err, "Failed to clean up AWS account")
 		return err
 	}
-	localmetrics.Collector.SetAccountReusedCleanupDuration(time.Now().Sub(before).Seconds())
+	localmetrics.Collector.SetAccountReusedCleanupDuration(time.Since(before).Seconds())
 
 	err = r.resetAccountSpecStatus(reqLogger, reusedAccount, accountClaim, awsv1alpha1.AccountReused, "Ready")
 	if err != nil {
@@ -184,7 +182,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, awsClie
 
 	// Call the clean up functions in parallel
 	for _, cleanUpFunc := range cleanUpFunctions {
-		go cleanUpFunc(reqLogger, awsClient, awsNotifications, awsErrors)
+		go cleanUpFunc(reqLogger, awsClient, awsNotifications, awsErrors) //nolint; cleanUpFunc // Not checking return value of goroutine
 	}
 
 	// Wait for clean up functions to end

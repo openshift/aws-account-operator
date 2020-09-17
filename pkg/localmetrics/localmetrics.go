@@ -34,10 +34,12 @@ const (
 )
 
 var (
-	log       = logf.Log.WithName("metrics-collector")
+	log = logf.Log.WithName("metrics-collector")
+	// Collector is a pointer to the MetricsCollector struct describing a Prometheus collector
 	Collector *MetricsCollector
 )
 
+// MetricsCollector is a struct describing a Prometheus collector
 type MetricsCollector struct {
 	store                           cache.Cache
 	awsAccounts                     prometheus.Gauge
@@ -56,6 +58,7 @@ type MetricsCollector struct {
 	apiCallDuration                 *prometheus.HistogramVec
 }
 
+// NewMetricsCollector creates a new instance of a Prometheus metrics collector
 func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 	return &MetricsCollector{
 		store: store,
@@ -235,7 +238,7 @@ func (c *MetricsCollector) collect() {
 			reused = "false"
 		}
 
-		if account.Status.Claimed == false && account.Status.Reused == true &&
+		if !account.Status.Claimed && account.Status.Reused &&
 			account.Status.State == "Ready" {
 			c.accountReuseAvailable.WithLabelValues(account.Spec.LegalEntity.ID).Inc()
 		}
@@ -256,10 +259,12 @@ func (c *MetricsCollector) collect() {
 	}
 }
 
+// SetTotalAWSAccounts sets the metric watching the total number of AWS accounts known by the operator
 func (c *MetricsCollector) SetTotalAWSAccounts(total int) {
 	c.awsAccounts.Set(float64(total))
 }
 
+// SetAccountReadyDuration sets the metric describing the time it takes for an account to go into the Ready state
 func (c *MetricsCollector) SetAccountReadyDuration(ccs bool, duration float64) {
 	if ccs {
 		c.ccsAccountReadyDuration.Observe(duration)
@@ -268,6 +273,7 @@ func (c *MetricsCollector) SetAccountReadyDuration(ccs bool, duration float64) {
 	}
 }
 
+// SetAccountClaimReadyDuration sets the metric describing the time it takes for an accountClaim to go into the Ready state
 func (c *MetricsCollector) SetAccountClaimReadyDuration(ccs bool, duration float64) {
 	if ccs {
 		c.ccsAccountClaimReadyDuration.Observe(duration)
@@ -276,14 +282,17 @@ func (c *MetricsCollector) SetAccountClaimReadyDuration(ccs bool, duration float
 	}
 }
 
+// SetAccountReusedCleanupDuration sets the metric describing the time it takes for an account to complete the reuse process
 func (c *MetricsCollector) SetAccountReusedCleanupDuration(duration float64) {
 	c.accountReuseCleanupDuration.Observe(duration)
 }
 
+// AddAccountReuseCleanupFailure describes the number of accounts that have failed reuse
 func (c *MetricsCollector) AddAccountReuseCleanupFailure() {
 	c.accountReuseCleanupFailureCount.Inc()
 }
 
+// SetReconcileDuration describes the time it takes for the operator to complete a single reconcile loop
 func (c *MetricsCollector) SetReconcileDuration(controller string, duration float64, err error) {
 	c.reconcileDuration.WithLabelValues(controller, strconv.FormatBool(err != nil)).Observe(duration)
 }
