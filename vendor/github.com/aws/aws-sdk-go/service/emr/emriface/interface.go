@@ -96,6 +96,10 @@ type EMRAPI interface {
 	DescribeJobFlowsWithContext(aws.Context, *emr.DescribeJobFlowsInput, ...request.Option) (*emr.DescribeJobFlowsOutput, error)
 	DescribeJobFlowsRequest(*emr.DescribeJobFlowsInput) (*request.Request, *emr.DescribeJobFlowsOutput)
 
+	DescribeNotebookExecution(*emr.DescribeNotebookExecutionInput) (*emr.DescribeNotebookExecutionOutput, error)
+	DescribeNotebookExecutionWithContext(aws.Context, *emr.DescribeNotebookExecutionInput, ...request.Option) (*emr.DescribeNotebookExecutionOutput, error)
+	DescribeNotebookExecutionRequest(*emr.DescribeNotebookExecutionInput) (*request.Request, *emr.DescribeNotebookExecutionOutput)
+
 	DescribeSecurityConfiguration(*emr.DescribeSecurityConfigurationInput) (*emr.DescribeSecurityConfigurationOutput, error)
 	DescribeSecurityConfigurationWithContext(aws.Context, *emr.DescribeSecurityConfigurationInput, ...request.Option) (*emr.DescribeSecurityConfigurationOutput, error)
 	DescribeSecurityConfigurationRequest(*emr.DescribeSecurityConfigurationInput) (*request.Request, *emr.DescribeSecurityConfigurationOutput)
@@ -103,6 +107,14 @@ type EMRAPI interface {
 	DescribeStep(*emr.DescribeStepInput) (*emr.DescribeStepOutput, error)
 	DescribeStepWithContext(aws.Context, *emr.DescribeStepInput, ...request.Option) (*emr.DescribeStepOutput, error)
 	DescribeStepRequest(*emr.DescribeStepInput) (*request.Request, *emr.DescribeStepOutput)
+
+	GetBlockPublicAccessConfiguration(*emr.GetBlockPublicAccessConfigurationInput) (*emr.GetBlockPublicAccessConfigurationOutput, error)
+	GetBlockPublicAccessConfigurationWithContext(aws.Context, *emr.GetBlockPublicAccessConfigurationInput, ...request.Option) (*emr.GetBlockPublicAccessConfigurationOutput, error)
+	GetBlockPublicAccessConfigurationRequest(*emr.GetBlockPublicAccessConfigurationInput) (*request.Request, *emr.GetBlockPublicAccessConfigurationOutput)
+
+	GetManagedScalingPolicy(*emr.GetManagedScalingPolicyInput) (*emr.GetManagedScalingPolicyOutput, error)
+	GetManagedScalingPolicyWithContext(aws.Context, *emr.GetManagedScalingPolicyInput, ...request.Option) (*emr.GetManagedScalingPolicyOutput, error)
+	GetManagedScalingPolicyRequest(*emr.GetManagedScalingPolicyInput) (*request.Request, *emr.GetManagedScalingPolicyOutput)
 
 	ListBootstrapActions(*emr.ListBootstrapActionsInput) (*emr.ListBootstrapActionsOutput, error)
 	ListBootstrapActionsWithContext(aws.Context, *emr.ListBootstrapActionsInput, ...request.Option) (*emr.ListBootstrapActionsOutput, error)
@@ -139,6 +151,13 @@ type EMRAPI interface {
 	ListInstancesPages(*emr.ListInstancesInput, func(*emr.ListInstancesOutput, bool) bool) error
 	ListInstancesPagesWithContext(aws.Context, *emr.ListInstancesInput, func(*emr.ListInstancesOutput, bool) bool, ...request.Option) error
 
+	ListNotebookExecutions(*emr.ListNotebookExecutionsInput) (*emr.ListNotebookExecutionsOutput, error)
+	ListNotebookExecutionsWithContext(aws.Context, *emr.ListNotebookExecutionsInput, ...request.Option) (*emr.ListNotebookExecutionsOutput, error)
+	ListNotebookExecutionsRequest(*emr.ListNotebookExecutionsInput) (*request.Request, *emr.ListNotebookExecutionsOutput)
+
+	ListNotebookExecutionsPages(*emr.ListNotebookExecutionsInput, func(*emr.ListNotebookExecutionsOutput, bool) bool) error
+	ListNotebookExecutionsPagesWithContext(aws.Context, *emr.ListNotebookExecutionsInput, func(*emr.ListNotebookExecutionsOutput, bool) bool, ...request.Option) error
+
 	ListSecurityConfigurations(*emr.ListSecurityConfigurationsInput) (*emr.ListSecurityConfigurationsOutput, error)
 	ListSecurityConfigurationsWithContext(aws.Context, *emr.ListSecurityConfigurationsInput, ...request.Option) (*emr.ListSecurityConfigurationsOutput, error)
 	ListSecurityConfigurationsRequest(*emr.ListSecurityConfigurationsInput) (*request.Request, *emr.ListSecurityConfigurationsOutput)
@@ -153,6 +172,10 @@ type EMRAPI interface {
 	ListStepsPages(*emr.ListStepsInput, func(*emr.ListStepsOutput, bool) bool) error
 	ListStepsPagesWithContext(aws.Context, *emr.ListStepsInput, func(*emr.ListStepsOutput, bool) bool, ...request.Option) error
 
+	ModifyCluster(*emr.ModifyClusterInput) (*emr.ModifyClusterOutput, error)
+	ModifyClusterWithContext(aws.Context, *emr.ModifyClusterInput, ...request.Option) (*emr.ModifyClusterOutput, error)
+	ModifyClusterRequest(*emr.ModifyClusterInput) (*request.Request, *emr.ModifyClusterOutput)
+
 	ModifyInstanceFleet(*emr.ModifyInstanceFleetInput) (*emr.ModifyInstanceFleetOutput, error)
 	ModifyInstanceFleetWithContext(aws.Context, *emr.ModifyInstanceFleetInput, ...request.Option) (*emr.ModifyInstanceFleetOutput, error)
 	ModifyInstanceFleetRequest(*emr.ModifyInstanceFleetInput) (*request.Request, *emr.ModifyInstanceFleetOutput)
@@ -165,9 +188,21 @@ type EMRAPI interface {
 	PutAutoScalingPolicyWithContext(aws.Context, *emr.PutAutoScalingPolicyInput, ...request.Option) (*emr.PutAutoScalingPolicyOutput, error)
 	PutAutoScalingPolicyRequest(*emr.PutAutoScalingPolicyInput) (*request.Request, *emr.PutAutoScalingPolicyOutput)
 
+	PutBlockPublicAccessConfiguration(*emr.PutBlockPublicAccessConfigurationInput) (*emr.PutBlockPublicAccessConfigurationOutput, error)
+	PutBlockPublicAccessConfigurationWithContext(aws.Context, *emr.PutBlockPublicAccessConfigurationInput, ...request.Option) (*emr.PutBlockPublicAccessConfigurationOutput, error)
+	PutBlockPublicAccessConfigurationRequest(*emr.PutBlockPublicAccessConfigurationInput) (*request.Request, *emr.PutBlockPublicAccessConfigurationOutput)
+
+	PutManagedScalingPolicy(*emr.PutManagedScalingPolicyInput) (*emr.PutManagedScalingPolicyOutput, error)
+	PutManagedScalingPolicyWithContext(aws.Context, *emr.PutManagedScalingPolicyInput, ...request.Option) (*emr.PutManagedScalingPolicyOutput, error)
+	PutManagedScalingPolicyRequest(*emr.PutManagedScalingPolicyInput) (*request.Request, *emr.PutManagedScalingPolicyOutput)
+
 	RemoveAutoScalingPolicy(*emr.RemoveAutoScalingPolicyInput) (*emr.RemoveAutoScalingPolicyOutput, error)
 	RemoveAutoScalingPolicyWithContext(aws.Context, *emr.RemoveAutoScalingPolicyInput, ...request.Option) (*emr.RemoveAutoScalingPolicyOutput, error)
 	RemoveAutoScalingPolicyRequest(*emr.RemoveAutoScalingPolicyInput) (*request.Request, *emr.RemoveAutoScalingPolicyOutput)
+
+	RemoveManagedScalingPolicy(*emr.RemoveManagedScalingPolicyInput) (*emr.RemoveManagedScalingPolicyOutput, error)
+	RemoveManagedScalingPolicyWithContext(aws.Context, *emr.RemoveManagedScalingPolicyInput, ...request.Option) (*emr.RemoveManagedScalingPolicyOutput, error)
+	RemoveManagedScalingPolicyRequest(*emr.RemoveManagedScalingPolicyInput) (*request.Request, *emr.RemoveManagedScalingPolicyOutput)
 
 	RemoveTags(*emr.RemoveTagsInput) (*emr.RemoveTagsOutput, error)
 	RemoveTagsWithContext(aws.Context, *emr.RemoveTagsInput, ...request.Option) (*emr.RemoveTagsOutput, error)
@@ -184,6 +219,14 @@ type EMRAPI interface {
 	SetVisibleToAllUsers(*emr.SetVisibleToAllUsersInput) (*emr.SetVisibleToAllUsersOutput, error)
 	SetVisibleToAllUsersWithContext(aws.Context, *emr.SetVisibleToAllUsersInput, ...request.Option) (*emr.SetVisibleToAllUsersOutput, error)
 	SetVisibleToAllUsersRequest(*emr.SetVisibleToAllUsersInput) (*request.Request, *emr.SetVisibleToAllUsersOutput)
+
+	StartNotebookExecution(*emr.StartNotebookExecutionInput) (*emr.StartNotebookExecutionOutput, error)
+	StartNotebookExecutionWithContext(aws.Context, *emr.StartNotebookExecutionInput, ...request.Option) (*emr.StartNotebookExecutionOutput, error)
+	StartNotebookExecutionRequest(*emr.StartNotebookExecutionInput) (*request.Request, *emr.StartNotebookExecutionOutput)
+
+	StopNotebookExecution(*emr.StopNotebookExecutionInput) (*emr.StopNotebookExecutionOutput, error)
+	StopNotebookExecutionWithContext(aws.Context, *emr.StopNotebookExecutionInput, ...request.Option) (*emr.StopNotebookExecutionOutput, error)
+	StopNotebookExecutionRequest(*emr.StopNotebookExecutionInput) (*request.Request, *emr.StopNotebookExecutionOutput)
 
 	TerminateJobFlows(*emr.TerminateJobFlowsInput) (*emr.TerminateJobFlowsOutput, error)
 	TerminateJobFlowsWithContext(aws.Context, *emr.TerminateJobFlowsInput, ...request.Option) (*emr.TerminateJobFlowsOutput, error)

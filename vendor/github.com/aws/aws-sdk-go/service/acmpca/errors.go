@@ -2,6 +2,10 @@
 
 package acmpca
 
+import (
+	"github.com/aws/aws-sdk-go/private/protocol"
+)
+
 const (
 
 	// ErrCodeCertificateMismatchException for service response error code
@@ -33,21 +37,27 @@ const (
 	// "InvalidNextTokenException".
 	//
 	// The token specified in the NextToken argument is not valid. Use the token
-	// returned from your previous call to ListCertificateAuthorities.
+	// returned from your previous call to ListCertificateAuthorities (https://docs.aws.amazon.com/acm-pca/latest/APIReference/API_ListCertificateAuthorities.html).
 	ErrCodeInvalidNextTokenException = "InvalidNextTokenException"
 
 	// ErrCodeInvalidPolicyException for service response error code
 	// "InvalidPolicyException".
 	//
-	// The S3 bucket policy is not valid. The policy must give ACM PCA rights to
-	// read from and write to the bucket and find the bucket location.
+	// The resource policy is invalid or is missing a required statement. For general
+	// information about IAM policy and statement structure, see Overview of JSON
+	// Policies (https://docs.aws.amazon.com/https:/docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html#access_policies-json).
 	ErrCodeInvalidPolicyException = "InvalidPolicyException"
+
+	// ErrCodeInvalidRequestException for service response error code
+	// "InvalidRequestException".
+	//
+	// The request action cannot be performed or is prohibited.
+	ErrCodeInvalidRequestException = "InvalidRequestException"
 
 	// ErrCodeInvalidStateException for service response error code
 	// "InvalidStateException".
 	//
-	// The private CA is in a state during which a report or certificate cannot
-	// be generated.
+	// The state of the private CA does not allow this action to occur.
 	ErrCodeInvalidStateException = "InvalidStateException"
 
 	// ErrCodeInvalidTagException for service response error code
@@ -60,9 +70,17 @@ const (
 	// ErrCodeLimitExceededException for service response error code
 	// "LimitExceededException".
 	//
-	// An ACM PCA limit has been exceeded. See the exception message returned to
-	// determine the limit that was exceeded.
+	// An ACM Private CA quota has been exceeded. See the exception message returned
+	// to determine the quota that was exceeded.
 	ErrCodeLimitExceededException = "LimitExceededException"
+
+	// ErrCodeLockoutPreventedException for service response error code
+	// "LockoutPreventedException".
+	//
+	// The current action was prevented because it would lock the caller out from
+	// performing subsequent actions. Verify that the specified parameters would
+	// not result in the caller being denied access to the resource.
+	ErrCodeLockoutPreventedException = "LockoutPreventedException"
 
 	// ErrCodeMalformedCSRException for service response error code
 	// "MalformedCSRException".
@@ -103,8 +121,8 @@ const (
 	// ErrCodeResourceNotFoundException for service response error code
 	// "ResourceNotFoundException".
 	//
-	// A resource such as a private CA, S3 bucket, certificate, or audit report
-	// cannot be found.
+	// A resource such as a private CA, S3 bucket, certificate, audit report, or
+	// policy cannot be found.
 	ErrCodeResourceNotFoundException = "ResourceNotFoundException"
 
 	// ErrCodeTooManyTagsException for service response error code
@@ -114,3 +132,25 @@ const (
 	// is contained in the exception message field.
 	ErrCodeTooManyTagsException = "TooManyTagsException"
 )
+
+var exceptionFromCode = map[string]func(protocol.ResponseMetadata) error{
+	"CertificateMismatchException":     newErrorCertificateMismatchException,
+	"ConcurrentModificationException":  newErrorConcurrentModificationException,
+	"InvalidArgsException":             newErrorInvalidArgsException,
+	"InvalidArnException":              newErrorInvalidArnException,
+	"InvalidNextTokenException":        newErrorInvalidNextTokenException,
+	"InvalidPolicyException":           newErrorInvalidPolicyException,
+	"InvalidRequestException":          newErrorInvalidRequestException,
+	"InvalidStateException":            newErrorInvalidStateException,
+	"InvalidTagException":              newErrorInvalidTagException,
+	"LimitExceededException":           newErrorLimitExceededException,
+	"LockoutPreventedException":        newErrorLockoutPreventedException,
+	"MalformedCSRException":            newErrorMalformedCSRException,
+	"MalformedCertificateException":    newErrorMalformedCertificateException,
+	"PermissionAlreadyExistsException": newErrorPermissionAlreadyExistsException,
+	"RequestAlreadyProcessedException": newErrorRequestAlreadyProcessedException,
+	"RequestFailedException":           newErrorRequestFailedException,
+	"RequestInProgressException":       newErrorRequestInProgressException,
+	"ResourceNotFoundException":        newErrorResourceNotFoundException,
+	"TooManyTagsException":             newErrorTooManyTagsException,
+}
