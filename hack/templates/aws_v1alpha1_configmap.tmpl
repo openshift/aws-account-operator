@@ -3,6 +3,7 @@ kind: Template
 parameters:
 - name: ROOT 
 - name: BASE
+- name: ACCOUNTLIMIT
 metadata:
   name: test-aws-ou-mapping-configmap-template
 objects:
@@ -14,3 +15,4 @@ objects:
   data:
     root: ${ROOT}
     base: ${BASE}
+    account-limit: ${ACCOUNTLIMIT}
