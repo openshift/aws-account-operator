@@ -34,6 +34,14 @@
   version = "1.0.0"
 
 [[projects]]
+  digest = "1:c67a4f1ad6bb0a6d743a93078f932e2553290b0402efdf655eaf58634dd254be"
+  name = "github.com/avast/retry-go"
+  packages = ["."]
+  pruneopts = "NT"
+  revision = "06f486a96c4838bd52f71d225c149f87e8504127"
+  version = "v2.6.1"
+
+[[projects]]
   digest = "1:5091dfd89af51f89aff22ed4d5ebf3ea6eb93d332fa1f40a7c0c8d504a6c1abb"
   name = "github.com/aws/aws-sdk-go"
   packages = [
@@ -1133,6 +1141,7 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/avast/retry-go",
     "github.com/aws/aws-sdk-go/aws",
     "github.com/aws/aws-sdk-go/aws/awserr",
     "github.com/aws/aws-sdk-go/aws/credentials",
@@ -1163,6 +1172,7 @@
     "github.com/operator-framework/operator-sdk/pkg/leader",
     "github.com/operator-framework/operator-sdk/pkg/log/zap",
     "github.com/operator-framework/operator-sdk/version",
+    "github.com/pkg/errors",
     "github.com/prometheus/client_golang/prometheus",
     "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/spf13/pflag",
