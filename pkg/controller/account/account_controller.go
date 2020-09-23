@@ -271,6 +271,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			}
 			return reconcile.Result{}, err
 		}
+
 		currentAcctInstance.Spec.IAMUserSecret = *secretName
 		err = r.Client.Update(context.TODO(), currentAcctInstance)
 		if err != nil {

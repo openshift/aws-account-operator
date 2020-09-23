@@ -19,6 +19,8 @@ import (
 
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"k8s.io/apimachinery/pkg/types"
+
+	retry "github.com/avast/retry-go"
 )
 
 // Type that represents JSON object of an AWS permissions statement
@@ -209,9 +211,41 @@ func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.Att
 
 // CreateUserAccessKey creates a new IAM Access Key in AWS and returns aws.CreateAccessKeyOutput struct containing access key and secret
 func CreateUserAccessKey(client awsclient.Client, iamUser *iam.User) (*iam.CreateAccessKeyOutput, error) {
+	var result *iam.CreateAccessKeyOutput
+	var err error
 
-	// Create new access key for user
-	result, err := client.CreateAccessKey(&iam.CreateAccessKeyInput{UserName: iamUser.UserName})
+	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
+	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
+	retry.DefaultDelay = 3 * time.Second
+	retry.DefaultAttempts = uint(5)
+	err = retry.Do(
+		func() (err error) {
+			// Create new access key for user
+			result, err = client.CreateAccessKey(
+				&iam.CreateAccessKeyInput{
+					UserName: iamUser.UserName,
+				},
+			)
+			return err
+		},
+
+		// Retry if we receive some specific errors: access denied, rate limit or server-side error
+		retry.RetryIf(func(err error) bool {
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				// ServiceFailure may be an unspecified server-side error, and is worth retrying
+				case "ServiceFailure":
+					return true
+				// InvalidClientTokenId may be a transient auth issue, retry
+				case "InvalidClientTokenId":
+					return true
+				}
+			}
+			// Otherwise, do not retry
+			return false
+		}),
+	)
+
 	if err != nil {
 		return &iam.CreateAccessKeyOutput{}, err
 	}
@@ -307,15 +341,7 @@ func (r *ReconcileAccount) RotateIAMAccessKeys(reqLogger logr.Logger, awsClient 
 	// Create new access key
 	accessKeyOutput, err := CreateUserAccessKey(awsClient, iamUser)
 	if err != nil {
-		errMsg := fmt.Sprintf("Failed to create IAM access key for IAM user %s", aws.StringValue(iamUser.UserName))
-		reqLogger.Error(err, errMsg)
-		// TODO: We should move this status update to the main reconcile where BuildIAMUser is called
-		// This would mean we can remove reqLogger and the awsv1alpha1 account reference to keep things cleaner
-		utils.SetAccountStatus(account, errMsg, awsv1alpha1.AccountFailed, AccountFailed)
-		err := r.Client.Status().Update(context.TODO(), account)
-		if err != nil {
-			return nil, err
-		}
+		reqLogger.Error(err, "failed to create IAM access key", "IAMUser", iamUser.UserName)
 		return nil, err
 	}
 
