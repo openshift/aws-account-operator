@@ -602,9 +602,21 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 		RoleSessionName: aws.String("FederatedRoleCleanup"),
 	})
 	if err != nil {
-		awsClientErr := fmt.Sprintf("Unable to assume role in target linked aws account")
-		reqLogger.Error(err, awsClientErr)
-		return err
+		awsOrgAccountAccessError := fmt.Sprintf("Unable to assume role OrganizationAccountAccessRole, trying BYOCAdminAccess")
+		reqLogger.Info(awsOrgAccountAccessError)
+
+		// Attempt to assume the BYOCAdminAccess role if OrganizationAccountAccess didn't work
+		assumeRoleOutput, err = rootAwsClient.AssumeRole(&sts.AssumeRoleInput{
+			RoleArn:         aws.String(fmt.Sprintf("arn:aws:iam::%s:role/BYOCAdminAccess-%s", accountIDLabel, uidLabel)),
+			RoleSessionName: aws.String("FederatedRoleCleanup"),
+		})
+		if err != nil {
+			awsBYOCAdminAccessError := fmt.Sprintf("Unable to assume role BYOCAdminAccess Role")
+
+			reqLogger.Error(err, awsBYOCAdminAccessError)
+			return err
+		}
+
 	}
 
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
