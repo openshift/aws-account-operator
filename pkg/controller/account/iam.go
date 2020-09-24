@@ -162,6 +162,11 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 					if attempt == 10 {
 						return &iam.CreateUserOutput{}, err
 					}
+				case "AccessDenied":
+					reqLogger.Info("Attempt to create user is Unauthorized. Trying Again due to AWS Eventual Consistency")
+					if attempt == 10 {
+						return &iam.CreateUserOutput{}, err
+					}
 				// createUserOutput inconsistently returns "InvalidClientTokenId" if that happens then the next call to
 				// create the user will fail with EntitiyAlreadyExists. Since we verity the user doesn't exist before this
 				// loop we can safely assume we created the user on our first loop.
