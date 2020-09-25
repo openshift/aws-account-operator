@@ -24,7 +24,7 @@ import (
 var ErrAwsAccountLimitExceeded = errors.New("AccountLimitExceeded")
 
 // TotalAccountWatcher global var for TotalAccountWatcher
-var TotalAccountWatcher *totalAccountWatcher
+var TotalAccountWatcher = &totalAccountWatcher{}
 
 var log = logf.Log.WithName("aws-account-operator")
 
@@ -36,8 +36,8 @@ type totalAccountWatcher struct {
 	accountsCanBeCreated bool
 }
 
-// Initialize creates a global instance of the TotalAccountWatcher
-func Initialize(client client.Client, watchInterval time.Duration) {
+// initialize creates a global instance of the TotalAccountWatcher
+func initialize(client client.Client, watchInterval time.Duration) *totalAccountWatcher {
 	log.Info("Initializing the totalAccountWatcher")
 
 	// NOTE(efried): This is a snowflake use of awsclient.IBuilder. Everyone else puts the
@@ -52,7 +52,7 @@ func Initialize(client client.Client, watchInterval time.Duration) {
 
 	if err != nil {
 		log.Error(err, "Failed to get AwsClient")
-		return
+		return TotalAccountWatcher
 	}
 
 	TotalAccountWatcher = newTotalAccountWatcher(client, awsClient, watchInterval)
@@ -60,6 +60,7 @@ func Initialize(client client.Client, watchInterval time.Duration) {
 	if err != nil {
 		log.Error(err, "failed updating total accounts count")
 	}
+	return TotalAccountWatcher
 }
 
 // newTotalAccountWatcher returns a new instance of the TotalAccountWatcher interface
@@ -79,8 +80,9 @@ func newTotalAccountWatcher(
 
 // TotalAccountWatcher will trigger AwsLimitUpdate every `scanInternal` and only stop if the operator is killed or a
 // message is sent on the stopCh
-func (s *totalAccountWatcher) Start(log logr.Logger, stopCh <-chan struct{}) {
+func (s *totalAccountWatcher) Start(log logr.Logger, stopCh <-chan struct{}, client client.Client, watchInterval time.Duration) {
 	log.Info("Starting the totalAccountWatcher")
+	s = initialize(client, watchInterval)
 	for {
 		select {
 		case <-time.After(s.watchInterval):

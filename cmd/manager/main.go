@@ -47,7 +47,7 @@ var (
 	customMetricsPort string = "8080"
 	customMetricsPath string = "/metrics"
 
-	totalWatcherInterval = time.Duration(15) * time.Minute
+	totalWatcherInterval = time.Duration(5) * time.Minute
 )
 
 var log = logf.Log.WithName("cmd")
@@ -179,8 +179,7 @@ func main() {
 	initOperatorConfigMapVars(awsClient)
 
 	// Initialize the TotalAccountWatcher
-	totalaccountwatcher.Initialize(awsClient, totalWatcherInterval)
-	go totalaccountwatcher.TotalAccountWatcher.Start(log, stopCh)
+	go totalaccountwatcher.TotalAccountWatcher.Start(log, stopCh, awsClient, totalWatcherInterval)
 
 	log.Info("Starting the Cmd.")
 
