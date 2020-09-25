@@ -25,8 +25,6 @@ import (
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
 	sdkVersion "github.com/operator-framework/operator-sdk/version"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -116,6 +114,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Define a kubeClient for any processes that need to run during operator startup or independent routines
+	kubeClient, err := client.New(cfg, client.Options{})
+	if err != nil {
+		log.Error(err, "")
+		os.Exit(1)
+	}
+
+	errors := utils.InitControllerMaxReconciles(kubeClient)
+	if len(errors) > 0 {
+		log.Info("There was at least one error initializing controller max reconcile values.")
+		for _, err := range errors {
+			log.Error(err, "")
+		}
+	}
+
 	log.Info("Registering Components.")
 
 	// Setup Scheme for all resources
@@ -169,17 +182,11 @@ func main() {
 	// work
 	stopCh := signals.SetupSignalHandler()
 
-	// Define an awsClient for any processes that need to run during operator startup or independent routines to use
-	awsClient, err := client.New(cfg, client.Options{})
-	if err != nil {
-		log.Error(err, "")
-	}
-
 	// Initialize our ConfigMap with default values if necessary.
-	initOperatorConfigMapVars(awsClient)
+	initOperatorConfigMapVars(kubeClient)
 
 	// Initialize the TotalAccountWatcher
-	totalaccountwatcher.Initialize(awsClient, totalWatcherInterval)
+	totalaccountwatcher.Initialize(kubeClient, totalWatcherInterval)
 	go totalaccountwatcher.TotalAccountWatcher.Start(log, stopCh)
 
 	log.Info("Starting the Cmd.")
@@ -204,9 +211,7 @@ func initOperatorConfigMapVars(kubeClient client.Client) {
 		return
 	}
 
-	// Check if config map exists.
-	cm := &corev1.ConfigMap{}
-	err = kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	cm, err := utils.GetOperatorConfigMap(kubeClient)
 	if err != nil {
 		log.Error(err, "There was an error getting the default configmap.")
 		return

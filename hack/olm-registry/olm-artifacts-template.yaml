@@ -20,6 +20,16 @@ parameters:
   required: true
 - name: ACCOUNT_POOL_NAME
   required: true
+- name: MAXRECONCILES_ACCOUNT
+  value: 1
+- name: MAXRECONCILES_ACCOUNTCLAIM
+  value: 1
+- name: MAXRECONCILES_ACCOUNTPOOL
+  value: 1
+- name: MAXRECONCILES_AWSFEDERATEDACCOUNTACCESS
+  value: 1
+- name: MAXRECONCILES_AWSFEDERATEDROLE
+  value: 1
 
 objects:
 - apiVersion: operators.coreos.com/v1alpha1
@@ -59,6 +69,11 @@ objects:
     account-limit: "${ACCOUNT_LIMIT}"
     root: ${ROOT_OU_ID}
     base: ${BASE_OU_ID}
+    MaxReconciles.account: "${MAXRECONCILES_ACCOUNT}"
+    MaxReconciles.accountclaim: "${MAXRECONCILES_ACCOUNTCLAIM}"
+    MaxReconciles.accountpool: "${MAXRECONCILES_ACCOUNTPOOL}"
+    MaxReconciles.awsfederatedaccountaccess: "${MAXRECONCILES_AWSFEDERATEDACCOUNTACCESS}"
+    MaxReconciles.awsfederatedrole: "${MAXRECONCILES_AWSFEDERATEDROLE}"
 
 - apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AccountPool
