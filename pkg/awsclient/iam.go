@@ -57,11 +57,11 @@ func ListIAMUsers(reqLogger logr.Logger, client Client) ([]*iam.User, error) {
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case iam.ErrCodeServiceFailureException:
-				msg := fmt.Sprintf("Service failure exception")
+				msg := "Service failure exception"
 				utils.LogAwsError(reqLogger, msg, nil, err)
 				return iamUserList, err
 			default:
-				msg := fmt.Sprintf("Unexpected AWS error")
+				msg := "Unexpected AWS error"
 				utils.LogAwsError(reqLogger, msg, nil, err)
 				return iamUserList, err
 			}

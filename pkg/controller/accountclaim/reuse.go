@@ -244,7 +244,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountSnapshots(reqLogger logr.Logger
 		}
 	}
 
-	successMsg := fmt.Sprintf("Snapshot cleanup finished successfully")
+	successMsg := "Snapshot cleanup finished successfully"
 	awsNotifications <- successMsg
 	return nil
 }
@@ -274,7 +274,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logge
 
 	}
 
-	successMsg := fmt.Sprintf("EBS Volume cleanup finished successfully")
+	successMsg := "EBS Volume cleanup finished successfully"
 	awsNotifications <- successMsg
 	return nil
 }
@@ -324,7 +324,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 
 	}
 
-	successMsg := fmt.Sprintf("S3 cleanup finished successfully")
+	successMsg := "S3 cleanup finished successfully"
 	awsNotifications <- successMsg
 	return nil
 }
@@ -401,7 +401,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClie
 		}
 	}
 
-	successMsg := fmt.Sprintf("Route53 cleanup finished successfully")
+	successMsg := "Route53 cleanup finished successfully"
 	awsNotifications <- successMsg
 	return nil
 }
