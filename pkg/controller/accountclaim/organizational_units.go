@@ -24,7 +24,7 @@ func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountCla
 		AwsRegion:  "us-east-1",
 	})
 	if err != nil {
-		unexpectedErrorMsg := fmt.Sprintf("OU: Failed to build aws client")
+		unexpectedErrorMsg := "OU: Failed to build aws client"
 		reqLogger.Info(unexpectedErrorMsg)
 		return err
 	}
@@ -34,7 +34,7 @@ func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountCla
 	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, instance)
 	if err != nil {
 		// If we failed to retrieve the ConfigMap, simply leave the account in Root
-		unexpectedErrorMsg := fmt.Sprintf("OU: Failed to find OU mapping ConfigMap, leaving account in root")
+		unexpectedErrorMsg := "OU: Failed to find OU mapping ConfigMap, leaving account in root"
 		reqLogger.Info(unexpectedErrorMsg)
 		accountClaim.Spec.AccountOU = "ROOT"
 		return r.specUpdate(reqLogger, accountClaim)
