@@ -42,7 +42,7 @@ docker-build: build
 
 .PHONY: lint
 lint:
-	golangci-lint run
+	golangci-lint run --max-issues-per-linter 0 --max-same-issues 0
 
 # Create account
 .PHONY: create-account
