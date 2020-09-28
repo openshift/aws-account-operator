@@ -198,8 +198,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		AwsRegion:  "us-east-1",
 	})
 	if err != nil {
-		awsClientErr := fmt.Sprintf("Unable to create aws client for region ")
-		reqLogger.Error(err, awsClientErr)
+		reqLogger.Error(err, "Unable to create aws client for region ")
 		return reconcile.Result{}, err
 	}
 
@@ -417,8 +416,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMPolicy(awsClient a
 
 	uidLabel, ok := afaa.Labels["uid"]
 	if !ok {
-		labelErr := fmt.Sprintf("Unable to get UID label")
-		return errors.New(labelErr)
+		return errors.New("Unable to get UID label")
 	}
 
 	gciOut, err := awsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
@@ -452,8 +450,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createOrUpdateIAMRole(awsClient aws
 
 	uidLabel, ok := afaa.Labels["uid"]
 	if !ok {
-		labelErr := fmt.Sprintf("Unable to get UID label")
-		return nil, errors.New(labelErr)
+		return nil, errors.New("Unable to get UID label")
 	}
 
 	roleName := afaa.Spec.AWSFederatedRole.Name + "-" + uidLabel
@@ -567,8 +564,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 			log.Info("UID Label missing with CR not ready, removing finalizer")
 			return nil
 		}
-		labelErr := fmt.Sprintf("Unable to get UID label")
-		return errors.New(labelErr)
+		return errors.New("Unable to get UID label")
 
 	}
 
@@ -579,8 +575,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 			log.Info("AWS Account ID Label missing with CR not ready, removing finalizer")
 			return nil
 		}
-		labelErr := fmt.Sprintf("Unable to get AWS Account ID label")
-		return errors.New(labelErr)
+		return errors.New("Unable to get AWS Account ID label")
 	}
 
 	roleName := currentFAA.Spec.AWSFederatedRole.Name + "-" + uidLabel
@@ -592,8 +587,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 		AwsRegion:  "us-east-1",
 	})
 	if err != nil {
-		awsClientErr := fmt.Sprintf("Unable to create root aws client for region ")
-		reqLogger.Error(err, awsClientErr)
+		reqLogger.Error(err, "Unable to create root aws client for region ")
 		return err
 	}
 
@@ -602,8 +596,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 		RoleSessionName: aws.String("FederatedRoleCleanup"),
 	})
 	if err != nil {
-		awsOrgAccountAccessError := fmt.Sprintf("Unable to assume role OrganizationAccountAccessRole, trying BYOCAdminAccess")
-		reqLogger.Info(awsOrgAccountAccessError)
+		reqLogger.Info("Unable to assume role OrganizationAccountAccessRole, trying BYOCAdminAccess")
 
 		// Attempt to assume the BYOCAdminAccess role if OrganizationAccountAccess didn't work
 		assumeRoleOutput, err = rootAwsClient.AssumeRole(&sts.AssumeRoleInput{
@@ -611,9 +604,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 			RoleSessionName: aws.String("FederatedRoleCleanup"),
 		})
 		if err != nil {
-			awsBYOCAdminAccessError := fmt.Sprintf("Unable to assume role BYOCAdminAccess Role")
-
-			reqLogger.Error(err, awsBYOCAdminAccessError)
+			reqLogger.Error(err, "Unable to assume role BYOCAdminAccess Role")
 			return err
 		}
 
@@ -626,8 +617,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 		AwsRegion:               "us-east-1",
 	})
 	if err != nil {
-		awsClientErr := fmt.Sprintf("Unable to create aws client for target linked account in region ")
-		reqLogger.Error(err, awsClientErr)
+		reqLogger.Error(err, "Unable to create aws client for target linked account in region ")
 		return err
 	}
 
