@@ -100,7 +100,7 @@ func (s *totalAccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 
 	accountTotal, err := s.getTotalAwsAccounts()
 	if err != nil {
-		log.Error(err, "Failed to get account list with error code")
+		log.Error(err, fmt.Sprintf("Failed to get account list with error code"))
 		// Stop account creation while we can't talk to AWS
 		s.accountsCanBeCreated = false
 		return err
