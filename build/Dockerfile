@@ -1,6 +1,12 @@
-FROM registry.svc.ci.openshift.org/openshift/release:golang-1.10 AS builder
-COPY . /go/src/github.com/openshift/aws-account-operator
-WORKDIR /go/src/github.com/openshift/aws-account-operator
+FROM registry.svc.ci.openshift.org/openshift/release:golang-1.13 AS builder
+
+ENV OPERATOR_PATH=/go/src/github.com/openshift/aws-account-operator
+ENV GO111MODULE=on
+ENV GOFLAGS=""
+
+COPY . ${OPERATOR_PATH}
+WORKDIR ${OPERATOR_PATH}
+
 RUN make gobuild
 
 FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
