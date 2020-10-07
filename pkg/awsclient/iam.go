@@ -102,7 +102,7 @@ func CheckIAMUserExists(reqLogger logr.Logger, client Client, userName string) (
 					invalidTokenMsg := fmt.Sprintf("Invalid Token error from AWS when attempting get IAM user %s, trying again", userName)
 					reqLogger.Info(invalidTokenMsg)
 					if i == 10 {
-						return false, nil, err
+						return false, nil, awsv1alpha1.ErrInvalidToken
 					}
 				case "AccessDenied":
 					checkUserMsg := fmt.Sprintf("AWS Error while checking IAM user %s exists, trying again", userName)
@@ -113,7 +113,7 @@ func CheckIAMUserExists(reqLogger logr.Logger, client Client, userName string) (
 					}
 				default:
 					utils.LogAwsError(reqLogger, "checkIAMUserExists: Unexpected AWS Error when checking IAM user exists", nil, err)
-					return false, nil, err
+					return false, nil, awsv1alpha1.ErrAccessDenied
 				}
 				time.Sleep(time.Duration(time.Duration(i*5) * time.Second))
 			} else {

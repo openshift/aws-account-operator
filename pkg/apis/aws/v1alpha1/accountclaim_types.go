@@ -66,6 +66,14 @@ const (
 	AccountUnclaimed AccountClaimConditionType = "Unclaimed"
 	// BYOCAWSAccountInUse is set when a BYOC AWS Account is in use
 	BYOCAWSAccountInUse AccountClaimConditionType = "BYOCAWSAccountInUse"
+	// ClientError is set when an Error regarding the client occured
+	ClientError AccountClaimConditionType = "ClientError"
+	// AuthenticationFailed is set when we get an AWS error from STS role assumption
+	AuthenticationFailed AccountClaimConditionType = "AuthenticationFailed"
+	// InvalidAccountClaim is set when the account claim CR is missing required values
+	InvalidAccountClaim AccountClaimConditionType = "InvalidAccountClaim"
+	// InternalError is set when a serious internal issue arrises
+	InternalError AccountClaimConditionType = "InternalError"
 )
 
 // ClaimStatus is a valid value from AccountClaim.Status

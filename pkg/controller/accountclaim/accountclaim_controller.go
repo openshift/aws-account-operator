@@ -226,7 +226,6 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			waitMsg := fmt.Sprintf("%s is not Ready yet requeuing in %d seconds", byocAccount.Name, waitPeriod)
 			reqLogger.Info(waitMsg)
 			return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
-
 		}
 
 		if byocAccount.Status.State == string(awsv1alpha1.AccountReady) && accountClaim.Status.State != awsv1alpha1.ClaimStatusReady {

@@ -16,6 +16,7 @@ import (
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
 
 // ErrBYOCAccountIDMissing is an error for missing Account ID
@@ -51,11 +52,35 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 	if acctClaimErr != nil {
 		// TODO: Unrecoverable
 		// TODO: set helpful error message
+		utils.SetAccountClaimStatus(
+			accountClaim,
+			"Failed to get AccountClaim for CSS account",
+			"FailedRetrievingAccountClaim",
+			awsv1alpha1.ClientError,
+			awsv1alpha1.ClaimStatusError,
+		)
+		err := r.Client.Status().Update(context.TODO(), accountClaim)
+		if err != nil {
+			reqLogger.Error(err, "failed to update accountclaim status")
+		}
 		return "", reconcile.Result{}, acctClaimErr
+
 	}
 
 	client, clientErr := r.getCCSClient(account, accountClaim)
 	if clientErr != nil {
+		utils.SetAccountClaimStatus(
+			accountClaim,
+			"Failed to create AWS Client",
+			"AWSClientCreationFailed",
+			awsv1alpha1.ClientError,
+			awsv1alpha1.ClaimStatusError,
+		)
+		err := r.Client.Status().Update(context.TODO(), accountClaim)
+		if err != nil {
+			reqLogger.Error(err, "Failed to create AWS Client")
+		}
+
 		if accountClaim != nil {
 			claimErr := r.setAccountClaimError(reqLogger, account, clientErr.Error())
 			if claimErr != nil {
@@ -68,10 +93,26 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 
 	validateErr := validateBYOCClaim(accountClaim)
 	if validateErr != nil {
-		claimErr := r.setAccountClaimError(reqLogger, account, validateErr.Error())
-		if claimErr != nil {
-			reqLogger.Error(claimErr, "failed setting accountClaim error state")
+		// Figure the reason for our failure
+		errReason := ""
+		if validateErr == ErrBYOCAccountIDMissing {
+			errReason = "ClaimMissingAccountID"
+		} else {
+			errReason = "ClaimMissingSecretReference"
 		}
+		// Update AccountClaim status
+		utils.SetAccountClaimStatus(
+			accountClaim,
+			"Invalid AccountClaim",
+			errReason,
+			awsv1alpha1.InvalidAccountClaim,
+			awsv1alpha1.ClaimStatusError,
+		)
+		err := r.Client.Status().Update(context.TODO(), accountClaim)
+		if err != nil {
+			reqLogger.Error(err, "Failed to create AWS Client")
+		}
+
 		// TODO: Recoverable?
 		return "", reconcile.Result{}, validateErr
 	}
