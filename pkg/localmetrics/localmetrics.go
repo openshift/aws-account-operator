@@ -23,6 +23,7 @@ import (
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -141,7 +142,7 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Help:        "Distribution of the number of seconds a Reconcile takes, broken down by controller",
 			ConstLabels: prometheus.Labels{"name": operatorName},
 			Buckets:     []float64{0.001, 0.01, 0.1, 1, 5, 10, 20},
-		}, []string{"controller", "error"}),
+		}, []string{"controller", "error", "aws_error"}),
 
 		// apiCallDuration times API requests. Histogram also gives us a _count metric for free.
 		apiCallDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -294,7 +295,11 @@ func (c *MetricsCollector) AddAccountReuseCleanupFailure() {
 
 // SetReconcileDuration describes the time it takes for the operator to complete a single reconcile loop
 func (c *MetricsCollector) SetReconcileDuration(controller string, duration float64, err error) {
-	c.reconcileDuration.WithLabelValues(controller, strconv.FormatBool(err != nil)).Observe(duration)
+	awsErrorCode := ""
+	if aerr, ok := err.(awserr.Error); ok {
+		awsErrorCode = aerr.Code()
+	}
+	c.reconcileDuration.WithLabelValues(controller, strconv.FormatBool(err != nil), awsErrorCode).Observe(duration)
 }
 
 // AddAPICall observes metrics for a call to an external API
