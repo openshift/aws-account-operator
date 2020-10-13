@@ -18,7 +18,7 @@ type AccountClaimSpec struct {
 	AwsCredentialSecret SecretRef   `json:"awsCredentialSecret"`
 	Aws                 Aws         `json:"aws"`
 	AccountLink         string      `json:"accountLink"`
-	AccountOU           string      `json:"accountou,omitempty"`
+	AccountOU           string      `json:"accountOU,omitempty"`
 	BYOC                bool        `json:"byoc,omitempty"`
 	BYOCSecretRef       SecretRef   `json:"byocSecretRef,omitempty"`
 	BYOCAWSAccountID    string      `json:"byocAWSAccountID,omitempty"`

@@ -49,13 +49,23 @@ spec:
                         items:
                           type: string
                         type: array
+                      condition:
+                        properties:
+                          StringEquals:
+                            additionalProperties:
+                              type: string
+                            description: A map of the condition
+                            type: object
+                        type: object
                       effect:
                         type: string
                       principal:
                         properties:
                           AWS:
                             description: aws account id
-                            type: string
+                            items:
+                              type: string
+                            type: array
                         required:
                         - AWS
                         type: object

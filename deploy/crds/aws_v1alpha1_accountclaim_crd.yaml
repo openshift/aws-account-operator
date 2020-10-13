@@ -44,6 +44,8 @@ spec:
           properties:
             accountLink:
               type: string
+            accountOU:
+              type: string
             aws:
               properties:
                 regions:
