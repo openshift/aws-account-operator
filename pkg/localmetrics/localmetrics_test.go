@@ -123,7 +123,7 @@ func TestReconcileErrorParse(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			e := &ReconcileError{}
+			e := &ReportedError{}
 			e.Parse(test.err)
 			assert.Equal(t, test.expected[0], e.Code)
 			assert.Equal(t, test.expected[1], e.Source)

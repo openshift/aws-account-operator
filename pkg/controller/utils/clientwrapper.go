@@ -77,7 +77,7 @@ func (cmt *ControllerMetricsTripper) RoundTrip(req *http.Request) (*http.Respons
 
 	// Count this call, if it worked (where "worked" includes HTTP errors).
 	if err == nil {
-		localmetrics.Collector.AddAPICall(cmt.Controller, req, resp, time.Since(start).Seconds())
+		localmetrics.Collector.AddAPICall(cmt.Controller, req, resp, time.Since(start).Seconds(), nil)
 	}
 
 	return resp, err

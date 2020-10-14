@@ -151,7 +151,7 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			// We really don't care about quantiles, but omitting Buckets results in defaults.
 			// This minimizes the number of unused data points we store.
 			Buckets: []float64{1},
-		}, []string{"controller", "method", "resource", "status"}),
+		}, []string{"controller", "method", "resource", "status", "error", "error_source"}),
 	}
 }
 
@@ -292,12 +292,12 @@ func (c *MetricsCollector) AddAccountReuseCleanupFailure() {
 	c.accountReuseCleanupFailureCount.Inc()
 }
 
-type ReconcileError struct {
+type ReportedError struct {
 	Source string
 	Code   string
 }
 
-func (e *ReconcileError) Parse(err error) {
+func (e *ReportedError) Parse(err error) {
 	if err == nil {
 		return
 	}
@@ -318,7 +318,7 @@ func (e *ReconcileError) Parse(err error) {
 
 // SetReconcileDuration describes the time it takes for the operator to complete a single reconcile loop
 func (c *MetricsCollector) SetReconcileDuration(controller string, duration float64, err error) {
-	e := &ReconcileError{}
+	e := &ReportedError{}
 	e.Parse(err)
 	c.reconcileDuration.WithLabelValues(controller, e.Code, e.Source).Observe(duration)
 }
@@ -328,18 +328,24 @@ func (c *MetricsCollector) SetReconcileDuration(controller string, duration floa
 // - param req: The HTTP Request structure
 // - param resp: The HTTP Response structure
 // - param duration: The number of seconds the call took.
-func (c *MetricsCollector) AddAPICall(controller string, req *http.Request, resp *http.Response, duration float64) {
+func (c *MetricsCollector) AddAPICall(controller string, req *http.Request, resp *http.Response, duration float64, err error) {
 	var status string
 	if resp == nil {
 		status = "{ERROR}"
 	} else {
 		status = resp.Status
 	}
+
+	e := &ReportedError{}
+	e.Parse(err)
+
 	c.apiCallDuration.With(prometheus.Labels{
-		"controller": controller,
-		"method":     req.Method,
-		"resource":   resourceFrom(req.URL),
-		"status":     status,
+		"controller":   controller,
+		"method":       req.Method,
+		"resource":     resourceFrom(req.URL),
+		"status":       status,
+		"error":        e.Code,
+		"error_source": e.Source,
 	}).Observe(duration)
 }
 
