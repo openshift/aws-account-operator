@@ -16,7 +16,7 @@ default: gobuild
 
 # Extend Makefile after here
 
-.PHONY: .check-aws-account-id-env
+.PHONY: check-aws-account-id-env
 check-aws-account-id-env:
 ifndef OSD_STAGING_1_AWS_ACCOUNT_ID
 	$(error OSD_STAGING_1_AWS_ACCOUNT_ID is undefined)
@@ -28,7 +28,7 @@ ifndef AWS_IAM_ARN
 	$(error AWS_IAM_ARN is undefined)
 endif
 
-.PHONY: .check-ou-mapping-configmap-env
+.PHONY: check-ou-mapping-configmap-env
 check-ou-mapping-configmap-env:
 ifndef OSD_STAGING_1_OU_ROOT_ID
 	$(error OSD_STAGING_1_OU_ROOT_ID is undefined)
@@ -75,7 +75,7 @@ delete-accountclaim-namespace:
 	@oc process -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc delete -f -
 
 .PHONY: create-accountclaim
-create-accountclaim: create-ou-map
+create-accountclaim:
 	# Create Account
 	test/integration/api/create_account.sh
 	# Create accountclaim
@@ -84,7 +84,7 @@ create-accountclaim: create-ou-map
 	@while true; do STATUS=$$(oc get accountclaim ${ACCOUNT_CLAIM_NAME} -n ${ACCOUNT_CLAIM_NAMESPACE} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${ACCOUNT_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 .PHONY: delete-accountclaim
-delete-accountclaim: delete-ou-map
+delete-accountclaim:
 	# Delete accountclaim
 	@oc process -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws_v1alpha1_accountclaim_cr.tmpl | oc delete -f -
 
@@ -312,7 +312,7 @@ deploy-cluster: isclean
 # TODO(efried): template this, but without having to maintain an almost-copy of operator.yaml
 	@hack/scripts/edit_operator_yaml_for_dev.py $(OPERATOR_IMAGE_URI) "$(FORCE_DEV_MODE)" | oc apply -f -
 
-.PHONY: .check-aws-credentials
+.PHONY: check-aws-credentials
 check-aws-credentials:
 ifndef OPERATOR_ACCESS_KEY_ID
 	$(error OPERATOR_ACCESS_KEY_ID is undefined)
@@ -335,7 +335,7 @@ delete-ou-map:
 
 # Test aws ou logic
 .PHONY: test-aws-ou-logic
-test-aws-ou-logic: check-ou-mapping-configmap-env check-ou-mapping-configmap-env create-accountclaim-namespace create-accountclaim
+test-aws-ou-logic: check-ou-mapping-configmap-env create-accountclaim-namespace create-accountclaim
 	# Check that account was moved correctly
 	@sleep 2; TYPE=$$(aws organizations list-parents --child-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1 | jq -r ".Parents[0].Type"); if [ "$$TYPE" == "ORGANIZATIONAL_UNIT" ]; then echo "Account move successfully"; exit 0; elif [ "$$TYPE" == "ROOT" ]; then echo "Failed to move account out of root"; exit 1; fi;
 	@aws organizations list-parents --child-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1
