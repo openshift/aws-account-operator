@@ -18,7 +18,6 @@ import (
 	"context"
 	"net/http"
 	neturl "net/url"
-	"strconv"
 	"strings"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -142,7 +141,7 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Help:        "Distribution of the number of seconds a Reconcile takes, broken down by controller",
 			ConstLabels: prometheus.Labels{"name": operatorName},
 			Buckets:     []float64{0.001, 0.01, 0.1, 1, 5, 10, 20},
-		}, []string{"controller", "error", "aws_error"}),
+		}, []string{"controller", "error", "error_source"}),
 
 		// apiCallDuration times API requests. Histogram also gives us a _count metric for free.
 		apiCallDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -293,13 +292,35 @@ func (c *MetricsCollector) AddAccountReuseCleanupFailure() {
 	c.accountReuseCleanupFailureCount.Inc()
 }
 
+type ReconcileError struct {
+	Source string
+	Code   string
+}
+
+func (e *ReconcileError) Parse(err error) {
+	if err == nil {
+		return
+	}
+
+	// attempt to see if it's an AWS Error
+	if aerr, ok := err.(awserr.Error); ok {
+		e.Code = aerr.Code()
+		e.Source = "aws"
+		return
+	}
+
+	// TODO: See if it's a k8s error
+
+	// default with an error is {OTHER}
+	e.Code = "{OTHER}"
+	e.Source = "{OTHER}"
+}
+
 // SetReconcileDuration describes the time it takes for the operator to complete a single reconcile loop
 func (c *MetricsCollector) SetReconcileDuration(controller string, duration float64, err error) {
-	awsErrorCode := ""
-	if aerr, ok := err.(awserr.Error); ok {
-		awsErrorCode = aerr.Code()
-	}
-	c.reconcileDuration.WithLabelValues(controller, strconv.FormatBool(err != nil), awsErrorCode).Observe(duration)
+	e := &ReconcileError{}
+	e.Parse(err)
+	c.reconcileDuration.WithLabelValues(controller, e.Code, e.Source).Observe(duration)
 }
 
 // AddAPICall observes metrics for a call to an external API

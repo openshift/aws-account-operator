@@ -1,9 +1,11 @@
 package localmetrics
 
 import (
+	"fmt"
 	neturl "net/url"
 	"testing"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -93,4 +95,38 @@ func TestPathParse(t *testing.T) {
 		})
 	}
 
+}
+
+func TestReconcileErrorParse(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		// expected will be a 2 element slice as [Code, Source]
+		expected []string
+	}{
+		{
+			name:     "Test No Error gives empty strings",
+			err:      nil,
+			expected: []string{"", ""},
+		},
+		{
+			name:     "Test AWS Error gives aws codes",
+			err:      awserr.New("RateLimit", "This is a message", nil),
+			expected: []string{"RateLimit", "aws"},
+		},
+		{
+			name:     "Test for generic error",
+			err:      fmt.Errorf("Test"),
+			expected: []string{"{OTHER}", "{OTHER}"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			e := &ReconcileError{}
+			e.Parse(test.err)
+			assert.Equal(t, test.expected[0], e.Code)
+			assert.Equal(t, test.expected[1], e.Source)
+		})
+	}
 }
