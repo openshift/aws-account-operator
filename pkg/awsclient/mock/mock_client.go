@@ -10,6 +10,7 @@ import (
 	organizations "github.com/aws/aws-sdk-go/service/organizations"
 	route53 "github.com/aws/aws-sdk-go/service/route53"
 	s3 "github.com/aws/aws-sdk-go/service/s3"
+	servicequotas "github.com/aws/aws-sdk-go/service/servicequotas"
 	sts "github.com/aws/aws-sdk-go/service/sts"
 	support "github.com/aws/aws-sdk-go/service/support"
 	gomock "github.com/golang/mock/gomock"
@@ -815,4 +816,64 @@ func (m *MockClient) ChangeResourceRecordSets(arg0 *route53.ChangeResourceRecord
 func (mr *MockClientMockRecorder) ChangeResourceRecordSets(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChangeResourceRecordSets", reflect.TypeOf((*MockClient)(nil).ChangeResourceRecordSets), arg0)
+}
+
+// GetServiceQuota mocks base method
+func (m *MockClient) GetServiceQuota(arg0 *servicequotas.GetServiceQuotaInput) (*servicequotas.GetServiceQuotaOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetServiceQuota", arg0)
+	ret0, _ := ret[0].(*servicequotas.GetServiceQuotaOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetServiceQuota indicates an expected call of GetServiceQuota
+func (mr *MockClientMockRecorder) GetServiceQuota(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetServiceQuota", reflect.TypeOf((*MockClient)(nil).GetServiceQuota), arg0)
+}
+
+// RequestServiceQuotaIncrease mocks base method
+func (m *MockClient) RequestServiceQuotaIncrease(arg0 *servicequotas.RequestServiceQuotaIncreaseInput) (*servicequotas.RequestServiceQuotaIncreaseOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequestServiceQuotaIncrease", arg0)
+	ret0, _ := ret[0].(*servicequotas.RequestServiceQuotaIncreaseOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RequestServiceQuotaIncrease indicates an expected call of RequestServiceQuotaIncrease
+func (mr *MockClientMockRecorder) RequestServiceQuotaIncrease(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestServiceQuotaIncrease", reflect.TypeOf((*MockClient)(nil).RequestServiceQuotaIncrease), arg0)
+}
+
+// ListRequestedServiceQuotaChangeHistory mocks base method
+func (m *MockClient) ListRequestedServiceQuotaChangeHistory(arg0 *servicequotas.ListRequestedServiceQuotaChangeHistoryInput) (*servicequotas.ListRequestedServiceQuotaChangeHistoryOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRequestedServiceQuotaChangeHistory", arg0)
+	ret0, _ := ret[0].(*servicequotas.ListRequestedServiceQuotaChangeHistoryOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRequestedServiceQuotaChangeHistory indicates an expected call of ListRequestedServiceQuotaChangeHistory
+func (mr *MockClientMockRecorder) ListRequestedServiceQuotaChangeHistory(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRequestedServiceQuotaChangeHistory", reflect.TypeOf((*MockClient)(nil).ListRequestedServiceQuotaChangeHistory), arg0)
+}
+
+// ListRequestedServiceQuotaChangeHistoryByQuota mocks base method
+func (m *MockClient) ListRequestedServiceQuotaChangeHistoryByQuota(arg0 *servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaInput) (*servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRequestedServiceQuotaChangeHistoryByQuota", arg0)
+	ret0, _ := ret[0].(*servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRequestedServiceQuotaChangeHistoryByQuota indicates an expected call of ListRequestedServiceQuotaChangeHistoryByQuota
+func (mr *MockClientMockRecorder) ListRequestedServiceQuotaChangeHistoryByQuota(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRequestedServiceQuotaChangeHistoryByQuota", reflect.TypeOf((*MockClient)(nil).ListRequestedServiceQuotaChangeHistoryByQuota), arg0)
 }
