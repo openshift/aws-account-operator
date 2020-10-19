@@ -66,27 +66,27 @@ test-account-creation: create-account test-secrets delete-account
 .PHONY: create-accountclaim-namespace
 create-accountclaim-namespace:
 	# Create reuse namespace
-	@oc process -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc apply -f -
+	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc apply -f -
 
 # Delete account claim namespace
 .PHONY: delete-accountclaim-namespace
 delete-accountclaim-namespace:
 	# Delete reuse namespace
-	@oc process -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc delete -f -
+	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc delete -f -
 
 .PHONY: create-accountclaim
 create-accountclaim:
 	# Create Account
 	test/integration/api/create_account.sh
 	# Create accountclaim
-	@oc process -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws_v1alpha1_accountclaim_cr.tmpl | oc apply -f -
+	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws_v1alpha1_accountclaim_cr.tmpl | oc apply -f -
 	# Wait for accountclaim to become ready
 	@while true; do STATUS=$$(oc get accountclaim ${ACCOUNT_CLAIM_NAME} -n ${ACCOUNT_CLAIM_NAMESPACE} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${ACCOUNT_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 .PHONY: delete-accountclaim
 delete-accountclaim:
 	# Delete accountclaim
-	@oc process -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws_v1alpha1_accountclaim_cr.tmpl | oc delete -f -
+	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws_v1alpha1_accountclaim_cr.tmpl | oc delete -f -
 
 # Create awsfederatedrole "Read Only"
 .PHONY: create-awsfederatedrole
@@ -163,25 +163,25 @@ test-awsfederatedaccountaccess: check-aws-account-id-env create-awsfederatedrole
 .PHONY: create-ccs-namespace
 create-ccs-namespace:
 	# Create CCS namespace
-	@oc process -p NAME=${CCS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc apply -f -
+	@oc process --local -p NAME=${CCS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc apply -f -
 
 # Create CCS (BYOC) namespace
 .PHONY: create-ccs-2-namespace
 create-ccs-2-namespace:
 	# Create CCS namespace
-	@oc process -p NAME=${CCS_NAMESPACE_NAME_2} -f hack/templates/namespace.tmpl | oc apply -f -
+	@oc process --local -p NAME=${CCS_NAMESPACE_NAME_2} -f hack/templates/namespace.tmpl | oc apply -f -
 
 # Delete CCS (BYOC) namespace
 .PHONY: delete-ccs-namespace
 delete-ccs-namespace:
 	# Delete CCS namespace
-	@oc process -p NAME=${CCS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete -f -
+	@oc process --local -p NAME=${CCS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete -f -
 
 # Delete CCS (BYOC) namespace
 .PHONY: delete-ccs-2-namespace
 delete-ccs-2-namespace:
 	# Delete CCS namespace
-	@oc process -p NAME=${CCS_NAMESPACE_NAME_2} -f hack/templates/namespace.tmpl | oc delete -f -
+	@oc process --local -p NAME=${CCS_NAMESPACE_NAME_2} -f hack/templates/namespace.tmpl | oc delete -f -
 
 # Create CCS (BYOC) Secret
 .PHONY: create-ccs-secret
@@ -214,26 +214,26 @@ delete-ccs-2-secret:
 .PHONY: create-ccs-accountclaim
 create-ccs-accountclaim:
 	# Create ccs accountclaim
-	@oc process -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc apply -f -
+	@oc process --local -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc apply -f -
 	# Wait for accountclaim to become ready
 	@while true; do STATUS=$$(oc get accountclaim ${CCS_CLAIM_NAME} -n ${CCS_NAMESPACE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${CCS_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 .PHONY: create-ccs-2-accountclaim
 create-ccs-2-accountclaim:
 	# Create ccs accountclaim
-	@oc process -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME_2} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc apply -f -
+	@oc process --local -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME_2} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc apply -f -
 	# Wait for accountclaim to become ready
 	@while true; do STATUS=$$(oc get accountclaim ${CCS_CLAIM_NAME} -n ${CCS_NAMESPACE_NAME_2} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${CCS_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 .PHONY: delete-ccs-accountclaim
 delete-ccs-accountclaim:
 	# Delete ccs accountclaim
-	@oc process -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc delete -f -
+	@oc process --local -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc delete -f -
 
 .PHONY: delete-ccs-2-accountclaim
 delete-ccs-2-accountclaim:
 	# Delete ccs accountclaim
-	@oc process -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME_2} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc delete -f -
+	@oc process --local -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME_2} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc delete -f -
 
 # Test CCS
 .PHONY: test-ccs
@@ -283,12 +283,12 @@ deploy-aws-account-operator-credentials: check-aws-credentials
 	$(eval ID=$(shell echo -n ${OPERATOR_ACCESS_KEY_ID} | base64 ))
 	$(eval KEY=$(shell echo -n ${OPERATOR_SECRET_ACCESS_KEY} | base64))
 # Create the aws-account-operator-credentials secret
-	@oc process -p OPERATOR_ACCESS_KEY_ID=${ID} -p OPERATOR_SECRET_ACCESS_KEY=${KEY} -p OPERATOR_NAMESPACE=aws-account-operator -f hack/templates/aws_v1alpha1_aws_account_operator_credentials.tmpl | oc apply -f -
+	@oc process --local -p OPERATOR_ACCESS_KEY_ID=${ID} -p OPERATOR_SECRET_ACCESS_KEY=${KEY} -p OPERATOR_NAMESPACE=aws-account-operator -f hack/templates/aws_v1alpha1_aws_account_operator_credentials.tmpl | oc apply -f -
 
 .PHONY: predeploy-aws-account-operator
 predeploy-aws-account-operator:
 # Create aws-account-operator namespace
-	@oc get namespace ${NAMESPACE} && oc project ${NAMESPACE} || oc new-project ${NAMESPACE}
+	@oc get namespace ${NAMESPACE} && oc project ${NAMESPACE} || oc create namespace ${NAMESPACE}
 # Create aws-account-operator CRDs
 	@ls deploy/crds/*crd.yaml | xargs -L1 oc apply -f
 # Create zero size account pool
@@ -325,13 +325,13 @@ endif
 .PHONY: create-ou-map
 create-ou-map:
 # Create OU map
-	@oc process -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -p ACCOUNTLIMIT="0" -f hack/templates/aws_v1alpha1_configmap.tmpl | oc apply -f -
+	@oc process --local -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -p ACCOUNTLIMIT="0" -f hack/templates/aws_v1alpha1_configmap.tmpl | oc apply -f -
 
 # Test delete ou map cr
 .PHONY: delete-ou-map
 delete-ou-map:
 # Delete OU map
-	@oc process -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -f hack/templates/aws_v1alpha1_configmap.tmpl | oc delete -f -
+	@oc process --local -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -f hack/templates/aws_v1alpha1_configmap.tmpl | oc delete -f -
 
 # Test aws ou logic
 .PHONY: test-aws-ou-logic
