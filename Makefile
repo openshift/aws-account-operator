@@ -345,4 +345,4 @@ test-aws-ou-logic: check-ou-mapping-configmap-env create-accountclaim-namespace 
 
 #s Test all
 .PHONY: test-all
-test-all: lint test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic 
+test-all: lint test test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic 
