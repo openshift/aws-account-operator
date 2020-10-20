@@ -26,9 +26,13 @@ git clone \
 # remove any versions more recent than deployed hash
 REMOVED_VERSIONS=""
 if [[ "$REMOVE_UNDEPLOYED" == true ]]; then
+    # this will need to be modified if at any point we move to a canary like deployment
+    # where not all environments are deployed with the same operator version
     DEPLOYED_HASH=$(
-        curl -s "https://gitlab.cee.redhat.com/service/app-interface/raw/master/data/services/osd-operators/cicd/saas/saas-${_OPERATOR_NAME}.yaml" | \
-            docker run --rm -i quay.io/app-sre/yq yq r - "resourceTemplates[*].targets(namespace.\$ref==/services/osd-operators/namespaces/hivep01ue1/${_OPERATOR_NAME}.yml).ref"
+        curl -s -H "Authorization: Basic $(echo ${APP_INTERFACE_USERNAME}:${APP_INTERFACE_PASSWORD} | base64)" \
+            -g "https://${APP_INTERFACE_BASE_URL}/graphql?query={saas_files:saas_files_v1{name,resourceTemplates{name,targets{namespace{environment{name,labels}},ref}}}}" | \
+            jq -r ".data.saas_files[] | select(.name==\"saas-${_OPERATOR_NAME}\") | .resourceTemplates[].targets[] | select(.namespace.environment.labels | contains('\"type\":\"production\"')) | .ref" | \
+            uniq
     )
 
     delete=false
