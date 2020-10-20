@@ -8,7 +8,6 @@ require (
 	github.com/evanphx/json-patch v4.5.0+incompatible // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-logr/logr v0.1.0
-	github.com/go-openapi/spec v0.19.0
 	github.com/golang/mock v1.3.1-0.20190508161146-9fa652df1129
 	github.com/gregjones/httpcache v0.0.0-20190212212710-3befbb6ad0cc // indirect
 	github.com/onsi/ginkgo v1.12.0
@@ -25,12 +24,15 @@ require (
 	k8s.io/api v0.0.0-20190612125737-db0771252981
 	k8s.io/apimachinery v0.0.0-20190612125636-6a5db36e93ad
 	k8s.io/client-go v11.0.0+incompatible
-	k8s.io/kube-openapi v0.0.0-20190320154901-5e45bb682580
 	sigs.k8s.io/controller-runtime v0.1.12
 )
 
 replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
 
+// Fixes missing bitbucket dependency; replaces with same fork k8s uses
+replace bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
+
+// Operator-SDK rules below
 // Pinned to kubernetes-1.13.4
 replace (
 	k8s.io/api => k8s.io/api v0.0.0-20190222213804-5cb15d344471
@@ -41,12 +43,12 @@ replace (
 
 replace (
 	github.com/coreos/prometheus-operator => github.com/coreos/prometheus-operator v0.29.0
+	// Pinned to v2.9.2 (kubernetes-1.13.1) so https://proxy.golang.org can
+	// resolve it correctly.
+	github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.0.0-20190424153033-d3245f150225
 	k8s.io/kube-state-metrics => k8s.io/kube-state-metrics v1.6.0
 	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.1.12
 	sigs.k8s.io/controller-tools => sigs.k8s.io/controller-tools v0.1.11-0.20190411181648-9d55346c2bde
 )
 
-replace github.com/operator-framework/operator-sdk => github.com/operator-framework/operator-sdk v0.9.0
-
-// Fixes missing bitbucket dependency; replaces with same fork k8s uses
-replace bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
+replace github.com/operator-framework/operator-sdk => github.com/operator-framework/operator-sdk v0.10.0
