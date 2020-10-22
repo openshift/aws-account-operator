@@ -51,7 +51,7 @@ const (
 	// regionInitTime is the maximum time we allow an account CR to be in the InitializingRegions
 	// state. This is based on async region init taking a theoretical maximum of WaitTime * 2
 	// minutes plus a handful of AWS API calls (see asyncRegionInit).
-	regionInitTime = (utils.WaitTime * time.Duration(2)) + time.Minute
+	regionInitTime = (time.Minute * utils.WaitTime * time.Duration(2)) + time.Minute
 
 	// AccountPending indicates an account is pending
 	AccountPending = "Pending"
