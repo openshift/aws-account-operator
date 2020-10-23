@@ -117,17 +117,77 @@ func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleNa
 	return assumeRoleOutput, nil
 }
 
+func retryIfAwsServiceFailureOrInvalidToken(err error) bool {
+	if aerr, ok := err.(awserr.Error); ok {
+		switch aerr.Code() {
+		// ServiceFailure may be an unspecified server-side error, and is worth retrying
+		case "ServiceFailure":
+			return true
+		// InvalidClientTokenId may be a transient auth issue, retry
+		case "InvalidClientTokenId":
+			return true
+		}
+	}
+	// Otherwise, do not retry
+	return false
+}
+
+func listAccessKeys(client awsclient.Client, iamUser *iam.User) (*iam.ListAccessKeysOutput, error) {
+	var result *iam.ListAccessKeysOutput
+	var err error
+
+	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
+	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
+	retry.DefaultDelay = 3 * time.Second
+	retry.DefaultAttempts = uint(5)
+	err = retry.Do(
+		func() (err error) {
+			result, err = client.ListAccessKeys(&iam.ListAccessKeysInput{UserName: iamUser.UserName})
+			return err
+		},
+
+		// Retry if we receive some specific errors: access denied, rate limit or server-side error
+		retry.RetryIf(retryIfAwsServiceFailureOrInvalidToken),
+	)
+
+	return result, err
+}
+
+func deleteAccessKey(client awsclient.Client, accessKeyID *string, username *string) (*iam.DeleteAccessKeyOutput, error) {
+	var result *iam.DeleteAccessKeyOutput
+	var err error
+
+	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
+	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
+	retry.DefaultDelay = 3 * time.Second
+	retry.DefaultAttempts = uint(5)
+	err = retry.Do(
+		func() (err error) {
+			result, err = client.DeleteAccessKey(&iam.DeleteAccessKeyInput{
+				AccessKeyId: accessKeyID,
+				UserName:    username,
+			})
+			return err
+		},
+
+		// Retry if we receive some specific errors: access denied, rate limit or server-side error
+		retry.RetryIf(retryIfAwsServiceFailureOrInvalidToken),
+	)
+
+	return result, err
+}
+
 // deleteAllAccessKeys deletes all access key pairs for a given user
 // Takes a logger, an AWS client, and the target IAM user's username
 func deleteAllAccessKeys(client awsclient.Client, iamUser *iam.User) error {
-	accessKeyList, err := client.ListAccessKeys(&iam.ListAccessKeysInput{UserName: iamUser.UserName})
+	accessKeyList, err := listAccessKeys(client, iamUser)
 	if err != nil {
 		return err
 	}
 
 	// Range through all AccessKeys for IAM user and delete them
 	for index := range accessKeyList.AccessKeyMetadata {
-		_, err = client.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKeyList.AccessKeyMetadata[index].AccessKeyId, UserName: iamUser.UserName})
+		_, err = deleteAccessKey(client, accessKeyList.AccessKeyMetadata[index].AccessKeyId, iamUser.UserName)
 		if err != nil {
 			return err
 		}
@@ -235,20 +295,7 @@ func CreateUserAccessKey(client awsclient.Client, iamUser *iam.User) (*iam.Creat
 		},
 
 		// Retry if we receive some specific errors: access denied, rate limit or server-side error
-		retry.RetryIf(func(err error) bool {
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				// ServiceFailure may be an unspecified server-side error, and is worth retrying
-				case "ServiceFailure":
-					return true
-				// InvalidClientTokenId may be a transient auth issue, retry
-				case "InvalidClientTokenId":
-					return true
-				}
-			}
-			// Otherwise, do not retry
-			return false
-		}),
+		retry.RetryIf(retryIfAwsServiceFailureOrInvalidToken),
 	)
 
 	if err != nil {
