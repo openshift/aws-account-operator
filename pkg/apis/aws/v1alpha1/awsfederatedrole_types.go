@@ -30,6 +30,7 @@ type AWSFederatedRoleSpec struct {
 	AWSCustomPolicy AWSCustomPolicy `json:"awsCustomPolicy,omitempty"`
 	// AWSManagedPolicies is a list of amazong managed policies that exist in aws
 	// +optional
+	// +listType=atomic
 	AWSManagedPolicies []string `json:"awsManagedPolicies,omitempty"`
 }
 
@@ -64,7 +65,9 @@ type Condition struct {
 // AWSFederatedRoleStatus defines the observed state of AWSFederatedRole
 // +k8s:openapi-gen=true
 type AWSFederatedRoleStatus struct {
-	State      AWSFederatedRoleState       `json:"state"`
+	State AWSFederatedRoleState `json:"state"`
+	// +listType=map
+	// +listMapKey=type
 	Conditions []AWSFederatedRoleCondition `json:"conditions"`
 }
 
@@ -107,6 +110,7 @@ const (
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state",description="Status the federated role"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Age since federated role was created"
+// +kubebuilder:resource:path=awsfederatedroles,scope=Namespaced
 type AWSFederatedRole struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

@@ -44,8 +44,8 @@ func (r *ReconcileAWSFederatedRole) finalizeFederateRole(reqLogger logr.Logger, 
 	// Get all FederatedAccountAccesses
 	awsFederatedAccountAccessList := &awsv1alpha1.AWSFederatedAccountAccessList{}
 
-	listOps := &client.ListOptions{}
-	if err := r.client.List(context.TODO(), listOps, awsFederatedAccountAccessList); err != nil {
+	listOpts := []client.ListOption{}
+	if err := r.client.List(context.TODO(), awsFederatedAccountAccessList, listOpts...); err != nil {
 		reqLogger.Error(err, "unable to list AWS Federated Account Accesses")
 		return err
 	}

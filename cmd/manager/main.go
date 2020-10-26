@@ -32,15 +32,19 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
-	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 )
 
 // Change below variables to serve metrics on different host or port.
 var (
-	metricsPort          = "8080"
-	metricsPath          = "/metrics"
+	metricsHost string = "0.0.0.0"
+	metricsPort int32  = 8081
+
+	customMetricsPort string = "8080"
+	customMetricsPath string = "/metrics"
+
 	totalWatcherInterval = time.Duration(15) * time.Minute
 )
 
@@ -101,7 +105,8 @@ func main() {
 
 	// Create a new Cmd to provide shared dependencies and start components
 	mgr, err := manager.New(cfg, manager.Options{
-		Namespace: "",
+		Namespace:          "",
+		MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
 	})
 	if err != nil {
 		log.Error(err, "")
@@ -135,19 +140,18 @@ func main() {
 			log.Error(err, "failed to register Prometheus metrics")
 			os.Exit(1)
 		}
-		http.Handle(metricsPath, promhttp.Handler())
+		http.Handle(customMetricsPath, promhttp.Handler())
 		go func() {
-			if err := http.ListenAndServe(":"+metricsPort, nil); err != nil {
+			if err := http.ListenAndServe(":"+customMetricsPort, nil); err != nil {
 				log.Error(err, "failed to start metrics handler")
 				os.Exit(1)
 			}
 		}()
 	default:
 		//Create metrics endpoint and register metrics
-		metricsServer := metrics.NewBuilder().WithPort(metricsPort).WithPath(metricsPath).
+		metricsServer := metrics.NewBuilder("aws-account-operator", "aws-account-operator").WithPort(customMetricsPort).WithPath(customMetricsPath).
 			WithCollector(localmetrics.Collector).
 			WithRoute().
-			WithServiceName("aws-account-operator").
 			GetConfig()
 
 		// Configure metrics if it errors log the error but continue
