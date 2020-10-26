@@ -19,9 +19,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
@@ -283,8 +283,10 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 	accountList := &awsv1alpha1.AccountList{}
 
-	listOps := &client.ListOptions{Namespace: awsv1alpha1.AccountCrNamespace}
-	if err = r.client.List(context.TODO(), listOps, accountList); err != nil {
+	listOpts := []client.ListOption{
+		client.InNamespace(awsv1alpha1.AccountCrNamespace),
+	}
+	if err = r.client.List(context.TODO(), accountList, listOpts...); err != nil {
 		reqLogger.Error(err, "Unable to get accountList")
 		return reconcile.Result{}, err
 	}

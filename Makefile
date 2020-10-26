@@ -16,6 +16,19 @@ default: gobuild
 
 # Extend Makefile after here
 
+# ==> HACK ==>
+# We have to tweak the YAML to run this on 3.11.
+# We'll add a target to do that, then override the `generate` target to
+# call it.
+.PHONY: crd-fixup
+crd-fixup:
+	yq d -i deploy/crds/aws.managed.openshift.io_accountclaims_crd.yaml spec.validation.openAPIV3Schema.type
+	yq d -i deploy/crds/aws.managed.openshift.io_accountpools_crd.yaml spec.validation.openAPIV3Schema.type
+	yq d -i deploy/crds/aws.managed.openshift.io_accounts_crd.yaml spec.validation.openAPIV3Schema.type
+	yq d -i deploy/crds/aws.managed.openshift.io_awsfederatedaccountaccesses_crd.yaml spec.validation.openAPIV3Schema.type
+	yq d -i deploy/crds/aws.managed.openshift.io_awsfederatedroles_crd.yaml spec.validation.openAPIV3Schema.type
+# <== HACK <==
+
 .PHONY: check-aws-account-id-env
 check-aws-account-id-env:
 ifndef OSD_STAGING_1_AWS_ACCOUNT_ID
@@ -79,14 +92,14 @@ create-accountclaim:
 	# Create Account
 	test/integration/api/create_account.sh
 	# Create accountclaim
-	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws_v1alpha1_accountclaim_cr.tmpl | oc apply -f -
+	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws.managed.openshift.io_v1alpha1_accountclaim_cr.tmpl | oc apply -f -
 	# Wait for accountclaim to become ready
 	@while true; do STATUS=$$(oc get accountclaim ${ACCOUNT_CLAIM_NAME} -n ${ACCOUNT_CLAIM_NAMESPACE} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${ACCOUNT_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 .PHONY: delete-accountclaim
 delete-accountclaim:
 	# Delete accountclaim
-	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws_v1alpha1_accountclaim_cr.tmpl | oc delete -f -
+	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws.managed.openshift.io_v1alpha1_accountclaim_cr.tmpl | oc delete -f -
 
 # Create awsfederatedrole "Read Only"
 .PHONY: create-awsfederatedrole
@@ -94,7 +107,7 @@ create-awsfederatedrole:
 	# Create Account
 	test/integration/api/create_account.sh
 	# Create Federated role
-	@oc apply -f deploy/crds/aws_v1alpha1_awsfederatedrole_readonly_cr.yaml
+	@oc apply -f deploy/crds/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml
 	# Wait for awsFederatedRole CR to become ready
 	@while true; do STATUS=$$(oc get awsfederatedrole -n ${NAMESPACE} ${AWS_FEDERATED_ROLE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Valid" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedRole CR ${AWS_FEDERATED_ROLE_NAME} failed to create"; exit 1; fi; sleep 1; done
 
@@ -102,7 +115,7 @@ create-awsfederatedrole:
 .PHONY: delete-awsfederatedrole
 delete-awsfederatedrole:
 	# Delete Federated role
-	@oc delete -f deploy/crds/aws_v1alpha1_awsfederatedrole_readonly_cr.yaml
+	@oc delete -f deploy/crds/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml
 	# Delete Account
 	test/integration/api/delete_account.sh
 	# Delete Secrets
@@ -121,8 +134,8 @@ test-awsfederatedrole: check-aws-account-id-env
 	# Create Account if not already created
 	test/integration/api/create_account.sh
 	# Create Federated Roles if not created
-	@oc apply -f deploy/crds/aws_v1alpha1_awsfederatedrole_readonly_cr.yaml
-	@oc apply -f deploy/crds/aws_v1alpha1_awsfederatedrole_networkmgmt_cr.yaml
+	@oc apply -f deploy/crds/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml
+	@oc apply -f deploy/crds/aws.managed.openshift.io_v1alpha1_awsfederatedrole_networkmgmt_cr.yaml
 	# Wait for readonly CR to become ready
 	@while true; do STATUS=$$(oc get awsfederatedrole -n ${NAMESPACE} read-only -o json | jq -r '.status.state'); if [ "$$STATUS" == "Valid" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedRole CR read-only failed to create"; exit 1; fi; sleep 1; done
 	# Wait for networkmgmt CR to become ready
@@ -130,8 +143,8 @@ test-awsfederatedrole: check-aws-account-id-env
 	# Test Federated Account Access
 	test/integration/create_awsfederatedaccountaccess.sh --role read-only --name test-federated-user-readonly
 	test/integration/create_awsfederatedaccountaccess.sh --role network-mgmt --name test-federated-user-network-mgmt
-	TEST_CR=test-federated-user-readonly TEST_ROLE_FILE=deploy/crds/aws_v1alpha1_awsfederatedrole_readonly_cr.yaml go test github.com/openshift/aws-account-operator/test/integration
-	TEST_CR=test-federated-user-network-mgmt TEST_ROLE_FILE=deploy/crds/aws_v1alpha1_awsfederatedrole_networkmgmt_cr.yaml go test github.com/openshift/aws-account-operator/test/integration
+	TEST_CR=test-federated-user-readonly TEST_ROLE_FILE=deploy/crds/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml go test github.com/openshift/aws-account-operator/test/integration
+	TEST_CR=test-federated-user-network-mgmt TEST_ROLE_FILE=deploy/crds/aws.managed.openshift.io_v1alpha1_awsfederatedrole_networkmgmt_cr.yaml go test github.com/openshift/aws-account-operator/test/integration
 	test/integration/delete_awsfederatedaccountaccess.sh --role read-only --name test-federated-user-readonly
 	test/integration/delete_awsfederatedaccountaccess.sh --role network-mgmt --name test-federated-user-network-mgmt
 	# Delete network-mgmt role
@@ -214,26 +227,26 @@ delete-ccs-2-secret:
 .PHONY: create-ccs-accountclaim
 create-ccs-accountclaim:
 	# Create ccs accountclaim
-	@oc process --local -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc apply -f -
+	@oc process --local -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME} -f hack/templates/aws.managed.openshift.io_v1alpha1_ccs_accountclaim_cr.tmpl | oc apply -f -
 	# Wait for accountclaim to become ready
 	@while true; do STATUS=$$(oc get accountclaim ${CCS_CLAIM_NAME} -n ${CCS_NAMESPACE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${CCS_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 .PHONY: create-ccs-2-accountclaim
 create-ccs-2-accountclaim:
 	# Create ccs accountclaim
-	@oc process --local -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME_2} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc apply -f -
+	@oc process --local -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME_2} -f hack/templates/aws.managed.openshift.io_v1alpha1_ccs_accountclaim_cr.tmpl | oc apply -f -
 	# Wait for accountclaim to become ready
 	@while true; do STATUS=$$(oc get accountclaim ${CCS_CLAIM_NAME} -n ${CCS_NAMESPACE_NAME_2} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${CCS_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 .PHONY: delete-ccs-accountclaim
 delete-ccs-accountclaim:
 	# Delete ccs accountclaim
-	@oc process --local -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc delete -f -
+	@oc process --local -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME} -f hack/templates/aws.managed.openshift.io_v1alpha1_ccs_accountclaim_cr.tmpl | oc delete -f -
 
 .PHONY: delete-ccs-2-accountclaim
 delete-ccs-2-accountclaim:
 	# Delete ccs accountclaim
-	@oc process --local -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME_2} -f hack/templates/aws_v1alpha1_ccs_accountclaim_cr.tmpl | oc delete -f -
+	@oc process --local -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p NAME=${CCS_CLAIM_NAME} -p NAMESPACE=${CCS_NAMESPACE_NAME_2} -f hack/templates/aws.managed.openshift.io_v1alpha1_ccs_accountclaim_cr.tmpl | oc delete -f -
 
 # Test CCS
 .PHONY: test-ccs
@@ -272,18 +285,18 @@ test-reuse: check-aws-account-id-env create-accountclaim-namespace create-accoun
 
 # Test secrets are what we expect them to be
 .PHONY: test-secrets
-test-secrets: 
+test-secrets:
 	# Test Secrets
 	test/integration/test_secrets.sh
 
 # Deploy the operator secrets, CRDs and namesapce.
 .PHONY: deploy-aws-account-operator-credentials
-deploy-aws-account-operator-credentials: check-aws-credentials 
+deploy-aws-account-operator-credentials: check-aws-credentials
 # Base64 Encode the AWS Credentials
 	$(eval ID=$(shell echo -n ${OPERATOR_ACCESS_KEY_ID} | base64 ))
 	$(eval KEY=$(shell echo -n ${OPERATOR_SECRET_ACCESS_KEY} | base64))
 # Create the aws-account-operator-credentials secret
-	@oc process --local -p OPERATOR_ACCESS_KEY_ID=${ID} -p OPERATOR_SECRET_ACCESS_KEY=${KEY} -p OPERATOR_NAMESPACE=aws-account-operator -f hack/templates/aws_v1alpha1_aws_account_operator_credentials.tmpl | oc apply -f -
+	@oc process --local -p OPERATOR_ACCESS_KEY_ID=${ID} -p OPERATOR_SECRET_ACCESS_KEY=${KEY} -p OPERATOR_NAMESPACE=aws-account-operator -f hack/templates/aws.managed.openshift.io_v1alpha1_aws_account_operator_credentials.tmpl | oc apply -f -
 
 .PHONY: predeploy-aws-account-operator
 predeploy-aws-account-operator:
@@ -292,7 +305,7 @@ predeploy-aws-account-operator:
 # Create aws-account-operator CRDs
 	@ls deploy/crds/*crd.yaml | xargs -L1 oc apply -f
 # Create zero size account pool
-	@oc apply -f hack/files/aws_v1alpha1_zero_size_accountpool.yaml
+	@oc apply -f hack/files/aws.managed.openshift.io_v1alpha1_zero_size_accountpool.yaml
 
 .PHONY: predeploy
 predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map
@@ -325,13 +338,13 @@ endif
 .PHONY: create-ou-map
 create-ou-map:
 # Create OU map
-	@oc process --local -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -p ACCOUNTLIMIT="0" -f hack/templates/aws_v1alpha1_configmap.tmpl | oc apply -f -
+	@oc process --local -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -p ACCOUNTLIMIT="0" -f hack/templates/aws.managed.openshift.io_v1alpha1_configmap.tmpl | oc apply -f -
 
 # Test delete ou map cr
 .PHONY: delete-ou-map
 delete-ou-map:
 # Delete OU map
-	@oc process --local -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -f hack/templates/aws_v1alpha1_configmap.tmpl | oc delete -f -
+	@oc process --local -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -f hack/templates/aws.managed.openshift.io_v1alpha1_configmap.tmpl | oc delete -f -
 
 # Test aws ou logic
 .PHONY: test-aws-ou-logic
@@ -345,4 +358,4 @@ test-aws-ou-logic: check-ou-mapping-configmap-env create-accountclaim-namespace 
 
 #s Test all
 .PHONY: test-all
-test-all: lint test test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic 
+test-all: lint test test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic

@@ -5,26 +5,26 @@ go 1.13
 require (
 	github.com/avast/retry-go v2.6.1+incompatible
 	github.com/aws/aws-sdk-go v1.34.14
-	github.com/evanphx/json-patch v4.5.0+incompatible // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-logr/logr v0.1.0
+	github.com/go-openapi/spec v0.17.2
 	github.com/golang/mock v1.3.1-0.20190508161146-9fa652df1129
-	github.com/gregjones/httpcache v0.0.0-20190212212710-3befbb6ad0cc // indirect
 	github.com/onsi/ginkgo v1.12.0
 	github.com/onsi/gomega v1.9.0
-	github.com/openshift/api v3.9.0+incompatible
-	github.com/openshift/operator-custom-metrics v0.2.1
+	github.com/openshift/api v3.9.1-0.20190424152011-77b8897ec79a+incompatible
+	github.com/openshift/operator-custom-metrics v0.4.1
 	github.com/operator-framework/operator-sdk v0.8.1
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v0.9.4
+	github.com/prometheus/client_golang v1.1.0
 	github.com/spf13/pflag v1.0.3
 	github.com/stretchr/testify v1.5.1
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
 	gopkg.in/yaml.v2 v2.2.4
-	k8s.io/api v0.0.0-20190612125737-db0771252981
-	k8s.io/apimachinery v0.0.0-20190612125636-6a5db36e93ad
-	k8s.io/client-go v11.0.0+incompatible
-	sigs.k8s.io/controller-runtime v0.1.12
+	k8s.io/api v0.15.7
+	k8s.io/apimachinery v0.15.7
+	k8s.io/client-go v11.0.1-0.20190409021438-1a26190bd76a+incompatible
+	k8s.io/kube-openapi v0.0.0-20190401085232-94e1e7b7574c
+	sigs.k8s.io/controller-runtime v0.3.0
 )
 
 replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
@@ -33,22 +33,24 @@ replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
 replace bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 
 // Operator-SDK rules below
-// Pinned to kubernetes-1.13.4
+// Pinned to kubernetes-1.14.1
 replace (
-	k8s.io/api => k8s.io/api v0.0.0-20190222213804-5cb15d344471
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.0.0-20190228180357-d002e88f6236
-	k8s.io/apimachinery => k8s.io/apimachinery v0.0.0-20190221213512-86fb29eff628
-	k8s.io/client-go => k8s.io/client-go v0.0.0-20190228174230-b40b2a5939e4
+	k8s.io/api => k8s.io/api v0.0.0-20190409021203-6e4e0e4f393b
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.0.0-20190409022649-727a075fdec8
+	k8s.io/apimachinery => k8s.io/apimachinery v0.0.0-20190404173353-6a84e37a896d
+	k8s.io/client-go => k8s.io/client-go v11.0.1-0.20190409021438-1a26190bd76a+incompatible
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.0.0-20190409023720-1bc0c81fa51d
 )
 
 replace (
-	github.com/coreos/prometheus-operator => github.com/coreos/prometheus-operator v0.29.0
-	// Pinned to v2.9.2 (kubernetes-1.13.1) so https://proxy.golang.org can
+	// Indirect operator-sdk dependencies use git.apache.org, which is frequently
+	// down. The github mirror should be used instead.
+	// Locking to a specific version (from 'go mod graph'):
+	git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999
+	github.com/coreos/prometheus-operator => github.com/coreos/prometheus-operator v0.31.1
+	// Pinned to v2.10.0 (kubernetes-1.14.1) so https://proxy.golang.org can
 	// resolve it correctly.
-	github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.0.0-20190424153033-d3245f150225
-	k8s.io/kube-state-metrics => k8s.io/kube-state-metrics v1.6.0
-	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.1.12
-	sigs.k8s.io/controller-tools => sigs.k8s.io/controller-tools v0.1.11-0.20190411181648-9d55346c2bde
+	github.com/prometheus/prometheus => github.com/prometheus/prometheus v1.8.2-0.20190525122359-d20e84d0fb64
 )
 
-replace github.com/operator-framework/operator-sdk => github.com/operator-framework/operator-sdk v0.10.0
+replace github.com/operator-framework/operator-sdk => github.com/operator-framework/operator-sdk v0.11.0

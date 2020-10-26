@@ -14,9 +14,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
@@ -102,8 +102,10 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	//Get the number of actual unclaimed AWS accounts in the pool
 	accountList := &awsv1alpha1.AccountList{}
 
-	listOps := &client.ListOptions{Namespace: awsv1alpha1.AccountCrNamespace}
-	if err = r.client.List(context.TODO(), listOps, accountList); err != nil {
+	listOpts := []client.ListOption{
+		client.InNamespace(awsv1alpha1.AccountCrNamespace),
+	}
+	if err = r.client.List(context.TODO(), accountList, listOpts...); err != nil {
 		return reconcile.Result{}, err
 	}
 
