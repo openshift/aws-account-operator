@@ -115,7 +115,7 @@ var _ = Describe("AccountClaim", func() {
 			}
 
 			objs := []runtime.Object{accountClaim, account}
-			r.client = &possiblyErroringFakeCtrlRuntimeClient{
+			r.client = &tpossiblyErroringFakeCtrlRuntimeClient{
 				fake.NewFakeClient(objs...),
 				true,
 			}

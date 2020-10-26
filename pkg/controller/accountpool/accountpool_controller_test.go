@@ -211,10 +211,12 @@ func verifyAccountPool(c client.Client, expected *awsv1alpha1.AccountPool) bool 
 
 func verifyAccountCreated(c client.Client, expected *awsv1alpha1.AccountPool) bool {
 
-	listOps := &client.ListOptions{Namespace: expected.Namespace}
+	listOpts := []client.ListOption{
+		client.InNamespace(expected.Namespace),
+	}
 	al := awsv1alpha1.AccountList{}
 
-	err := c.List(context.TODO(), listOps, &al)
+	err := c.List(context.TODO(), &al, listOpts...)
 
 	if err != nil {
 		return false

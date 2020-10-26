@@ -209,18 +209,18 @@ func (c *MetricsCollector) collect() {
 		claimed       string
 		reused        string
 	)
-	if err := c.store.List(ctx, &client.ListOptions{
-		Namespace: awsv1alpha1.AccountCrNamespace}, &accounts); err != nil {
+	if err := c.store.List(ctx, &accounts, []client.ListOption{
+		client.InNamespace(awsv1alpha1.AccountCrNamespace)}...); err != nil {
 		log.Error(err, "failed to list accounts")
 		return
 	}
 
-	if err := c.store.List(ctx, &client.ListOptions{}, &accountClaims); err != nil {
+	if err := c.store.List(ctx, &accountClaims, []client.ListOption{}...); err != nil {
 		log.Error(err, "failed to list account claims")
 		return
 	}
 
-	if err := c.store.List(ctx, &client.ListOptions{}, &accountPool); err != nil {
+	if err := c.store.List(ctx, &accountPool, []client.ListOption{}...); err != nil {
 		log.Error(err, "failed to list account pools")
 		return
 	}
