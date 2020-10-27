@@ -115,7 +115,7 @@ var _ = Describe("AccountClaim", func() {
 			}
 
 			objs := []runtime.Object{accountClaim, account}
-			r.client = &tpossiblyErroringFakeCtrlRuntimeClient{
+			r.client = &possiblyErroringFakeCtrlRuntimeClient{
 				fake.NewFakeClient(objs...),
 				true,
 			}
@@ -152,7 +152,8 @@ type possiblyErroringFakeCtrlRuntimeClient struct {
 
 func (p *possiblyErroringFakeCtrlRuntimeClient) Update(
 	ctx context.Context,
-	acc runtime.Object) error {
+	acc runtime.Object,
+	opts ...client.UpdateOption) error {
 	if p.shouldError {
 		return fixtures.Conflict
 	}
