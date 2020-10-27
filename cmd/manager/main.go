@@ -144,10 +144,9 @@ func main() {
 		}()
 	default:
 		//Create metrics endpoint and register metrics
-		metricsServer := metrics.NewBuilder().WithPort(metricsPort).WithPath(metricsPath).
+		metricsServer := metrics.NewBuilder("aws-account-operator", "aws-account-operator").WithPort(metricsPort).WithPath(metricsPath).
 			WithCollector(localmetrics.Collector).
 			WithRoute().
-			WithServiceName("aws-account-operator").
 			GetConfig()
 
 		// Configure metrics if it errors log the error but continue

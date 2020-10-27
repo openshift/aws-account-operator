@@ -10,19 +10,19 @@ require (
 	github.com/golang/mock v1.3.1-0.20190508161146-9fa652df1129
 	github.com/onsi/ginkgo v1.12.0
 	github.com/onsi/gomega v1.9.0
-	github.com/openshift/api v3.9.0+incompatible
-	github.com/openshift/operator-custom-metrics v0.2.1
+	github.com/openshift/api v3.9.1-0.20190424152011-77b8897ec79a+incompatible
+	github.com/openshift/operator-custom-metrics v0.4.1
 	github.com/operator-framework/operator-sdk v0.8.1
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.0.0
+	github.com/prometheus/client_golang v1.1.0
 	github.com/spf13/pflag v1.0.3
 	github.com/stretchr/testify v1.5.1
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
 	gopkg.in/yaml.v2 v2.2.4
-	k8s.io/api v0.0.0-20190918155943-95b840bb6a1f
-	k8s.io/apimachinery v0.0.0-20190913080033-27d36303b655
+	k8s.io/api v0.15.7
+	k8s.io/apimachinery v0.15.7
 	k8s.io/client-go v11.0.1-0.20190409021438-1a26190bd76a+incompatible
-	sigs.k8s.io/controller-runtime v0.2.0
+	sigs.k8s.io/controller-runtime v0.3.0
 )
 
 replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
