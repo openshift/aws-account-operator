@@ -126,6 +126,9 @@ func retryIfAwsServiceFailureOrInvalidToken(err error) bool {
 		// InvalidClientTokenId may be a transient auth issue, retry
 		case "InvalidClientTokenId":
 			return true
+		// AccessDenied happens when Eventual Consistency hasn't become consistent yet
+		case "AccessDenied":
+			return true
 		}
 	}
 	// Otherwise, do not retry
