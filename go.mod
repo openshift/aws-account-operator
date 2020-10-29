@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go v1.34.14
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-logr/logr v0.1.0
+	github.com/go-openapi/spec v0.17.2
 	github.com/golang/mock v1.3.1-0.20190508161146-9fa652df1129
 	github.com/onsi/ginkgo v1.12.0
 	github.com/onsi/gomega v1.9.0
@@ -22,6 +23,7 @@ require (
 	k8s.io/api v0.15.7
 	k8s.io/apimachinery v0.15.7
 	k8s.io/client-go v11.0.1-0.20190409021438-1a26190bd76a+incompatible
+	k8s.io/kube-openapi v0.0.0-20190401085232-94e1e7b7574c
 	sigs.k8s.io/controller-runtime v0.3.0
 )
 

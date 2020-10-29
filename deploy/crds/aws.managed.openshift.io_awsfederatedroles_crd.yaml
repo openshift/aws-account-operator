@@ -18,11 +18,12 @@ spec:
     listKind: AWSFederatedRoleList
     plural: awsfederatedroles
     singular: awsfederatedrole
-  scope: Namespaced
+  scope: Cluster
   subresources:
     status: {}
   validation:
     openAPIV3Schema:
+      description: AWSFederatedRole is the Schema for the awsfederatedroles API
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -37,6 +38,7 @@ spec:
         metadata:
           type: object
         spec:
+          description: AWSFederatedRoleSpec defines the desired state of AWSFederatedRole
           properties:
             awsCustomPolicy:
               description: AWSCustomPolicy is the defenition of a custom aws permission
@@ -44,12 +46,16 @@ spec:
               properties:
                 awsStatements:
                   items:
+                    description: StatementEntry is the smallest gourping of permissions
+                      required to create an aws policy
                     properties:
                       action:
                         items:
                           type: string
                         type: array
                       condition:
+                        description: Condition contains the aws Condition map to use
+                          for IAM roles
                         properties:
                           StringEquals:
                             additionalProperties:
@@ -60,6 +66,8 @@ spec:
                       effect:
                         type: string
                       principal:
+                        description: Principal  contains the aws account id for the
+                          principle entity of a role
                         properties:
                           AWS:
                             description: aws account id
@@ -74,8 +82,8 @@ spec:
                           type: string
                         type: array
                     required:
-                    - effect
                     - action
+                    - effect
                     type: object
                   type: array
                 description:
@@ -83,9 +91,9 @@ spec:
                 name:
                   type: string
               required:
-              - name
-              - description
               - awsStatements
+              - description
+              - name
               type: object
             awsManagedPolicies:
               description: AWSManagedPolicies is a list of amazong managed policies
@@ -102,13 +110,16 @@ spec:
                 OCM user interface
               type: string
           required:
-          - roleDisplayName
           - roleDescription
+          - roleDisplayName
           type: object
         status:
+          description: AWSFederatedRoleStatus defines the observed state of AWSFederatedRole
           properties:
             conditions:
               items:
+                description: AWSFederatedRoleCondition is a Kubernetes condition type
+                  for tracking AWS Federated Role status changes
                 properties:
                   lastProbeTime:
                     description: LastProbeTime is the last time we probed the condition.
@@ -134,16 +145,19 @@ spec:
                     description: Type is the type of the condition.
                     type: string
                 required:
-                - type
                 - status
+                - type
                 type: object
               type: array
             state:
+              description: AWSFederatedRoleState defines the various status an AWSFederatedRole
+                CR can have
               type: string
           required:
-          - state
           - conditions
+          - state
           type: object
+      type: object
   version: v1alpha1
   versions:
   - name: v1alpha1

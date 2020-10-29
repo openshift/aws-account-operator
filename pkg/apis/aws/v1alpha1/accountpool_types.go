@@ -36,6 +36,7 @@ type AccountPoolStatus struct {
 // +kubebuilder:printcolumn:name="Pool Size",type="integer",JSONPath=".status.poolSize",description="Desired pool size"
 // +kubebuilder:printcolumn:name="Unclaimed Accounts",type="integer",JSONPath=".status.unclaimedAccounts",description="Number of unclaimed accounts"
 // +kubebuilder:printcolumn:name="Claimed Accounts",type="integer",JSONPath=".status.claimedAccounts",description="Number of claimed accounts"
+// +kubebuilder:resource:path=accountpools,scope=Cluster
 type AccountPool struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

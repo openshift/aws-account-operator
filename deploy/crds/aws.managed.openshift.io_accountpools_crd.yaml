@@ -22,11 +22,12 @@ spec:
     listKind: AccountPoolList
     plural: accountpools
     singular: accountpool
-  scope: Namespaced
+  scope: Cluster
   subresources:
     status: {}
   validation:
     openAPIV3Schema:
+      description: AccountPool is the Schema for the accountpools API
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -41,33 +42,32 @@ spec:
         metadata:
           type: object
         spec:
+          description: AccountPoolSpec defines the desired state of AccountPool
           properties:
             poolSize:
-              format: int64
               type: integer
           required:
           - poolSize
           type: object
         status:
+          description: AccountPoolStatus defines the observed state of AccountPool
           properties:
             claimedAccounts:
-              format: int64
               type: integer
             poolSize:
               description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
                 of cluster Important: Run "operator-sdk generate k8s" to regenerate
                 code after modifying this file Add custom validation using kubebuilder
                 tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
-              format: int64
               type: integer
             unclaimedAccounts:
-              format: int64
               type: integer
           required:
+          - claimedAccounts
           - poolSize
           - unclaimedAccounts
-          - claimedAccounts
           type: object
+      type: object
   version: v1alpha1
   versions:
   - name: v1alpha1

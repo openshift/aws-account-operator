@@ -27,6 +27,8 @@ type AccountClaimSpec struct {
 // AccountClaimStatus defines the observed state of AccountClaim
 // +k8s:openapi-gen=true
 type AccountClaimStatus struct {
+	// +listType=map
+	// +listMapKey=type
 	Conditions []AccountClaimCondition `json:"conditions"`
 
 	State ClaimStatus `json:"state"`
@@ -89,6 +91,7 @@ const (
 // +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state",description="Status the account claim"
 // +kubebuilder:printcolumn:name="Account",type="string",JSONPath=".spec.accountLink",description="Account CR link for the account claim"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Age since the account claim was created"
+// +kubebuilder:resource:path=accountclaims,scope=Cluster
 type AccountClaim struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

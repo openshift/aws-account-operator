@@ -22,11 +22,12 @@ spec:
     listKind: AccountClaimList
     plural: accountclaims
     singular: accountclaim
-  scope: Namespaced
+  scope: Cluster
   subresources:
     status: {}
   validation:
     openAPIV3Schema:
+      description: AccountClaim is the Schema for the accountclaims API
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -41,15 +42,21 @@ spec:
         metadata:
           type: object
         spec:
+          description: AccountClaimSpec defines the desired state of AccountClaim
           properties:
             accountLink:
               type: string
             accountOU:
               type: string
             aws:
+              description: Aws struct contains specific AWS account configuration
+                options
               properties:
                 regions:
                   items:
+                    description: AwsRegions struct contains specific AwsRegion information,
+                      at the moment its just name but in the future it will contain
+                      specific resource limits etc.
                     properties:
                       name:
                         type: string
@@ -61,6 +68,7 @@ spec:
               - regions
               type: object
             awsCredentialSecret:
+              description: SecretRef contains the name of a secret and its namespace
               properties:
                 name:
                   type: string
@@ -75,6 +83,7 @@ spec:
             byocAWSAccountID:
               type: string
             byocSecretRef:
+              description: SecretRef contains the name of a secret and its namespace
               properties:
                 name:
                   type: string
@@ -95,19 +104,22 @@ spec:
                 name:
                   type: string
               required:
-              - name
               - id
+              - name
               type: object
           required:
-          - legalEntity
-          - awsCredentialSecret
-          - aws
           - accountLink
+          - aws
+          - awsCredentialSecret
+          - legalEntity
           type: object
         status:
+          description: AccountClaimStatus defines the observed state of AccountClaim
           properties:
             conditions:
               items:
+                description: AccountClaimCondition contains details for the current
+                  condition of a AWS account claim
                 properties:
                   lastProbeTime:
                     description: LastProbeTime is the last time we probed the condition.
@@ -133,16 +145,18 @@ spec:
                     description: Type is the type of the condition.
                     type: string
                 required:
-                - type
                 - status
+                - type
                 type: object
               type: array
             state:
+              description: ClaimStatus is a valid value from AccountClaim.Status
               type: string
           required:
           - conditions
           - state
           type: object
+      type: object
   version: v1alpha1
   versions:
   - name: v1alpha1

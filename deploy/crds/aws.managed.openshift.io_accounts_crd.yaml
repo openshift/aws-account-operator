@@ -26,11 +26,12 @@ spec:
     listKind: AccountList
     plural: accounts
     singular: account
-  scope: Namespaced
+  scope: Cluster
   subresources:
     status: {}
   validation:
     openAPIV3Schema:
+      description: Account is the Schema for the accounts API
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -45,6 +46,7 @@ spec:
         metadata:
           type: object
         spec:
+          description: AccountSpec defines the desired state of Account
           properties:
             awsAccountID:
               description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -61,21 +63,23 @@ spec:
             iamUserSecret:
               type: string
             legalEntity:
+              description: LegalEntity contains Red Hat specific identifiers to the
+                original creator the clusters
               properties:
                 id:
                   type: string
                 name:
                   type: string
               required:
-              - name
               - id
+              - name
               type: object
           required:
           - awsAccountID
           - iamUserSecret
-          - claimLink
           type: object
         status:
+          description: AccountStatus defines the observed state of Account
           properties:
             claimed:
               description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
@@ -85,6 +89,8 @@ spec:
               type: boolean
             conditions:
               items:
+                description: AccountCondition contains details for the current condition
+                  of a AWS account
                 properties:
                   lastProbeTime:
                     description: LastProbeTime is the last time we probed the condition.
@@ -122,6 +128,7 @@ spec:
             supportCaseID:
               type: string
           type: object
+      type: object
   version: v1alpha1
   versions:
   - name: v1alpha1

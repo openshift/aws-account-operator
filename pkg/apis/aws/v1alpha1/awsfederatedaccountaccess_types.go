@@ -34,6 +34,8 @@ type AWSFederatedAccountAccessSpec struct {
 // AWSFederatedAccountAccessStatus defines the observed state of AWSFederatedAccountAccess
 // +k8s:openapi-gen=true
 type AWSFederatedAccountAccessStatus struct {
+	// +listType=map
+	// +listMapKey=type`
 	Conditions []AWSFederatedAccountAccessCondition `json:"conditions"`
 	State      AWSFederatedAccountAccessState       `json:"state"`
 	ConsoleURL string                               `json:"consoleURL,omitempty"`
@@ -90,6 +92,7 @@ type AWSFederatedRoleRef struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state",description="Status the federated account access user"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Age since federated account access user was created"
+// +kubebuilder:resource:path=awsfederatedaccountaccesses,scope=Cluster
 type AWSFederatedAccountAccess struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

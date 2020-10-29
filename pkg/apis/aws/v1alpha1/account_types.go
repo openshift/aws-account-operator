@@ -50,8 +50,10 @@ type AccountStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	Claimed                  bool               `json:"claimed,omitempty"`
-	SupportCaseID            string             `json:"supportCaseID,omitempty"`
+	Claimed       bool   `json:"claimed,omitempty"`
+	SupportCaseID string `json:"supportCaseID,omitempty"`
+	// +listType=map
+	// +listMapKey=type`
 	Conditions               []AccountCondition `json:"conditions,omitempty"`
 	State                    string             `json:"state,omitempty"`
 	RotateCredentials        bool               `json:"rotateCredentials,omitempty"`
@@ -112,6 +114,7 @@ const (
 // +kubebuilder:printcolumn:name="Claimed",type="boolean",JSONPath=".status.claimed",description="True if the account has been claimed"
 // +kubebuilder:printcolumn:name="Claim",type="string",JSONPath=".spec.claimLink",description="Link to the account claim CR"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Age since the account was created"
+// +kubebuilder:resource:path=accounts,scope=Cluster
 type Account struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
