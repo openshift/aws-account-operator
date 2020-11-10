@@ -14,11 +14,13 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
+	"github.com/openshift/aws-account-operator/version"
 	"github.com/openshift/operator-custom-metrics/pkg/metrics"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/log/zap"
@@ -51,9 +53,10 @@ var (
 var log = logf.Log.WithName("cmd")
 
 func printVersion() {
+	log.Info(fmt.Sprintf("Operator Version: %s", version.Version))
+	log.Info(fmt.Sprintf("Operator-sdk Version: %v", sdkVersion.Version))
 	log.Info(fmt.Sprintf("Go Version: %s", runtime.Version()))
 	log.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
-	log.Info(fmt.Sprintf("Version of operator-sdk: %v", sdkVersion.Version))
 }
 
 func main() {
