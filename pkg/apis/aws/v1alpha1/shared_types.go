@@ -112,6 +112,12 @@ var ErrChildNotFound = errors.New("ChildNotFoundInOU")
 // ErrUnexpectedValue indicates that a given variable has an unespected nil value
 var ErrUnexpectedValue = errors.New("UnexpectedValue")
 
+// ErrInvalidToken indiacates an invalid token
+var ErrInvalidToken = errors.New("InvalidClientTokenId")
+
+// ErrAccessDenied indicates an AWS error from an API call
+var ErrAccessDenied = errors.New("AuthorizationError")
+
 // Shared variables
 
 // UIDLabel is the string for the uid label on AWS Federated Account Access CRs

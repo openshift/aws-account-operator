@@ -89,12 +89,24 @@ const (
 	AccountReady AccountConditionType = "Ready"
 	// AccountFailed is set when account creation has failed
 	AccountFailed AccountConditionType = "Failed"
+	// AccountCreationFailed is set during AWS account creation
+	AccountCreationFailed AccountConditionType = "AccountCreationFailed"
 	// AccountPending is set when account creation is pending
 	AccountPending AccountConditionType = "Pending"
 	// AccountPendingVerification is set when account creation is pending
 	AccountPendingVerification AccountConditionType = "PendingVerification"
 	// AccountReused is set when account is reused
 	AccountReused AccountConditionType = "Reused"
+	// AccountClientError is set when there was an issue getting a client
+	AccountClientError AccountConditionType = "AccountClientError"
+	// AccountAuthorizationError indicates an autherization error occured
+	AccountAuthorizationError AccountConditionType = "AuthorizationError"
+	// AccountAuthenticationError indicates an authentication error occured
+	AccountAuthenticationError AccountConditionType = "AuthenticationError"
+	// AccountUnhandledError indicates a error that isn't handled, probably a go error
+	AccountUnhandledError AccountConditionType = "UnhandledError"
+	// AccountInternalError is set when a serious internal issue arrises
+	AccountInternalError AccountConditionType = "InternalError"
 	// AccountInitializingRegions indicates we've kicked off the process of creating and terminating
 	// instances in all supported regions
 	AccountInitializingRegions = "InitializingRegions"
@@ -137,7 +149,21 @@ func init() {
 
 //IsFailed returns true if an account is in a failed state
 func (a *Account) IsFailed() bool {
-	return a.Status.State == string(AccountFailed)
+	failedStates := [7]string{
+		string(AccountFailed),
+		string(AccountCreationFailed),
+		string(AccountClientError),
+		string(AccountAuthorizationError),
+		string(AccountAuthenticationError),
+		string(AccountUnhandledError),
+		string(AccountInternalError),
+	}
+	for _, state := range failedStates {
+		if a.Status.State == state {
+			return true
+		}
+	}
+	return false
 }
 
 //HasState returns true if an account has a state set at all

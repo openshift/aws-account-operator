@@ -18,3 +18,17 @@ func SetAccountStatus(awsAccount *awsv1alpha1.Account, message string, ctype aws
 	)
 	awsAccount.Status.State = state
 }
+
+// SetAccountClaimStatus sets the condition and state of an accountClaim
+func SetAccountClaimStatus(awsAccountClaim *awsv1alpha1.AccountClaim, message string, reason string, ctype awsv1alpha1.AccountClaimConditionType, state awsv1alpha1.ClaimStatus) {
+	awsAccountClaim.Status.Conditions = SetAccountClaimCondition(
+		awsAccountClaim.Status.Conditions,
+		ctype,
+		corev1.ConditionTrue,
+		reason,
+		message,
+		UpdateConditionNever,
+		awsAccountClaim.Spec.BYOC,
+	)
+	awsAccountClaim.Status.State = state
+}
