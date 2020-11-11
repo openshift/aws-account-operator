@@ -111,6 +111,10 @@ func TestReconcileAccountPool(t *testing.T) {
 				},
 			},
 			expectedAccountPool: awsv1alpha1.AccountPool{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AccountPool",
+					APIVersion: "aws.managed.openshift.io/v1alpha1",
+				},
 				ObjectMeta: metav1.ObjectMeta{
 
 					Name:      "test",
@@ -130,6 +134,10 @@ func TestReconcileAccountPool(t *testing.T) {
 			name: "Account count < Pool Size",
 			localObjects: []runtime.Object{
 				&awsv1alpha1.AccountPool{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "AccountPool",
+						APIVersion: "aws.managed.openshift.io/v1alpha1",
+					},
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "test",
 						Namespace: "aws-account-operator",
@@ -144,6 +152,10 @@ func TestReconcileAccountPool(t *testing.T) {
 				},
 			},
 			expectedAccountPool: awsv1alpha1.AccountPool{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AccountPool",
+					APIVersion: "aws.managed.openshift.io/v1alpha1",
+				},
 				ObjectMeta: metav1.ObjectMeta{
 
 					Name:      "test",
@@ -175,9 +187,9 @@ func TestReconcileAccountPool(t *testing.T) {
 			}
 
 			ap := awsv1alpha1.AccountPool{}
-			err := mocks.fakeKubeClient.Get(context.TODO(), types.NamespacedName{Name: "test", Namespace: "test"}, &ap)
+			err := mocks.fakeKubeClient.Get(context.TODO(), types.NamespacedName{Name: "test", Namespace: "aws-account-operator"}, &ap)
 			if err != nil {
-				fmt.Printf("Failed returning mock accountPool in accountpool controller tests")
+				fmt.Printf("Failed returning mock accountPool in accountpool controller tests: %s\n", err)
 			}
 
 			_, err = rap.Reconcile(reconcile.Request{
@@ -199,10 +211,12 @@ func verifyAccountPool(c client.Client, expected *awsv1alpha1.AccountPool) bool 
 	err := c.Get(context.TODO(), types.NamespacedName{Name: expected.Name, Namespace: expected.Namespace}, &ap)
 
 	if err != nil {
+		fmt.Printf("Failed verifying accountPool: %s\n", err)
 		return false
 	}
 
 	if !reflect.DeepEqual(ap, *expected) {
+		fmt.Printf("Expected:\n%+v\nGot:\n%+v", *expected, ap)
 		return false
 	}
 
