@@ -32,7 +32,7 @@ OPERATOR_SECRET_ACCESS_KEY
 
 These only need to be set the first time you deploy the operator locally.  Then, run `make predeploy`.
 
-Then, you should be able to run `operator-sdk up local --namespace aws-account-operator`, and you're up and running.
+Then, you should be able to run `operator-sdk run --local --namespace aws-account-operator`, and you're up and running.
 
 ## Testing
 

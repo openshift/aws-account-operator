@@ -30,7 +30,7 @@ const (
 	// envDevMode is the name of the env var we set to indicate we're running in a development
 	// environment vs. production. Set it to one of the DevMode* consts defined below.
 	// For example:
-	// * Running locally: `FORCE_DEV_MODE=local operator-sdk up local`
+	// * Running locally: `FORCE_DEV_MODE=local operator-sdk run --local`
 	// * Running in a cluster:
 	//   . Edit deploy/operator.yaml. Under .spec.template.spec.env, add:
 	//         - name: FORCE_DEV_MODE
