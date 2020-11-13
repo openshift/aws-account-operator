@@ -13,6 +13,7 @@ require (
 	github.com/onsi/gomega v1.9.0
 	github.com/openshift/api v3.9.1-0.20190924102528-32369d4db2ad+incompatible
 	github.com/openshift/operator-custom-metrics v0.4.1
+	github.com/operator-framework/operator-sdk v0.16.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.2.1
 	github.com/rkt/rkt v1.30.0
@@ -31,10 +32,7 @@ replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
 // Fixes missing bitbucket dependency; replaces with same fork k8s uses
 replace bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 
-require (
-	github.com/operator-framework/operator-sdk v0.15.2
-	sigs.k8s.io/controller-runtime v0.4.0
-)
+require sigs.k8s.io/controller-runtime v0.4.0
 
 // Pinned to kubernetes-1.16.2
 replace (
