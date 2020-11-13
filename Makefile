@@ -8,26 +8,14 @@ include hack/scripts/test_envs
 
 export AWS_IAM_ARN := $(shell aws sts get-caller-identity --profile=osd-staging-2 | jq -r '.Arn')
 
-# Include shared Makefiles
-include project.mk
-include standard.mk
+# Boilerplate
+include boilerplate/generated-includes.mk
 
-default: gobuild
+.PHONY: boilerplate-update
+boilerplate-update:
+	@boilerplate/update
 
 # Extend Makefile after here
-
-# ==> HACK ==>
-# We have to tweak the YAML to run this on 3.11.
-# We'll add a target to do that, then override the `generate` target to
-# call it.
-.PHONY: crd-fixup
-crd-fixup:
-	yq d -i deploy/crds/aws.managed.openshift.io_accountclaims_crd.yaml spec.validation.openAPIV3Schema.type
-	yq d -i deploy/crds/aws.managed.openshift.io_accountpools_crd.yaml spec.validation.openAPIV3Schema.type
-	yq d -i deploy/crds/aws.managed.openshift.io_accounts_crd.yaml spec.validation.openAPIV3Schema.type
-	yq d -i deploy/crds/aws.managed.openshift.io_awsfederatedaccountaccesses_crd.yaml spec.validation.openAPIV3Schema.type
-	yq d -i deploy/crds/aws.managed.openshift.io_awsfederatedroles_crd.yaml spec.validation.openAPIV3Schema.type
-# <== HACK <==
 
 .PHONY: check-aws-account-id-env
 check-aws-account-id-env:
@@ -49,13 +37,6 @@ endif
 ifndef OSD_STAGING_1_OU_BASE_ID
 	$(error OSD_STAGING_1_OU_BASE_ID is undefined)
 endif
-
-.PHONY: docker-build
-docker-build: build
-
-.PHONY: lint
-lint:
-	golangci-lint run --max-issues-per-linter 0 --max-same-issues 0
 
 # Create account
 .PHONY: create-account

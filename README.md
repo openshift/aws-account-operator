@@ -1,5 +1,7 @@
 # AWS Account Operator
 
+[![codecov](https://codecov.io/gh/openshift/aws-account-operator/branch/master/graph/badge.svg)](https://codecov.io/gh/openshift/aws-account-operator)
+
 ## General Overview
 
 The operator is responsible for creating and maintaining a pool of AWS accounts and assigning accounts to AccountClaims. The operator creates the account in AWS, does initial setup and configuration of the those accounts, creates IAM resources and expose credentials for a IAM user with enough permissions to provision an OpenShift 4.x cluster.

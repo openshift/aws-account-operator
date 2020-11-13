@@ -77,3 +77,9 @@ tags
 .idea/*
 .history
 # End of https://www.gitignore.io/api/go,vim,emacs,visualstudiocode
+
+# Operator-SDK/Boilerplate config
+.operator-sdk/*
+
+# Python venv directory in use by Boilerplate golang-osd-operator/ensure.sh
+.venv/*
