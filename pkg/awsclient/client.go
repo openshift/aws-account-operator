@@ -22,7 +22,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/aws/aws-sdk-go/service/servicequotas"
 	"github.com/aws/aws-sdk-go/service/servicequotas/servicequotasiface"
-	"github.com/golang/mock/gomock"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -42,7 +41,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts/stsiface"
 	"github.com/aws/aws-sdk-go/service/support"
 	"github.com/aws/aws-sdk-go/service/support/supportiface"
-	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
@@ -53,7 +51,7 @@ const (
 	awsCredsSecretAccessKey = "aws_secret_access_key"
 )
 
-//go:generate mockgen -source=./client.go -destination=./mock/client_generated.go -package=mock
+//go:generate mockgen -source=./client.go -destination=./mock/zz_generated.mock_client.go -package=mock
 
 // Client is a wrapper object for actual AWS SDK clients to allow for easier testing.
 type Client interface {
@@ -478,36 +476,4 @@ func (rp *Builder) GetClient(controllerName string, kubeClient kubeclientpkg.Cli
 		return nil, err
 	}
 	return awsClient, nil
-}
-
-// MockBuilder is an IBuilder implementation that knows how to produce a mocked AWS Client for
-// testing purposes. To facilitate use of the mocks, this IBuilder's GetClient method always
-// returns the same Client.
-type MockBuilder struct {
-	MockController *gomock.Controller
-	// cachedClient gives this singleton behavior.
-	cachedClient Client
-}
-
-// GetClient generates a mocked AWS client using the embedded MockController.
-// The arguments are ignored, and the error is always nil.
-// The returned client is a singleton for any given MockBuilder instance, so you can do e.g.
-//    mp.GetClient(...).EXPECT()...
-// and then when the code uses a client created via GetClient(), it'll be using the same client.
-func (mp *MockBuilder) GetClient(controllerName string, kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error) {
-	if mp.cachedClient == nil {
-		mp.cachedClient = mock.NewMockClient(mp.MockController)
-	}
-	return mp.cachedClient, nil
-}
-
-// GetMockClient is a convenience method to be called only from tests. It returns the (singleton)
-// mocked AWS Client as a MockClient so it can be EXPECT()ed upon.
-func GetMockClient(b IBuilder) *mock.MockClient {
-	// Make sure this is only called from tests
-	_ = b.(*MockBuilder)
-	// The arguments don't matter. This returns a Client
-	c, _ := b.GetClient("", nil, NewAwsClientInput{})
-	// What we want is a MockClient
-	return c.(*mock.MockClient)
 }

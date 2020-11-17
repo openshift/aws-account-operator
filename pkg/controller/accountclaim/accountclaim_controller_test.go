@@ -9,7 +9,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
-	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/test/fixtures"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -65,7 +65,7 @@ var _ = Describe("AccountClaim", func() {
 		r = &ReconcileAccountClaim{
 			// Test cases need to set fakeClient.
 			scheme: scheme.Scheme,
-			awsClientBuilder: &awsclient.MockBuilder{
+			awsClientBuilder: &mock.Builder{
 				MockController: ctrl,
 			},
 		}
@@ -129,7 +129,7 @@ var _ = Describe("AccountClaim", func() {
 			// TODO: As written, this is just triggering error paths for each of the cleanup
 			//       funcs, proving that errors in those cleanups don't propagate up to Reconcile.
 			//       Once that's fixed, these will need to be changed to do more realistic things.
-			mockAWSClient := awsclient.GetMockClient(r.awsClientBuilder)
+			mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
 			// Use a bogus error, just so we can fail AWS calls.
 			theErr := awserr.NewBatchError("foo", "bar", []error{})
 			mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(nil, theErr)
