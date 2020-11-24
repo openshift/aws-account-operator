@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
 // NewReconcilerWithMetrics wraps an existing Reconciler such that calls to Reconcile report the

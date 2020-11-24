@@ -81,7 +81,7 @@ func (in *AWSFederatedAccountAccessCondition) DeepCopy() *AWSFederatedAccountAcc
 func (in *AWSFederatedAccountAccessList) DeepCopyInto(out *AWSFederatedAccountAccessList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]AWSFederatedAccountAccess, len(*in))
@@ -201,7 +201,7 @@ func (in *AWSFederatedRoleCondition) DeepCopy() *AWSFederatedRoleCondition {
 func (in *AWSFederatedRoleList) DeepCopyInto(out *AWSFederatedRoleList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]AWSFederatedRole, len(*in))
@@ -385,7 +385,7 @@ func (in *AccountClaimCondition) DeepCopy() *AccountClaimCondition {
 func (in *AccountClaimList) DeepCopyInto(out *AccountClaimList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]AccountClaim, len(*in))
@@ -479,7 +479,7 @@ func (in *AccountCondition) DeepCopy() *AccountCondition {
 func (in *AccountList) DeepCopyInto(out *AccountList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]Account, len(*in))
@@ -540,7 +540,7 @@ func (in *AccountPool) DeepCopyObject() runtime.Object {
 func (in *AccountPoolList) DeepCopyInto(out *AccountPoolList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]AccountPool, len(*in))
