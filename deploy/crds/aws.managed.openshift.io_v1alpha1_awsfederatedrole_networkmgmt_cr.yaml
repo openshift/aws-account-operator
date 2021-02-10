@@ -6,6 +6,7 @@ metadata:
 spec:
   roleDisplayName: Network management
   roleDescription: User can view all AWS resources, and can edit VPC related resources to enable services such as IPsec VPN and VPC peering.
+  managed: false
   # Custom policy definition 
   awsCustomPolicy:
     name:  CustomerAdministratorAccess

@@ -4,14 +4,14 @@ metadata:
   name: awsfederatedaccountaccesses.aws.managed.openshift.io
 spec:
   additionalPrinterColumns:
-    - JSONPath: .status.state
-      description: Status the federated account access user
-      name: State
-      type: string
-    - JSONPath: .metadata.creationTimestamp
-      description: Age since federated account access user was created
-      name: Age
-      type: date
+  - JSONPath: .status.state
+    description: Status the federated account access user
+    name: State
+    type: string
+  - JSONPath: .metadata.creationTimestamp
+    description: Age since federated account access user was created
+    name: Age
+    type: date
   group: aws.managed.openshift.io
   names:
     kind: AWSFederatedAccountAccess
@@ -23,69 +23,82 @@ spec:
     status: {}
   validation:
     openAPIV3Schema:
-      description: AWSFederatedAccountAccess is the Schema for the awsfederatedaccountaccesses API
+      description: AWSFederatedAccountAccess is the Schema for the awsfederatedaccountaccesses
+        API
       properties:
         apiVersion:
-          description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
           type: string
         kind:
-          description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
           type: string
         metadata:
           type: object
         spec:
-          description: AWSFederatedAccountAccessSpec defines the desired state of AWSFederatedAccountAccess
+          description: AWSFederatedAccountAccessSpec defines the desired state of
+            AWSFederatedAccountAccess
           properties:
             awsCustomerCredentialSecret:
-              description: AWSCustomerCredentialSecret holds the credentials to the cluster account where the role wil be created
+              description: AWSCustomerCredentialSecret holds the credentials to the
+                cluster account where the role wil be created
               properties:
                 name:
                   type: string
                 namespace:
                   type: string
               required:
-                - name
-                - namespace
+              - name
+              - namespace
               type: object
             awsFederatedRole:
-              description: FederatedRoleName must be the name of a federatedrole cr that currently exists
+              description: FederatedRoleName must be the name of a federatedrole cr
+                that currently exists
               properties:
                 name:
                   type: string
                 namespace:
                   type: string
               required:
-                - name
-                - namespace
+              - name
+              - namespace
               type: object
             externalCustomerAWSIAMARN:
               description: ExternalCustomerAWSARN holds the external AWS IAM ARN
               type: string
           required:
-            - awsCustomerCredentialSecret
-            - awsFederatedRole
-            - externalCustomerAWSIAMARN
+          - awsCustomerCredentialSecret
+          - awsFederatedRole
+          - externalCustomerAWSIAMARN
           type: object
         status:
-          description: AWSFederatedAccountAccessStatus defines the observed state of AWSFederatedAccountAccess
+          description: AWSFederatedAccountAccessStatus defines the observed state
+            of AWSFederatedAccountAccess
           properties:
             conditions:
               items:
-                description: AWSFederatedAccountAccessCondition defines a current condition state of the account
+                description: AWSFederatedAccountAccessCondition defines a current
+                  condition state of the account
                 properties:
                   lastProbeTime:
                     description: LastProbeTime is the last time we probed the condition.
                     format: date-time
                     type: string
                   lastTransitionTime:
-                    description: LastTransitionTime is the laste time the condition transitioned from one status to another.
+                    description: LastTransitionTime is the laste time the condition
+                      transitioned from one status to another.
                     format: date-time
                     type: string
                   message:
-                    description: Message is a human-readable message indicating details about last transition.
+                    description: Message is a human-readable message indicating details
+                      about last transition.
                     type: string
                   reason:
-                    description: Reason is a unique, one-word, CamelCase reason for the condition's last transition.
+                    description: Reason is a unique, one-word, CamelCase reason for
+                      the condition's last transition.
                     type: string
                   status:
                     description: Status is the status of the condition
@@ -94,21 +107,23 @@ spec:
                     description: Type is the type of the condition.
                     type: string
                 required:
-                  - status
-                  - type
+                - status
+                - type
                 type: object
               type: array
             consoleURL:
               type: string
             state:
-              description: AWSFederatedAccountAccessState defines the various status an FederatedAccountAccess CR can have
+              description: AWSFederatedAccountAccessState defines the various status
+                an FederatedAccountAccess CR can have
               type: string
           required:
-            - conditions
-            - state
+          - conditions
+          - state
           type: object
+      type: object
   version: v1alpha1
   versions:
-    - name: v1alpha1
-      served: true
-      storage: true
+  - name: v1alpha1
+    served: true
+    storage: true

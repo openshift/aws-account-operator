@@ -129,10 +129,6 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		}
 	}
 
-	// If the CR is known to be Valid or Invalid, doesn't need to be reconciled.
-	if instance.Status.State == awsv1alpha1.AWSFederatedRoleStateValid || instance.Status.State == awsv1alpha1.AWSFederatedRoleStateInvalid {
-		return reconcile.Result{}, nil
-	}
 	// Setup AWS client
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 		SecretName: awsSecretName,
@@ -150,7 +146,15 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	jsonPolicy, err := utils.MarshalIAMPolicy(*instance)
 	if err != nil {
 		reqLogger.Error(err, "failed marshalling IAM Policy", "instanceRoleName", instance.Spec.RoleDisplayName)
-		return reconcile.Result{}, err
+		utils.SetAWSFederatedRoleCondition(
+			instance.Status.Conditions,
+			awsv1alpha1.AWSFederatedRoleInvalid,
+			"True",
+			"MarshallingError",
+			"UnableToMarshalJsonFromPolicy",
+			utils.UpdateConditionNever)
+		// We don't want to return the error here because we don't want to continue to retry if the policy is bad
+		return reconcile.Result{}, nil
 	}
 
 	// If AWSCustomPolicy and AWSManagedPolicies don't exist, update condition and exit
@@ -211,7 +215,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		log.Error(err, "Error deleting custom policy")
 		return reconcile.Result{}, err
 	}
-	log.Info("Valided Custom Policies")
+	log.Info("Validated Custom Policies")
 
 	// Ensures the managed IAM Policies exist
 	log.Info("Validating Managed Policies")
@@ -263,7 +267,49 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		log.Error(err, "Error updating conditions")
 		return reconcile.Result{}, err
 	}
+
+	if instance.Spec.Managed {
+		r.deployManagedRole(instance)
+	}
+
 	return reconcile.Result{}, nil
+}
+
+// deleteManagedRole will update Account CRs to remove the annotation and therefore remove the role from the account
+func (r *ReconcileAWSFederatedRole) deleteManagedRole(role *awsv1alpha1.AWSFederatedRole) {
+	// First get a list of all accounts
+	accounts := &awsv1alpha1.AccountList{}
+	r.client.List(context.TODO(), accounts)
+
+	annotationName := awsv1alpha1.AWSFederatedRoleAnnotationPrefix + role.Spec.ManagedRoleName
+	log.Info("Deleting annotation from all accounts", "annotation", annotationName)
+	for _, account := range accounts.Items {
+		delete(account.ObjectMeta.Annotations, annotationName)
+		err := r.client.Update(context.TODO(), &account)
+		if err != nil {
+			log.Error(err, "There was an error updating the account")
+		}
+		log.Info("Account Annotation Deleted", "account", account.Name, "annotation", annotationName)
+	}
+}
+
+// deployManagedRole will update Account CRs in order to get them to re-deploy managed roles if necessary
+func (r *ReconcileAWSFederatedRole) deployManagedRole(role *awsv1alpha1.AWSFederatedRole) {
+	// First, get a list of all accounts
+	accounts := &awsv1alpha1.AccountList{}
+	r.client.List(context.TODO(), accounts)
+
+	// Then add/update the role annotation on the account
+	annotationName := awsv1alpha1.AWSFederatedRoleAnnotationPrefix + role.Spec.ManagedRoleName
+	log.Info("Updating All Accounts with annotation", "annotation", annotationName)
+	for _, account := range accounts.Items {
+		account.ObjectMeta.Annotations[annotationName] = role.ObjectMeta.ResourceVersion
+		err := r.client.Update(context.TODO(), &account)
+		if err != nil {
+			log.Error(err, "There was an error updating the account")
+		}
+		log.Info("Account Annotation Updated", "account", account.Name, "annotation", annotationName)
+	}
 }
 
 // Paginate through ListPolicy results from AWS

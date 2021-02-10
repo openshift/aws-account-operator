@@ -1,10 +1,11 @@
 apiVersion: aws.managed.openshift.io/v1alpha1
 kind: AWSFederatedRole
 metadata:
-  name: read-only
+  name: support-read-only
   namespace: aws-account-operator
 spec:
-  managed: false
+  managed: true
+  managedRoleName: RH-Support-Limited-Access
   roleDisplayName: Read only
   roleDescription: User may view all AWS resources for this cluster, but not modify, create or delete resources.
   # Custom Policy definition

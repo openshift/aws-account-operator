@@ -16,6 +16,8 @@ const (
 	AWSFederatedRoleStateValid AWSFederatedRoleState = "Valid"
 	// AWSFederatedRoleStateInvalid const for Invliad status state
 	AWSFederatedRoleStateInvalid AWSFederatedRoleState = "Invalid"
+	// AWSFederatedRoleAnnotationPrefix const for account-role linking
+	AWSFederatedRoleAnnotationPrefix string = "role.managed.openshift.io/"
 )
 
 // AWSFederatedRoleSpec defines the desired state of AWSFederatedRole
@@ -25,6 +27,11 @@ type AWSFederatedRoleSpec struct {
 	RoleDisplayName string `json:"roleDisplayName"`
 	// RoleDescription is a user friendly description of the role, this discription will be displayed in the OCM user interface
 	RoleDescription string `json:"roleDescription"`
+	// Managed is a boolean to denote whether a role is to be pushed out to every cluster always (true) or to be used from the OCM user interface on-demand (false)
+	Managed bool `json:"managed"`
+	// ManagedRoleName is the base of the role name to add to the account.  So if the ManagedRoleName is "RH-SRE-ACCESS" then the role will be created on the account with the name "RH-SRE-ACCESS-aaabbb"
+	// +optional
+	ManagedRoleName string `json:"managedRoleName,omitempty"`
 	// AWSCustomPolicy is the defenition of a custom aws permission policy that will be associated with this role
 	// +optional
 	AWSCustomPolicy AWSCustomPolicy `json:"awsCustomPolicy,omitempty"`
