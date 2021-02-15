@@ -1,14 +1,15 @@
 reviewers:
 - jharrington22
 - fahlmant
-- rafael-azevedo
 - iamkirkbater
 - clcollins
 - rogbas
 - ArielLima
+- lisa
+- drpaneas
 approvers:
 - jharrington22
-- fahlmant
+- iamkirkbater
 - rogbas
 maintainers:
 - rogbas
