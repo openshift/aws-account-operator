@@ -48,13 +48,14 @@ create-account: check-aws-account-id-env
 .PHONY: delete-account
 delete-account:
 	# Delete Account
-	test/integration/api/delete_account.sh
+	test/integration/api/delete_account.sh || true
 	# Delete Secrets
 	test/integration/api/delete_account_secrets.sh
 
 # Test Account creation
 .PHONY: test-account-creation
-test-account-creation: create-account test-secrets delete-account
+test-account-creation: delete-account create-account test-secrets
+	test/integration/api/delete_account.sh || true
 
 # Create account claim namespace
 .PHONY: create-accountclaim-namespace
@@ -272,12 +273,8 @@ test-secrets:
 
 # Deploy the operator secrets, CRDs and namesapce.
 .PHONY: deploy-aws-account-operator-credentials
-deploy-aws-account-operator-credentials: check-aws-credentials
-# Base64 Encode the AWS Credentials
-	$(eval ID=$(shell echo -n ${OPERATOR_ACCESS_KEY_ID} | base64 ))
-	$(eval KEY=$(shell echo -n ${OPERATOR_SECRET_ACCESS_KEY} | base64))
-# Create the aws-account-operator-credentials secret
-	@oc process --local -p OPERATOR_ACCESS_KEY_ID=${ID} -p OPERATOR_SECRET_ACCESS_KEY=${KEY} -p OPERATOR_NAMESPACE=aws-account-operator -f hack/templates/aws.managed.openshift.io_v1alpha1_aws_account_operator_credentials.tmpl | oc apply -f -
+deploy-aws-account-operator-credentials: 
+	hack/scripts/set_operator_credentials.sh osd-staging-1
 
 .PHONY: predeploy-aws-account-operator
 predeploy-aws-account-operator:
@@ -339,4 +336,13 @@ test-aws-ou-logic: check-ou-mapping-configmap-env create-accountclaim-namespace 
 
 #s Test all
 .PHONY: test-all
-test-all: lint test test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic
+test-all: lint clean-operator test test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic 
+
+.PHONY: clean-operator
+clean-operator: 
+	$(MAKE) delete-accountclaim-namespace || true
+	$(MAKE) delete-ccs-namespace || true
+	$(MAKE) delete-ccs-2-namespace || true
+	oc delete accounts --all -n ${NAMESPACE}
+	oc delete awsfederatedaccountaccess --all -n ${NAMESPACE}
+	oc delete awsfederatedrole --all -n ${NAMESPACE}

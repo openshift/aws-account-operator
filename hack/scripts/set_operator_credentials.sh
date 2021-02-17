@@ -16,8 +16,8 @@ if [ -z "$rawCredentials" ]; then
   exit 2
 fi
 
-export OPERATOR_ACCESS_KEY_ID="$(awk -F " " '($1=="aws_access_key_id") {print $3}' <<< "$rawCredentials")"
-export OPERATOR_SECRET_ACCESS_KEY="$(awk -F " " '($1=="aws_secret_access_key") {print $3}' <<< "$rawCredentials")"
+ID="$(awk -F " " '($1=="aws_access_key_id") {printf "%s", $3}' <<< "$rawCredentials" | base64)"
+SECRET="$(awk -F " " '($1=="aws_secret_access_key") {printf "%s", $3}' <<< "$rawCredentials" | base64)"
 
 echo "Deploying AWS Account Operator Credentials using AWS Profile $profile"
-make deploy-aws-account-operator-credentials
+oc process -p OPERATOR_ACCESS_KEY_ID=${ID} -p OPERATOR_SECRET_ACCESS_KEY=${SECRET} -p OPERATOR_NAMESPACE=aws-account-operator -f hack/templates/aws_v1alpha1_aws_account_operator_credentials.tmpl | oc apply -f - 
