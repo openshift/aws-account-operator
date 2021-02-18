@@ -4,6 +4,8 @@ parameters:
 - name: ROOT 
 - name: BASE
 - name: ACCOUNTLIMIT
+- name: VCPU_QUOTA
+- name: OPERATOR_NAMESPACE
 metadata:
   name: test-aws-ou-mapping-configmap-template
 objects:
@@ -11,8 +13,9 @@ objects:
   kind: ConfigMap
   metadata:
     name: aws-account-operator-configmap
-    namespace: aws-account-operator
+    namespace: "${OPERATOR_NAMESPACE}"
   data:
     root: ${ROOT}
     base: ${BASE}
+    quota.vcpu: ${VCPU_QUOTA}
     account-limit: ${ACCOUNTLIMIT}
