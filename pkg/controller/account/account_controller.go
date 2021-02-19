@@ -261,30 +261,29 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 
+	var roleToAssume string
+	var iamUserUHC = iamUserNameUHC
+	var iamUserSRE = iamUserNameSRE
+
+	if currentAcctInstance.IsBYOC() {
+		// Use the same ID applied to the account name for IAM usernames
+		currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
+		iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
+		iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
+		roleToAssume = fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
+	} else {
+		roleToAssume = awsv1alpha1.AccountOperatorIAMRole
+	}
+
+	awsAssumedRoleClient, creds, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, ccsRoleID)
+	if err != nil {
+		// assumeRole logs
+		return reconcile.Result{}, err
+	}
+
 	// Account init for both BYOC and Non-BYOC
 	if currentAcctInstance.ReadyForInitialization() {
-
 		reqLogger.Info("initializing account", "awsAccountID", currentAcctInstance.Spec.AwsAccountID)
-		var roleToAssume string
-		var iamUserUHC = iamUserNameUHC
-		var iamUserSRE = iamUserNameSRE
-
-		if currentAcctInstance.IsBYOC() {
-			// Use the same ID applied to the account name for IAM usernames
-			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
-			iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
-			iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
-			roleToAssume = fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
-		} else {
-			roleToAssume = awsv1alpha1.AccountOperatorIAMRole
-		}
-
-		awsAssumedRoleClient, creds, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, ccsRoleID)
-		if err != nil {
-			// assumeRole logs
-			return reconcile.Result{}, err
-		}
-
 		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
 		if err != nil {
 			reason, errType := getBuildIAMUserErrorReason(err)
@@ -333,6 +332,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 	}
+
+	err = r.SyncManagedRoles(reqLogger, currentAcctInstance, awsAssumedRoleClient)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
 	return reconcile.Result{}, nil
 }
 
