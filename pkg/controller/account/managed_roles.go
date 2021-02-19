@@ -27,10 +27,26 @@ func (r *ReconcileAccount) SyncManagedRoles(log logr.Logger, account *awsv1alpha
 			roles = append(roles, role)
 		}
 	}
-	log.Info("Roles for Account", "roles", roles)
-	// Create any Roles that exist
+
+	tags := awsclient.AWSTags.BuildTags(account).GetIAMTags()
+	// Create any Roles that don't exist
+	for _, role := range roles {
+		err := CreateManagedRole(log, awsClient, role, tags)
+		if err != nil {
+			log.Error(err, "Error creating managed role.")
+		}
+	}
+	// If AWSCustomPolicy Exists in the role, create a new AWS policy if it doesn't already exist.
+	// If the AWSCustomPolicy does exist, use iam.CreatePolicy
 	// Get list of Roles from AWS for Account
 	// Remove any Roles that are tagged as aao-managed and exist (also check role name for -prefix)
+	return nil
+}
+
+func CreateManagedRole(log logr.Logger, awsClient awsclient.Client, role awsv1alpha1.AWSFederatedRole, tags []*iam.Tag) error {
+	log.Info("Creating Managed Role")
+	// If AWSCustomPolicy Exists in the role, create a new AWS policy if it doesn't already exist.
+	// If the AWSCustomPolicy does exist, use iam.CreatePolicy
 	return nil
 }
 
