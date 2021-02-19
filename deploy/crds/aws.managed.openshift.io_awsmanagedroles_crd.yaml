@@ -1,29 +1,20 @@
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-  name: awsfederatedroles.aws.managed.openshift.io
+  name: awsmanagedroles.aws.managed.openshift.io
 spec:
-  additionalPrinterColumns:
-  - JSONPath: .status.state
-    description: Status the federated role
-    name: State
-    type: string
-  - JSONPath: .metadata.creationTimestamp
-    description: Age since federated role was created
-    name: Age
-    type: date
   group: aws.managed.openshift.io
   names:
-    kind: AWSFederatedRole
-    listKind: AWSFederatedRoleList
-    plural: awsfederatedroles
-    singular: awsfederatedrole
+    kind: AWSManagedRole
+    listKind: AWSManagedRoleList
+    plural: awsmanagedroles
+    singular: awsmanagedrole
   scope: Namespaced
   subresources:
     status: {}
   validation:
     openAPIV3Schema:
-      description: AWSFederatedRole is the Schema for the awsfederatedroles API
+      description: AWSManagedRole is the Schema for the awsmanagedroles API
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -38,11 +29,14 @@ spec:
         metadata:
           type: object
         spec:
-          description: AWSFederatedRoleSpec defines the desired state of AWSFederatedRole
+          description: 'AWSManagedRoleSpec defines the desired state of AWSManagedRole
+            Important: Run "operator-sdk generate k8s" to regenerate code after modifying
+            this file'
           properties:
             awsCustomPolicy:
               description: AWSCustomPolicy is the definition of a custom aws permission
-                policy that will be associated with this role
+                policy that will be associated with this role AWSCustomPolicy struct
+                is defined in AWSManagedRole Types
               properties:
                 awsStatements:
                   items:
@@ -101,25 +95,20 @@ spec:
               items:
                 type: string
               type: array
-            roleDescription:
-              description: RoleDescription is a user friendly description of the role,
-                this discription will be displayed in the OCM user interface
-              type: string
-            roleDisplayName:
-              description: RoleDisplayName is a user friendly display name for the
-                OCM user interface
+            description:
+              description: Description - The description of the role and policy (if
+                created) that will appear in the customer's account
               type: string
           required:
-          - roleDescription
-          - roleDisplayName
+          - description
           type: object
         status:
-          description: AWSFederatedRoleStatus defines the observed state of AWSFederatedRole
+          description: AWSManagedRoleStatus defines the observed state of AWSManagedRole
           properties:
             conditions:
               items:
-                description: AWSFederatedRoleCondition is a Kubernetes condition type
-                  for tracking AWS Federated Role status changes
+                description: AWSManagedRoleCondition is a Kubernetes condition type
+                  for tracking AWS Managed Role status changes
                 properties:
                   lastProbeTime:
                     description: LastProbeTime is the last time we probed the condition.
@@ -150,8 +139,8 @@ spec:
                 type: object
               type: array
             state:
-              description: AWSFederatedRoleState defines the various status an AWSFederatedRole
-                CR can have
+              description: AWSManagedRoleState defines the various status an AWSManagedRole
+                can have
               type: string
           required:
           - conditions

@@ -104,8 +104,33 @@ type awsPolicy struct {
 	Statement []awsStatement
 }
 
+// TODO: Refactor this and the below same method to use an interface
 // MarshalIAMPolicy converts a role CR into a JSON policy that is acceptable to AWS
 func MarshalIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
+	statements := []awsStatement{}
+
+	for _, statement := range role.Spec.AWSCustomPolicy.Statements {
+		statements = append(statements, awsStatement(statement))
+	}
+
+	// Create a aws policydoc formated struct
+	policyDoc := awsPolicy{
+		Version:   "2012-10-17",
+		Statement: statements,
+	}
+
+	// Marshal policydoc to json
+	jsonPolicyDoc, err := json.Marshal(&policyDoc)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonPolicyDoc), nil
+}
+
+// TODO: Refactor this and the above method into the same with an interface
+// MarshalManagedIAMPolicy converts a role CR into a JSON policy that is acceptable to AWS
+func MarshalManagedIAMPolicy(role awsv1alpha1.AWSManagedRole) (string, error) {
 	statements := []awsStatement{}
 
 	for _, statement := range role.Spec.AWSCustomPolicy.Statements {

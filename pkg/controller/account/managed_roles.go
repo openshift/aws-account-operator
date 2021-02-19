@@ -18,19 +18,12 @@ const BackplaneAccessRoleKey = "Backplane-Access-Arn"
 func (r *ReconcileAccount) SyncManagedRoles(log logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client) error {
 	log.Info("Syncing Managed Roles on account.")
 
-	managedRoles := &awsv1alpha1.AWSFederatedRoleList{}
-	r.Client.List(context.TODO(), managedRoles)
-
-	var roles []awsv1alpha1.AWSFederatedRole
-	for _, role := range managedRoles.Items {
-		if role.Spec.Managed {
-			roles = append(roles, role)
-		}
-	}
+	roles := &awsv1alpha1.AWSManagedRoleList{}
+	r.Client.List(context.TODO(), roles)
 
 	tags := awsclient.AWSTags.BuildTags(account).GetIAMTags()
 	// Create any Roles that don't exist
-	for _, role := range roles {
+	for _, role := range roles.Items {
 		err := CreateManagedRole(log, awsClient, role, tags)
 		if err != nil {
 			log.Error(err, "Error creating managed role.")
@@ -43,7 +36,7 @@ func (r *ReconcileAccount) SyncManagedRoles(log logr.Logger, account *awsv1alpha
 	return nil
 }
 
-func CreateManagedRole(log logr.Logger, awsClient awsclient.Client, role awsv1alpha1.AWSFederatedRole, tags []*iam.Tag) error {
+func CreateManagedRole(log logr.Logger, awsClient awsclient.Client, role awsv1alpha1.AWSManagedRole, tags []*iam.Tag) error {
 	log.Info("Creating Managed Role")
 	// If AWSCustomPolicy Exists in the role, create a new AWS policy if it doesn't already exist.
 	// If the AWSCustomPolicy does exist, use iam.CreatePolicy
@@ -97,7 +90,7 @@ func CreatePolicy(log logr.Logger, awsClient awsclient.Client, roleCR *awsv1alph
 
 	createOutput, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
 		Description:    &roleCR.Spec.AWSCustomPolicy.Description,
-		PolicyName:     aws.String(roleCR.Spec.ManagedRoleName),
+		PolicyName:     aws.String(roleCR.Name),
 		PolicyDocument: &policyJSON,
 	})
 	if err != nil {

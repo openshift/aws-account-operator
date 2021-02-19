@@ -40,13 +40,6 @@ func (r *ReconcileAWSFederatedRole) removeFinalizer(reqLogger logr.Logger, awsFe
 }
 
 func (r *ReconcileAWSFederatedRole) finalizeFederateRole(reqLogger logr.Logger, awsFederatedRole *awsv1alpha1.AWSFederatedRole) error {
-	// If the role is managed, remove the managed role annotation from all accounts
-	// otherwise this role might have associated FederatedAccountAccesses that need to be removed
-	if awsFederatedRole.Spec.Managed {
-		r.deleteManagedRole(awsFederatedRole)
-		return nil
-	}
-
 	// Get all FederatedAccountAccesses
 	awsFederatedAccountAccessList := &awsv1alpha1.AWSFederatedAccountAccessList{}
 

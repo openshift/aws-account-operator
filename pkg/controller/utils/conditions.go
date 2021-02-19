@@ -239,6 +239,61 @@ func FindAWSFederatedRoleCondition(conditions []awsv1alpha1.AWSFederatedRoleCond
 	return nil
 }
 
+// TODO: This should be moved to the ManagedRole CR
+func SetAWSManagedRoleCondition(
+	conditions []awsv1alpha1.AWSManagedRoleCondition,
+	conditionType awsv1alpha1.AWSManagedRoleConditionType,
+	status corev1.ConditionStatus,
+	reason string,
+	message string,
+	updateConditionCheck UpdateConditionCheck,
+) []awsv1alpha1.AWSManagedRoleCondition {
+	now := metav1.Now()
+	existingCondition := FindAWSManagedRoleCondition(conditions, conditionType)
+	if existingCondition == nil {
+		if status == corev1.ConditionTrue {
+			conditions = append(
+				conditions,
+				awsv1alpha1.AWSManagedRoleCondition{
+					Type:               conditionType,
+					Status:             status,
+					Reason:             reason,
+					Message:            message,
+					LastTransitionTime: now,
+					LastProbeTime:      now,
+				},
+			)
+		}
+	} else {
+		if shouldUpdateCondition(
+			existingCondition.Status, existingCondition.Reason, existingCondition.Message,
+			status, reason, message,
+			updateConditionCheck,
+		) {
+			if existingCondition.Status != status {
+				existingCondition.LastTransitionTime = now
+			}
+			existingCondition.Status = status
+			existingCondition.Reason = reason
+			existingCondition.Message = message
+			existingCondition.LastProbeTime = now
+		}
+	}
+	return conditions
+}
+
+// FindAWSManagedRoleCondition Condition finds in the condition that has the
+// specified condition type in the given list. If none exists, then returns nil.
+// TODO: this should be moved to the ManagedRole struct
+func FindAWSManagedRoleCondition(conditions []awsv1alpha1.AWSManagedRoleCondition, conditionType awsv1alpha1.AWSManagedRoleConditionType) *awsv1alpha1.AWSManagedRoleCondition {
+	for i, condition := range conditions {
+		if condition.Type == conditionType {
+			return &conditions[i]
+		}
+	}
+	return nil
+}
+
 // SetAWSFederatedAccountAccessCondition sets a condition on a Account resource's status
 // TODO: this should be moved to the FederatedAccountAccess struct
 func SetAWSFederatedAccountAccessCondition(

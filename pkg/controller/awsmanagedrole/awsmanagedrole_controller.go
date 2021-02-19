@@ -1,4 +1,4 @@
-package awsfederatedrole
+package awsmanagedrole
 
 import (
 	"context"
@@ -25,17 +25,17 @@ import (
 )
 
 const (
-	controllerName = "awsdfederatedrole"
+	controllerName = "awsdmanagedrole"
 )
 
 var (
-	log           = logf.Log.WithName("controller_awsfederatedrole")
+	log           = logf.Log.WithName("controller_awsmanagedrole")
 	awsSecretName = "aws-account-operator-credentials"
 
 	errInvalidManagedPolicy = goerr.New("InvalidManagedPolicy")
 )
 
-// Add creates a new AWSFederatedRole Controller and adds it to the Manager. The Manager will set fields on the Controller
+// Add creates a new AWSManagedRole Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
 	return add(mgr, newReconciler(mgr))
@@ -43,7 +43,7 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	reconciler := &ReconcileAWSFederatedRole{
+	reconciler := &ReconcileAWSManagedRole{
 		client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
@@ -54,13 +54,13 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Create a new controller
-	c, err := controller.New("awsfederatedrole-controller", mgr, controller.Options{Reconciler: r})
+	c, err := controller.New("awsmanagedrole-controller", mgr, controller.Options{Reconciler: r})
 	if err != nil {
 		return err
 	}
 
-	// Watch for changes to primary resource AWSFederatedRole
-	err = c.Watch(&source.Kind{Type: &awsv1alpha1.AWSFederatedRole{}}, &handler.EnqueueRequestForObject{})
+	// Watch for changes to primary resource AWSManagedRole
+	err = c.Watch(&source.Kind{Type: &awsv1alpha1.AWSManagedRole{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
 		return err
 	}
@@ -68,11 +68,11 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	return nil
 }
 
-// blank assignment to verify that ReconcileAWSFederatedRole implements reconcile.Reconciler
-var _ reconcile.Reconciler = &ReconcileAWSFederatedRole{}
+// blank assignment to verify that ReconcileAWSManagedRole implements reconcile.Reconciler
+var _ reconcile.Reconciler = &ReconcileAWSManagedRole{}
 
-// ReconcileAWSFederatedRole reconciles a AWSFederatedRole object
-type ReconcileAWSFederatedRole struct {
+// ReconcileAWSManagedRole reconciles a AWSManagedRole object
+type ReconcileAWSManagedRole struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
 	client           client.Client
@@ -80,15 +80,15 @@ type ReconcileAWSFederatedRole struct {
 	awsClientBuilder awsclient.IBuilder
 }
 
-// Reconcile reads that state of the cluster for a AWSFederatedRole object and makes changes based on the state read
-// and what is in the AWSFederatedRole.Spec
+// Reconcile reads that state of the cluster for a AWSManagedRole object and makes changes based on the state read
+// and what is in the AWSManagedRole.Spec
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
-func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+func (r *ReconcileAWSManagedRole) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
-	// Fetch the AWSFederatedRole instance
-	instance := &awsv1alpha1.AWSFederatedRole{}
+	// Fetch the AWSManagedRole instance
+	instance := &awsv1alpha1.AWSManagedRole{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -115,7 +115,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 
 		if utils.Contains(instance.GetFinalizers(), utils.Finalizer) {
 
-			reqLogger.Info("Cleaning up FederatedAccountAccess Roles")
+			reqLogger.Info("Cleaning up ManagedAccountAccess Roles")
 			err = r.finalizeFederateRole(reqLogger, instance)
 			if err != nil {
 				return reconcile.Result{}, err
@@ -143,12 +143,12 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 
 	log.Info("Validating Custom Policies")
 	// Build custom policy in AWS-valid JSON and converts to string
-	jsonPolicy, err := utils.MarshalIAMPolicy(*instance)
+	jsonPolicy, err := utils.MarshalManagedIAMPolicy(*instance)
 	if err != nil {
-		reqLogger.Error(err, "failed marshalling IAM Policy", "instanceRoleName", instance.Spec.RoleDisplayName)
-		utils.SetAWSFederatedRoleCondition(
+		reqLogger.Error(err, "failed marshalling IAM Policy")
+		utils.SetAWSManagedRoleCondition(
 			instance.Status.Conditions,
-			awsv1alpha1.AWSFederatedRoleInvalid,
+			awsv1alpha1.AWSManagedRoleInvalid,
 			"True",
 			"MarshallingError",
 			"UnableToMarshalJsonFromPolicy",
@@ -159,9 +159,9 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 
 	// If AWSCustomPolicy and AWSManagedPolicies don't exist, update condition and exit
 	if len(instance.Spec.AWSManagedPolicies) == 0 && instance.Spec.AWSCustomPolicy.Name == "" {
-		instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
+		instance.Status.Conditions = utils.SetAWSManagedRoleCondition(
 			instance.Status.Conditions,
-			awsv1alpha1.AWSFederatedRoleInvalid,
+			awsv1alpha1.AWSManagedRoleInvalid,
 			"True",
 			"NoAWSCustomPolicyOrAWSManagedPolicies",
 			"AWSCustomPolicy and/or AWSManagedPolicies do not exist",
@@ -187,10 +187,10 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		if aerr, ok := err.(awserr.Error); ok {
 			if aerr.Code() == "MalformedPolicyDocument" {
 				log.Error(err, "Malformed Policy Document")
-				instance.Status.State = awsv1alpha1.AWSFederatedRoleStateInvalid
-				instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
+				instance.Status.State = awsv1alpha1.AWSManagedRoleStateInvalid
+				instance.Status.Conditions = utils.SetAWSManagedRoleCondition(
 					instance.Status.Conditions,
-					awsv1alpha1.AWSFederatedRoleInvalid,
+					awsv1alpha1.AWSManagedRoleInvalid,
 					"True",
 					"InvalidCustomerPolicy",
 					"Custom Policy is malformed",
@@ -234,10 +234,10 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		// Check if policy is in the list of managed policies
 		if !policyInSlice(policy, managedPolicyNameList) {
 			// Update condition to Invalid
-			instance.Status.State = awsv1alpha1.AWSFederatedRoleStateInvalid
-			instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
+			instance.Status.State = awsv1alpha1.AWSManagedRoleStateInvalid
+			instance.Status.Conditions = utils.SetAWSManagedRoleCondition(
 				instance.Status.Conditions,
-				awsv1alpha1.AWSFederatedRoleInvalid,
+				awsv1alpha1.AWSManagedRoleInvalid,
 				"True",
 				"InvalidManagedPolicy",
 				"Managed policy does not exist",
@@ -254,10 +254,10 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	log.Info("Validated Managed Policies")
 
 	// Update Condition to Valid
-	instance.Status.State = awsv1alpha1.AWSFederatedRoleStateValid
-	instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
+	instance.Status.State = awsv1alpha1.AWSManagedRoleStateValid
+	instance.Status.Conditions = utils.SetAWSManagedRoleCondition(
 		instance.Status.Conditions,
-		awsv1alpha1.AWSFederatedRoleValid,
+		awsv1alpha1.AWSManagedRoleValid,
 		"True",
 		"AllPoliciesValid",
 		"All managed and custom policies are validated",
@@ -268,7 +268,46 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		return reconcile.Result{}, err
 	}
 
+	r.deployManagedRole(instance)
+
 	return reconcile.Result{}, nil
+}
+
+// deleteManagedRole will update Account CRs to remove the annotation and therefore remove the role from the account
+func (r *ReconcileAWSManagedRole) deleteManagedRole(role *awsv1alpha1.AWSManagedRole) {
+	// First get a list of all accounts
+	accounts := &awsv1alpha1.AccountList{}
+	r.client.List(context.TODO(), accounts)
+
+	annotationName := awsv1alpha1.AWSManagedRoleAnnotationPrefix + role.Name
+	log.Info("Deleting annotation from all accounts", "annotation", annotationName)
+	for _, account := range accounts.Items {
+		delete(account.ObjectMeta.Annotations, annotationName)
+		err := r.client.Update(context.TODO(), &account)
+		if err != nil {
+			log.Error(err, "There was an error updating the account")
+		}
+		log.Info("Account Annotation Deleted", "account", account.Name, "annotation", annotationName)
+	}
+}
+
+// deployManagedRole will update Account CRs in order to get them to re-deploy managed roles if necessary
+func (r *ReconcileAWSManagedRole) deployManagedRole(role *awsv1alpha1.AWSManagedRole) {
+	// First, get a list of all accounts
+	accounts := &awsv1alpha1.AccountList{}
+	r.client.List(context.TODO(), accounts)
+
+	// Then add/update the role annotation on the account
+	annotationName := awsv1alpha1.AWSManagedRoleAnnotationPrefix + role.Name
+	log.Info("Updating All Accounts with annotation", "annotation", annotationName)
+	for _, account := range accounts.Items {
+		account.ObjectMeta.Annotations[annotationName] = role.ObjectMeta.ResourceVersion
+		err := r.client.Update(context.TODO(), &account)
+		if err != nil {
+			log.Error(err, "There was an error updating the account")
+		}
+		log.Info("Account Annotation Updated", "account", account.Name, "annotation", annotationName)
+	}
 }
 
 // Paginate through ListPolicy results from AWS
