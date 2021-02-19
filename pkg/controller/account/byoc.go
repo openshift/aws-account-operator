@@ -241,43 +241,6 @@ func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.C
 	return roleID, err
 }
 
-// CreateRole creates the role with the correct assume policy for BYOC for a given roleName
-func CreateRole(reqLogger logr.Logger, byocRole string, accessArnList []string, byocAWSClient awsclient.Client, tags []*iam.Tag) (string, error) {
-	assumeRolePolicyDoc := struct {
-		Version   string
-		Statement []awsStatement
-	}{
-		Version: "2012-10-17",
-		Statement: []awsStatement{{
-			Effect: "Allow",
-			Action: []string{"sts:AssumeRole"},
-			Principal: &awsv1alpha1.Principal{
-				AWS: accessArnList,
-			},
-		}},
-	}
-
-	// Convert role to JSON
-	jsonAssumeRolePolicyDoc, err := json.Marshal(&assumeRolePolicyDoc)
-	if err != nil {
-		return "", err
-	}
-
-	reqLogger.Info(fmt.Sprintf("Creating role: %s", byocRole))
-	createRoleOutput, err := byocAWSClient.CreateRole(&iam.CreateRoleInput{
-		Tags:                     tags,
-		RoleName:                 aws.String(byocRole),
-		Description:              aws.String("AdminAccess for BYOC"),
-		AssumeRolePolicyDocument: aws.String(string(jsonAssumeRolePolicyDoc)),
-	})
-	if err != nil {
-		return "", err
-	}
-
-	// Successfully created role gets a unique identifier
-	return *createRoleOutput.Role.RoleId, nil
-}
-
 // GetExistingRole checks to see if a given role exists in the AWS account already.  If it does not, we return an empty response and nil for an error.  If it does, we return the existing role.  Otherwise, we return any error we get.
 func GetExistingRole(reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.Client) (*iam.GetRoleOutput, error) {
 	// Check if Role already exists
