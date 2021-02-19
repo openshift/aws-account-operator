@@ -24,6 +24,8 @@ const (
 	AccountOperatorIAMRole = "OrganizationAccountAccessRole"
 	// SREAccessRoleName for CCS Account Access
 	SREAccessRoleName = "RH-SRE-CCS-Access"
+	// BackplaneAcccessRoleName for Backplane Account Access
+	BackplaneAccessRoleName = "RH-Support-AWS-Access"
 	// AccountFinalizer is the string finalizer name
 	AccountFinalizer = "finalizer.aws.managed.openshift.io"
 )

@@ -222,6 +222,16 @@ func initOperatorConfigMapVars(kubeClient client.Client) {
 	}
 	cm.Data["CCS-Access-Arn"] = *role.Role.Arn
 
+	// Get the Backplane Access role for accounts and populate the role name into the configmap
+	bprole, err := awsClient.GetRole(&iam.GetRoleInput{
+		RoleName: aws.String(awsv1alpha1.BackplaneAccessRoleName),
+	})
+	if err != nil {
+		log.Error(err, "There was an error getting the Backplane Access Role")
+		return
+	}
+	cm.Data["Backplane-Access-Arn"] = *bprole.Role.Arn
+
 	// Apply the changes to the ConfigMap
 	err = kubeClient.Update(context.TODO(), cm)
 	if err != nil {
