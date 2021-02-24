@@ -401,7 +401,7 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 		// We time the whole call, from that point until as late as possible, by adding a handler
 		// at the end of the `Complete` phase, which is the last available phase of the request.
 		s.Handlers.Complete.PushBack(func(r *request.Request) {
-			localmetrics.Collector.AddAPICall(controllerName, r.HTTPRequest, r.HTTPResponse, time.Since(r.Time).Seconds())
+			localmetrics.Collector.AddAPICall(controllerName, r.HTTPRequest, r.HTTPResponse, time.Since(r.Time).Seconds(), r.Error)
 		})
 	}
 

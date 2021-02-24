@@ -18,11 +18,11 @@ import (
 	"context"
 	"net/http"
 	neturl "net/url"
-	"strconv"
 	"strings"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -141,7 +141,7 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Help:        "Distribution of the number of seconds a Reconcile takes, broken down by controller",
 			ConstLabels: prometheus.Labels{"name": operatorName},
 			Buckets:     []float64{0.001, 0.01, 0.1, 1, 5, 10, 20},
-		}, []string{"controller", "error"}),
+		}, []string{"controller", "error", "error_source"}),
 
 		// apiCallDuration times API requests. Histogram also gives us a _count metric for free.
 		apiCallDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -151,7 +151,7 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			// We really don't care about quantiles, but omitting Buckets results in defaults.
 			// This minimizes the number of unused data points we store.
 			Buckets: []float64{1},
-		}, []string{"controller", "method", "resource", "status"}),
+		}, []string{"controller", "method", "resource", "status", "error", "error_source"}),
 	}
 }
 
@@ -292,9 +292,35 @@ func (c *MetricsCollector) AddAccountReuseCleanupFailure() {
 	c.accountReuseCleanupFailureCount.Inc()
 }
 
+type ReportedError struct {
+	Source string
+	Code   string
+}
+
+func (e *ReportedError) Parse(err error) {
+	if err == nil {
+		return
+	}
+
+	// attempt to see if it's an AWS Error
+	if aerr, ok := err.(awserr.Error); ok {
+		e.Code = aerr.Code()
+		e.Source = "aws"
+		return
+	}
+
+	// TODO: See if it's a k8s error
+
+	// default with an error is {OTHER}
+	e.Code = "{OTHER}"
+	e.Source = "{OTHER}"
+}
+
 // SetReconcileDuration describes the time it takes for the operator to complete a single reconcile loop
 func (c *MetricsCollector) SetReconcileDuration(controller string, duration float64, err error) {
-	c.reconcileDuration.WithLabelValues(controller, strconv.FormatBool(err != nil)).Observe(duration)
+	e := &ReportedError{}
+	e.Parse(err)
+	c.reconcileDuration.WithLabelValues(controller, e.Code, e.Source).Observe(duration)
 }
 
 // AddAPICall observes metrics for a call to an external API
@@ -302,18 +328,24 @@ func (c *MetricsCollector) SetReconcileDuration(controller string, duration floa
 // - param req: The HTTP Request structure
 // - param resp: The HTTP Response structure
 // - param duration: The number of seconds the call took.
-func (c *MetricsCollector) AddAPICall(controller string, req *http.Request, resp *http.Response, duration float64) {
+func (c *MetricsCollector) AddAPICall(controller string, req *http.Request, resp *http.Response, duration float64, err error) {
 	var status string
 	if resp == nil {
 		status = "{ERROR}"
 	} else {
 		status = resp.Status
 	}
+
+	e := &ReportedError{}
+	e.Parse(err)
+
 	c.apiCallDuration.With(prometheus.Labels{
-		"controller": controller,
-		"method":     req.Method,
-		"resource":   resourceFrom(req.URL),
-		"status":     status,
+		"controller":   controller,
+		"method":       req.Method,
+		"resource":     resourceFrom(req.URL),
+		"status":       status,
+		"error":        e.Code,
+		"error_source": e.Source,
 	}).Observe(duration)
 }
 
