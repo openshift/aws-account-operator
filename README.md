@@ -48,4 +48,4 @@ If the everything is set up correctly this should verify that.
 
 ## Further Reading
 
-To dive deeper into the documentation, visit our `docs` folder.
+To dive deeper into the documentation, visit our [`docs`](docs) folder.
