@@ -237,3 +237,4 @@ objects:
     - "AmazonEC2ReadOnlyAccess"
     - "AmazonS3ReadOnlyAccess"
     - "IAMReadOnlyAccess"
+    - "CloudWatchReadOnlyAccess"
