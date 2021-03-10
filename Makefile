@@ -302,8 +302,36 @@ test-aws-ou-logic: check-ou-mapping-configmap-env create-accountclaim-namespace 
 	@ROOT_ID=$$(aws organizations list-roots --profile osd-staging-1 | jq -r ".Roots[0].Id"); OU=$$(aws organizations list-parents --child-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1 | jq -r ".Parents[0].Id"); aws organizations move-account --account-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --source-parent-id "$$OU" --destination-parent-id "$$ROOT_ID" --profile osd-staging-1; aws organizations delete-organizational-unit --organizational-unit-id "$$OU" --profile osd-staging-1;
 	@echo "Successfully moved account back and deleted the test OU"
 
+# Create STS account claim namespace
+.PHONY: create-sts-accountclaim-namespace
+create-sts-accountclaim-namespace: ## Creates namespace for STS accountclaim
+	# Create reuse namespace
+	@oc process --local -p NAME=${STS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc apply -f -
+
+# Delete STS account claim namespace
+.PHONY: delete-sts-accountclaim-namespace
+delete-sts-accountclaim-namespace: ## Deletes namespace for STS accountclaim
+	# Delete reuse namespace
+	@oc process --local -p NAME=${STS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete -f -
+
+.PHONY: create-sts-accountclaim
+create-sts-accountclaim: ## Creates a templated STS accountclaim
+	# Create STS accountclaim
+	@oc process --local -p NAME=${STS_CLAIM_NAME} -p NAMESPACE=${STS_NAMESPACE_NAME} -p STS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p STS_ROLE_ARN=${STS_ROLE_ARN} -f hack/templates/aws.managed.openshift.io_v1alpha1_sts_accountclaim_cr.tmpl | oc apply -f -
+	# Wait for sts accountclaim to become ready
+	@while true; do STATUS=$$(oc get accountclaim ${STS_CLAIM_NAME} -n ${STS_NAMESPACE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${STS_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
+
+.PHONY: delete-sts-accountclaim
+delete-sts-accountclaim: ## Deletes a templated STS accountclaim
+	# Delete sts accountclaim
+	@oc process --local -p NAME=${STS_CLAIM_NAME} -p NAMESPACE=${STS_NAMESPACE_NAME} -p STS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p STS_ROLE_ARN=${STS_ROLE_ARN} -f hack/templates/aws.managed.openshift.io_v1alpha1_sts_accountclaim_cr.tmpl | oc delete -f -
+
+.PHONY: test-sts-accountclaim
+test-sts-accountclaim: create-sts-accountclaim-namespace create-sts-accountclaim delete-sts-accountclaim delete-sts-accountclaim-namespace ## Runs a full integration test for STS workflow
+
+#s Test all
 .PHONY: test-all
-test-all: lint clean-operator test test-account-creation test-ccs test-reuse  test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic  ## Test all
+test-all: lint clean-operator test test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim ## Runs all integration tests
 
 .PHONY: clean-operator
 clean-operator: ## Clean Operator

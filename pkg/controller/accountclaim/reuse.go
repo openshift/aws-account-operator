@@ -46,6 +46,15 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 
 		return nil
 	}
+
+	// If the reused account is STS, then we don't have to clean up
+	if reusedAccount.Spec.ManualSTSMode {
+		err := r.client.Delete(context.TODO(), reusedAccount)
+		if err != nil {
+			reqLogger.Error(err, "Failed to delete STS account from accountclaim cleanup")
+		}
+	}
+
 	var awsClientInput awsclient.NewAwsClientInput
 
 	// Region comes from accountClaim

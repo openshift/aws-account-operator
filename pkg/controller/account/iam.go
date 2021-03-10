@@ -69,18 +69,12 @@ func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, account *awsv1alp
 	return nil
 }
 
-// getStsCredentials returns STS credentials for the specified account ARN
+// getSTSCredentials returns STS credentials for the specified account ARN
 // Takes a logger, an awsClient, a role name to assume, and the target AWS account ID
-func getStsCredentials(reqLogger logr.Logger, client awsclient.Client, iamRoleName string, awsAccountID string) (*sts.AssumeRoleOutput, error) {
-	// Use the role session name to uniquely identify a session when the same role
-	// is assumed by different principals or for different reasons.
-	var roleSessionName = "awsAccountOperator"
+func getSTSCredentials(reqLogger logr.Logger, client awsclient.Client, roleArn string, roleSessionName string) (*sts.AssumeRoleOutput, error) {
 	// Default duration in seconds of the session token 3600. We need to have the roles policy
 	// changed if we want it to be longer than 3600 seconds
 	var roleSessionDuration int64 = 3600
-	// The role ARN made up of the account number and the role which is the default role name
-	// created in child accounts
-	var roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", awsAccountID, iamRoleName)
 	reqLogger.Info(fmt.Sprintf("Creating STS credentials for AWS ARN: %s", roleArn))
 	// Build input for AssumeRole
 	assumeRoleInput := sts.AssumeRoleInput{

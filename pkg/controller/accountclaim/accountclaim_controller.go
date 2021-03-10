@@ -169,11 +169,13 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	if accountClaim.Spec.BYOC {
 		reqLogger.Info("Reconciling CCS AccountClaim")
 
-		// Ensure BYOC secret has finalizer
-		reqLogger.Info("Ensuring byoc secret has finalizer")
-		err = r.addBYOCSecretFinalizer(accountClaim)
-		if err != nil {
-			reqLogger.Error(err, "Unable to add finalizer to byoc secret")
+		if !accountClaim.Spec.ManualSTSMode {
+			// Ensure BYOC secret has finalizer
+			reqLogger.Info("Ensuring byoc secret has finalizer")
+			err = r.addBYOCSecretFinalizer(accountClaim)
+			if err != nil {
+				reqLogger.Error(err, "Unable to add finalizer to byoc secret")
+			}
 		}
 
 		if accountClaim.Spec.AccountLink == "" {
@@ -244,11 +246,13 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 		}
 
-		// Create secret for OCM to consume
-		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
-			err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)
-			if err != nil {
-				return reconcile.Result{}, nil
+		if !accountClaim.Spec.ManualSTSMode {
+			// Create secret for OCM to consume
+			if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+				err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)
+				if err != nil {
+					return reconcile.Result{}, nil
+				}
 			}
 		}
 
@@ -536,10 +540,10 @@ func newSecretforCR(secretName string, secretNameSpace string, awsAccessKeyID []
 
 // Add BYOC data to an account CR
 func populateBYOCSpec(account *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) {
-
 	account.Spec.BYOC = true
 	account.Spec.AwsAccountID = accountClaim.Spec.BYOCAWSAccountID
 	account.Spec.ClaimLink = accountClaim.ObjectMeta.Name
 	account.Spec.ClaimLinkNamespace = accountClaim.ObjectMeta.Namespace
 	account.Spec.LegalEntity = accountClaim.Spec.LegalEntity
+	account.Spec.ManualSTSMode = accountClaim.Spec.ManualSTSMode
 }
