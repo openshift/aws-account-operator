@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -67,7 +68,17 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 
 	}
 
-	client, clientErr := r.getCCSClient(account, accountClaim)
+	// Try to get the CCS client five times with half a second interval between attempts
+	// before setting the account claim to an error state
+	var clientErr error
+	var client awsclient.Client
+	for i := 0; i < 5; i++ {
+		client, clientErr = r.getCCSClient(account, accountClaim)
+		if clientErr == nil {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 	if clientErr != nil {
 		utils.SetAccountClaimStatus(
 			accountClaim,
