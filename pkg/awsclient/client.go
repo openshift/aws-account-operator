@@ -25,6 +25,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -385,7 +386,14 @@ func (c *awsClient) ListRequestedServiceQuotaChangeHistoryByQuota(input *service
 // NewClient creates our client wrapper object for the actual AWS clients we use.
 // If controllerName is nonempty, metrics are collected timing and counting each AWS request.
 func newClient(controllerName, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
-	awsConfig := &aws.Config{Region: aws.String(region)}
+	// Set region and retryer to prevent any potential rate limiting on the aws side
+	awsConfig := &aws.Config{
+		Region: aws.String(region),
+		Retryer: client.DefaultRetryer{
+			NumMaxRetries:    5,
+			MinThrottleDelay: 1 * time.Second,
+		},
+	}
 	awsConfig.Credentials = credentials.NewStaticCredentials(
 		awsAccessID, awsAccessSecret, token)
 
