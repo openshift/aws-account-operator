@@ -388,14 +388,13 @@ func (c *awsClient) ListRequestedServiceQuotaChangeHistoryByQuota(input *service
 func newClient(controllerName, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
 	// Set region and retryer to prevent any potential rate limiting on the aws side
 	awsConfig := &aws.Config{
-		Region: aws.String(region),
+		Region:      aws.String(region),
+		Credentials: credentials.NewStaticCredentials(awsAccessID, awsAccessSecret, token),
 		Retryer: client.DefaultRetryer{
 			NumMaxRetries:    5,
 			MinThrottleDelay: 1 * time.Second,
 		},
 	}
-	awsConfig.Credentials = credentials.NewStaticCredentials(
-		awsAccessID, awsAccessSecret, token)
 
 	s, err := session.NewSession(awsConfig)
 	if err != nil {
