@@ -390,8 +390,8 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 	awsConfig := &aws.Config{
 		Region: aws.String(region),
 		Retryer: client.DefaultRetryer{
-			NumMaxRetries:    5,
-			MinThrottleDelay: 1 * time.Second,
+			NumMaxRetries:    10,
+			MinThrottleDelay: 2 * time.Second,
 		},
 	}
 	awsConfig.Credentials = credentials.NewStaticCredentials(
