@@ -32,6 +32,11 @@ spec:
           - "ec2:DeleteVpnConnectionRoute"
           - "ec2:ModifyVpcPeeringConnectionOptions"
           - "ec2:RejectVpcPeeringConnection"
+          - "ec2:CreateNetworkInterface"
+          - "ec2:DescribeNetworkInterface"
+          - "ec2:ModifyNetworkInterfaceAttribute"
+          - "ec2:DeleteNetworkInterface"
+          - "ec2:CreateNetworkInterfacePermission"
         resource:
           - "*"
 
@@ -143,5 +148,3 @@ spec:
   # list of  AWS managed
   awsManagedPolicies:
     - "AmazonEC2ReadOnlyAccess"
-    - "AWSServiceRoleForVPCTransitGateway"
-
