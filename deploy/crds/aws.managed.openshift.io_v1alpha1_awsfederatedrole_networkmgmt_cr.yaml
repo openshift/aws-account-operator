@@ -6,7 +6,7 @@ metadata:
 spec:
   roleDisplayName: Network management
   roleDescription: User can view all AWS resources, and can edit VPC related resources to enable services such as IPsec VPN and VPC peering.
-  # Custom policy definition 
+  # Custom policy definition
   awsCustomPolicy:
     name:  CustomerAdministratorAccess
     description: Description of CustomerAdministratorAccess
@@ -51,7 +51,7 @@ spec:
           - "ram:RejectResourceShareInvitation"
         resource:
           - "*"
-     
+
       # DNS Route Propagation
       - effect: Allow
         action:
@@ -62,7 +62,7 @@ spec:
           - "route53resolver:GetResolverRuleAssociation"
           - "route53resolver:ListResolverRuleAssociations"
           - "route53resolver:ListResolverRules"
-        resource: 
+        resource:
           - "*"
       - effect: Allow
         action:
@@ -90,7 +90,7 @@ spec:
           - "ec2:DeleteVpnConnection"
           - "ec2:EnableVgwRoutePropagation"
           - "ec2:DisableVgwRoutePropagation"
-        resource: 
+        resource:
           - "*"
 
       # AWS VPC Peering
@@ -143,4 +143,5 @@ spec:
   # list of  AWS managed
   awsManagedPolicies:
     - "AmazonEC2ReadOnlyAccess"
+    - "AWSServiceRoleForVPCTransitGateway"
 

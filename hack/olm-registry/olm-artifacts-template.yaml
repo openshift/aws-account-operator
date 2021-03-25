@@ -213,6 +213,7 @@ objects:
             - "arn:aws:ec2:*:*:vpn-gateway/*"
     awsManagedPolicies:
       - "AmazonEC2ReadOnlyAccess"
+      - "AWSServiceRoleForVPCTransitGateway"
 
 - apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AWSFederatedRole
