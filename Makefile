@@ -290,7 +290,7 @@ predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credential
 
 .PHONY: deploy-local
 deploy-local:
-	@FORCE_DEV_MODE=local operator-sdk run --local --namespace=$(OPERATOR_NAMESPACE)
+	@FORCE_DEV_MODE=local operator-sdk run local --watch-namespace $(OPERATOR_NAMESPACE)
 
 .PHONY: deploy-cluster
 deploy-cluster: FORCE_DEV_MODE?=cluster
