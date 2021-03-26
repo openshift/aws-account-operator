@@ -117,14 +117,12 @@ objects:
             - "ec2:DisableVgwRoutePropagation"
             - "ec2:EnableVgwRoutePropagation"
             - "ec2:CreateNetworkInterface"
-            - "ec2:DescribeNetworkInterface"
             - "ec2:ModifyNetworkInterfaceAttribute"
             - "ec2:DeleteNetworkInterface"
             - "ec2:CreateNetworkInterfacePermission"
             - "guardduty:GetDetector"
             - "guardduty:GetFindings"
             - "guardduty:GetFindingsStatistics"
-            - "guardduty:GetFreeTrialStatistics"
             - "guardduty:GetIPSet"
             - "guardduty:GetInvitationsCount"
             - "guardduty:GetMasterAccount"
@@ -216,6 +214,20 @@ objects:
             - "arn:aws:ec2:*:*:vpn-connection/*"
             - "arn:aws:ec2:*:*:vpc-peering-connection/*"
             - "arn:aws:ec2:*:*:vpn-gateway/*"
+        - effect: Allow
+          action:
+            - "iam:CreateServiceLinkedRole"
+          resource:
+            - "arn:aws:iam::*:role/aws-service-role/transitgateway.amazonaws.com/AWSServiceRoleForVPCTransitGateway*"
+          condition:
+            StringLike:
+              iam:AWSServiceName: transitgateway.amazonaws.com
+        - effect: Allow
+          action:
+            - "iam:AttachRolePolicy"
+            - "iam:PutRolePolicy"
+          resource:
+            - "arn:aws:iam::*:role/aws-service-role/transitgateway.amazonaws.com/AWSServiceRoleForVPCTransitGateway*"
     awsManagedPolicies:
       - "AmazonEC2ReadOnlyAccess"
 
