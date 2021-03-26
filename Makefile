@@ -273,7 +273,7 @@ test-secrets:
 
 # Deploy the operator secrets, CRDs and namesapce.
 .PHONY: deploy-aws-account-operator-credentials
-deploy-aws-account-operator-credentials: 
+deploy-aws-account-operator-credentials:
 	hack/scripts/set_operator_credentials.sh osd-staging-1
 
 .PHONY: predeploy-aws-account-operator
@@ -336,10 +336,10 @@ test-aws-ou-logic: check-ou-mapping-configmap-env create-accountclaim-namespace 
 
 #s Test all
 .PHONY: test-all
-test-all: lint clean-operator test test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic 
+test-all: lint clean-operator test test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic
 
 .PHONY: clean-operator
-clean-operator: 
+clean-operator:
 	$(MAKE) delete-accountclaim-namespace || true
 	$(MAKE) delete-ccs-namespace || true
 	$(MAKE) delete-ccs-2-namespace || true
