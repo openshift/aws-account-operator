@@ -23,6 +23,22 @@ spec:
           - "arn:aws:ec2:*:*:vpc/*"
           - "arn:aws:ec2:*:*:transit-gateway-attachment/*"
 
+      # AWS Transit Gateway Service Linked Role
+      - effect: Allow
+        action:
+          - "iam:CreateServiceLinkedRole"
+        resource:
+          - "arn:aws:iam::*:role/aws-service-role/transitgateway.amazonaws.com/AWSServiceRoleForVPCTransitGateway*"
+        condition:
+          StringLike:
+            iam:AWSServiceName: transitgateway.amazonaws.com
+      - effect: Allow
+        action:
+          - "iam:AttachRolePolicy"
+          - "iam:PutRolePolicy"
+        resource:
+          - "arn:aws:iam::*:role/aws-service-role/transitgateway.amazonaws.com/AWSServiceRoleForVPCTransitGateway*"
+
       # AWS EC2
       - effect: Allow
         action:
@@ -33,7 +49,6 @@ spec:
           - "ec2:ModifyVpcPeeringConnectionOptions"
           - "ec2:RejectVpcPeeringConnection"
           - "ec2:CreateNetworkInterface"
-          - "ec2:DescribeNetworkInterface"
           - "ec2:ModifyNetworkInterfaceAttribute"
           - "ec2:DeleteNetworkInterface"
           - "ec2:CreateNetworkInterfacePermission"
