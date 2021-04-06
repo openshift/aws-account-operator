@@ -83,3 +83,6 @@ tags
 
 # Python venv directory in use by Boilerplate golang-osd-operator/ensure.sh
 .venv/*
+
+# used with direnv
+.envrc
