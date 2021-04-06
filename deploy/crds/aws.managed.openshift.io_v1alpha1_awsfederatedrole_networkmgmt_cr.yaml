@@ -159,6 +159,7 @@ spec:
           - "arn:aws:ec2:*:*:vpn-connection/*"
           - "arn:aws:ec2:*:*:vpc-peering-connection/*"
           - "arn:aws:ec2:*:*:vpn-gateway/*"
+          - "arn:aws:ec2:*:*:transit-gateway-attachment/*"
 
   # list of  AWS managed
   awsManagedPolicies:
