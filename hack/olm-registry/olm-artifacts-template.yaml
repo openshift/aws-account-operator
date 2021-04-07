@@ -152,6 +152,8 @@ objects:
             - "route53resolver:GetResolverRuleAssociation"
             - "route53resolver:ListResolverRuleAssociations"
             - "route53resolver:ListResolverRules"
+            - "route53:AssociateVPCWithHostedZone"
+            - "route53:DisassociateVPCFromHostedZone"
             - "directconnect:*"
           resource:
             - "*"
