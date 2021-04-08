@@ -46,25 +46,36 @@ func (t *AWSAccountOperatorTags) GetEC2Tags() []*ec2.Tag {
 }
 
 // BuildTags initializes AWSTags with required tags
-func (t *AWSAccountOperatorTags) BuildTags(account *awsv1alpha1.Account) AWSTagBuilder {
-	ClusterAccountNameTag := AWSTag{
+func (t *AWSAccountOperatorTags) BuildTags(account *awsv1alpha1.Account, managedTags []AWSTag) AWSTagBuilder {
+	tags := []AWSTag{}
+
+	// Adds a tag for the cluster's Account Name
+	tags = append(tags, AWSTag{
 		Key:   awsv1alpha1.ClusterAccountNameTagKey,
 		Value: account.Name,
-	}
-	ClusterNamespaceTag := AWSTag{
+	})
+	// Add a tag with the cluster's Namespace
+	tags = append(tags, AWSTag{
 		Key:   awsv1alpha1.ClusterNamespaceTagKey,
 		Value: account.Namespace,
-	}
-	ClusterClaimLinkTag := AWSTag{
+	})
+
+	// Add a tag for the cluster's ClaimLink
+	tags = append(tags, AWSTag{
 		Key:   awsv1alpha1.ClusterClaimLinkTagKey,
 		Value: account.Spec.ClaimLink,
-	}
-	ClusterClaimLinkNamespaceTag := AWSTag{
+	})
+
+	// Add a tag for the cluster's ClaimLink Namespace
+	tags = append(tags, AWSTag{
 		Key:   awsv1alpha1.ClusterClaimLinkNamespaceTagKey,
 		Value: account.Spec.ClaimLinkNamespace,
+	})
+
+	// Adds all of the "managed tags" passed in (typically through the configmap)
+	tags = append(tags, managedTags...)
+
+	return &AWSAccountOperatorTags{
+		Tags: tags,
 	}
-	AWSTags = &AWSAccountOperatorTags{
-		Tags: []AWSTag{ClusterAccountNameTag, ClusterNamespaceTag, ClusterClaimLinkTag, ClusterClaimLinkNamespaceTag},
-	}
-	return AWSTags
 }

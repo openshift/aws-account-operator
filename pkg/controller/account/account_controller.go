@@ -925,3 +925,40 @@ func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountCondition
 		return "UnhandledError", awsv1alpha1.AccountUnhandledError
 	}
 }
+
+// getManagedTags retrieves a list of managed tags from the configmap
+// returns an empty list on any failure.
+func (r *ReconcileAccount) getManagedTags(log logr.Logger) []awsclient.AWSTag {
+	tags := []awsclient.AWSTag{}
+
+	cm := &corev1.ConfigMap{}
+	err := r.Client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	if err != nil {
+		log.Info("There was an error getting the default configmap.", "error", err)
+		return tags
+	}
+
+	managedTags, ok := cm.Data[awsv1alpha1.ManagedTagsConfigMapKey]
+	if !ok {
+		log.Info("There are no Managed Tags defined.")
+		return tags
+	}
+
+	// Split on Newline to get key-value pairs
+	kvpairs := strings.Split(managedTags, "\n")
+
+	for _, tagString := range kvpairs {
+		// Sometimes the last value is an empty string.  Don't process those.
+		if tagString == "" {
+			continue
+		}
+
+		// Use strings.SplitN to only split on the first "="
+		tagKV := strings.SplitN(tagString, "=", 2)
+		tags = append(tags, awsclient.AWSTag{
+			Key:   tagKV[0],
+			Value: tagKV[1],
+		})
+	}
+	return tags
+}

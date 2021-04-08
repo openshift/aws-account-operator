@@ -157,11 +157,14 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		return "", reconcile.Result{}, cmErr
 	}
 
+	// Get list of managed tags to add to resources
+	managedTags := r.getManagedTags(reqLogger)
+
 	// Create access key and role for BYOC account
 	var roleID string
 	var roleErr error
 	if !account.HasState() {
-		tags := awsclient.AWSTags.BuildTags(account).GetIAMTags()
+		tags := awsclient.AWSTags.BuildTags(account, managedTags).GetIAMTags()
 		roleID, roleErr = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn, accountID, tags, SREAccessARN)
 
 		if roleErr != nil {

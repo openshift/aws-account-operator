@@ -313,12 +313,15 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 		return nil, err
 	}
 
+	// Get list of managed tags.
+	managedTags := r.getManagedTags(reqLogger)
+
 	// Create IAM user in AWS if it doesn't exist
 	if iamUserExists {
 		// If user exists extract iam.User pointer
 		createdIAMUser = iamUserExistsOutput.User
 	} else {
-		CreateUserOutput, err := awsclient.CreateIAMUser(reqLogger, awsClient, account, iamUserName)
+		CreateUserOutput, err := awsclient.CreateIAMUser(reqLogger, awsClient, account, iamUserName, managedTags)
 		// Err is handled within the function and returns a error message
 		if err != nil {
 			return nil, err
