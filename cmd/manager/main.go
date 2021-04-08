@@ -87,14 +87,14 @@ func main() {
 	// are started.
 	// It must also be done exactly once -- see the docstring.
 	if err := utils.InitOperatorStartTime(); err != nil {
-		log.Error(err, "")
+		log.Error(err, "Failed to initialize Operator start time")
 		os.Exit(1)
 	}
 
 	// Get a config to talk to the apiserver
 	cfg, err := config.GetConfig()
 	if err != nil {
-		log.Error(err, "")
+		log.Error(err, "Failed to get config to talk to the apiserver")
 		os.Exit(1)
 	}
 
@@ -103,6 +103,7 @@ func main() {
 	// Become the leader before proceeding
 	err = leader.Become(ctx, "aws-account-operator-lock")
 	if err != nil {
+		log.Error(err, "Failed to acquire lock to become the leader")
 		os.Exit(1)
 	}
 
@@ -112,7 +113,7 @@ func main() {
 		MetricsBindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
 	})
 	if err != nil {
-		log.Error(err, "")
+		log.Error(err, "Failed to create a Manager")
 		os.Exit(1)
 	}
 
@@ -120,18 +121,18 @@ func main() {
 
 	// Setup Scheme for all resources
 	if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
-		log.Error(err, "")
+		log.Error(err, "Failed to add apis to Scheme")
 		os.Exit(1)
 	}
 
 	// Add Prometheus schemes to manager
 	if err := routev1.AddToScheme(mgr.GetScheme()); err != nil {
-		log.Error(err, "")
+		log.Error(err, "Failed to add routev1 to Scheme")
 		os.Exit(1)
 	}
 	// Setup all Controllers
 	if err := controller.AddToManager(mgr); err != nil {
-		log.Error(err, "")
+		log.Error(err, "Failed to setup controllers")
 		os.Exit(1)
 	}
 
@@ -140,13 +141,13 @@ func main() {
 	switch utils.DetectDevMode {
 	case utils.DevModeLocal:
 		if err := prometheus.Register(localmetrics.Collector); err != nil {
-			log.Error(err, "failed to register Prometheus metrics")
+			log.Error(err, "Failed to register Prometheus metrics")
 			os.Exit(1)
 		}
 		http.Handle(customMetricsPath, promhttp.Handler())
 		go func() {
 			if err := http.ListenAndServe(":"+customMetricsPort, nil); err != nil {
-				log.Error(err, "failed to start metrics handler")
+				log.Error(err, "Failed to start metrics handler")
 				os.Exit(1)
 			}
 		}()
@@ -172,7 +173,8 @@ func main() {
 	// Define an awsClient for any processes that need to run during operator startup or independent routines to use
 	awsClient, err := client.New(cfg, client.Options{})
 	if err != nil {
-		log.Error(err, "")
+		log.Error(err, "Failed to create an AWS client")
+		os.Exit(1)
 	}
 
 	// Initialize our ConfigMap with default values if necessary.
@@ -199,7 +201,7 @@ func initOperatorConfigMapVars(kubeClient client.Client) {
 	})
 
 	if err != nil {
-		log.Error(err, "failed creating AWS client")
+		log.Error(err, "Failed creating AWS client")
 		return
 	}
 
