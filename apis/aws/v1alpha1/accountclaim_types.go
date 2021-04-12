@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	"errors"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -144,4 +146,39 @@ type AwsRegions struct {
 
 func init() {
 	SchemeBuilder.Register(&AccountClaim{}, &AccountClaimList{})
+}
+
+// ErrBYOCAccountIDMissing is an error for missing Account ID
+var ErrBYOCAccountIDMissing = errors.New("BYOCAccountIDMissing")
+
+// ErrBYOCSecretRefMissing is an error for missing Secret References
+var ErrBYOCSecretRefMissing = errors.New("BYOCSecretRefMissing")
+
+// ErrSTSRoleARNMissing is an error for missing STS Role ARN definition in the AccountClaim
+var ErrSTSRoleARNMissing = errors.New("STSRoleARNMissing")
+
+// Validates an AccountClaim object
+func (a *AccountClaim) Validate() error {
+	if a.Spec.ManualSTSMode {
+		return a.validateSTS()
+	}
+	return a.validateBYOC()
+}
+
+func (a *AccountClaim) validateSTS() error {
+	if a.Spec.STSRoleARN == "" {
+		return ErrSTSRoleARNMissing
+	}
+	return nil
+}
+
+func (a *AccountClaim) validateBYOC() error {
+	if a.Spec.BYOCAWSAccountID == "" {
+		return ErrBYOCAccountIDMissing
+	}
+	if a.Spec.BYOCSecretRef.Name == "" || a.Spec.BYOCSecretRef.Namespace == "" {
+		return ErrBYOCSecretRefMissing
+	}
+
+	return nil
 }
