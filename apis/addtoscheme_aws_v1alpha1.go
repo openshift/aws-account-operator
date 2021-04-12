@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/apis/aws/v1alpha1"
 )
 
 func init() {

@@ -13,25 +13,25 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccess":       schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccess(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessSpec":   schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessStatus": schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessStatus(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRole":                schema_pkg_apis_aws_v1alpha1_AWSFederatedRole(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleSpec":            schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleSpec(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleStatus":          schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleStatus(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Account":                         schema_pkg_apis_aws_v1alpha1_Account(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaim":                    schema_pkg_apis_aws_v1alpha1_AccountClaim(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimSpec":                schema_pkg_apis_aws_v1alpha1_AccountClaimSpec(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimStatus":              schema_pkg_apis_aws_v1alpha1_AccountClaimStatus(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPool":                     schema_pkg_apis_aws_v1alpha1_AccountPool(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolSpec":                 schema_pkg_apis_aws_v1alpha1_AccountPoolSpec(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolStatus":               schema_pkg_apis_aws_v1alpha1_AccountPoolStatus(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountSpec":                     schema_pkg_apis_aws_v1alpha1_AccountSpec(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountStatus":                   schema_pkg_apis_aws_v1alpha1_AccountStatus(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedAccountAccess":       schema_apis_aws_v1alpha1_AWSFederatedAccountAccess(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedAccountAccessSpec":   schema_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedAccountAccessStatus": schema_apis_aws_v1alpha1_AWSFederatedAccountAccessStatus(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedRole":                schema_apis_aws_v1alpha1_AWSFederatedRole(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedRoleSpec":            schema_apis_aws_v1alpha1_AWSFederatedRoleSpec(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedRoleStatus":          schema_apis_aws_v1alpha1_AWSFederatedRoleStatus(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.Account":                         schema_apis_aws_v1alpha1_Account(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountClaim":                    schema_apis_aws_v1alpha1_AccountClaim(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountClaimSpec":                schema_apis_aws_v1alpha1_AccountClaimSpec(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountClaimStatus":              schema_apis_aws_v1alpha1_AccountClaimStatus(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountPool":                     schema_apis_aws_v1alpha1_AccountPool(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountPoolSpec":                 schema_apis_aws_v1alpha1_AccountPoolSpec(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountPoolStatus":               schema_apis_aws_v1alpha1_AccountPoolStatus(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountSpec":                     schema_apis_aws_v1alpha1_AccountSpec(ref),
+		"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountStatus":                   schema_apis_aws_v1alpha1_AccountStatus(ref),
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccess(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AWSFederatedAccountAccess(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -59,23 +59,23 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccess(ref common.Reference
 					},
 					"spec": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessSpec"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedAccountAccessSpec"),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessStatus"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedAccountAccessStatus"),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessSpec", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedAccountAccessSpec", "github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedAccountAccessStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -92,13 +92,13 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.Refer
 					"awsCustomerCredentialSecret": {
 						SchemaProps: spec.SchemaProps{
 							Description: "AWSCustomerCredentialSecret holds the credentials to the cluster account where the role wil be created",
-							Ref:         ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSSecretReference"),
+							Ref:         ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSSecretReference"),
 						},
 					},
 					"awsFederatedRole": {
 						SchemaProps: spec.SchemaProps{
 							Description: "FederatedRoleName must be the name of a federatedrole cr that currently exists",
-							Ref:         ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleRef"),
+							Ref:         ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedRoleRef"),
 						},
 					},
 				},
@@ -106,11 +106,11 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref common.Refer
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleRef", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSSecretReference"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedRoleRef", "github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSSecretReference"},
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AWSFederatedAccountAccessStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -131,7 +131,7 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessStatus(ref common.Ref
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessCondition"),
+										Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedAccountAccessCondition"),
 									},
 								},
 							},
@@ -154,11 +154,11 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessStatus(ref common.Ref
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessCondition"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedAccountAccessCondition"},
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AWSFederatedRole(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AWSFederatedRole(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -186,23 +186,23 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedRole(ref common.ReferenceCallback)
 					},
 					"spec": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleSpec"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedRoleSpec"),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleStatus"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedRoleStatus"),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleSpec", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedRoleSpec", "github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedRoleStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AWSFederatedRoleSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -226,7 +226,7 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleSpec(ref common.ReferenceCallb
 					"awsCustomPolicy": {
 						SchemaProps: spec.SchemaProps{
 							Description: "AWSCustomPolicy is the defenition of a custom aws permission policy that will be associated with this role",
-							Ref:         ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSCustomPolicy"),
+							Ref:         ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSCustomPolicy"),
 						},
 					},
 					"awsManagedPolicies": {
@@ -253,11 +253,11 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleSpec(ref common.ReferenceCallb
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSCustomPolicy"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSCustomPolicy"},
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AWSFederatedRoleStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -284,7 +284,7 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleStatus(ref common.ReferenceCal
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleCondition"),
+										Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedRoleCondition"),
 									},
 								},
 							},
@@ -295,11 +295,11 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleStatus(ref common.ReferenceCal
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleCondition"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AWSFederatedRoleCondition"},
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_Account(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_Account(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -327,23 +327,23 @@ func schema_pkg_apis_aws_v1alpha1_Account(ref common.ReferenceCallback) common.O
 					},
 					"spec": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountSpec"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountSpec"),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountStatus"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountStatus"),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountSpec", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountSpec", "github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AccountClaim(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AccountClaim(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -371,23 +371,23 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaim(ref common.ReferenceCallback) com
 					},
 					"spec": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimSpec"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountClaimSpec"),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimStatus"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountClaimStatus"),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimSpec", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountClaimSpec", "github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountClaimStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AccountClaimSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AccountClaimSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -397,17 +397,17 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimSpec(ref common.ReferenceCallback)
 					"legalEntity": {
 						SchemaProps: spec.SchemaProps{
 							Description: "INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run \"operator-sdk generate k8s\" to regenerate code after modifying this file Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html",
-							Ref:         ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.LegalEntity"),
+							Ref:         ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.LegalEntity"),
 						},
 					},
 					"awsCredentialSecret": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.SecretRef"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.SecretRef"),
 						},
 					},
 					"aws": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Aws"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.Aws"),
 						},
 					},
 					"accountLink": {
@@ -430,7 +430,7 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimSpec(ref common.ReferenceCallback)
 					},
 					"byocSecretRef": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.SecretRef"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.SecretRef"),
 						},
 					},
 					"byocAWSAccountID": {
@@ -456,11 +456,11 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimSpec(ref common.ReferenceCallback)
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Aws", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.LegalEntity", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.SecretRef"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.Aws", "github.com/openshift/aws-account-operator/apis/aws/v1alpha1.LegalEntity", "github.com/openshift/aws-account-operator/apis/aws/v1alpha1.SecretRef"},
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AccountClaimStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AccountClaimStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -481,7 +481,7 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimStatus(ref common.ReferenceCallbac
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimCondition"),
+										Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountClaimCondition"),
 									},
 								},
 							},
@@ -498,11 +498,11 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimStatus(ref common.ReferenceCallbac
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimCondition"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountClaimCondition"},
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AccountPool(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AccountPool(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -530,23 +530,23 @@ func schema_pkg_apis_aws_v1alpha1_AccountPool(ref common.ReferenceCallback) comm
 					},
 					"spec": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolSpec"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountPoolSpec"),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolStatus"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountPoolStatus"),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolSpec", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountPoolSpec", "github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountPoolStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AccountPoolSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AccountPoolSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -566,7 +566,7 @@ func schema_pkg_apis_aws_v1alpha1_AccountPoolSpec(ref common.ReferenceCallback) 
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AccountPoolStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AccountPoolStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -599,7 +599,7 @@ func schema_pkg_apis_aws_v1alpha1_AccountPoolStatus(ref common.ReferenceCallback
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AccountSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AccountSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -639,7 +639,7 @@ func schema_pkg_apis_aws_v1alpha1_AccountSpec(ref common.ReferenceCallback) comm
 					},
 					"legalEntity": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.LegalEntity"),
+							Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.LegalEntity"),
 						},
 					},
 					"manualSTSMode": {
@@ -653,11 +653,11 @@ func schema_pkg_apis_aws_v1alpha1_AccountSpec(ref common.ReferenceCallback) comm
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.LegalEntity"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.LegalEntity"},
 	}
 }
 
-func schema_pkg_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
@@ -691,7 +691,7 @@ func schema_pkg_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) co
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountCondition"),
+										Ref: ref("github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountCondition"),
 									},
 								},
 							},
@@ -725,6 +725,6 @@ func schema_pkg_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) co
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountCondition"},
+			"github.com/openshift/aws-account-operator/apis/aws/v1alpha1.AccountCondition"},
 	}
 }

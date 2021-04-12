@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
