@@ -56,7 +56,7 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 	reqLogger.Info("Completed initializing all supported regions")
 }
 
-// InitializeRegion sets up a connection to the AWS `region` and then creates and terminates an EC2 instance
+// InitializeRegion sets up a connection to the AWS `region` and then creates and terminates an EC2 instance if necessary
 func (r *ReconcileAccount) InitializeRegion(
 	reqLogger logr.Logger,
 	account *awsv1alpha1.Account,
@@ -67,11 +67,8 @@ func (r *ReconcileAccount) InitializeRegion(
 	ec2Errors chan string,
 	creds *sts.AssumeRoleOutput,
 ) error {
-	var err error
 	var quotaIncreaseRequired bool
 	var caseID string
-
-	reqLogger.Info("initializing region", "region", region)
 
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
@@ -86,6 +83,20 @@ func (r *ReconcileAccount) InitializeRegion(
 		ec2Errors <- connErr
 
 		return err
+	}
+
+	reqLogger.Info("initializing region", "region", region)
+
+	// Attempt to clean the region from any hanging resources
+	cleaned, err := cleanRegion(awsClient, reqLogger)
+	if err != nil {
+		return err
+	}
+	if cleaned {
+		// Getting here indicates that the current region is already initialized
+		// and had hanging t2.micro instances that were cleaned. We can forgo creating any new resources
+		ec2Notifications <- fmt.Sprintf("Region %s was already innitialized", region)
+		return nil
 	}
 
 	// If the quota is 0, there was an error and we cannot act on it
@@ -202,7 +213,6 @@ func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, ac
 	reqLogger.Info(fmt.Sprintf("Terminating EC2 Instance: %s", instanceID))
 
 	err = TerminateEC2Instance(reqLogger, awsClient, instanceID)
-
 	if err != nil {
 		return err
 	}
@@ -599,4 +609,69 @@ func changeRequestMatches(change *servicequotas.RequestedServiceQuotaChange, quo
 	}
 
 	return true
+}
+
+// cleanRegion will remove all hanging account creation t2.micro instances running in the current region
+func cleanRegion(client awsclient.Client, logger logr.Logger) (bool, error) {
+	cleaned := false
+	// Get a list of all running t2.micro instances
+	output, err := client.DescribeInstances(&ec2.DescribeInstancesInput{
+		MaxResults: aws.Int64(100),
+		Filters: []*ec2.Filter{
+			{
+				Name: aws.String("instance-type"),
+				Values: []*string{
+					aws.String("t2.micro"),
+				},
+			},
+			{
+				Name: aws.String("instance-state-name"),
+				Values: []*string{
+					aws.String("running"),
+				},
+			},
+			{
+				Name: aws.String("tag-key"),
+				Values: []*string{
+					aws.String(awsv1alpha1.ClusterAccountNameTagKey),
+				},
+			},
+			{
+				Name: aws.String("tag-key"),
+				Values: []*string{
+					aws.String(awsv1alpha1.ClusterNamespaceTagKey),
+				},
+			},
+			{
+				Name: aws.String("tag-key"),
+				Values: []*string{
+					aws.String(awsv1alpha1.ClusterClaimLinkTagKey),
+				},
+			},
+			{
+				Name: aws.String("tag-key"),
+				Values: []*string{
+					aws.String(awsv1alpha1.ClusterClaimLinkNamespaceTagKey),
+				},
+			},
+		},
+	})
+	if err != nil {
+		logger.Error(err, "Error while describing instances")
+		return cleaned, err
+	}
+	// Remove any hanging instances
+
+	for _, reservation := range output.Reservations {
+		for _, instance := range reservation.Instances {
+			cleaned = true
+			logger.Info("Terminating hanging instance", "instance", instance.InstanceId)
+			err = TerminateEC2Instance(logger, client, *instance.InstanceId)
+			if err != nil {
+				logger.Error(err, "Error while attempting to terminate instance", "instance", *instance.InstanceId)
+				return false, err
+			}
+		}
+	}
+	return cleaned, nil
 }
