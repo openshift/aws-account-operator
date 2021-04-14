@@ -7,7 +7,7 @@ usage() {
     Options
 
     -a         AWS Organization Account limit
-    -o         AWS Account OU ID 
+    -o         AWS Account OU BASE ID
     -r         AWS Account OU ROOT ID
     -v         AWS VCPU Quota
 EOF

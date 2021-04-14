@@ -154,7 +154,6 @@ delete-ccs-namespace: ## Delete CCS (BYOC) namespace
 	# Delete CCS namespace
 	@oc process --local -p NAME=${CCS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete -f -
 
-
 .PHONY: delete-ccs-2-namespace
 delete-ccs-2-namespace: ## Delete CCS (BYOC) namespace
 	# Delete CCS namespace
@@ -285,14 +284,14 @@ ifndef OPERATOR_SECRET_ACCESS_KEY
 endif
 
 .PHONY: create-ou-map
-create-ou-map: ## Test apply OU map CR
+create-ou-map: check-ou-mapping-configmap-env ## Test apply OU map CR
 	# Create OU map
-	@oc process --local -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -p ACCOUNTLIMIT="0" -f hack/templates/aws.managed.openshift.io_v1alpha1_configmap.tmpl | oc apply -f -
+	@hack/scripts/set_operator_configmap.sh -a 0 -v 1 -r "${OSD_STAGING_1_OU_ROOT_ID}" -o "${OSD_STAGING_1_OU_BASE_ID}"
 
 .PHONY: delete-ou-map
 delete-ou-map: ## Test delete OU map CR
 	# Delete OU map
-	@oc process --local -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -f hack/templates/aws.managed.openshift.io_v1alpha1_configmap.tmpl | oc delete -f -
+	@oc process --local -p ROOT=${OSD_STAGING_1_OU_ROOT_ID} -p BASE=${OSD_STAGING_1_OU_BASE_ID} -p OPERATOR_NAMESPACE=aws-account-operator -f hack/templates/aws.managed.openshift.io_v1alpha1_configmap.tmpl | oc delete -f -
 
 .PHONY: test-aws-ou-logic
 test-aws-ou-logic: check-ou-mapping-configmap-env create-accountclaim-namespace create-accountclaim ## Test AWS OU logic
