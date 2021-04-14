@@ -88,8 +88,10 @@ func (r *ReconcileAccount) InitializeRegion(
 	reqLogger.Info("initializing region", "region", region)
 
 	// Attempt to clean the region from any hanging resources
-	cleaned, err := cleanRegion(awsClient, reqLogger)
+	cleaned, err := cleanRegion(awsClient, reqLogger, account.Name)
 	if err != nil {
+		cleanErr := fmt.Sprintf("Error while attempting to clean region: %v", err.Error())
+		ec2Errors <- cleanErr
 		return err
 	}
 	if cleaned {
@@ -612,7 +614,7 @@ func changeRequestMatches(change *servicequotas.RequestedServiceQuotaChange, quo
 }
 
 // cleanRegion will remove all hanging account creation t2.micro instances running in the current region
-func cleanRegion(client awsclient.Client, logger logr.Logger) (bool, error) {
+func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string) (bool, error) {
 	cleaned := false
 	// Get a list of all running t2.micro instances
 	output, err := client.DescribeInstances(&ec2.DescribeInstancesInput{
@@ -665,7 +667,7 @@ func cleanRegion(client awsclient.Client, logger logr.Logger) (bool, error) {
 	for _, reservation := range output.Reservations {
 		for _, instance := range reservation.Instances {
 			cleaned = true
-			logger.Info("Terminating hanging instance", "instance", instance.InstanceId)
+			logger.Info("Terminating hanging instance", "instance", instance.InstanceId, "account", accountName)
 			err = TerminateEC2Instance(logger, client, *instance.InstanceId)
 			if err != nil {
 				logger.Error(err, "Error while attempting to terminate instance", "instance", *instance.InstanceId)
