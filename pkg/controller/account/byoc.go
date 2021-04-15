@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -25,6 +26,9 @@ var ErrBYOCAccountIDMissing = errors.New("BYOCAccountIDMissing")
 
 // ErrBYOCSecretRefMissing is an error for missing Secret References
 var ErrBYOCSecretRefMissing = errors.New("BYOCSecretRefMissing")
+
+// ErrSTSRoleARNMissing is an error for missing STS Role ARN definition in the AccountClaim
+var ErrSTSRoleARNMissing = errors.New("STSRoleARNMissing")
 
 // BYOC Accounts are determined by having no state set OR not being claimed
 // Returns true if either are true AND Spec.BYOC is true
@@ -68,12 +72,16 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 
 	}
 
-	// Try to get the CCS client five times with half a second interval between attempts
+	// Try to get the CCS/STS client five times with half a second interval between attempts
 	// before setting the account claim to an error state
 	var clientErr error
 	var client awsclient.Client
 	for i := 0; i < 5; i++ {
-		client, clientErr = r.getCCSClient(account, accountClaim)
+		if account.Spec.ManualSTSMode {
+			client, _, clientErr = r.getSTSClient(reqLogger, accountClaim, awsSetupClient)
+		} else {
+			client, clientErr = r.getCCSClient(account, accountClaim)
+		}
 		if clientErr == nil {
 			break
 		}
@@ -102,7 +110,12 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		return "", reconcile.Result{}, clientErr
 	}
 
-	validateErr := validateBYOCClaim(accountClaim)
+	var validateErr error
+	if account.Spec.ManualSTSMode {
+		validateErr = validateSTSClaim(accountClaim)
+	} else {
+		validateErr = validateBYOCClaim(accountClaim)
+	}
 	if validateErr != nil {
 		// Figure the reason for our failure
 		errReason := ""
@@ -136,6 +149,12 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		}
 		// TODO: Recoverable?
 		return "", reconcile.Result{}, claimErr
+	}
+
+	// if STS Mode we don't need anything else done here
+	if account.Spec.ManualSTSMode {
+		reqLogger.Info("Skipping Admin Role Creation for STS Account.")
+		return "", reconcile.Result{}, nil
 	}
 
 	accountID := account.Labels[awsv1alpha1.IAMUserIDLabel]
@@ -394,6 +413,54 @@ func DeleteRole(reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.
 	return err
 }
 
+func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alpha1.AccountClaim, operatorAWSClient awsclient.Client) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+	// Get SRE Access ARN from configmap
+	cm := &corev1.ConfigMap{}
+	cmErr := r.Client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	if cmErr != nil {
+		log.Error(cmErr, "There was an error getting the ConfigMap to get the STS Jump Role")
+		return nil, nil, cmErr
+	}
+
+	stsAccessARN := cm.Data["sts-jump-role"]
+	if stsAccessARN == "" {
+		log.Error(awsv1alpha1.ErrInvalidConfigMap, "configmap key missing", "keyName", "sts-jump-role")
+		return nil, nil, cmErr
+	}
+
+	jumpRoleCreds, err := getSTSCredentials(log, operatorAWSClient, stsAccessARN, "awsAccountOperator")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	jumpRoleClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+		AwsCredsSecretIDKey:     *jumpRoleCreds.Credentials.AccessKeyId,
+		AwsCredsSecretAccessKey: *jumpRoleCreds.Credentials.SecretAccessKey,
+		AwsToken:                *jumpRoleCreds.Credentials.SessionToken,
+		AwsRegion:               "us-east-1",
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	customerAccountCreds, err := getSTSCredentials(log, jumpRoleClient, accountClaim.Spec.STSRoleARN, "RH-Account-Initialization")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	customerClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+		AwsCredsSecretIDKey:     *customerAccountCreds.Credentials.AccessKeyId,
+		AwsCredsSecretAccessKey: *customerAccountCreds.Credentials.SecretAccessKey,
+		AwsToken:                *customerAccountCreds.Credentials.SessionToken,
+		AwsRegion:               "us-east-1",
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return customerClient, customerAccountCreds, nil
+}
+
 func (r *ReconcileAccount) getCCSClient(currentAcct *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) (awsclient.Client, error) {
 	// Get credentials
 	ccsAWSClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
@@ -408,8 +475,14 @@ func (r *ReconcileAccount) getCCSClient(currentAcct *awsv1alpha1.Account, accoun
 	return ccsAWSClient, nil
 }
 
-func validateBYOCClaim(accountClaim *awsv1alpha1.AccountClaim) error {
+func validateSTSClaim(accountClaim *awsv1alpha1.AccountClaim) error {
+	if accountClaim.Spec.STSRoleARN == "" {
+		return ErrSTSRoleARNMissing
+	}
+	return nil
+}
 
+func validateBYOCClaim(accountClaim *awsv1alpha1.AccountClaim) error {
 	if accountClaim.Spec.BYOCAWSAccountID == "" {
 		return ErrBYOCAccountIDMissing
 	}

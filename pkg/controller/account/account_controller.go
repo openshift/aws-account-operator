@@ -168,7 +168,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		AwsRegion:  "us-east-1",
 	})
 	if err != nil {
-		reqLogger.Error(err, "failed building AWS client")
+		reqLogger.Error(err, "failed building operator AWS client")
 		return reconcile.Result{}, err
 	}
 
@@ -263,8 +263,40 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// Account init for both BYOC and Non-BYOC
 	if currentAcctInstance.ReadyForInitialization() {
-
 		reqLogger.Info("initializing account", "awsAccountID", currentAcctInstance.Spec.AwsAccountID)
+
+		// STS mode doesn't need IAM user init, so just get the creds necessary, init regions, and exit
+		if currentAcctInstance.Spec.ManualSTSMode {
+			accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
+			if acctClaimErr != nil {
+				reqLogger.Error(acctClaimErr, "unable to get accountclaim for sts account")
+				utils.SetAccountClaimStatus(
+					accountClaim,
+					"Failed to get AccountClaim for CSS account",
+					"FailedRetrievingAccountClaim",
+					awsv1alpha1.ClientError,
+					awsv1alpha1.ClaimStatusError,
+				)
+				err := r.Client.Status().Update(context.TODO(), accountClaim)
+				if err != nil {
+					reqLogger.Error(err, "failed to update accountclaim status")
+				}
+				return reconcile.Result{}, acctClaimErr
+			}
+
+			_, creds, err := r.getSTSClient(reqLogger, accountClaim, awsSetupClient)
+			if err != nil {
+				reqLogger.Error(err, "error getting sts client to initialize regions")
+				return reconcile.Result{}, err
+			}
+
+			if err = r.initializeRegions(reqLogger, currentAcctInstance, creds); err != nil {
+				// initializeRegions logs
+				return reconcile.Result{}, err
+			}
+			return reconcile.Result{}, nil
+		}
+
 		var roleToAssume string
 		var iamUserUHC = iamUserNameUHC
 		var iamUserSRE = iamUserNameSRE
@@ -502,12 +534,20 @@ func (r *ReconcileAccount) assumeRole(
 	roleToAssume string,
 	ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
 
+	// The role ARN made up of the account number and the role which is the default role name
+	// created in child accounts
+	var roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
+	// Use the role session name to uniquely identify a session when the same role
+	// is assumed by different principals or for different reasons.
+	var roleSessionName = "awsAccountOperator"
+
 	var creds *sts.AssumeRoleOutput
 	var credsErr error
 
 	for i := 0; i < 10; i++ {
+
 		// Get STS credentials so that we can create an aws client with
-		creds, credsErr = getStsCredentials(reqLogger, awsSetupClient, roleToAssume, currentAcctInstance.Spec.AwsAccountID)
+		creds, credsErr = getSTSCredentials(reqLogger, awsSetupClient, roleArn, roleSessionName)
 		if credsErr != nil {
 			// Get custom failure reason to update account status
 			reason := ""

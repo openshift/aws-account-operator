@@ -66,6 +66,8 @@ spec:
                 - id
                 - name
               type: object
+            manualSTSMode:
+              type: boolean
           required:
             - awsAccountID
             - iamUserSecret

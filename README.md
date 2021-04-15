@@ -15,12 +15,13 @@ This Quick Start assumes that you are working on a team that already has AWS Acc
 First, set up your required environment variables:
 
 ```bash
-export AWS_PAGER=
-export FORCE_DEV_MODE=local
-export OSD_STAGING_1_AWS_ACCOUNT_ID=
-export OSD_STAGING_2_AWS_ACCOUNT_ID=
-export OSD_STAGING_1_OU_ROOT_ID=
-export OSD_STAGING_1_OU_BASE_ID=
+export AWS_PAGER= # This is set so that it doesn't page out to less and block integration testing
+export FORCE_DEV_MODE=local # This flags the operator for local development for some code paths
+export OSD_STAGING_1_AWS_ACCOUNT_ID= # Your assigned osd-staging-1 account ID
+export OSD_STAGING_2_AWS_ACCOUNT_ID= # Your assigned osd-staging-2 account ID
+export OSD_STAGING_1_OU_ROOT_ID= # Your assigned osd-staging-1 OU Root ID
+export OSD_STAGING_1_OU_BASE_ID= # Your assigned osd-staging-1 OU Base ID
+export STS_ROLE_ARN= # A role you create in your osd-staging-2 account with minimal STS permissions
 ```
 
 [direnv](https://direnv.net) is what some team members use, and you can add the above block (with variables filled in) into a `.envrc` file (make sure `.envrc` is in your global git ignore as well) and upon entry to the `aws-account-operator` folder the env vars inside the file will be loaded automatically, and unset when you leave the folder.

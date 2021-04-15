@@ -97,6 +97,10 @@ spec:
                 - id
                 - name
               type: object
+            manualSTSMode:
+              type: boolean
+            stsRoleARN:
+              type: string
           required:
             - accountLink
             - aws

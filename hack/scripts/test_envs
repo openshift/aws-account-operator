@@ -10,3 +10,6 @@ FED_USER=test-federated-user
 CCS_CLAIM_NAME=test-ccs
 CCS_NAMESPACE_NAME=test-ccs-namespace
 CCS_NAMESPACE_NAME_2=test-ccs-2-namespace
+STS_CLAIM_NAME=test-sts
+STS_NAMESPACE_NAME=test-sts-namespace
+STSMODE=false

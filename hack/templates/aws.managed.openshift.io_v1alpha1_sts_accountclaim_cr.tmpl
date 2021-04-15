@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Template
+parameters:
+- name: NAME
+- name: NAMESPACE
+- name: STS_ACCOUNT_ID
+- name: STS_ROLE_ARN
+metadata:
+  name: test-aws-sts-accountclaim-template
+objects:
+- apiVersion: aws.managed.openshift.io/v1alpha1
+  kind: AccountClaim
+  metadata:
+    name: ${NAME}
+    namespace: ${NAMESPACE}
+  spec:
+    accountLink: ""
+    aws:
+      regions:
+      - name: us-east-1
+    awsCredentialSecret:
+      name: aws
+      namespace: ${NAMESPACE}
+    byoc: true
+    byocAWSAccountID: ${STS_ACCOUNT_ID}
+    legalEntity:
+      id: "111111"
+      name: ${NAME}
+    manualSTSMode: true
+    stsRoleARN: ${STS_ROLE_ARN}
