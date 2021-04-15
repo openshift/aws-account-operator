@@ -30,8 +30,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/apis/aws/v1alpha1"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	totalaccountwatcher "github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 )
