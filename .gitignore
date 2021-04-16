@@ -65,6 +65,7 @@ anaconda-mode/
 # swap
 .sw[a-p]
 .*.sw[a-p]
+*.orig
 # session
 Session.vim
 # temporary
@@ -86,3 +87,9 @@ tags
 
 # used with direnv
 .envrc
+
+### boilerplate
+# appsre pipeline
+Dockerfile.olm-registry
+saas-configure-alertmanager-operator-bundle/
+.docker/
