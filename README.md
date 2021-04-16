@@ -47,6 +47,10 @@ make test-all
 
 If the everything is set up correctly this should verify that.
 
+## Boilerplate
+This repository subscribes to the [openshift/golang-osd-operator](https://github.com/openshift/boilerplate/tree/master/boilerplate/openshift/golang-osd-operator) convention of [boilerplate](https://github.com/openshift/boilerplate/).
+See the [README](boilerplate/openshift/golang-osd-operator/README.md) for details about the functionality that brings in.
+
 ## Further Reading
 
 To dive deeper into the documentation, visit our [`docs`](docs) folder.
