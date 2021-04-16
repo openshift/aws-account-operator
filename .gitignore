@@ -91,5 +91,5 @@ tags
 ### boilerplate
 # appsre pipeline
 Dockerfile.olm-registry
-saas-configure-alertmanager-operator-bundle/
+saas-aws-account-operator-bundle/
 .docker/
