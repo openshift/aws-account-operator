@@ -10,10 +10,10 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 
 source $REPO_ROOT/boilerplate/_lib/common.sh
 
-# There's nothing to generate if pkg/apis is empty (other than apis.go).
+# There's nothing to generate if apis is empty (other than apis.go).
 # And instead of succeeding gracefully, `operator-sdk generate` will
 # fail if you try. So do our own check.
-if ! /bin/ls -1 pkg/apis | grep -Fqv apis.go; then
+if ! /bin/ls -1 apis | grep -Fqv apis.go; then
     echo "No APIs! Skipping operator-sdk generate."
     exit 0
 fi

@@ -123,7 +123,7 @@ op-generate:
 
 .PHONY: openapi-generate
 openapi-generate:
-	find ./pkg/apis/ -maxdepth 2 -mindepth 2 -type d | xargs -t -n1 -I% \
+	find .apis/ -maxdepth 2 -mindepth 2 -type d | xargs -t -n1 -I% \
 		openapi-gen --logtostderr=true \
 			-i % \
 			-o "" \
