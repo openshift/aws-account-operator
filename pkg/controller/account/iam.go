@@ -70,7 +70,6 @@ func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, account *awsv1alp
 }
 
 // getSTSCredentials returns STS credentials for the specified account ARN
-// Takes a logger, an awsClient, a role name to assume, and the target AWS account ID
 func getSTSCredentials(reqLogger logr.Logger, client awsclient.Client, roleArn string, roleSessionName string) (*sts.AssumeRoleOutput, error) {
 	// Default duration in seconds of the session token 3600. We need to have the roles policy
 	// changed if we want it to be longer than 3600 seconds
