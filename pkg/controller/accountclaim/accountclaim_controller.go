@@ -224,7 +224,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 				return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 			}
 			waitMsg := fmt.Sprintf("%s is not Ready yet (current status: %s) requeuing in %d seconds", byocAccount.Name, byocAccount.Status.State, waitPeriod)
-			reqLogger.Info(waitMsg)
+			reqLogger.Info(waitMsg, "Account Status", byocAccount.Status.State)
 			return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
 		}
 
