@@ -7,7 +7,7 @@ package v1alpha1
 
 import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"github.com/openshift/aws-account-operator/apis/scheme"
+	"github.com/openshift/aws-account-operator/pkg/apis/scheme"
 )
 
 var (

@@ -12,7 +12,7 @@ require (
 	github.com/onsi/ginkgo v1.12.0
 	github.com/onsi/gomega v1.9.0
 	github.com/openshift/api v3.9.1-0.20190924102528-32369d4db2ad+incompatible
-	github.com/openshift/aws-account-operator/apis v0.0.0-00010101000000-000000000000
+	github.com/openshift/aws-account-operator/pkg/apis v0.0.0-00010101000000-000000000000
 	github.com/openshift/operator-custom-metrics v0.4.1
 	github.com/operator-framework/operator-sdk v0.16.0
 	github.com/pkg/errors v0.9.1
@@ -30,7 +30,7 @@ require (
 )
 
 // sub modules
-replace github.com/openshift/aws-account-operator/apis => ./apis
+replace github.com/openshift/aws-account-operator/pkg/apis => ./pkg/apis
 
 replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
 

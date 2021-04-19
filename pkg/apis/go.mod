@@ -1,4 +1,4 @@
-module github.com/openshift/aws-account-operator/apis
+module github.com/openshift/aws-account-operator/pkg/apis
 
 go 1.13
 
