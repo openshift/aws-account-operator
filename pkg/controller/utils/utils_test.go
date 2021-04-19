@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	awsv1alpha1 "github.com/openshift/aws-account-operator/apis/aws/v1alpha1"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 )
 
 func createRoleMock(statements []awsv1alpha1.StatementEntry) awsv1alpha1.AWSFederatedRole {

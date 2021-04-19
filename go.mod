@@ -7,35 +7,32 @@ require (
 	github.com/aws/aws-sdk-go v1.34.14
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-logr/logr v0.1.0
-	github.com/go-openapi/spec v0.20.3
+	github.com/go-openapi/spec v0.19.4
 	github.com/golang/mock v1.3.1
 	github.com/onsi/ginkgo v1.12.0
 	github.com/onsi/gomega v1.9.0
 	github.com/openshift/api v3.9.1-0.20190924102528-32369d4db2ad+incompatible
-	github.com/openshift/aws-account-operator/apis v0.0.0-00010101000000-000000000000
 	github.com/openshift/operator-custom-metrics v0.4.1
 	github.com/operator-framework/operator-sdk v0.16.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.2.1
 	github.com/rkt/rkt v1.30.0
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.6.1
+	github.com/stretchr/testify v1.5.1
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
-	gopkg.in/yaml.v2 v2.4.0
+	gopkg.in/yaml.v2 v2.2.4
 	k8s.io/api v0.15.7
 	k8s.io/apimachinery v0.15.7
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/kube-openapi v0.0.0-20190918143330-0270cf2f1c1d
-	sigs.k8s.io/controller-runtime v0.4.0
 )
-
-// sub modules
-replace github.com/openshift/aws-account-operator/apis => ./apis
 
 replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
 
 // Fixes missing bitbucket dependency; replaces with same fork k8s uses
 replace bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
+
+require sigs.k8s.io/controller-runtime v0.4.0
 
 // Pinned to kubernetes-1.16.2
 replace (

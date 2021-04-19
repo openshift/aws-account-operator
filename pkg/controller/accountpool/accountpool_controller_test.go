@@ -5,8 +5,8 @@ import (
 	"reflect"
 
 	"github.com/golang/mock/gomock"
-	awsaccountapis "github.com/openshift/aws-account-operator/apis"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/apis/aws/v1alpha1"
+	awsaccountapis "github.com/openshift/aws-account-operator/pkg/apis"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
