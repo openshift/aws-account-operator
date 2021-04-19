@@ -10,6 +10,8 @@ parameters:
   value: staging
 - name: IMAGE_TAG
   value: latest
+- name: REPO_DIGEST
+  value: latest
 - name: ACCOUNT_LIMIT
   required: true
 - name: ROOT_OU_ID
@@ -30,7 +32,7 @@ objects:
     name: aws-account-operator-catalog
   spec:
     sourceType: grpc
-    image: ${REGISTRY_IMG}:${CHANNEL}-${IMAGE_TAG}
+    image: ${REPO_DIGEST}
     displayName: aws-account-operator Registry
     publisher: SRE
 
