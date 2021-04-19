@@ -3,7 +3,6 @@ package account
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -20,15 +19,6 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
-
-// ErrBYOCAccountIDMissing is an error for missing Account ID
-var ErrBYOCAccountIDMissing = errors.New("BYOCAccountIDMissing")
-
-// ErrBYOCSecretRefMissing is an error for missing Secret References
-var ErrBYOCSecretRefMissing = errors.New("BYOCSecretRefMissing")
-
-// ErrSTSRoleARNMissing is an error for missing STS Role ARN definition in the AccountClaim
-var ErrSTSRoleARNMissing = errors.New("STSRoleARNMissing")
 
 // BYOC Accounts are determined by having no state set OR not being claimed
 // Returns true if either are true AND Spec.BYOC is true
@@ -110,20 +100,10 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		return "", reconcile.Result{}, clientErr
 	}
 
-	var validateErr error
-	if account.Spec.ManualSTSMode {
-		validateErr = validateSTSClaim(accountClaim)
-	} else {
-		validateErr = validateBYOCClaim(accountClaim)
-	}
+	validateErr := accountClaim.Validate()
 	if validateErr != nil {
 		// Figure the reason for our failure
-		errReason := ""
-		if validateErr == ErrBYOCAccountIDMissing {
-			errReason = "ClaimMissingAccountID"
-		} else {
-			errReason = "ClaimMissingSecretReference"
-		}
+		errReason := validateErr.Error()
 		// Update AccountClaim status
 		utils.SetAccountClaimStatus(
 			accountClaim,
@@ -134,7 +114,7 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		)
 		err := r.Client.Status().Update(context.TODO(), accountClaim)
 		if err != nil {
-			reqLogger.Error(err, "Failed to create AWS Client")
+			reqLogger.Error(err, "Failed to Update AccountClaim Status")
 		}
 
 		// TODO: Recoverable?
@@ -473,22 +453,4 @@ func (r *ReconcileAccount) getCCSClient(currentAcct *awsv1alpha1.Account, accoun
 	}
 
 	return ccsAWSClient, nil
-}
-
-func validateSTSClaim(accountClaim *awsv1alpha1.AccountClaim) error {
-	if accountClaim.Spec.STSRoleARN == "" {
-		return ErrSTSRoleARNMissing
-	}
-	return nil
-}
-
-func validateBYOCClaim(accountClaim *awsv1alpha1.AccountClaim) error {
-	if accountClaim.Spec.BYOCAWSAccountID == "" {
-		return ErrBYOCAccountIDMissing
-	}
-	if accountClaim.Spec.BYOCSecretRef.Name == "" || accountClaim.Spec.BYOCSecretRef.Namespace == "" {
-		return ErrBYOCSecretRefMissing
-	}
-
-	return nil
 }
