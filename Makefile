@@ -341,3 +341,13 @@ clean-operator: ## Clean Operator
 	oc delete accounts --all -n ${NAMESPACE}
 	oc delete awsfederatedaccountaccess --all -n ${NAMESPACE}
 	oc delete awsfederatedrole --all -n ${NAMESPACE}
+
+.PHONY: download
+download: ## Download dependencies
+	@echo Downloading go.mod dependencies ...
+	@go mod download
+
+.PHONY: install-tools
+install-tools: download ## Get tools
+	@echo Installing tools from tools.go ...
+	@cat tools.go | grep _ | awk -F'"' '{print $$2}' | xargs -tI % go install %

@@ -6,8 +6,8 @@ require (
 	github.com/avast/retry-go v2.6.1+incompatible
 	github.com/aws/aws-sdk-go v1.34.14
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
-	github.com/go-logr/logr v0.1.0
-	github.com/go-openapi/spec v0.19.4
+	github.com/go-logr/logr v0.4.0
+	github.com/go-openapi/spec v0.20.3
 	github.com/golang/mock v1.3.1
 	github.com/onsi/ginkgo v1.12.0
 	github.com/onsi/gomega v1.9.0
@@ -18,13 +18,12 @@ require (
 	github.com/prometheus/client_golang v1.2.1
 	github.com/rkt/rkt v1.30.0
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.5.1
-	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
-	gopkg.in/yaml.v2 v2.2.4
+	github.com/stretchr/testify v1.6.1
+	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.15.7
 	k8s.io/apimachinery v0.15.7
 	k8s.io/client-go v12.0.0+incompatible
-	k8s.io/kube-openapi v0.0.0-20190918143330-0270cf2f1c1d
+	k8s.io/kube-openapi v0.0.0-20210323165736-1a6458611d18
 )
 
 replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
@@ -32,7 +31,20 @@ replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
 // Fixes missing bitbucket dependency; replaces with same fork k8s uses
 replace bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 
-require sigs.k8s.io/controller-runtime v0.4.0
+require (
+	github.com/emicklei/go-restful v2.15.0+incompatible // indirect
+	github.com/go-openapi/swag v0.19.15 // indirect
+	github.com/json-iterator/go v1.1.10 // indirect
+	github.com/mailru/easyjson v0.7.7 // indirect
+	golang.org/x/mod v0.4.2 // indirect
+	golang.org/x/net v0.0.0-20210420072503-d25e30425868 // indirect
+	golang.org/x/sys v0.0.0-20210420072515-93ed5bcd2bfe // indirect
+	golang.org/x/tools v0.1.0 // indirect
+	k8s.io/code-generator v0.21.0
+	k8s.io/gengo v0.0.0-20210203185629-de9496dff47b // indirect
+	k8s.io/klog/v2 v2.8.0 // indirect
+	sigs.k8s.io/controller-runtime v0.4.0
+)
 
 // Pinned to kubernetes-1.16.2
 replace (
