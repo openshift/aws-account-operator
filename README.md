@@ -8,6 +8,13 @@ The operator is responsible for creating and maintaining a pool of AWS accounts 
 
 The operator is deployed to an OpenShift cluster in the `aws-account-operator` namespace.
 
+## Build
+
+```shell
+make install-tools
+make
+```
+
 ## Quick Start
 
 This Quick Start assumes that you are working on a team that already has AWS Accounts set up for development/testing.  For first time setup, see the prerequisites documentation page.
@@ -50,6 +57,15 @@ If the everything is set up correctly this should verify that.
 ## Boilerplate
 This repository subscribes to the [openshift/golang-osd-operator](https://github.com/openshift/boilerplate/tree/master/boilerplate/openshift/golang-osd-operator) convention of [boilerplate](https://github.com/openshift/boilerplate/).
 See the [README](boilerplate/openshift/golang-osd-operator/README.md) for details about the functionality that brings in.
+
+## Modify the API
+
+Add, delete or modify the files into `pkg/apis/aws/v1alpha1` (excluding the `zz_generated` ones).
+Then run:
+
+```shell
+./boilerplate/_lib/container-make generate
+```
 
 ## Further Reading
 
