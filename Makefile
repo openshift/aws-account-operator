@@ -265,7 +265,7 @@ deploy-local-debug: ## Deploy Operator locally with Delve enabled
 
 .PHONY: deploy-cluster
 deploy-cluster: FORCE_DEV_MODE?=cluster
-deploy-cluster: isclean ## Deploy to cluster
+deploy-cluster: clean-operator ## Deploy to cluster
 	# Deploy things like service account, roles, etc.
 # TODO(efried): Filtering out operator.yaml here is icky, but necessary so we can do the substitutions.
 #               Revisit when templating mentioned below is done.
