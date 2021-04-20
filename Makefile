@@ -331,7 +331,7 @@ test-sts-accountclaim: create-sts-accountclaim-namespace create-sts-accountclaim
 
 #s Test all
 .PHONY: test-all
-test-all: lint clean-operator test test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim ## Runs all integration tests
+test-all: clean-operator test test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim ## Runs all integration tests
 
 .PHONY: clean-operator
 clean-operator: ## Clean Operator
