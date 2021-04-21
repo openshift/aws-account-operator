@@ -13,21 +13,80 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccess":       schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccess(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessSpec":   schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessStatus": schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessStatus(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRole":                schema_pkg_apis_aws_v1alpha1_AWSFederatedRole(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleSpec":            schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleSpec(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleStatus":          schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleStatus(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Account":                         schema_pkg_apis_aws_v1alpha1_Account(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaim":                    schema_pkg_apis_aws_v1alpha1_AccountClaim(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimSpec":                schema_pkg_apis_aws_v1alpha1_AccountClaimSpec(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimStatus":              schema_pkg_apis_aws_v1alpha1_AccountClaimStatus(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPool":                     schema_pkg_apis_aws_v1alpha1_AccountPool(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolSpec":                 schema_pkg_apis_aws_v1alpha1_AccountPoolSpec(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolStatus":               schema_pkg_apis_aws_v1alpha1_AccountPoolStatus(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountSpec":                     schema_pkg_apis_aws_v1alpha1_AccountSpec(ref),
-		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountStatus":                   schema_pkg_apis_aws_v1alpha1_AccountStatus(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSCustomPolicy":                    schema_pkg_apis_aws_v1alpha1_AWSCustomPolicy(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccess":          schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccess(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessCondition": schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessCondition(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessList":      schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessList(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessSpec":      schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessSpec(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessStatus":    schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessStatus(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRole":                   schema_pkg_apis_aws_v1alpha1_AWSFederatedRole(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleCondition":          schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleCondition(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleList":               schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleList(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleRef":                schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleRef(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleSpec":               schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleSpec(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRoleStatus":             schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleStatus(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSSecretReference":                 schema_pkg_apis_aws_v1alpha1_AWSSecretReference(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Account":                            schema_pkg_apis_aws_v1alpha1_Account(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaim":                       schema_pkg_apis_aws_v1alpha1_AccountClaim(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimCondition":              schema_pkg_apis_aws_v1alpha1_AccountClaimCondition(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimList":                   schema_pkg_apis_aws_v1alpha1_AccountClaimList(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimSpec":                   schema_pkg_apis_aws_v1alpha1_AccountClaimSpec(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimStatus":                 schema_pkg_apis_aws_v1alpha1_AccountClaimStatus(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountCondition":                   schema_pkg_apis_aws_v1alpha1_AccountCondition(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountList":                        schema_pkg_apis_aws_v1alpha1_AccountList(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPool":                        schema_pkg_apis_aws_v1alpha1_AccountPool(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolList":                    schema_pkg_apis_aws_v1alpha1_AccountPoolList(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolSpec":                    schema_pkg_apis_aws_v1alpha1_AccountPoolSpec(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolStatus":                  schema_pkg_apis_aws_v1alpha1_AccountPoolStatus(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountSpec":                        schema_pkg_apis_aws_v1alpha1_AccountSpec(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountStatus":                      schema_pkg_apis_aws_v1alpha1_AccountStatus(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Aws":                                schema_pkg_apis_aws_v1alpha1_Aws(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AwsRegions":                         schema_pkg_apis_aws_v1alpha1_AwsRegions(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Condition":                          schema_pkg_apis_aws_v1alpha1_Condition(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.LegalEntity":                        schema_pkg_apis_aws_v1alpha1_LegalEntity(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Principal":                          schema_pkg_apis_aws_v1alpha1_Principal(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.SecretRef":                          schema_pkg_apis_aws_v1alpha1_SecretRef(ref),
+		"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.StatementEntry":                     schema_pkg_apis_aws_v1alpha1_StatementEntry(ref),
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_AWSCustomPolicy(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AWSCustomPolicy holds the data required to create a custom policy in aws.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"description": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"awsStatements": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.StatementEntry"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"name", "description", "awsStatements"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.StatementEntry"},
 	}
 }
 
@@ -72,6 +131,109 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccess(ref common.Reference
 		},
 		Dependencies: []string{
 			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessSpec", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccessStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessCondition(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AWSFederatedAccountAccessCondition defines a current condition state of the account",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"type": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Type is the type of the condition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Status is the status of the condition",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"lastProbeTime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastProbeTime is the last time we probed the condition.",
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
+						},
+					},
+					"lastTransitionTime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastTransitionTime is the laste time the condition transitioned from one status to another.",
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
+						},
+					},
+					"reason": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Reason is a unique, one-word, CamelCase reason for the condition's last transition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"message": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Message is a human-readable message indicating details about last transition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"type", "status"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AWSFederatedAccountAccessList contains a list of AWSFederatedAccountAccess",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccess"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedAccountAccess", "k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"},
 	}
 }
 
@@ -202,6 +364,135 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedRole(ref common.ReferenceCallback)
 	}
 }
 
+func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleCondition(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AWSFederatedRoleCondition is a Kubernetes condition type for tracking AWS Federated Role status changes",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"type": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Type is the type of the condition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Status is the status of the condition",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"lastProbeTime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastProbeTime is the last time we probed the condition.",
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
+						},
+					},
+					"lastTransitionTime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastTransitionTime is the laste time the condition transitioned from one status to another.",
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
+						},
+					},
+					"reason": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Reason is a unique, one-word, CamelCase reason for the condition's last transition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"message": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Message is a human-readable message indicating details about last transition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"type", "status"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AWSFederatedRoleList contains a list of AWSFederatedRole",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRole"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AWSFederatedRole", "k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleRef(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AWSFederatedRoleRef holds the name and namespace to reference an AWSFederatedRole CR",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"namespace": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+				},
+				Required: []string{"name", "namespace"},
+			},
+		},
+	}
+}
+
 func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -299,6 +590,32 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedRoleStatus(ref common.ReferenceCal
 	}
 }
 
+func schema_pkg_apis_aws_v1alpha1_AWSSecretReference(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AWSSecretReference holds the name and namespace of an secret containing credentials to cluster account",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"namespace": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+				},
+				Required: []string{"name", "namespace"},
+			},
+		},
+	}
+}
+
 func schema_pkg_apis_aws_v1alpha1_Account(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -384,6 +701,109 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaim(ref common.ReferenceCallback) com
 		},
 		Dependencies: []string{
 			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimSpec", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaimStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_AccountClaimCondition(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AccountClaimCondition contains details for the current condition of a AWS account claim",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"type": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Type is the type of the condition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Status is the status of the condition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"lastProbeTime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastProbeTime is the last time we probed the condition.",
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
+						},
+					},
+					"lastTransitionTime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastTransitionTime is the last time the condition transitioned from one status to another.",
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
+						},
+					},
+					"reason": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Reason is a unique, one-word, CamelCase reason for the condition's last transition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"message": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Message is a human-readable message indicating details about last transition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"type", "status"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_AccountClaimList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AccountClaimList contains a list of AccountClaim",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaim"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountClaim", "k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"},
 	}
 }
 
@@ -502,6 +922,108 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimStatus(ref common.ReferenceCallbac
 	}
 }
 
+func schema_pkg_apis_aws_v1alpha1_AccountCondition(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AccountCondition contains details for the current condition of a AWS account",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"type": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Type is the type of the condition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Status is the status of the condition",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"lastProbeTime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastProbeTime is the last time we probed the condition.",
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
+						},
+					},
+					"lastTransitionTime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastTransitionTime is the laste time the condition transitioned from one status to another.",
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
+						},
+					},
+					"reason": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Reason is a unique, one-word, CamelCase reason for the condition's last transition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"message": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Message is a human-readable message indicating details about last transition.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_AccountList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AccountList contains a list of Account",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Account"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Account", "k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"},
+	}
+}
+
 func schema_pkg_apis_aws_v1alpha1_AccountPool(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -543,6 +1065,53 @@ func schema_pkg_apis_aws_v1alpha1_AccountPool(ref common.ReferenceCallback) comm
 		},
 		Dependencies: []string{
 			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolSpec", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPoolStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_AccountPoolList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AccountPoolList contains a list of AccountPool",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPool"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountPool", "k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"},
 	}
 }
 
@@ -726,5 +1295,219 @@ func schema_pkg_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) co
 		},
 		Dependencies: []string{
 			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AccountCondition"},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_Aws(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "Aws struct contains specific AWS account configuration options",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"regions": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AwsRegions"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"regions"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.AwsRegions"},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_AwsRegions(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "AwsRegions struct contains specific AwsRegion information, at the moment its just name but in the future it will contain specific resource limits etc.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+				},
+				Required: []string{"name"},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_Condition(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "Condition contains the aws Condition map to use for IAM roles",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"StringEquals": {
+						SchemaProps: spec.SchemaProps{
+							Description: "A map of the condition",
+							Type:        []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_LegalEntity(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "LegalEntity contains Red Hat specific identifiers to the original creator the clusters",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"id": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+				},
+				Required: []string{"name", "id"},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_Principal(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "Principal  contains the aws account id for the principle entity of a role",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"AWS": {
+						SchemaProps: spec.SchemaProps{
+							Description: "aws account id",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"AWS"},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_SecretRef(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "SecretRef contains the name of a secret and its namespace",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"namespace": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+				},
+				Required: []string{"name", "namespace"},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_aws_v1alpha1_StatementEntry(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "StatementEntry is the smallest gourping of permissions required to create an aws policy",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"effect": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"action": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+					"resource": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+					"condition": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Condition"),
+						},
+					},
+					"principal": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Principal"),
+						},
+					},
+				},
+				Required: []string{"effect", "action"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Condition", "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1.Principal"},
 	}
 }
