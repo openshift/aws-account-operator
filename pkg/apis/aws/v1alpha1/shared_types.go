@@ -156,5 +156,5 @@ var DefaultConfigMapAccountLimit = 100
 // AWSManagedRoleName is the name of the read-only role
 var AWSManagedRoleName = "AWSManagedRole"
 
-// AWSManagedRoleArn is the rean-only ARN for the AWSManagedRole
+// AWSManagedRoleArn is the read-only ARN for the AWSManagedRole
 var AWSManagedRoleArn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
