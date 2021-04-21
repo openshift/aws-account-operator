@@ -346,13 +346,13 @@ func (r *ReconcileAccount) getDesiredVCPUValue(reqLogger logr.Logger) (float64, 
 		err = awsv1alpha1.ErrInvalidConfigMap
 	}
 	if err != nil {
-		reqLogger.Error(err, "failed getting desired vCPU quota from configmap data")
+		reqLogger.Info(fmt.Sprintf("Failed getting desired vCPU quota from configmap data, defaulting quota to: %v", 0))
 		return vCPUQuota, err
 	}
 
 	vCPUQuota, err = strconv.ParseFloat(v, 64)
 	if err != nil {
-		reqLogger.Error(err, "failed converting vCPU quota from configmap string to float64")
+		reqLogger.Info(fmt.Sprintf("failed converting vCPU quota from configmap string to float64, defaulting quota to: %v", 0))
 		return vCPUQuota, err
 	}
 
