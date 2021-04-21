@@ -140,17 +140,10 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 	accountID := account.Labels[awsv1alpha1.IAMUserIDLabel]
 
 	// Get SRE Access ARN from configmap
-	cm := &corev1.ConfigMap{}
-	cmErr := r.Client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
-	if cmErr != nil {
-		reqLogger.Error(cmErr, "There was an error getting the ConfigMap to get the SRE Access Role")
-		return "", reconcile.Result{}, cmErr
-	}
-
-	SREAccessARN := cm.Data["CCS-Access-Arn"]
-	if SREAccessARN == "" {
-		reqLogger.Error(awsv1alpha1.ErrInvalidConfigMap, "configmap key missing", "keyName", "CCS-Access-Arn")
-		return "", reconcile.Result{}, cmErr
+	SREAccessARN, err := r.GetSREAccessARN(reqLogger)
+	if err != nil {
+		reqLogger.Error(err, "There was an error retrieving the SRE access ARN")
+		return "", reconcile.Result{}, err
 	}
 
 	// Create access key and role for BYOC account

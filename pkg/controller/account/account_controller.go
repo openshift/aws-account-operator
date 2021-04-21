@@ -261,6 +261,42 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 
+	var roleToAssume string
+	var currentAccInstanceID string
+	var iamUserUHC = iamUserNameUHC
+	var iamUserSRE = iamUserNameSRE
+
+	if currentAcctInstance.IsBYOC() {
+		// Use the same ID applied to the account name for IAM usernames
+		currentAccInstanceID = currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
+		iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
+		iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
+		roleToAssume = fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
+	} else {
+		roleToAssume = awsv1alpha1.AccountOperatorIAMRole
+	}
+
+	awsAssumedRoleClient, creds, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, ccsRoleID)
+	if err != nil {
+		// assumeRole logs
+		return reconcile.Result{}, err
+	}
+
+	// Make sure every cluster has the AWSManaged role
+	SREAccessARN, err := r.GetSREAccessARN(reqLogger)
+	if err != nil {
+		reqLogger.Error(err, "There was an error retrieving the SRE access ARN")
+		return reconcile.Result{}, err
+	}
+
+	tags := awsclient.AWSTags.BuildTags(currentAcctInstance).GetIAMTags()
+	roleID, err := CreateAWSManagedRole(reqLogger, awsSetupClient, awsAssumedRoleClient, awsv1alpha1.AWSManagedRoleArn, tags, SREAccessARN)
+	if err != nil {
+		reqLogger.Error(err, "Failed to sync AWSManagedRole")
+		return reconcile.Result{}, err
+	}
+	reqLogger.Info("AWSManagedRole created", "RoleID", roleID, "account", currentAcctInstance.Name)
+
 	// Account init for both BYOC and Non-BYOC
 	if currentAcctInstance.ReadyForInitialization() {
 		reqLogger.Info("initializing account", "awsAccountID", currentAcctInstance.Spec.AwsAccountID)
@@ -295,26 +331,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				return reconcile.Result{}, err
 			}
 			return reconcile.Result{}, nil
-		}
-
-		var roleToAssume string
-		var iamUserUHC = iamUserNameUHC
-		var iamUserSRE = iamUserNameSRE
-
-		if currentAcctInstance.IsBYOC() {
-			// Use the same ID applied to the account name for IAM usernames
-			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
-			iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
-			iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
-			roleToAssume = fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
-		} else {
-			roleToAssume = awsv1alpha1.AccountOperatorIAMRole
-		}
-
-		awsAssumedRoleClient, creds, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, ccsRoleID)
-		if err != nil {
-			// assumeRole logs
-			return reconcile.Result{}, err
 		}
 
 		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
@@ -907,6 +923,25 @@ func (r *ReconcileAccount) setAccountClaimError(reqLogger logr.Logger, currentAc
 	}
 
 	return err
+}
+
+func (r *ReconcileAccount) GetSREAccessARN(logger logr.Logger) (string, error) {
+
+	// Get SRE Access ARN from configmap
+	cm := &corev1.ConfigMap{}
+	cmErr := r.Client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	if cmErr != nil {
+		logger.Error(cmErr, "There was an error getting the ConfigMap to get the SRE Access Role")
+		return "", cmErr
+	}
+
+	SREAccessARN := cm.Data["CCS-Access-Arn"]
+	if SREAccessARN == "" {
+		logger.Error(awsv1alpha1.ErrInvalidConfigMap, "configmap key missing", "keyName", "CCS-Access-Arn")
+		return "", cmErr
+	}
+
+	return SREAccessARN, nil
 }
 
 func matchSubstring(roleID, role string) (bool, error) {
