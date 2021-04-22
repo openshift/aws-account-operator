@@ -269,6 +269,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		err = awsv1alpha1.ErrInvalidConfigMap
 		return reconcile.Result{}, err
 	}
+	if err != nil {
+		reqLogger.Error(err, "failed getting regions from configmap data")
+		return reconcile.Result{}, err
+	}
 	regionAMIs := processConfigMapRegions(stringRegions)
 
 	// Account init for both BYOC and Non-BYOC
