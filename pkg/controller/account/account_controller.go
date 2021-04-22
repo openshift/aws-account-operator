@@ -267,6 +267,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	stringRegions, ok := configMap.Data["regions"]
 	if !ok {
 		err = awsv1alpha1.ErrInvalidConfigMap
+		return reconcile.Result{}, err
 	}
 	regionAMIs := processConfigMapRegions(stringRegions)
 
