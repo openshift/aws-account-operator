@@ -24,9 +24,6 @@ var CoveredRegions = map[string]map[string]string{
 	"ca-central-1": {
 		"initializationAMI": "ami-06ca3c0058d0275b3",
 	},
-	"eu-north-1": {
-		"initializationAMI": "ami-66f67f18",
-	},
 	"eu-central-1": {
 		"initializationAMI": "ami-09de4a4c670389e4b",
 	},

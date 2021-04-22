@@ -24,7 +24,7 @@ import (
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
 // NOTE: This function does not have any returns. In particular, error conditions from the
 // goroutines are logged, but do not result in a failure up the stack.
-func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []*ec2.Region, creds *sts.AssumeRoleOutput) {
+func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []*ec2.Region, creds *sts.AssumeRoleOutput, regionAMIs map[string]string) {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
 	ec2Notifications, ec2Errors := make(chan string), make(chan string)
 
@@ -40,7 +40,7 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 
 	// Create go routines to initialize regions in parallel
 	for _, region := range regions {
-		go r.InitializeRegion(reqLogger, account, *region.RegionName, awsv1alpha1.CoveredRegions[*region.RegionName]["initializationAMI"], vCPUQuota, ec2Notifications, ec2Errors, creds) //nolint:errcheck // Unable to do anything with the returned error
+		go r.InitializeRegion(reqLogger, account, *region.RegionName, regionAMIs[*region.RegionName], vCPUQuota, ec2Notifications, ec2Errors, creds) //nolint:errcheck // Unable to do anything with the returned error
 	}
 
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished
@@ -88,7 +88,7 @@ func (r *ReconcileAccount) InitializeRegion(
 	reqLogger.Info("initializing region", "region", region)
 
 	// Attempt to clean the region from any hanging resources
-	cleaned, err := cleanRegion(awsClient, reqLogger, account.Name)
+	cleaned, err := cleanRegion(awsClient, reqLogger, account.Name, region)
 	if err != nil {
 		cleanErr := fmt.Sprintf("Error while attempting to clean region: %v", err.Error())
 		ec2Errors <- cleanErr
@@ -614,8 +614,19 @@ func changeRequestMatches(change *servicequotas.RequestedServiceQuotaChange, quo
 }
 
 // cleanRegion will remove all hanging account creation t2.micro instances running in the current region
-func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string) (bool, error) {
+func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string, region string) (bool, error) {
 	cleaned := false
+	// Make a dry run to certify we have required authentication
+	_, err := client.DescribeInstances(&ec2.DescribeInstancesInput{
+		DryRun: aws.Bool(true),
+	})
+	// If we receive an AuthFailure alert we do not attempt to clean this region
+	if aerr, ok := err.(awserr.Error); ok {
+		if aerr.Code() == "AuthFailure" {
+			logger.Error(err, fmt.Sprintf("We do not have the correct authentication to clean or initialize region: %s backing out gracefully", region))
+			return cleaned, err
+		}
+	}
 	// Get a list of all running t2.micro instances
 	output, err := client.DescribeInstances(&ec2.DescribeInstancesInput{
 		MaxResults: aws.Int64(100),
