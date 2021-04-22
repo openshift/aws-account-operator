@@ -24,7 +24,7 @@ import (
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
 // NOTE: This function does not have any returns. In particular, error conditions from the
 // goroutines are logged, but do not result in a failure up the stack.
-func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions map[string]map[string]string, creds *sts.AssumeRoleOutput) {
+func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []*ec2.Region, creds *sts.AssumeRoleOutput) {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
 	ec2Notifications, ec2Errors := make(chan string), make(chan string)
 
@@ -39,8 +39,8 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 	reqLogger.Info("retrieved desired vCPU quota value from configMap", "quota.vcpu", vCPUQuota)
 
 	// Create go routines to initialize regions in parallel
-	for region := range regions {
-		go r.InitializeRegion(reqLogger, account, region, regions[region]["initializationAMI"], vCPUQuota, ec2Notifications, ec2Errors, creds) //nolint:errcheck // Unable to do anything with the returned error
+	for _, region := range regions {
+		go r.InitializeRegion(reqLogger, account, *region.RegionName, awsv1alpha1.CoveredRegions[*region.RegionName]["initializationAMI"], vCPUQuota, ec2Notifications, ec2Errors, creds) //nolint:errcheck // Unable to do anything with the returned error
 	}
 
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished

@@ -18,8 +18,14 @@ var CoveredRegions = map[string]map[string]string{
 	"us-west-2": {
 		"initializationAMI": "ami-0a7e1ebfee7a4570e",
 	},
+	"af-south-1": {
+		"initializationAMI": "ami",
+	},
 	"ca-central-1": {
 		"initializationAMI": "ami-06ca3c0058d0275b3",
+	},
+	"eu-north-1": {
+		"initializationAMI": "ami-66f67f18",
 	},
 	"eu-central-1": {
 		"initializationAMI": "ami-09de4a4c670389e4b",
@@ -38,6 +44,9 @@ var CoveredRegions = map[string]map[string]string{
 	},
 	"ap-northeast-2": {
 		"initializationAMI": "ami-041b16ca28f036753",
+	},
+	"ap-northeast-3": {
+		"initializationAMI": "ami-08c911bb0e215283f",
 	},
 	"ap-south-1": {
 		"initializationAMI": "ami-0963937a03c01ecd4",
@@ -152,3 +161,6 @@ var DefaultConfigMap = "aws-account-operator-configmap"
 
 // DefaultConfigMapAccountLimit holds the fallback limit of aws-accounts
 var DefaultConfigMapAccountLimit = 100
+
+// AwsUSEastOneRegion holds the key for the aws east one region
+var AwsUSEastOneRegion = "us-east-1"
