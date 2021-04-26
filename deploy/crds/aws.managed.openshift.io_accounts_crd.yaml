@@ -53,6 +53,9 @@ spec:
               type: string
             claimLinkNamespace:
               type: string
+            claimed:
+              description: Backup status
+              type: boolean
             iamUserSecret:
               type: string
             legalEntity:
@@ -68,6 +71,12 @@ spec:
               type: object
             manualSTSMode:
               type: boolean
+            reused:
+              type: boolean
+            state:
+              type: string
+            supportCaseID:
+              type: string
           required:
             - awsAccountID
             - iamUserSecret

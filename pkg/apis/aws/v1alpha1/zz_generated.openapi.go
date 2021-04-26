@@ -666,6 +666,31 @@ func schema_pkg_apis_aws_v1alpha1_AccountSpec(ref common.ReferenceCallback) comm
 							Format: "",
 						},
 					},
+					"claimed": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Backup status",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"state": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"reused": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"supportCaseID": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
 				},
 				Required: []string{"awsAccountID", "iamUserSecret"},
 			},
