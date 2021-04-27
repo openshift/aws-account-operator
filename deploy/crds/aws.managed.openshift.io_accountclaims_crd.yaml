@@ -101,6 +101,8 @@ spec:
               type: boolean
             stsRoleARN:
               type: string
+            supportRoleARN:
+              type: string
           required:
             - accountLink
             - aws
