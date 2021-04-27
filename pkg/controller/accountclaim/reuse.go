@@ -157,9 +157,9 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 	reusedAccount.Status.RotateCredentials = true
 
 	// Update account status and add conditions indicating account reuse
-	reusedAccount.Status.State = conditionStatus
-	reusedAccount.Status.Claimed = false
-	reusedAccount.Status.Reused = true
+	reusedAccount.Spec.State = conditionStatus
+	reusedAccount.Spec.Claimed = false
+	reusedAccount.Spec.Reused = true
 	conditionMsg := fmt.Sprintf("Account Reuse - %s", conditionStatus)
 	utils.SetAccountStatus(reusedAccount, conditionMsg, accountState, conditionStatus)
 	err = r.accountStatusUpdate(reqLogger, reusedAccount)

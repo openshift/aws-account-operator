@@ -113,7 +113,7 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	claimedAccountCount := 0
 	for _, account := range accountList.Items {
 		// We don't want to count reused accounts here, filter by LegalEntity.ID
-		if !account.Status.Claimed && account.Spec.LegalEntity.ID == "" {
+		if !account.Spec.Claimed && account.Spec.LegalEntity.ID == "" {
 			if !account.IsFailed() {
 				unclaimedAccountCount++
 			}

@@ -56,15 +56,11 @@ type AccountStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	Claimed       bool   `json:"claimed,omitempty"`
-	SupportCaseID string `json:"supportCaseID,omitempty"`
 	// +listType=map
 	// +listMapKey=type
 	Conditions               []AccountCondition `json:"conditions,omitempty"`
-	State                    string             `json:"state,omitempty"`
 	RotateCredentials        bool               `json:"rotateCredentials,omitempty"`
 	RotateConsoleCredentials bool               `json:"rotateConsoleCredentials,omitempty"`
-	Reused                   bool               `json:"reused,omitempty"`
 }
 
 // AccountCondition contains details for the current condition of a AWS account
@@ -168,7 +164,7 @@ func (a *Account) IsFailed() bool {
 		string(AccountInternalError),
 	}
 	for _, state := range failedStates {
-		if a.Status.State == state {
+		if a.Spec.State == state {
 			return true
 		}
 	}
@@ -177,27 +173,27 @@ func (a *Account) IsFailed() bool {
 
 //HasState returns true if an account has a state set at all
 func (a *Account) HasState() bool {
-	return a.Status.State != ""
+	return a.Spec.State != ""
 }
 
 //HasSupportCaseID returns true if an account has a SupportCaseID Set
 func (a *Account) HasSupportCaseID() bool {
-	return a.Status.SupportCaseID != ""
+	return a.Spec.SupportCaseID != ""
 }
 
 //IsPendingVerification returns true if the account is in a PendingVerification state
 func (a *Account) IsPendingVerification() bool {
-	return a.Status.State == string(AccountPendingVerification)
+	return a.Spec.State == string(AccountPendingVerification)
 }
 
 //IsReady returns true if an account is ready
 func (a *Account) IsReady() bool {
-	return a.Status.State == string(AccountReady)
+	return a.Spec.State == string(AccountReady)
 }
 
 //IsCreating returns true if an account is creating
 func (a *Account) IsCreating() bool {
-	return a.Status.State == string(AccountCreating)
+	return a.Spec.State == string(AccountCreating)
 }
 
 //HasClaimLink returns true if an accounts claim link is not empty
@@ -207,7 +203,7 @@ func (a *Account) HasClaimLink() bool {
 
 //IsClaimed returns true if account Status.Claimed is false
 func (a *Account) IsClaimed() bool {
-	return a.Status.Claimed
+	return a.Spec.Claimed
 }
 
 //IsPendingDeletion returns true if a DeletionTimestamp has been set
@@ -282,7 +278,7 @@ func (a *Account) IsUnclaimedAndIsCreating() bool {
 
 //IsInitializingRegions returns true if the account state is InitalizingRegions
 func (a *Account) IsInitializingRegions() bool {
-	return a.Status.State == AccountInitializingRegions
+	return a.Spec.State == AccountInitializingRegions
 }
 
 // GetCondition finds the condition that has the

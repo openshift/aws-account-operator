@@ -226,27 +226,27 @@ func (c *MetricsCollector) collect() {
 	}
 
 	for _, account := range accounts.Items {
-		if account.Status.Claimed {
+		if account.Spec.Claimed {
 			claimed = "true"
 		} else {
 			claimed = "false"
 		}
 
-		if account.Status.Reused {
+		if account.Spec.Reused {
 			reused = "true"
 		} else {
 			reused = "false"
 		}
 
-		if !account.Status.Claimed && account.Status.Reused &&
-			account.Status.State == "Ready" {
+		if !account.Spec.Claimed && account.Spec.Reused &&
+			account.Spec.State == "Ready" {
 			c.accountReuseAvailable.WithLabelValues(account.Spec.LegalEntity.ID).Inc()
 		}
 
 		if account.Spec.BYOC {
-			c.ccsAccounts.WithLabelValues(claimed, reused, account.Status.State).Inc()
+			c.ccsAccounts.WithLabelValues(claimed, reused, account.Spec.State).Inc()
 		} else {
-			c.accounts.WithLabelValues(claimed, reused, account.Status.State).Inc()
+			c.accounts.WithLabelValues(claimed, reused, account.Spec.State).Inc()
 		}
 	}
 
