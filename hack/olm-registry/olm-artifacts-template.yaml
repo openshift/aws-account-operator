@@ -4,14 +4,10 @@ metadata:
   name: olm-artifacts-template
 
 parameters:
-- name: REGISTRY_IMG
-  required: true
 - name: CHANNEL
   value: staging
-- name: IMAGE_TAG
-  value: latest
 - name: REPO_DIGEST
-  value: latest
+  required: true
 - name: ACCOUNT_LIMIT
   required: true
 - name: ROOT_OU_ID
