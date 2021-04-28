@@ -36,7 +36,7 @@ func claimBYOCAccount(r *ReconcileAccount, reqLogger logr.Logger, currentAcctIns
 	if !currentAcctInstance.IsClaimed() {
 		reqLogger.Info("Marking BYOC account claimed")
 		currentAcctInstance.Spec.Claimed = true
-		return r.acountInstanceUpdate(currentAcctInstance)
+		return r.accountInstanceSpecUpdate(currentAcctInstance)
 	}
 
 	return nil
