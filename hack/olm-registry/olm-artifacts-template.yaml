@@ -24,8 +24,6 @@ parameters:
   required: true
 - name: STS_JUMP_ROLE
   required: true
-- name: SUPPORT_JUMP_ROLE
-  required: true
 
 objects:
 - apiVersion: operators.coreos.com/v1alpha1
@@ -66,7 +64,6 @@ objects:
     root: ${ROOT_OU_ID}
     base: ${BASE_OU_ID}
     sts-jump-role: ${STS_JUMP_ROLE}
-    support-jump-role: ${SUPPORT_JUMP_ROLE}
 
 - apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AccountPool

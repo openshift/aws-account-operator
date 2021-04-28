@@ -451,12 +451,6 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimSpec(ref common.ReferenceCallback)
 							Format: "",
 						},
 					},
-					"supportRoleARN": {
-						SchemaProps: spec.SchemaProps{
-							Type:   []string{"string"},
-							Format: "",
-						},
-					},
 				},
 				Required: []string{"legalEntity", "awsCredentialSecret", "aws", "accountLink"},
 			},
