@@ -78,12 +78,12 @@ func TestReconcileAccountPool(t *testing.T) {
 							ID:   "",
 							Name: "",
 						},
+						Claimed:       false,
+						State:         "Ready",
+						SupportCaseID: "000000",
 					},
 					Status: awsv1alpha1.AccountStatus{
-						Claimed:           false,
-						SupportCaseID:     "000000",
 						Conditions:        []awsv1alpha1.AccountCondition{},
-						State:             "Ready",
 						RotateCredentials: false,
 					},
 				},
@@ -100,12 +100,12 @@ func TestReconcileAccountPool(t *testing.T) {
 							ID:   "",
 							Name: "",
 						},
+						Claimed:       false,
+						State:         "Ready",
+						SupportCaseID: "000000",
 					},
 					Status: awsv1alpha1.AccountStatus{
-						Claimed:           false,
-						SupportCaseID:     "000000",
 						Conditions:        []awsv1alpha1.AccountCondition{},
-						State:             "Ready",
 						RotateCredentials: false,
 					},
 				},
@@ -242,8 +242,8 @@ func verifyAccountCreated(c client.Client, expected *awsv1alpha1.AccountPool) bo
 	unclaimedAccountCount := 0
 	for _, account := range al.Items {
 		// We don't want to count reused accounts here, filter by LegalEntity.ID
-		if account.Status.Claimed == false && account.Spec.LegalEntity.ID == "" {
-			if account.Status.State != "Failed" {
+		if account.Spec.Claimed == false && account.Spec.LegalEntity.ID == "" {
+			if account.Spec.State != "Failed" {
 				unclaimedAccountCount++
 			}
 		}

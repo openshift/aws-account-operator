@@ -28,11 +28,11 @@ func newTestAccountBuilder() *testAccountBuilder {
 					Time: time.Now().Add(-(5 * time.Minute)), // default tests to 5 minute old acct
 				},
 			},
-			Status: awsv1alpha1.AccountStatus{
+			Status: awsv1alpha1.AccountStatus{},
+			Spec: awsv1alpha1.AccountSpec{
 				State:   string(awsv1alpha1.AccountReady),
 				Claimed: false,
 			},
-			Spec: awsv1alpha1.AccountSpec{},
 		},
 	}
 }
@@ -87,25 +87,25 @@ func (t *testAccountBuilder) WithLabels(labels map[string]string) *testAccountBu
 
 // Add a state string
 func (t *testAccountBuilder) WithState(state awsv1alpha1.AccountConditionType) *testAccountBuilder {
-	t.acct.Status.State = string(state)
+	t.acct.Spec.State = string(state)
 	return t
 }
 
 // Delete state
 func (t *testAccountBuilder) WithoutState() *testAccountBuilder {
-	t.acct.Status.State = ""
+	t.acct.Spec.State = ""
 	return t
 }
 
 // Set account claimed or not
 func (t *testAccountBuilder) Claimed(claimed bool) *testAccountBuilder {
-	t.acct.Status.Claimed = claimed
+	t.acct.Spec.Claimed = claimed
 	return t
 }
 
 // Add supportCaseID
 func (t *testAccountBuilder) WithSupportCaseID(id string) *testAccountBuilder {
-	t.acct.Status.SupportCaseID = id
+	t.acct.Spec.SupportCaseID = id
 	return t
 }
 
