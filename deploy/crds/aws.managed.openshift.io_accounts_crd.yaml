@@ -4,11 +4,11 @@ metadata:
   name: accounts.aws.managed.openshift.io
 spec:
   additionalPrinterColumns:
-    - JSONPath: .status.state
+    - JSONPath: .spec.state
       description: Status the account
       name: State
       type: string
-    - JSONPath: .status.claimed
+    - JSONPath: .spec.claimed
       description: True if the account has been claimed
       name: Claimed
       type: boolean
