@@ -624,11 +624,21 @@ func (r *ReconcileAccount) assumeRole(
 	return awsAssumedRoleClient, creds, nil
 }
 
+func (r *ReconcileAccount) accountInstanceUpdate(accountInstance *v1alpha1.Account) (err error) {
+	if err = r.accountInstanceSpecUpdate(accountInstance); err != nil {
+		return err
+	}
+	if err = r.accountInstanceStatusUpdate(accountInstance); err != nil {
+		return err
+	}
+	return err
+}
+
 func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) error {
 	// We're about to kick off region init in a goroutine. This status makes subsequent
 	// Reconciles ignore the Account (unless it stays in this state for too long).
 	utils.SetAccountStatus(currentAcctInstance, "Initializing Regions", awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
-	if err := r.accountInstanceSpecUpdate(currentAcctInstance); err != nil {
+	if err := r.accountInstanceUpdate(currentAcctInstance); err != nil {
 		// accountInstanceSpecUpdate logs
 		return err
 	}
@@ -679,7 +689,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 				currentAcctInstance,
 				fmt.Sprintf("AWS region %s is not supported for AWS account %s", wantedRegion, currentAcctInstance.Name),
 				awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
-			if err := r.statusUpdate(currentAcctInstance); err != nil {
+			if err := r.accountInstanceUpdate(currentAcctInstance); err != nil {
 				// statusUpdate logs
 				return err
 			}
