@@ -129,8 +129,8 @@ type LegalEntity struct {
 
 // SecretRef contains the name of a secret and its namespace
 type SecretRef struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
+	Name      string `json:"name" validate:"required,min=2,max=100"`
+	Namespace string `json:"namespace" validate:"required,min=2,max=100"`
 }
 
 // Aws struct contains specific AWS account configuration options
