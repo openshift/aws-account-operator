@@ -26,6 +26,7 @@ type AccountClaimSpec struct {
 	BYOCAWSAccountID    string      `json:"byocAWSAccountID,omitempty"`
 	ManualSTSMode       bool        `json:"manualSTSMode,omitempty"`
 	STSRoleARN          string      `json:"stsRoleARN,omitempty"`
+	SupportRoleARN      string      `json:"supportRoleARN,omitempty"`
 }
 
 // AccountClaimStatus defines the observed state of AccountClaim
