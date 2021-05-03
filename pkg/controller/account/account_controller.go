@@ -41,8 +41,6 @@ import (
 var log = logf.Log.WithName("controller_account")
 
 const (
-	awsInstanceType = "t2.micro"
-
 	// Service Quota-related constants
 	// vCPUQuotaCode
 	vCPUQuotaCode = "L-1216C47A"
