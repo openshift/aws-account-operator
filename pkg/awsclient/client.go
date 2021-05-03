@@ -444,9 +444,9 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 		s.Handlers.Complete.PushBack(func(r *request.Request) {
 			localmetrics.Collector.AddAPICall(controllerName, r.HTTPRequest, r.HTTPResponse, time.Since(r.Time).Seconds(), r.Error)
 		})
-		//ec2Sess.Handlers.Complete.PushBack(func(r *request.Request) {
-		//	localmetrics.Collector.AddAPICall(controllerName, r.HTTPRequest, r.HTTPResponse, time.Since(r.Time).Seconds(), r.Error)
-		//})
+		ec2Sess.Handlers.Complete.PushBack(func(r *request.Request) {
+			localmetrics.Collector.AddAPICall(controllerName, r.HTTPRequest, r.HTTPResponse, time.Since(r.Time).Seconds(), r.Error)
+		})
 	}
 
 	return &awsClient{
