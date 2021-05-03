@@ -4,6 +4,12 @@ import (
 	"errors"
 )
 
+
+type InstanceInfo struct {
+	Ami 			string
+	InstanceType 	string
+}
+
 // CoveredRegions map
 var CoveredRegions = map[string]map[string]string{
 	"us-east-1": {

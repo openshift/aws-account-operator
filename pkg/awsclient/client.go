@@ -16,6 +16,7 @@ package awsclient
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/route53/route53iface"
@@ -396,6 +397,7 @@ func (c *awsClient) ListRequestedServiceQuotaChangeHistoryByQuota(input *service
 // NewClient creates our client wrapper object for the actual AWS clients we use.
 // If controllerName is nonempty, metrics are collected timing and counting each AWS request.
 func newClient(controllerName, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
+	var err error
 	// Set region and retryer to prevent any potential rate limiting on the aws side
 	awsConfig := &aws.Config{
 		Region:      aws.String(region),
@@ -411,6 +413,28 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 		return nil, err
 	}
 
+	// Use a regional endpoint for ec2 calls in order to reach opt-in regions when necessary
+	resolver := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
+		return endpoints.ResolvedEndpoint{
+			PartitionID:   "aws",
+			URL:           fmt.Sprintf("https://ec2.%s.amazonaws.com", region),
+			SigningRegion: region,
+		}, nil
+	}
+	ec2AwsConfig := &aws.Config{
+		Region:      		aws.String(region),
+		Credentials: 		credentials.NewStaticCredentials(awsAccessID, awsAccessSecret, token),
+		EndpointResolver: 	endpoints.ResolverFunc(resolver),
+		Retryer: client.DefaultRetryer{
+			NumMaxRetries:    10,
+			MinThrottleDelay: 2 * time.Second,
+		},
+	}
+	ec2Sess, err := session.NewSession(ec2AwsConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	// Time (and count) calls to AWS.
 	// But only from controllers, signalled by a nonempty controllerName.
 	if controllerName != "" {
@@ -420,11 +444,14 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 		s.Handlers.Complete.PushBack(func(r *request.Request) {
 			localmetrics.Collector.AddAPICall(controllerName, r.HTTPRequest, r.HTTPResponse, time.Since(r.Time).Seconds(), r.Error)
 		})
+		//ec2Sess.Handlers.Complete.PushBack(func(r *request.Request) {
+		//	localmetrics.Collector.AddAPICall(controllerName, r.HTTPRequest, r.HTTPResponse, time.Since(r.Time).Seconds(), r.Error)
+		//})
 	}
 
 	return &awsClient{
-		ec2Client:           ec2.New(s),
 		iamClient:           iam.New(s),
+		ec2Client:           ec2.New(ec2Sess),
 		orgClient:           organizations.New(s),
 		route53client:       route53.New(s),
 		s3Client:            s3.New(s),

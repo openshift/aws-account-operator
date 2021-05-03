@@ -24,7 +24,7 @@ import (
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
 // NOTE: This function does not have any returns. In particular, error conditions from the
 // goroutines are logged, but do not result in a failure up the stack.
-func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []*ec2.Region, creds *sts.AssumeRoleOutput, regionAMIs map[string]string) {
+func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []*ec2.Region, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.InstanceInfo) {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
 	ec2Notifications, ec2Errors := make(chan string), make(chan string)
 
@@ -61,7 +61,7 @@ func (r *ReconcileAccount) InitializeRegion(
 	reqLogger logr.Logger,
 	account *awsv1alpha1.Account,
 	region string,
-	ami string,
+	instanceInfo awsv1alpha1.InstanceInfo,
 	vCPUQuota float64,
 	ec2Notifications chan string,
 	ec2Errors chan string,
@@ -76,6 +76,7 @@ func (r *ReconcileAccount) InitializeRegion(
 		AwsToken:                *creds.Credentials.SessionToken,
 		AwsRegion:               region,
 	})
+
 	if err != nil {
 		connErr := fmt.Sprintf("unable to connect to region %s when attempting to initialize it", region)
 		reqLogger.Error(err, connErr)
@@ -143,7 +144,7 @@ func (r *ReconcileAccount) InitializeRegion(
 		}
 	}
 
-	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, ami)
+	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, instanceInfo)
 
 	if err != nil {
 		createErr := fmt.Sprintf("Unable to create instance in region: %s", region)
@@ -163,9 +164,9 @@ func (r *ReconcileAccount) InitializeRegion(
 }
 
 // BuildAndDestroyEC2Instances runs an ec2 instance and terminates it
-func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, ami string) error {
+func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, instanceInfo awsv1alpha1.InstanceInfo) error {
 
-	instanceID, err := CreateEC2Instance(reqLogger, account, awsClient, ami)
+	instanceID, err := CreateEC2Instance(reqLogger, account, awsClient, instanceInfo)
 	if err != nil {
 		// Terminate instance id if it exists
 		if instanceID != "" {
@@ -225,7 +226,7 @@ func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, ac
 }
 
 // CreateEC2Instance creates ec2 instance and returns its instance ID
-func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, client awsclient.Client, ami string) (string, error) {
+func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, client awsclient.Client, instanceInfo awsv1alpha1.InstanceInfo) (string, error) {
 
 	// Retain instance id
 	var timeoutInstanceID string
@@ -242,8 +243,8 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 		time.Sleep(time.Duration(currentWait) * time.Second)
 		// Specify the details of the instance that you want to create.
 		runResult, runErr := client.RunInstances(&ec2.RunInstancesInput{
-			ImageId:      aws.String(ami),
-			InstanceType: aws.String(awsInstanceType),
+			ImageId:      aws.String(instanceInfo.Ami),
+			InstanceType: aws.String(instanceInfo.InstanceType),
 			MinCount:     aws.Int64(1),
 			MaxCount:     aws.Int64(1),
 			TagSpecifications: []*ec2.TagSpecification{
