@@ -629,23 +629,6 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 		return err
 	}
 
-	// This initializes supported regions, and updates Account state when that's done. There is
-	// no error checking at this level.
-	go r.asyncRegionInit(reqLogger, currentAcctInstance, creds, regionAMIs)
-
-	return nil
-}
-
-// asyncRegionInit initializes supported regions by creating and destroying an instance in each.
-// Upon completion, it *always* sets the Account status to either Ready or PendingVerification.
-// There is no mechanism for this func to report errors to its parent. The only error paths
-// currently possible are:
-// - The Status update fails.
-// - This goroutine dies in some horrible and unpredictable way.
-// In either case we would expect the main reconciler to eventually notice that the Account has
-// been in the InitializingRegions state for too long, and set it to Failed.
-func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.InstanceInfo) {
-
 	// Instantiate a client with a default region to retrieve regions we want to initialize
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
@@ -662,8 +645,26 @@ func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctIns
 		AllRegions: aws.Bool(false),
 	})
 	if err != nil {
-		reqLogger.Error(err, "Failed to retrieve list of regions enabled in this account. Defaulting to initializing every region.")
+		reqLogger.Error(err, "Failed to retrieve list of regions enabled in this account.")
+		return err
 	}
+
+	// This initializes supported regions, and updates Account state when that's done. There is
+	// no error checking at this level.
+	go r.asyncRegionInit(reqLogger, currentAcctInstance, creds, regionAMIs, regionsEnabledInAccount)
+
+	return nil
+}
+
+// asyncRegionInit initializes supported regions by creating and destroying an instance in each.
+// Upon completion, it *always* sets the Account status to either Ready or PendingVerification.
+// There is no mechanism for this func to report errors to its parent. The only error paths
+// currently possible are:
+// - The Status update fails.
+// - This goroutine dies in some horrible and unpredictable way.
+// In either case we would expect the main reconciler to eventually notice that the Account has
+// been in the InitializingRegions state for too long, and set it to Failed.
+func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.InstanceInfo, regionsEnabledInAccount *ec2.DescribeRegionsOutput) {
 
 	// Initialize all supported regions by creating and terminating an instance in each
 	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, regionsEnabledInAccount.Regions, creds, regionAMIs)
