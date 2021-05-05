@@ -265,6 +265,8 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	var currentAccInstanceID string
 	var iamUserUHC = iamUserNameUHC
 	var iamUserSRE = iamUserNameSRE
+	var awsAssumedRoleClient awsclient.Client
+	var creds *sts.AssumeRoleOutput
 
 	if currentAcctInstance.IsBYOC() {
 		// Use the same ID applied to the account name for IAM usernames
@@ -276,26 +278,29 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		roleToAssume = awsv1alpha1.AccountOperatorIAMRole
 	}
 
-	awsAssumedRoleClient, creds, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, ccsRoleID)
-	if err != nil {
-		// assumeRole logs
-		return reconcile.Result{}, err
-	}
+	if !currentAcctInstance.Spec.ManualSTSMode {
 
-	// Make sure every cluster has the AWSManaged role
-	SREAccessARN, err := r.GetSREAccessARN(reqLogger)
-	if err != nil {
-		reqLogger.Error(err, "There was an error retrieving the SRE access ARN")
-		return reconcile.Result{}, err
-	}
+		awsAssumedRoleClient, creds, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, ccsRoleID)
+		if err != nil {
+			// assumeRole logs
+			return reconcile.Result{}, err
+		}
 
-	tags := awsclient.AWSTags.BuildTags(currentAcctInstance).GetIAMTags()
-	roleID, err := CreateAWSManagedRole(reqLogger, awsSetupClient, awsAssumedRoleClient, awsv1alpha1.AWSManagedRoleArn, tags, SREAccessARN)
-	if err != nil {
-		reqLogger.Error(err, "Failed to sync AWSManagedRole")
-		return reconcile.Result{}, err
+		// Make sure every cluster has the AWSManaged role
+		SREAccessARN, err := r.GetSREAccessARN(reqLogger)
+		if err != nil {
+			reqLogger.Error(err, "There was an error retrieving the SRE access ARN")
+			return reconcile.Result{}, err
+		}
+
+		tags := awsclient.AWSTags.BuildTags(currentAcctInstance).GetIAMTags()
+		roleID, err := CreateAWSManagedRole(reqLogger, awsSetupClient, awsAssumedRoleClient, awsv1alpha1.AWSManagedRoleArn, tags, SREAccessARN)
+		if err != nil {
+			reqLogger.Error(err, "Failed to sync AWSManagedRole")
+			return reconcile.Result{}, err
+		}
+		reqLogger.Info("AWSManagedRole created", "RoleID", roleID, "account", currentAcctInstance.Name)
 	}
-	reqLogger.Info("AWSManagedRole created", "RoleID", roleID, "account", currentAcctInstance.Name)
 
 	// Account init for both BYOC and Non-BYOC
 	if currentAcctInstance.ReadyForInitialization() {
