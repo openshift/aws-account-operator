@@ -12,7 +12,7 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -45,7 +45,7 @@ func initialize(client client.Client, watchInterval time.Duration) *totalAccount
 	// single client one time and stores it in a global.
 	builder := &awsclient.Builder{}
 	awsClient, err := builder.GetClient("", client, awsclient.NewAwsClientInput{
-		SecretName: controllerutils.AwsSecretName,
+		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
 	})

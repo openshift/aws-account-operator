@@ -129,8 +129,8 @@ type LegalEntity struct {
 
 // SecretRef contains the name of a secret and its namespace
 type SecretRef struct {
-	Name      string `json:"name" validate:"required,min=2,max=100"`
-	Namespace string `json:"namespace" validate:"required,min=2,max=100"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
 }
 
 // Aws struct contains specific AWS account configuration options
@@ -148,10 +148,13 @@ func init() {
 	SchemeBuilder.Register(&AccountClaim{}, &AccountClaimList{})
 }
 
+// ErrAWSSecretRefMissing is an error for missing Secret References
+var ErrAWSSecretRefMissing = errors.New("AWSSecretRefMissing")
+
 // ErrBYOCAccountIDMissing is an error for missing Account ID
 var ErrBYOCAccountIDMissing = errors.New("BYOCAccountIDMissing")
 
-// ErrBYOCSecretRefMissing is an error for missing Secret References
+// ErrBYOCSecretRefMissing is an error for missing BYOC Secret References
 var ErrBYOCSecretRefMissing = errors.New("BYOCSecretRefMissing")
 
 // ErrSTSRoleARNMissing is an error for missing STS Role ARN definition in the AccountClaim
@@ -159,10 +162,22 @@ var ErrSTSRoleARNMissing = errors.New("STSRoleARNMissing")
 
 // Validates an AccountClaim object
 func (a *AccountClaim) Validate() error {
+
+	if err := a.validateAWS(); err != nil {
+		return err
+	}
+
 	if a.Spec.ManualSTSMode {
 		return a.validateSTS()
 	}
 	return a.validateBYOC()
+}
+
+func (a *AccountClaim) validateAWS() error {
+	if a.Spec.AwsCredentialSecret.Name == "" || a.Spec.AwsCredentialSecret.Namespace == "" {
+		return ErrAWSSecretRefMissing
+	}
+	return nil
 }
 
 func (a *AccountClaim) validateSTS() error {

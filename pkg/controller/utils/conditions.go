@@ -1,9 +1,6 @@
 package utils
 
 import (
-	"fmt"
-
-	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	corev1 "k8s.io/api/core/v1"
@@ -293,26 +290,4 @@ func FindAWSFederatedAccountAccessCondition(conditions []awsv1alpha1.AWSFederate
 		}
 	}
 	return nil
-}
-
-const (
-	// AwsSecretName is a constant for the name of the Kubernetes secret that holds the AWS Credentials
-	AwsSecretName = "aws-account-operator-credentials"
-)
-
-// SetBYOCAccountClaimStatusAWSAccountInUse Sets the Status.State and appends an account Status.Condition
-// TODO: Do we still need this?
-func SetBYOCAccountClaimStatusAWSAccountInUse(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) {
-	message := fmt.Sprintf("AWS Account %s already in use", accountClaim.Spec.BYOCAWSAccountID)
-	accountClaim.Status.Conditions = SetAccountClaimCondition(
-		accountClaim.Status.Conditions,
-		awsv1alpha1.BYOCAWSAccountInUse,
-		corev1.ConditionTrue,
-		string(awsv1alpha1.BYOCAWSAccountInUse),
-		message,
-		UpdateConditionNever,
-		accountClaim.Spec.BYOCAWSAccountID != "",
-	)
-	accountClaim.Status.State = awsv1alpha1.ClaimStatusError
-	reqLogger.Info(fmt.Sprintf("AccountClaim %s condition status updated", accountClaim.Name))
 }

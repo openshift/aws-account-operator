@@ -29,9 +29,7 @@ const (
 )
 
 var (
-	log           = logf.Log.WithName("controller_awsfederatedrole")
-	awsSecretName = "aws-account-operator-credentials"
-
+	log                     = logf.Log.WithName("controller_awsfederatedrole")
 	errInvalidManagedPolicy = goerr.New("InvalidManagedPolicy")
 )
 
@@ -135,7 +133,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	}
 	// Setup AWS client
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
-		SecretName: awsSecretName,
+		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
 	})
