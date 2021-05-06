@@ -46,7 +46,7 @@ func (t *AWSAccountOperatorTags) GetEC2Tags() []*ec2.Tag {
 }
 
 // BuildTags initializes AWSTags with required tags
-func (t *AWSAccountOperatorTags) BuildTags(account *awsv1alpha1.Account, managedTags []AWSTag) AWSTagBuilder {
+func (t *AWSAccountOperatorTags) BuildTags(account *awsv1alpha1.Account, managedTags []AWSTag, customTags []AWSTag) AWSTagBuilder {
 	tags := []AWSTag{}
 
 	// Adds a tag for the cluster's Account Name
@@ -74,6 +74,9 @@ func (t *AWSAccountOperatorTags) BuildTags(account *awsv1alpha1.Account, managed
 
 	// Adds all of the "managed tags" passed in (typically through the configmap)
 	tags = append(tags, managedTags...)
+
+	// Adds all Custom Tags passed in (through the accountclaim)
+	tags = append(tags, customTags...)
 
 	return &AWSAccountOperatorTags{
 		Tags: tags,

@@ -129,7 +129,7 @@ func CheckIAMUserExists(reqLogger logr.Logger, client Client, userName string) (
 }
 
 // CreateIAMUser creates a new IAM user in the target AWS account
-func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Account, userName string, managedTags []AWSTag) (*iam.CreateUserOutput, error) {
+func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Account, userName string, managedTags []AWSTag, customTags []AWSTag) (*iam.CreateUserOutput, error) {
 	var createUserOutput = &iam.CreateUserOutput{}
 	var err error
 
@@ -137,7 +137,7 @@ func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Ac
 
 		createUserOutput, err = client.CreateUser(&iam.CreateUserInput{
 			UserName: aws.String(userName),
-			Tags:     AWSTags.BuildTags(account, managedTags).GetIAMTags(),
+			Tags:     AWSTags.BuildTags(account, managedTags, customTags).GetIAMTags(),
 		})
 
 		// handle errors

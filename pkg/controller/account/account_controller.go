@@ -944,8 +944,39 @@ func (r *ReconcileAccount) getManagedTags(log logr.Logger) []awsclient.AWSTag {
 		return tags
 	}
 
+	return parseTagsFromString(managedTags)
+}
+
+// getCustomerTags retrieves a list of customer-provided tags from the linked accountclaim
+func (r *ReconcileAccount) getCustomTags(log logr.Logger, account *awsv1alpha1.Account) []awsclient.AWSTag {
+	tags := []awsclient.AWSTag{}
+
+	accountClaim, err := r.getAccountClaim(account)
+	if err != nil {
+		log.Error(err, "Error getting AccountClaim to get custom tags")
+		return tags
+	}
+
+	if accountClaim.Spec.CustomTags == "" {
+		return tags
+	}
+
+	return parseTagsFromString(accountClaim.Spec.CustomTags)
+}
+
+// processTagsFromString accepts a set of strings, each being a key=value pair, one per line.  This is typically defined in YAML similar to:
+//
+// myTags: |
+//   key=value
+//   my-tag=true
+//   base64-is-accepted=eWVzIQ==
+//
+// Specifically, we are splitting on the FIRST "=" to deliniate key=value, so any equals signs after the first will go into the value.
+func parseTagsFromString(tags string) []awsclient.AWSTag {
+	parsedTags := []awsclient.AWSTag{}
+
 	// Split on Newline to get key-value pairs
-	kvpairs := strings.Split(managedTags, "\n")
+	kvpairs := strings.Split(tags, "\n")
 
 	for _, tagString := range kvpairs {
 		// Sometimes the last value is an empty string.  Don't process those.
@@ -955,10 +986,11 @@ func (r *ReconcileAccount) getManagedTags(log logr.Logger) []awsclient.AWSTag {
 
 		// Use strings.SplitN to only split on the first "="
 		tagKV := strings.SplitN(tagString, "=", 2)
-		tags = append(tags, awsclient.AWSTag{
+		parsedTags = append(parsedTags, awsclient.AWSTag{
 			Key:   tagKV[0],
 			Value: tagKV[1],
 		})
 	}
-	return tags
+
+	return parsedTags
 }
