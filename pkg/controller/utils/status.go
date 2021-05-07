@@ -10,18 +10,18 @@ import (
 )
 
 // SetAccountStatus sets the condition and state of an account
-func SetAccountStatus(client kubeclientpkg.Client, reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string, ctype awsv1alpha1.AccountConditionType, reason string) error {
+func SetAccountStatus(client kubeclientpkg.Client, reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, message string, ctype awsv1alpha1.AccountConditionType) error {
 	awsAccount.Status.Conditions = SetAccountCondition(
 		awsAccount.Status.Conditions,
 		ctype,
 		corev1.ConditionTrue,
-		reason,
+		string(ctype),
 		message,
 		UpdateConditionNever,
 		awsAccount.Spec.BYOC,
 	)
 
-	awsAccount.Status.State = reason
+	awsAccount.Status.State = string(ctype)
 
 	err := client.Status().Update(context.TODO(), awsAccount)
 	if err != nil {

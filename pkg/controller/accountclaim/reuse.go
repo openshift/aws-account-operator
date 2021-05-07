@@ -167,8 +167,7 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 		reusedAccount,
 		conditionMsg,
 		accountState,
-		conditionStatus,
-	)yy
+	)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update account status for reuse")
 		return err

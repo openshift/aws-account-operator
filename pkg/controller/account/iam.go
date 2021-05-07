@@ -63,7 +63,6 @@ func (r *ReconcileAccount) CreateSecret(reqLogger logr.Logger, account *awsv1alp
 			account,
 			failedToCreateUserSecretMsg,
 			awsv1alpha1.AccountFailed,
-			"Failed",
 		)
 		if err != nil {
 			return err
