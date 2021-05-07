@@ -100,8 +100,9 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 	if validateErr != nil {
 		// Figure the reason for our failure
 		errReason := validateErr.Error()
+
 		// Update AccountClaim status
-		utils.SetAccountClaimStatus(
+		err := utils.SetAccountClaimStatus(
 			r.Client,
 			reqLogger,
 			accountClaim,
@@ -112,7 +113,7 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		)
 
 		// TODO: Recoverable?
-		return "", reconcile.Result{}, validateErr
+		return "", reconcile.Result{}, err
 	}
 
 	claimErr := claimBYOCAccount(r, reqLogger, account)

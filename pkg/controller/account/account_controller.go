@@ -196,15 +196,20 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			reqLogger.Error(initErr, "failed initializing new CCS account")
 			return result, initErr
 		}
-		utils.SetAccountStatus(currentAcctInstance, AccountCreating, awsv1alpha1.AccountCreating, AccountCreating)
-		updateErr := r.statusUpdate(currentAcctInstance)
-		if updateErr != nil {
+		err = utils.SetAccountStatus(
+			r.Client,
+			reqLogger,
+			currentAcctInstance,
+			AccountCreating,
+			awsv1alpha1.AccountCreating,
+			AccountCreating,
+		)
+		if err != nil {
 			// TODO: Validate this is retryable
 			// TODO: Should be re-entrant because account will not have state
 			reqLogger.Info("failed updating account state, retrying", "desired state", AccountCreating)
-			return reconcile.Result{}, updateErr
+			return reconcile.Result{}, err
 		}
-
 	} else {
 		// Normal account creation
 
@@ -251,9 +256,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				}
 			} else {
 				// set state creating if the account was already created
-				utils.SetAccountStatus(currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, AccountCreating)
-				err = r.statusUpdate(currentAcctInstance)
-
+				err = utils.SetAccountStatus(
+					r.Client,
+					reqLogger,
+					currentAcctInstance,
+					"AWS account already created",
+					awsv1alpha1.AccountCreating,
+					AccountCreating,
+				)
 				if err != nil {
 					return reconcile.Result{}, err
 				}
@@ -409,10 +419,17 @@ func (r *ReconcileAccount) handleAccountInitializingRegions(reqLogger logr.Logge
 		// In fact, since the Creating condition is guaranteed to already be present, this
 		// is currently not doing anything more than
 		//    currentAcctInstance.Status.State = AccountCreating
-		utils.SetAccountStatus(currentAcctInstance, msg, v1alpha1.AccountCreating, AccountCreating)
+		err := utils.SetAccountStatus(
+			r.Client,
+			reqLogger,
+			currentAcctInstance,
+			msg,
+			v1alpha1.AccountCreating,
+			AccountCreating,
+		)
 		// The status update will trigger another Reconcile, but be explicit. The requests get
 		// collapsed anyway.
-		return reconcile.Result{Requeue: true}, r.statusUpdate(currentAcctInstance)
+		return reconcile.Result{Requeue: true}, err
 	}
 	// The goroutines happened in this invocation. Time out if that has taken too long.
 	if time.Since(irCond.LastTransitionTime.Time) > regionInitTime {
@@ -448,8 +465,14 @@ func (r *ReconcileAccount) handleNonCCSPendingVerification(reqLogger logr.Logger
 
 			// Update supportCaseId in CR
 			currentAcctInstance.Status.SupportCaseID = caseID
-			utils.SetAccountStatus(currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
-			err = r.statusUpdate(currentAcctInstance)
+			err = utils.SetAccountStatus(
+				r.Client,
+				reqLogger,
+				currentAcctInstance,
+				"Account pending verification in AWS",
+				awsv1alpha1.AccountPendingVerification,
+				AccountPendingVerification,
+			)
 			if err != nil {
 				reqLogger.Error(err, "failed to update account state, retrying", "desired state", AccountPendingVerification)
 				return reconcile.Result{}, err
@@ -489,9 +512,15 @@ func (r *ReconcileAccount) handleNonCCSPendingVerification(reqLogger logr.Logger
 	// Case Resolved, account is Ready
 	if resolved {
 		reqLogger.Info("case resolved", "caseID", currentAcctInstance.Status.SupportCaseID)
-
-		utils.SetAccountStatus(currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, AccountReady)
-		return reconcile.Result{}, r.statusUpdate(currentAcctInstance)
+		err := utils.SetAccountStatus(
+			r.Client,
+			reqLogger,
+			currentAcctInstance,
+			"Account ready to be claimed",
+			awsv1alpha1.AccountReady,
+			AccountReady,
+		)
+		return reconcile.Result{}, err
 	}
 
 	// Case not Resolved, log info and try again in pre-defined interval
@@ -507,9 +536,14 @@ func (r *ReconcileAccount) nonCCSAssignAccountID(reqLogger logr.Logger, currentA
 	}
 
 	// set state creating if the account was able to create
-	utils.SetAccountStatus(currentAcctInstance, AccountCreating, awsv1alpha1.AccountCreating, AccountCreating)
-	err = r.statusUpdate(currentAcctInstance)
-
+	err = utils.SetAccountStatus(
+		r.Client,
+		reqLogger,
+		currentAcctInstance,
+		AccountCreating,
+		awsv1alpha1.AccountCreating,
+		AccountCreating,
+	)
 	if err != nil {
 		return err
 	}
@@ -609,9 +643,15 @@ func (r *ReconcileAccount) assumeRole(
 func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput) error {
 	// We're about to kick off region init in a goroutine. This status makes subsequent
 	// Reconciles ignore the Account (unless it stays in this state for too long).
-	utils.SetAccountStatus(currentAcctInstance, "Initializing Regions", awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
-	if err := r.statusUpdate(currentAcctInstance); err != nil {
-		// statusUpdate logs
+	err := utils.SetAccountStatus(
+		r.Client,
+		reqLogger,
+		currentAcctInstance,
+		"Initializing Regions",
+		awsv1alpha1.AccountInitializingRegions,
+		AccountInitializingRegions,
+	)
+	if err != nil {
 		return err
 	}
 
@@ -634,22 +674,43 @@ func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctIns
 	// Initialize all supported regions by creating and terminating an instance in each
 	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, awsv1alpha1.CoveredRegions, creds)
 
+	var err error = nil
 	if currentAcctInstance.IsBYOC() {
-		utils.SetAccountStatus(currentAcctInstance, "BYOC Account Ready", awsv1alpha1.AccountReady, AccountReady)
-
+		err = utils.SetAccountStatus(
+			r.Client,
+			reqLogger,
+			currentAcctInstance,
+			"BYOC Account Ready",
+			awsv1alpha1.AccountReady,
+			AccountReady,
+		)
 	} else {
 		if currentAcctInstance.GetCondition(awsv1alpha1.AccountReady) != nil {
 			msg := "Account support case already resolved; Account Ready"
-			utils.SetAccountStatus(currentAcctInstance, msg, awsv1alpha1.AccountReady, AccountReady)
+			err = utils.SetAccountStatus(
+				r.Client,
+				reqLogger,
+				currentAcctInstance,
+				msg,
+				awsv1alpha1.AccountReady,
+				AccountReady,
+			)
 			reqLogger.Info(msg)
 		} else {
 			msg := "Account pending AWS limits verification"
-			utils.SetAccountStatus(currentAcctInstance, msg, awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
+			err = utils.SetAccountStatus(
+				r.Client,
+				reqLogger,
+				currentAcctInstance,
+				msg,
+				awsv1alpha1.AccountPendingVerification,
+				AccountPendingVerification,
+			)
 			reqLogger.Info(msg)
 		}
 	}
 
-	if err := r.statusUpdate(currentAcctInstance); err != nil {
+	if err != nil {
 		// If this happens, the Account should eventually get set to Failed by the
 		// accountOlderThan check in the main controller.
 		reqLogger.Error(err, "asyncRegionInit failed to update status")
@@ -666,8 +727,14 @@ func (r *ReconcileAccount) BuildAccount(reqLogger logr.Logger, awsClient awsclie
 	if orgErr != nil {
 		switch orgErr {
 		case awsv1alpha1.ErrAwsFailedCreateAccount:
-			utils.SetAccountStatus(account, "Failed to create AWS Account", awsv1alpha1.AccountCreationFailed, AccountFailed)
-			err := r.statusUpdate(account)
+			err := utils.SetAccountStatus(
+				r.Client,
+				reqLogger,
+				account,
+				"Failed to create AWS Account",
+				awsv1alpha1.AccountCreationFailed,
+				AccountFailed,
+			)
 			if err != nil {
 				return "", err
 			}
