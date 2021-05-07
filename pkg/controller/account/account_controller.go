@@ -269,18 +269,16 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		if currentAcctInstance.Spec.ManualSTSMode {
 			accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
 			if acctClaimErr != nil {
-				reqLogger.Error(acctClaimErr, "unable to get accountclaim for sts account")
+				reqLogger.Error(acctClaimErr, "Unable to get AccountClaim for STS Account")
 				utils.SetAccountClaimStatus(
+					r.Client,
+					reqLogger,
 					accountClaim,
 					"Failed to get AccountClaim for CSS account",
 					"FailedRetrievingAccountClaim",
 					awsv1alpha1.ClientError,
 					awsv1alpha1.ClaimStatusError,
 				)
-				err := r.Client.Status().Update(context.TODO(), accountClaim)
-				if err != nil {
-					reqLogger.Error(err, "failed to update accountclaim status")
-				}
 				return reconcile.Result{}, acctClaimErr
 			}
 
