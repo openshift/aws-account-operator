@@ -834,25 +834,16 @@ func (r *ReconcileAccount) accountClaimError(reqLogger logr.Logger, account *aws
 	}
 
 	accountClaim = r.failAllAccountClaimStatus(accountClaim)
-	accountClaim.Status.Conditions = utils.SetAccountClaimCondition(
-		accountClaim.Status.Conditions,
-		awsv1alpha1.InternalError,
-		corev1.ConditionTrue,
-		reason,
+	err = utils.SetAccountClaimStatus(
+		r.Client,
+		reqLogger,
+		accountClaim,
 		message,
-		utils.UpdateConditionIfReasonOrMessageChange,
-		accountClaim.Spec.BYOCAWSAccountID != "",
+		reason,
+		awsv1alpha1.InternalError,
+		awsv1alpha1.ClaimStatusError,
 	)
-	accountClaim.Status.State = awsv1alpha1.ClaimStatusError
-
-	// Update the *accountClaim* status (not the account status)
-	err = r.Client.Status().Update(context.TODO(), accountClaim)
-	if err != nil {
-		reqLogger.Error(err, "failed to update accountclaim status", "accountclaim", accountClaim.Name)
-	}
-
 	return err
-
 }
 
 func (r *ReconcileAccount) failAllAccountClaimStatus(accountClaim *awsv1alpha1.AccountClaim) *awsv1alpha1.AccountClaim {
@@ -886,24 +877,15 @@ func (r *ReconcileAccount) setAccountClaimError(reqLogger logr.Logger, currentAc
 		reason = string(awsv1alpha1.AccountClaimFailed)
 	}
 
-	accountClaim.Status.Conditions = utils.SetAccountClaimCondition(
-		accountClaim.Status.Conditions,
-		conditionType,
-		corev1.ConditionTrue,
-		reason,
+	err = utils.SetAccountClaimStatus(
+		r.Client,
+		reqLogger,
+		accountClaim,
 		message,
-		utils.UpdateConditionIfReasonOrMessageChange,
-		accountClaim.Spec.BYOCAWSAccountID != "",
+		reason,
+		conditionType,
+		awsv1alpha1.ClaimStatusError,
 	)
-
-	accountClaim.Status.State = awsv1alpha1.ClaimStatusError
-
-	// Update the *accountClaim* status (not the account status)
-	err = r.Client.Status().Update(context.TODO(), accountClaim)
-	if err != nil {
-		reqLogger.Error(err, "failed to update accountclaim status", "accountclaim", accountClaim.Name)
-	}
-
 	return err
 }
 
