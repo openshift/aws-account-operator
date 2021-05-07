@@ -176,7 +176,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				awsv1alpha1.AccountCreationFailed,
 				initErr.Error(),
 				"Failed to initialize new CCS account",
-				AccountFailed,
 			)
 			if stateErr != nil {
 				reqLogger.Error(stateErr, "failed setting account state", "desiredState", "Failed")
@@ -220,7 +219,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				v1alpha1.AccountCreationFailed,
 				"CreationTimeout",
 				errMsg,
-				AccountFailed,
 			)
 			if stateErr != nil {
 				reqLogger.Error(stateErr, "failed setting account state", "desiredState", "Failed")
@@ -321,7 +319,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				errType,
 				reason,
 				errMsg,
-				AccountFailed,
 			)
 			if stateErr != nil {
 				reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
@@ -346,7 +343,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				errType,
 				reason,
 				errMsg,
-				AccountFailed,
 			)
 			if stateErr != nil {
 				reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
@@ -374,7 +370,6 @@ func (r *ReconcileAccount) handleAccountInitializingRegions(reqLogger logr.Logge
 			awsv1alpha1.AccountInternalError,
 			"MissingCondition",
 			errMsg,
-			AccountFailed,
 		)
 		return reconcile.Result{}, stateErr
 	}
@@ -425,7 +420,6 @@ func (r *ReconcileAccount) handleAccountInitializingRegions(reqLogger logr.Logge
 			awsv1alpha1.AccountCreationFailed,
 			"RegionInitializationTimeout",
 			errMsg,
-			AccountFailed,
 		)
 		return reconcile.Result{}, stateErr
 	}
@@ -575,7 +569,6 @@ func (r *ReconcileAccount) assumeRole(
 				awsv1alpha1.AccountClientError,
 				reason,
 				errMsg,
-				AccountFailed,
 			)
 			if stateErr != nil {
 				reqLogger.Error(stateErr, "failed setting account state", "desiredState", "Failed")
@@ -611,7 +604,6 @@ func (r *ReconcileAccount) assumeRole(
 			awsv1alpha1.AccountClientError,
 			"AWSClientCreationFailed",
 			errMsg,
-			AccountFailed,
 		)
 		if stateErr != nil {
 			reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
@@ -826,30 +818,25 @@ func (r *ReconcileAccount) statusUpdate(account *awsv1alpha1.Account) error {
 	return err
 }
 
-func (r *ReconcileAccount) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype v1alpha1.AccountConditionType, reason string, message string, state string) (reconcile.Result, error) {
+func (r *ReconcileAccount) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype v1alpha1.AccountConditionType, reason string, message string) (reconcile.Result, error) {
 	reqLogger.Info(message)
-	// Update account status and condition
-	account.Status.Conditions = utils.SetAccountCondition(
-		account.Status.Conditions,
-		ctype,
-		corev1.ConditionTrue,
-		reason,
-		message,
-		utils.UpdateConditionNever,
-		account.Spec.BYOC,
-	)
-	account.Status.State = state
 
-	// Set the failure in the accountClaim as well
-	err := r.accountClaimError(reqLogger, account, reason, message)
+	// Set the failure in the account
+	err := utils.SetAccountStatus(
+		r.Client,
+		reqLogger,
+		account,
+		message,
+		ctype,
+	)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	// Apply update
-	err = r.statusUpdate(account)
+	// Set the failure in the accountClaim as well
+	err = r.accountClaimError(reqLogger, account, reason, message)
 	if err != nil {
-		reqLogger.Error(err, "failed to update account status")
+		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{Requeue: true}, nil
