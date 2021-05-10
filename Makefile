@@ -6,8 +6,6 @@ REUSE_BUCKET_NAME=test-reuse-bucket-${REUSE_UUID}
 
 include hack/scripts/test_envs
 
-export AWS_IAM_ARN := $(shell aws sts get-caller-identity --profile=osd-staging-2 | jq -r '.Arn')
-
 # Boilerplate
 include boilerplate/generated-includes.mk
 
@@ -30,7 +28,8 @@ ifndef OSD_STAGING_2_AWS_ACCOUNT_ID
 	$(error OSD_STAGING_2_AWS_ACCOUNT_ID is undefined)
 endif
 ifndef AWS_IAM_ARN
-	$(error AWS_IAM_ARN is undefined)
+	$(eval export AWS_IAM_ARN := $(shell aws sts get-caller-identity --profile=osd-staging-2 | jq -r '.Arn'))
+	@if [[ -z "$(AWS_IAM_ARN)" ]]; then echo "AWS_IAM_ARN unset and could not be calculated!"; exit 1; fi
 endif
 
 .PHONY: check-ou-mapping-configmap-env
