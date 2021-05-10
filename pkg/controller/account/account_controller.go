@@ -647,7 +647,7 @@ func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctIns
 	// Initialize all supported regions by creating and terminating an instance in each
 	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, awsv1alpha1.CoveredRegions, creds)
 
-	var err error = nil
+	var err error
 	if currentAcctInstance.IsBYOC() {
 		err = utils.SetAccountStatus(
 			r.Client,
