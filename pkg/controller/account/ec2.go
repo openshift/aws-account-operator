@@ -245,6 +245,7 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 		}
 		totalWait -= currentWait
 		time.Sleep(time.Duration(currentWait) * time.Second)
+		tags := awsclient.AWSTags.BuildTags(account, managedTags, customerTags).GetEC2Tags()
 		// Specify the details of the instance that you want to create.
 		runResult, runErr := client.RunInstances(&ec2.RunInstancesInput{
 			ImageId:      aws.String(ami),
@@ -254,7 +255,11 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 			TagSpecifications: []*ec2.TagSpecification{
 				{
 					ResourceType: &awsv1alpha1.InstanceResourceType,
-					Tags:         awsclient.AWSTags.BuildTags(account, managedTags, customerTags).GetEC2Tags(),
+					Tags:         tags,
+				},
+				{
+					ResourceType: &awsv1alpha1.VolumeResourceType,
+					Tags:         tags,
 				},
 			},
 		})
