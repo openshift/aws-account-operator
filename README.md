@@ -24,7 +24,8 @@ export OSD_STAGING_1_AWS_ACCOUNT_ID= # Your assigned osd-staging-1 account ID
 export OSD_STAGING_2_AWS_ACCOUNT_ID= # Your assigned osd-staging-2 account ID
 export OSD_STAGING_1_OU_ROOT_ID= # Your assigned osd-staging-1 OU Root ID
 export OSD_STAGING_1_OU_BASE_ID= # Your assigned osd-staging-1 OU Base ID
-export STS_ROLE_ARN= # A role you create in your osd-staging-2 account with minimal STS permissions
+export STS_ROLE_ARN= # A role you create in your osd-staging-{1,2} account with minimal STS permissions
+export STS_JUMP_ARN= # A role you create to simulate the role that we use as a bastion.
 ```
 
 **Tip:** You can use [direnv](https://direnv.net) and add the above block (with variables filled in) into a `.envrc` file (make sure `.envrc` is in your global git ignore as well). Upon entry to the `aws-account-operator` folder, the env vars inside the file will be loaded automatically, and unset when you leave the folder.
