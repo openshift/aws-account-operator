@@ -152,3 +152,6 @@ var DefaultConfigMap = "aws-account-operator-configmap"
 
 // DefaultConfigMapAccountLimit holds the fallback limit of aws-accounts
 var DefaultConfigMapAccountLimit = 100
+
+// ManagedTagsConfigMapKey defines the default key for the configmap to add the defined tags to AWS resources
+var ManagedTagsConfigMapKey = "aws-managed-tags"

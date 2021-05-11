@@ -67,6 +67,7 @@ objects:
     base: ${BASE_OU_ID}
     sts-jump-role: ${STS_JUMP_ROLE}
     support-jump-role: ${SUPPORT_JUMP_ROLE}
+    aws-managed-tags: "${AWS_MANAGED_TAGS}"
 
 - apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AccountPool

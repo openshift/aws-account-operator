@@ -38,9 +38,12 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 	vCPUQuota, _ := r.getDesiredVCPUValue(reqLogger)
 	reqLogger.Info("retrieved desired vCPU quota value from configMap", "quota.vcpu", vCPUQuota)
 
+	managedTags := r.getManagedTags(reqLogger)
+	customerTags := r.getCustomTags(reqLogger, account)
+
 	// Create go routines to initialize regions in parallel
 	for region := range regions {
-		go r.InitializeRegion(reqLogger, account, region, regions[region]["initializationAMI"], vCPUQuota, ec2Notifications, ec2Errors, creds) //nolint:errcheck // Unable to do anything with the returned error
+		go r.InitializeRegion(reqLogger, account, region, regions[region]["initializationAMI"], vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags) //nolint:errcheck // Unable to do anything with the returned error
 	}
 
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished
@@ -66,6 +69,8 @@ func (r *ReconcileAccount) InitializeRegion(
 	ec2Notifications chan string,
 	ec2Errors chan string,
 	creds *sts.AssumeRoleOutput,
+	managedTags []awsclient.AWSTag,
+	customerTags []awsclient.AWSTag,
 ) error {
 	var quotaIncreaseRequired bool
 	var caseID string
@@ -143,7 +148,7 @@ func (r *ReconcileAccount) InitializeRegion(
 		}
 	}
 
-	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, ami)
+	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, ami, managedTags, customerTags)
 
 	if err != nil {
 		createErr := fmt.Sprintf("Unable to create instance in region: %s", region)
@@ -163,9 +168,9 @@ func (r *ReconcileAccount) InitializeRegion(
 }
 
 // BuildAndDestroyEC2Instances runs an ec2 instance and terminates it
-func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, ami string) error {
+func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, ami string, managedTags []awsclient.AWSTag, customerTags []awsclient.AWSTag) error {
 
-	instanceID, err := CreateEC2Instance(reqLogger, account, awsClient, ami)
+	instanceID, err := CreateEC2Instance(reqLogger, account, awsClient, ami, managedTags, customerTags)
 	if err != nil {
 		// Terminate instance id if it exists
 		if instanceID != "" {
@@ -225,7 +230,7 @@ func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, ac
 }
 
 // CreateEC2Instance creates ec2 instance and returns its instance ID
-func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, client awsclient.Client, ami string) (string, error) {
+func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, client awsclient.Client, ami string, managedTags []awsclient.AWSTag, customerTags []awsclient.AWSTag) (string, error) {
 
 	// Retain instance id
 	var timeoutInstanceID string
@@ -249,7 +254,7 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 			TagSpecifications: []*ec2.TagSpecification{
 				{
 					ResourceType: &awsv1alpha1.InstanceResourceType,
-					Tags:         awsclient.AWSTags.BuildTags(account).GetEC2Tags(),
+					Tags:         awsclient.AWSTags.BuildTags(account, managedTags, customerTags).GetEC2Tags(),
 				},
 			},
 		})
