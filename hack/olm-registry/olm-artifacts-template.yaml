@@ -26,6 +26,8 @@ parameters:
   required: true
 - name: SUPPORT_JUMP_ROLE
   required: true
+- name: AWS_MANAGED_TAGS
+  required: false
 
 objects:
 - apiVersion: operators.coreos.com/v1alpha1
