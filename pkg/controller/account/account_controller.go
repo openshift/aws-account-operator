@@ -264,7 +264,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
 			if acctClaimErr != nil {
 				reqLogger.Error(acctClaimErr, "Unable to get AccountClaim for STS Account")
-				utils.SetAccountClaimStatus(
+				err = utils.SetAccountClaimStatus(
 					r.Client,
 					reqLogger,
 					accountClaim,
@@ -273,7 +273,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 					awsv1alpha1.ClientError,
 					awsv1alpha1.ClaimStatusError,
 				)
-				return reconcile.Result{}, acctClaimErr
+				return reconcile.Result{}, err
 			}
 
 			_, creds, err := r.getSTSClient(reqLogger, accountClaim, awsSetupClient)

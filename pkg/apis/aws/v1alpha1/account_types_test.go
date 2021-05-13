@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func Test_Account_IsFailed(t *testing.T) {
+func TestAccountIsFailed(t *testing.T) {
 	// test all AccountConditionType values
 
 	var a Account
@@ -94,7 +94,7 @@ func Test_Account_IsFailed(t *testing.T) {
 	}
 }
 
-func Test_Account_HasState(t *testing.T) {
+func TestAccountHasState(t *testing.T) {
 	// test all AccountConditionType values
 
 	var a Account
@@ -129,7 +129,7 @@ func Test_Account_HasState(t *testing.T) {
 	}
 }
 
-func Test_Account_HasSupportCaseID(t *testing.T) {
+func TestAccountHasSupportCaseID(t *testing.T) {
 	// test all AccountConditionType values
 
 	var a Account
@@ -159,7 +159,7 @@ func Test_Account_HasSupportCaseID(t *testing.T) {
 	}
 }
 
-func Test_Account_IsPendingReadyCreation(t *testing.T) {
+func TestAccountIsPendingReadyCreation(t *testing.T) {
 	// Unit test for the following Account Functions
 	//// IsPendingVerification
 	//// IsReady
@@ -174,57 +174,57 @@ func Test_Account_IsPendingReadyCreation(t *testing.T) {
 	}{
 		// Pending Verification tests
 		{
-			name:                  "AccountPendingVerification_true",
+			name:                  "AccountPendingVerificationTrue",
 			accountConditionType:  string(AccountPendingVerification),
 			verifyAccountFunction: a.IsPendingVerification,
 			expectedResult:        true,
 		},
 		{
-			name:                  "AccountPendingVerification_wrongstate",
+			name:                  "AccountPendingVerificationWrongState",
 			accountConditionType:  string(AccountClaimed),
 			verifyAccountFunction: a.IsPendingVerification,
 			expectedResult:        false,
 		},
 		{
-			name:                  "AccountPendingVerification_emptystring",
+			name:                  "AccountPendingVerificationEmptyString",
 			accountConditionType:  "",
 			verifyAccountFunction: a.IsPendingVerification,
 			expectedResult:        false,
 		},
 		// Is Ready tests
 		{
-			name:                  "AccountReady_true",
+			name:                  "AccountReadyTrue",
 			accountConditionType:  string(AccountReady),
 			verifyAccountFunction: a.IsReady,
 			expectedResult:        true,
 		},
 		{
-			name:                  "AccountReady_wrongstate",
+			name:                  "AccountReadyWrongState",
 			accountConditionType:  string(AccountClaimed),
 			verifyAccountFunction: a.IsReady,
 			expectedResult:        false,
 		},
 		{
-			name:                  "AccountReady_emptystring",
+			name:                  "AccountReadyEmptyString",
 			accountConditionType:  "",
 			verifyAccountFunction: a.IsReady,
 			expectedResult:        false,
 		},
 		// Is Creating tests
 		{
-			name:                  "AccountCreating_true",
+			name:                  "AccountCreatingTrue",
 			accountConditionType:  string(AccountCreating),
 			verifyAccountFunction: a.IsCreating,
 			expectedResult:        true,
 		},
 		{
-			name:                  "AccountCreating_wrongstate",
+			name:                  "AccountCreatingWrongState",
 			accountConditionType:  string(AccountClaimed),
 			verifyAccountFunction: a.IsCreating,
 			expectedResult:        false,
 		},
 		{
-			name:                  "AccountCreating_emptystring",
+			name:                  "AccountCreatingEmptyString",
 			accountConditionType:  "",
 			verifyAccountFunction: a.IsCreating,
 			expectedResult:        false,
@@ -240,7 +240,7 @@ func Test_Account_IsPendingReadyCreation(t *testing.T) {
 	}
 }
 
-func Test_IsReadyUnclaimedAndHasClaimLink(t *testing.T) {
+func TestIsReadyUnclaimedAndHasClaimLink(t *testing.T) {
 
 	var a Account
 	tests := []struct {
@@ -252,28 +252,28 @@ func Test_IsReadyUnclaimedAndHasClaimLink(t *testing.T) {
 	}{
 		// Pending Verification tests
 		{
-			name:                 "Ready_Unclaimed_ClaimLinkFilled",
+			name:                 "ReadyUnclaimedClaimLinkFilled",
 			accountConditionType: string(AccountReady),
 			claimLink:            "Linked",
 			isClaimed:            false,
 			expectedResult:       true,
 		},
 		{
-			name:                 "NotReady_Unclaimed_ClaimLinkFilled",
+			name:                 "NotReadyUnclaimedClaimLinkFilled",
 			accountConditionType: string(AccountClientError),
 			claimLink:            "Linked",
 			isClaimed:            false,
 			expectedResult:       false,
 		},
 		{
-			name:                 "Ready_Claimed_ClaimLinkFilled",
+			name:                 "ReadyClaimedClaimLinkFilled",
 			accountConditionType: string(AccountReady),
 			claimLink:            "Linked",
 			isClaimed:            true,
 			expectedResult:       false,
 		},
 		{
-			name:                 "Ready_Unlaimed_ClaimLinkEmpty",
+			name:                 "ReadyUnlaimedClaimLinkEmpty",
 			accountConditionType: string(AccountReady),
 			claimLink:            "",
 			isClaimed:            false,

@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func Test_AccountClaim_validateAWS(t *testing.T) {
+func TestAccountClaimValidateAWS(t *testing.T) {
 	var accountClaim AccountClaim
 	tests := []struct {
 		name         string
@@ -12,22 +12,22 @@ func Test_AccountClaim_validateAWS(t *testing.T) {
 		expectedErr  error
 	}{
 		{
-			name:         "ValidateAWS_Empty_Fail",
+			name:         "ValidateAWSEmptyFail",
 			awsSecretRef: SecretRef{Name: "", Namespace: ""},
 			expectedErr:  ErrAWSSecretRefMissing,
 		},
 		{
-			name:         "ValidateAWS_NameMissing_Fail",
+			name:         "ValidateAWSNameMissingFail",
 			awsSecretRef: SecretRef{Name: "", Namespace: "awsSecretRefNamespace"},
 			expectedErr:  ErrAWSSecretRefMissing,
 		},
 		{
-			name:         "ValidateAWS_NamespaceMissing_Fail",
+			name:         "ValidateAWSNamespaceMissingFail",
 			awsSecretRef: SecretRef{Name: "awsSecretRefName", Namespace: ""},
 			expectedErr:  ErrAWSSecretRefMissing,
 		},
 		{
-			name:         "ValidateAWS_SetOK_Success",
+			name:         "ValidateAWSSetOKSuccess",
 			awsSecretRef: SecretRef{Name: "awsSecretRefName", Namespace: "awsSecretRefNamespace"},
 			expectedErr:  nil,
 		},
@@ -42,7 +42,7 @@ func Test_AccountClaim_validateAWS(t *testing.T) {
 	}
 }
 
-func Test_AccountClaim_Validate(t *testing.T) {
+func TestAccountClaimValidate(t *testing.T) {
 
 	var accountClaim AccountClaim
 
@@ -56,7 +56,7 @@ func Test_AccountClaim_Validate(t *testing.T) {
 		expectedErr      error
 	}{
 		{
-			name:             "Validate_manualSTS_OK",
+			name:             "ValidatemanualSTSOK",
 			awsSecretRef:     SecretRef{Name: "awsSecretRefName", Namespace: "awsSecretRefNamespace"},
 			manualSTSMode:    true,
 			stsRoleARN:       "stsRoleARN",
@@ -65,7 +65,7 @@ func Test_AccountClaim_Validate(t *testing.T) {
 			expectedErr:      nil,
 		},
 		{
-			name:             "Validate_ErrAWSSecretRefMissing_Name",
+			name:             "ValidateErrAWSSecretRefMissingName",
 			awsSecretRef:     SecretRef{Name: "", Namespace: "awsSecretRefNamespace"},
 			manualSTSMode:    true,
 			stsRoleARN:       "stsRoleARN",
@@ -74,7 +74,7 @@ func Test_AccountClaim_Validate(t *testing.T) {
 			expectedErr:      ErrAWSSecretRefMissing,
 		},
 		{
-			name:             "Validate_ErrAWSSecretRefMissing_Namespace",
+			name:             "ValidateErrAWSSecretRefMissingNamespace",
 			awsSecretRef:     SecretRef{Name: "awsSecretRefName", Namespace: ""},
 			manualSTSMode:    true,
 			stsRoleARN:       "stsRoleARN",
@@ -83,7 +83,7 @@ func Test_AccountClaim_Validate(t *testing.T) {
 			expectedErr:      ErrAWSSecretRefMissing,
 		},
 		{
-			name:             "Validate_ErrSTSRoleARNMissing",
+			name:             "ValidateErrSTSRoleARNMissing",
 			awsSecretRef:     SecretRef{Name: "awsSecretRefName", Namespace: "awsSecretRefNamespace"},
 			manualSTSMode:    true,
 			stsRoleARN:       "",
@@ -92,7 +92,7 @@ func Test_AccountClaim_Validate(t *testing.T) {
 			expectedErr:      ErrSTSRoleARNMissing,
 		},
 		{
-			name:             "Validate_BYOC_OK",
+			name:             "ValidateBYOCOK",
 			awsSecretRef:     SecretRef{Name: "awsSecretRefName", Namespace: "awsSecretRefNamespace"},
 			manualSTSMode:    false,
 			stsRoleARN:       "stsRoleARN",
@@ -101,7 +101,7 @@ func Test_AccountClaim_Validate(t *testing.T) {
 			expectedErr:      nil,
 		},
 		{
-			name:             "Validate_ErrBYOCAccountIDMissing",
+			name:             "ValidateErrBYOCAccountIDMissing",
 			awsSecretRef:     SecretRef{Name: "awsSecretRefName", Namespace: "awsSecretRefNamespace"},
 			manualSTSMode:    false,
 			stsRoleARN:       "",
@@ -110,7 +110,7 @@ func Test_AccountClaim_Validate(t *testing.T) {
 			expectedErr:      ErrBYOCAccountIDMissing,
 		},
 		{
-			name:             "Validate_ErrBYOCSecretRefMissing_Name",
+			name:             "ValidateErrBYOCSecretRefMissingName",
 			awsSecretRef:     SecretRef{Name: "awsSecretRefName", Namespace: "awsSecretRefNamespace"},
 			manualSTSMode:    false,
 			stsRoleARN:       "",
@@ -119,7 +119,7 @@ func Test_AccountClaim_Validate(t *testing.T) {
 			expectedErr:      ErrBYOCSecretRefMissing,
 		},
 		{
-			name:             "Validate_ErrBYOCSecretRefMissing_Namespace",
+			name:             "ValidateErrBYOCSecretRefMissingNamespace",
 			awsSecretRef:     SecretRef{Name: "awsSecretRefName", Namespace: "awsSecretRefNamespace"},
 			manualSTSMode:    false,
 			stsRoleARN:       "",
