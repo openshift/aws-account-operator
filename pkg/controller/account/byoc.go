@@ -46,16 +46,23 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 	accountClaim, acctClaimErr := r.getAccountClaim(account)
 	if acctClaimErr != nil {
 		// TODO: Unrecoverable
-		reqLogger.Error(acctClaimErr, "Unable to get AccountClaim for CCS Account")
-		utils.SetAccountClaimStatus(
-			r.Client,
-			reqLogger,
-			accountClaim,
-			"Failed to get AccountClaim for CSS account",
-			"FailedRetrievingAccountClaim",
-			awsv1alpha1.ClientError,
-			awsv1alpha1.ClaimStatusError,
-		)
+		// TODO: set helpful error message
+		if accountClaim != nil {
+			err := utils.SetAccountClaimStatus(
+				r.Client,
+				reqLogger,
+				accountClaim,
+				"Failed to get AccountClaim for CSS account",
+				"FailedRetrievingAccountClaim",
+				awsv1alpha1.ClientError,
+				awsv1alpha1.ClaimStatusError,
+			)
+			if err != nil {
+				return "", reconcile.Result{}, err
+			}
+		} else {
+			reqLogger.Error(acctClaimErr, "accountclaim is nil")
+		}
 		return "", reconcile.Result{}, acctClaimErr
 
 	}
@@ -76,7 +83,7 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		time.Sleep(500 * time.Millisecond)
 	}
 	if clientErr != nil {
-		utils.SetAccountClaimStatus(
+		err := utils.SetAccountClaimStatus(
 			r.Client,
 			reqLogger,
 			accountClaim,
@@ -85,6 +92,9 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 			awsv1alpha1.ClientError,
 			awsv1alpha1.ClaimStatusError,
 		)
+		if err != nil {
+			return "", reconcile.Result{}, err
+		}
 
 		if accountClaim != nil {
 			claimErr := r.setAccountClaimError(reqLogger, account, clientErr.Error())
@@ -148,11 +158,15 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		return "", reconcile.Result{}, cmErr
 	}
 
+	// Get list of managed tags to add to resources
+	managedTags := r.getManagedTags(reqLogger)
+	customTags := r.getCustomTags(reqLogger, account)
+
 	// Create access key and role for BYOC account
 	var roleID string
 	var roleErr error
 	if !account.HasState() {
-		tags := awsclient.AWSTags.BuildTags(account).GetIAMTags()
+		tags := awsclient.AWSTags.BuildTags(account, managedTags, customTags).GetIAMTags()
 		roleID, roleErr = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn, accountID, tags, SREAccessARN)
 
 		if roleErr != nil {

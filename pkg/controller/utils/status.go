@@ -33,6 +33,10 @@ func SetAccountStatus(client kubeclientpkg.Client, reqLogger logr.Logger, awsAcc
 
 // SetAccountClaimStatus sets the condition and state of an accountClaim
 func SetAccountClaimStatus(client kubeclientpkg.Client, reqLogger logr.Logger, awsAccountClaim *awsv1alpha1.AccountClaim, message string, reason string, ctype awsv1alpha1.AccountClaimConditionType, state awsv1alpha1.ClaimStatus) error {
+	if awsAccountClaim == nil {
+		return nil
+	}
+
 	awsAccountClaim.Status.Conditions = SetAccountClaimCondition(
 		awsAccountClaim.Status.Conditions,
 		ctype,

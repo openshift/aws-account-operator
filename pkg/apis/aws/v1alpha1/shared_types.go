@@ -147,8 +147,14 @@ var EmailID = "osd-creds-mgmt"
 // InstanceResourceType is the resource type used when building Instance tags
 var InstanceResourceType = "instance"
 
+// VolumeResourceType is the resource type used when building Volume tags
+var VolumeResourceType = "volume"
+
 // DefaultConfigMap holds the expected name for the operator's ConfigMap
 var DefaultConfigMap = "aws-account-operator-configmap"
 
 // DefaultConfigMapAccountLimit holds the fallback limit of aws-accounts
 var DefaultConfigMapAccountLimit = 100
+
+// ManagedTagsConfigMapKey defines the default key for the configmap to add the defined tags to AWS resources
+var ManagedTagsConfigMapKey = "aws-managed-tags"
