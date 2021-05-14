@@ -85,7 +85,9 @@ func TestAccountIsFailed(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			a.Status.State = tt.accountConditionType
 			if got := a.IsFailed(); got != tt.expectedResult {
 				t.Errorf("[Account.IsFailed()] Got %v, want %v for state %s", got, tt.expectedResult, tt.accountConditionType)
@@ -120,7 +122,9 @@ func TestAccountHasState(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			a.Status.State = tt.accountConditionType
 			if got := a.HasState(); got != tt.expectedResult {
 				t.Errorf("[Account.HasState()] Got %v, want %v for state %s", got, tt.expectedResult, tt.accountConditionType)
@@ -150,7 +154,9 @@ func TestAccountHasSupportCaseID(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			a.Status.SupportCaseID = tt.supportCaseID
 			if got := a.HasSupportCaseID(); got != tt.expectedResult {
 				t.Errorf("[Account.HasSupportCaseID()] Got %v, want %v for state %s", got, tt.expectedResult, tt.supportCaseID)
@@ -231,7 +237,9 @@ func TestAccountIsPendingReadyCreation(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			a.Status.State = tt.accountConditionType
 			if got := tt.verifyAccountFunction(); got != tt.expectedResult {
 				t.Errorf("[Account] Got %v, want %v for state %s", got, tt.expectedResult, tt.accountConditionType)
@@ -281,7 +289,9 @@ func TestIsReadyUnclaimedAndHasClaimLink(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			a.Status.State = tt.accountConditionType
 			a.Spec.ClaimLink = tt.claimLink
 			a.Status.Claimed = tt.isClaimed

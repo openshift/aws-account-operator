@@ -33,7 +33,9 @@ func TestAccountClaimValidateAWS(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			accountClaim.Spec.AwsCredentialSecret = tt.awsSecretRef
 			if validateErr := accountClaim.validateAWS(); validateErr != tt.expectedErr {
 				t.Errorf("[AccountClaim.ValidateAWS()] Got %v, wanted %v", validateErr, tt.expectedErr)
@@ -129,7 +131,9 @@ func TestAccountClaimValidate(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			accountClaim.Spec.AwsCredentialSecret = tt.awsSecretRef
 			accountClaim.Spec.ManualSTSMode = tt.manualSTSMode
 			accountClaim.Spec.STSRoleARN = tt.stsRoleARN
