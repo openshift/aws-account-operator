@@ -547,7 +547,7 @@ func (r *ReconcileAccount) assumeRole(
 	for i := 0; i < 10; i++ {
 
 		// Get STS credentials so that we can create an aws client with
-		creds, credsErr = getSTSCredentials(reqLogger, awsSetupClient, roleArn, roleSessionName)
+		creds, credsErr = getSTSCredentials(reqLogger, awsSetupClient, roleArn, "", roleSessionName)
 		if credsErr != nil {
 			// Get custom failure reason to update account status
 			reason := ""

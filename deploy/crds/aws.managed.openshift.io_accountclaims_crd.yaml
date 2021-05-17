@@ -101,6 +101,8 @@ spec:
               type: object
             manualSTSMode:
               type: boolean
+            stsExternalID:
+              type: string
             stsRoleARN:
               type: string
             supportRoleARN:
