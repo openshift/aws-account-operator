@@ -47,16 +47,20 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 	if acctClaimErr != nil {
 		// TODO: Unrecoverable
 		// TODO: set helpful error message
-		utils.SetAccountClaimStatus(
-			accountClaim,
-			"Failed to get AccountClaim for CSS account",
-			"FailedRetrievingAccountClaim",
-			awsv1alpha1.ClientError,
-			awsv1alpha1.ClaimStatusError,
-		)
-		err := r.Client.Status().Update(context.TODO(), accountClaim)
-		if err != nil {
-			reqLogger.Error(err, "failed to update accountclaim status")
+		if accountClaim != nil {
+			utils.SetAccountClaimStatus(
+				accountClaim,
+				"Failed to get AccountClaim for CSS account",
+				"FailedRetrievingAccountClaim",
+				awsv1alpha1.ClientError,
+				awsv1alpha1.ClaimStatusError,
+			)
+			err := r.Client.Status().Update(context.TODO(), accountClaim)
+			if err != nil {
+				reqLogger.Error(err, "failed to update accountclaim status")
+			}
+		} else {
+			reqLogger.Error(acctClaimErr, "accountclaim is nil")
 		}
 		return "", reconcile.Result{}, acctClaimErr
 
@@ -153,11 +157,15 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		return "", reconcile.Result{}, cmErr
 	}
 
+	// Get list of managed tags to add to resources
+	managedTags := r.getManagedTags(reqLogger)
+	customTags := r.getCustomTags(reqLogger, account)
+
 	// Create access key and role for BYOC account
 	var roleID string
 	var roleErr error
 	if !account.HasState() {
-		tags := awsclient.AWSTags.BuildTags(account).GetIAMTags()
+		tags := awsclient.AWSTags.BuildTags(account, managedTags, customTags).GetIAMTags()
 		roleID, roleErr = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn, accountID, tags, SREAccessARN)
 
 		if roleErr != nil {

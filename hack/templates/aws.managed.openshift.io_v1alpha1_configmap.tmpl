@@ -6,6 +6,7 @@ parameters:
 - name: ACCOUNTLIMIT
 - name: VCPU_QUOTA
 - name: OPERATOR_NAMESPACE
+- name: STS_JUMP_ARN
 metadata:
   name: test-aws-ou-mapping-configmap-template
 objects:
@@ -41,5 +42,4 @@ objects:
       sa-east-1:ami-05c1c16cac05a7c0b:t2.micro
       af-south-1:ami-0f4b49fefef9be45a:t3.micro
       me-south-1:ami-0b41a37a62a4296fc:t3.micro
-
-
+    sts-jump-role: ${STS_JUMP_ARN}

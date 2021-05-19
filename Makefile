@@ -6,8 +6,6 @@ REUSE_BUCKET_NAME=test-reuse-bucket-${REUSE_UUID}
 
 include hack/scripts/test_envs
 
-export AWS_IAM_ARN := $(shell aws sts get-caller-identity --profile=osd-staging-2 | jq -r '.Arn')
-
 # Boilerplate
 include boilerplate/generated-includes.mk
 
@@ -30,7 +28,8 @@ ifndef OSD_STAGING_2_AWS_ACCOUNT_ID
 	$(error OSD_STAGING_2_AWS_ACCOUNT_ID is undefined)
 endif
 ifndef AWS_IAM_ARN
-	$(error AWS_IAM_ARN is undefined)
+	$(eval export AWS_IAM_ARN := $(shell aws sts get-caller-identity --profile=osd-staging-2 | jq -r '.Arn'))
+	@if [[ -z "$(AWS_IAM_ARN)" ]]; then echo "AWS_IAM_ARN unset and could not be calculated!"; exit 1; fi
 endif
 
 .PHONY: check-ou-mapping-configmap-env
@@ -86,14 +85,14 @@ create-awsfederatedrole: ## Create awsFederatedRole "Read Only"
 	# Create Account
 	test/integration/api/create_account.sh
 	# Create Federated role
-	@oc apply -f test/deploy/crds/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml
+	@oc apply -f test/deploy/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml
 	# Wait for awsFederatedRole CR to become ready
 	@while true; do STATUS=$$(oc get awsfederatedrole -n ${NAMESPACE} ${AWS_FEDERATED_ROLE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Valid" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedRole CR ${AWS_FEDERATED_ROLE_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 .PHONY: delete-awsfederatedrole
 delete-awsfederatedrole: ## Delete awsFederatedRole "Read Only"
 	# Delete Federated role
-	@oc delete -f test/deploy/crds/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml
+	@oc delete -f test/deploy/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml
 	$(MAKE) delete-account || true
 
 .PHONY: create-awsfederatedaccountaccess
@@ -110,8 +109,8 @@ test-awsfederatedrole: check-aws-account-id-env ## Test Federated Access Roles
 	# Create Account if not already created
 	$(MAKE) create-account
 	# Create Federated Roles if not created
-	@oc apply -f test/deploy/crds/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml
-	@oc apply -f test/deploy/crds/aws.managed.openshift.io_v1alpha1_awsfederatedrole_networkmgmt_cr.yaml
+	@oc apply -f test/deploy/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml
+	@oc apply -f test/deploy/aws.managed.openshift.io_v1alpha1_awsfederatedrole_networkmgmt_cr.yaml
 	# Wait for readonly CR to become ready
 	@while true; do STATUS=$$(oc get awsfederatedrole -n ${NAMESPACE} read-only -o json | jq -r '.status.state'); if [ "$$STATUS" == "Valid" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedRole CR read-only failed to create"; exit 1; fi; sleep 1; done
 	# Wait for networkmgmt CR to become ready
@@ -119,8 +118,8 @@ test-awsfederatedrole: check-aws-account-id-env ## Test Federated Access Roles
 	# Test Federated Account Access
 	test/integration/create_awsfederatedaccountaccess.sh --role read-only --name test-federated-user-readonly
 	test/integration/create_awsfederatedaccountaccess.sh --role network-mgmt --name test-federated-user-network-mgmt
-	TEST_CR=test-federated-user-readonly TEST_ROLE_FILE=test/deploy/crds/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml go test github.com/openshift/aws-account-operator/test/integration
-	TEST_CR=test-federated-user-network-mgmt TEST_ROLE_FILE=test/deploy/crds/aws.managed.openshift.io_v1alpha1_awsfederatedrole_networkmgmt_cr.yaml go test github.com/openshift/aws-account-operator/test/integration
+	TEST_CR=test-federated-user-readonly TEST_ROLE_FILE=test/deploy/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml go test github.com/openshift/aws-account-operator/test/integration
+	TEST_CR=test-federated-user-network-mgmt TEST_ROLE_FILE=test/deploy/aws.managed.openshift.io_v1alpha1_awsfederatedrole_networkmgmt_cr.yaml go test github.com/openshift/aws-account-operator/test/integration
 	test/integration/delete_awsfederatedaccountaccess.sh --role read-only --name test-federated-user-readonly
 	test/integration/delete_awsfederatedaccountaccess.sh --role network-mgmt --name test-federated-user-network-mgmt
 	# Delete network-mgmt role
@@ -286,7 +285,7 @@ endif
 .PHONY: create-ou-map
 create-ou-map: check-ou-mapping-configmap-env ## Test apply OU map CR
 	# Create OU map
-	@hack/scripts/set_operator_configmap.sh -a 0 -v 1 -r "${OSD_STAGING_1_OU_ROOT_ID}" -o "${OSD_STAGING_1_OU_BASE_ID}"
+	@hack/scripts/set_operator_configmap.sh -a 0 -v 1 -r "${OSD_STAGING_1_OU_ROOT_ID}" -o "${OSD_STAGING_1_OU_BASE_ID}" -s "${STS_JUMP_ARN}"
 
 .PHONY: delete-ou-map
 delete-ou-map: ## Test delete OU map CR
