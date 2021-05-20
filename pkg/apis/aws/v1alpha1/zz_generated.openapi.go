@@ -121,7 +121,7 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessStatus(ref common.Ref
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{
 								"x-kubernetes-list-map-keys": []interface{}{
-									"type`",
+									"type",
 								},
 								"x-kubernetes-list-type": "map",
 							},
@@ -693,7 +693,7 @@ func schema_pkg_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) co
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{
 								"x-kubernetes-list-map-keys": []interface{}{
-									"type`",
+									"type",
 								},
 								"x-kubernetes-list-type": "map",
 							},
