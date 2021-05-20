@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eo pipefail
 
 # This bash is the replacement for: ./boilerplate/_lib/container-make op-generate
 #                               or:  make -n generate
@@ -13,6 +14,7 @@
 #    https://github.com/mikefarah/yq/releases/3.4.1
 
 # Generate CRDs
+echo "--> Generating CRDs..."
 (cd pkg/apis; controller-gen crd paths=./aws/v1alpha1 output:dir=../../deploy/crds)
 
 # Rename CRD filenames to _crd.yaml
@@ -25,6 +27,7 @@ for CRD in $(find ./deploy/crds -name '*.yaml'); do
 done
 
 # Fix format to comply with operator-sdk generate crd v0.16.0
+echo "--> Fixing format to comply with operator-sdk ..."
 find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'metadata.annotations'
 find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'metadata.creationTimestamp'
 find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'status'
@@ -32,12 +35,23 @@ find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'spec.validati
 find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'spec.validation.openAPIV3Schema.properties.status.properties.conditions.x-kubernetes-list-type'
 find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'spec.validation.openAPIV3Schema.properties.spec.properties.awsManagedPolicies.x-kubernetes-list-type'
 
+echo "--> Running 'operator-sdk generate k8s ..."
 operator-sdk generate k8s
 
+echo "--> Patching CRDs with openAPIV3Schema ..."
 find deploy/ -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} spec.validation.openAPIV3Schema.type
+
+
+# Run go generate against each target
+echo "--> Running 'go generate' against all vendor targets ..."
+GOOS=$(go env GOOS)
+GOARCH=$(go env GOARCH)
+GOFLAGS_MOD=""
+for target in $(go list -e ./... | egrep -v "/(vendor)/"); do GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 GOFLAGS= go generate $target; done
+
+
 # Don't forget to commit generated files
-GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 GOFLAGS= go generate github.com/openshift/aws-account-operator/cmd/manager github.com/openshift/aws-account-operator/config github.com/openshift/aws-account-operator/pkg/awsclient github.com/openshift/aws-account-operator/pkg/awsclient/mock github.com/openshift/aws-account-operator/pkg/controller github.com/openshift/aws-account-operator/pkg/controller/account github.com/openshift/aws-account-operator/pkg/controller/accountclaim github.com/openshift/aws-account-operator/pkg/controller/accountpool github.com/openshift/aws-account-operator/pkg/controller/awsfederatedaccountaccess github.com/openshift/aws-account-operator/pkg/controller/awsfederatedrole github.com/openshift/aws-account-operator/pkg/controller/testutils github.com/openshift/aws-account-operator/pkg/controller/utils github.com/openshift/aws-account-operator/pkg/localmetrics github.com/openshift/aws-account-operator/pkg/totalaccountwatcher github.com/openshift/aws-account-operator/test/fixtures github.com/openshift/aws-account-operator/test/integration github.com/openshift/aws-account-operator/version
-# Don't forget to commit generated files
+echo "--> Generating API files using openapi-gen ..."
 find ./pkg/apis/ -maxdepth 2 -mindepth 2 -type d | xargs -t -n1 -I% \
 		openapi-gen --logtostderr=true \
 			-i % \

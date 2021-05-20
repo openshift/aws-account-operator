@@ -21,7 +21,7 @@ help: ## Display this help
 
 .PHONY: op-generate
 op-generate: ## Generate crd, k8s and openapi
-	@./hack/generate_crds.sh
+	@./hack/scripts/generate_crds.sh
 
 .PHONY: check-aws-account-id-env
 check-aws-account-id-env: ## Check if AWS Account Env vars are set
