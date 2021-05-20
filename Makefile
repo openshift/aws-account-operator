@@ -21,6 +21,7 @@ help: ## Display this help
 
 .PHONY: op-generate
 op-generate: ## Generate crd, k8s and openapi
+	@./boilerplate/openshift/golang-osd-operator/ensure.sh operator-sdk
 	@./hack/scripts/generate_crds.sh
 
 .PHONY: check-aws-account-id-env

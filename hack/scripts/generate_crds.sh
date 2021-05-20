@@ -13,6 +13,8 @@ set -eo pipefail
 # 4. YQ_VERSION="3.4.1"
 #    https://github.com/mikefarah/yq/releases/3.4.1
 
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
 # Generate CRDs
 echo "--> Generating CRDs..."
 (cd pkg/apis; controller-gen crd paths=./aws/v1alpha1 output:dir=../../deploy/crds)
@@ -36,7 +38,11 @@ find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'spec.validati
 find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'spec.validation.openAPIV3Schema.properties.spec.properties.awsManagedPolicies.x-kubernetes-list-type'
 
 echo "--> Running 'operator-sdk generate k8s ..."
-operator-sdk generate k8s
+if ! command -v operator-sdk &> /dev/null; then
+  $REPO_ROOT/.operator-sdk/bin/operator-sdk generate k8s
+else
+  operator-sdk generate k8s
+fi
 
 echo "--> Patching CRDs with openAPIV3Schema ..."
 find deploy/ -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} spec.validation.openAPIV3Schema.type
