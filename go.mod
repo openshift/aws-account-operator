@@ -2,12 +2,13 @@ module github.com/openshift/aws-account-operator
 
 go 1.13
 
+replace github.com/openshift/aws-account-operator/pkg/apis => ./pkg/apis
+
 require (
 	github.com/avast/retry-go v2.6.1+incompatible
 	github.com/aws/aws-sdk-go v1.34.14
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-logr/logr v0.1.0
-	github.com/go-openapi/spec v0.19.4
 	github.com/golang/mock v1.3.1
 	github.com/onsi/ginkgo v1.12.0
 	github.com/onsi/gomega v1.9.0
@@ -24,7 +25,6 @@ require (
 	k8s.io/api v0.15.7
 	k8s.io/apimachinery v0.15.7
 	k8s.io/client-go v12.0.0+incompatible
-	k8s.io/kube-openapi v0.0.0-20190918143330-0270cf2f1c1d
 )
 
 replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
@@ -32,7 +32,10 @@ replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
 // Fixes missing bitbucket dependency; replaces with same fork k8s uses
 replace bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 
-require sigs.k8s.io/controller-runtime v0.4.0
+require (
+	github.com/openshift/aws-account-operator/pkg/apis v0.0.0-00010101000000-000000000000
+	sigs.k8s.io/controller-runtime v0.4.0
+)
 
 // Pinned to kubernetes-1.16.2
 replace (
@@ -61,4 +64,4 @@ replace (
 
 replace github.com/docker/docker => github.com/moby/moby v0.7.3-0.20190826074503-38ab9da00309 // Required by Helm
 
-replace github.com/openshift/api => github.com/openshift/api v0.0.0-20190924102528-32369d4db2ad // Required until https://github.com/operator-framework/operator-lifecycle-manager/pull/1241 is resolved
+replace github.com/openshift/api => github.com/openshift/api v0.0.0-20190924102528-32369d4db2ad // Required until https://github.com/operator-framework/operator-lifecycle-manager/pull/11241 is resolved
