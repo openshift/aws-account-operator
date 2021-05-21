@@ -416,7 +416,7 @@ func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alph
 		return nil, nil, cmErr
 	}
 
-	jumpRoleCreds, err := getSTSCredentials(log, operatorAWSClient, stsAccessARN, "awsAccountOperator")
+	jumpRoleCreds, err := getSTSCredentials(log, operatorAWSClient, stsAccessARN, "", "awsAccountOperator")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -431,7 +431,8 @@ func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alph
 		return nil, nil, err
 	}
 
-	customerAccountCreds, err := getSTSCredentials(log, jumpRoleClient, accountClaim.Spec.STSRoleARN, "RH-Account-Initialization")
+	customerAccountCreds, err := getSTSCredentials(log, jumpRoleClient,
+		accountClaim.Spec.STSRoleARN, accountClaim.Spec.STSExternalID, "RH-Account-Initialization")
 	if err != nil {
 		return nil, nil, err
 	}

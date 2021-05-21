@@ -451,6 +451,12 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimSpec(ref common.ReferenceCallback)
 							Format: "",
 						},
 					},
+					"stsExternalID": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
 					"supportRoleARN": {
 						SchemaProps: spec.SchemaProps{
 							Type:   []string{"string"},
