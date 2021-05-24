@@ -35,7 +35,7 @@ type AWSFederatedAccountAccessSpec struct {
 // +k8s:openapi-gen=true
 type AWSFederatedAccountAccessStatus struct {
 	// +listType=map
-	// +listMapKey=type`
+	// +listMapKey=type
 	Conditions []AWSFederatedAccountAccessCondition `json:"conditions"`
 	State      AWSFederatedAccountAccessState       `json:"state"`
 	ConsoleURL string                               `json:"consoleURL,omitempty"`

@@ -86,6 +86,8 @@ spec:
                 - name
                 - namespace
               type: object
+            customTags:
+              type: string
             legalEntity:
               description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
               properties:
@@ -99,7 +101,11 @@ spec:
               type: object
             manualSTSMode:
               type: boolean
+            stsExternalID:
+              type: string
             stsRoleARN:
+              type: string
+            supportRoleARN:
               type: string
           required:
             - accountLink

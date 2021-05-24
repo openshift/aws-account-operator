@@ -1,4 +1,4 @@
-// NOTE: Boilerplate only.  Ignore this file.
+// NOTE: Replaces controller-runtime scheme with "github.com/openshift/aws-account-operator/pkg/apis/scheme"
 
 // Package v1alpha1 contains API Schema definitions for the aws v1alpha1 API group
 // +k8s:deepcopy-gen=package,register
@@ -6,8 +6,8 @@
 package v1alpha1
 
 import (
+	"github.com/openshift/aws-account-operator/pkg/apis/scheme"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
 
 var (

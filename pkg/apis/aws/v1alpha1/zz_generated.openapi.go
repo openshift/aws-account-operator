@@ -121,7 +121,7 @@ func schema_pkg_apis_aws_v1alpha1_AWSFederatedAccountAccessStatus(ref common.Ref
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{
 								"x-kubernetes-list-map-keys": []interface{}{
-									"type`",
+									"type",
 								},
 								"x-kubernetes-list-type": "map",
 							},
@@ -451,6 +451,24 @@ func schema_pkg_apis_aws_v1alpha1_AccountClaimSpec(ref common.ReferenceCallback)
 							Format: "",
 						},
 					},
+					"stsExternalID": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"supportRoleARN": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"customTags": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
 				},
 				Required: []string{"legalEntity", "awsCredentialSecret", "aws", "accountLink"},
 			},
@@ -681,7 +699,7 @@ func schema_pkg_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) co
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{
 								"x-kubernetes-list-map-keys": []interface{}{
-									"type`",
+									"type",
 								},
 								"x-kubernetes-list-type": "map",
 							},
