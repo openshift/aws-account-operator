@@ -16,6 +16,7 @@ package awsclient
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/route53/route53iface"
@@ -65,6 +66,7 @@ type Client interface {
 	DescribeSnapshots(*ec2.DescribeSnapshotsInput) (*ec2.DescribeSnapshotsOutput, error)
 	DeleteSnapshot(*ec2.DeleteSnapshotInput) (*ec2.DeleteSnapshotOutput, error)
 	DescribeInstances(*ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error)
+	DescribeRegions(input *ec2.DescribeRegionsInput) (*ec2.DescribeRegionsOutput, error)
 
 	//IAM
 	CreateAccessKey(*iam.CreateAccessKeyInput) (*iam.CreateAccessKeyOutput, error)
@@ -181,6 +183,10 @@ func (c *awsClient) DeleteSnapshot(input *ec2.DeleteSnapshotInput) (*ec2.DeleteS
 
 func (c *awsClient) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
 	return c.ec2Client.DescribeInstances(input)
+}
+
+func (c *awsClient) DescribeRegions(input *ec2.DescribeRegionsInput) (*ec2.DescribeRegionsOutput, error) {
+	return c.ec2Client.DescribeRegions(input)
 }
 
 func (c *awsClient) CreateAccessKey(input *iam.CreateAccessKeyInput) (*iam.CreateAccessKeyOutput, error) {
@@ -391,6 +397,7 @@ func (c *awsClient) ListRequestedServiceQuotaChangeHistoryByQuota(input *service
 // NewClient creates our client wrapper object for the actual AWS clients we use.
 // If controllerName is nonempty, metrics are collected timing and counting each AWS request.
 func newClient(controllerName, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
+	var err error
 	// Set region and retryer to prevent any potential rate limiting on the aws side
 	awsConfig := &aws.Config{
 		Region:      aws.String(region),
@@ -406,6 +413,28 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 		return nil, err
 	}
 
+	// Use a regional endpoint for ec2 calls in order to reach opt-in regions when necessary
+	resolver := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
+		return endpoints.ResolvedEndpoint{
+			PartitionID:   "aws",
+			URL:           fmt.Sprintf("https://ec2.%s.amazonaws.com", region),
+			SigningRegion: region,
+		}, nil
+	}
+	ec2AwsConfig := &aws.Config{
+		Region:      		aws.String(region),
+		Credentials: 		credentials.NewStaticCredentials(awsAccessID, awsAccessSecret, token),
+		EndpointResolver: 	endpoints.ResolverFunc(resolver),
+		Retryer: client.DefaultRetryer{
+			NumMaxRetries:    10,
+			MinThrottleDelay: 2 * time.Second,
+		},
+	}
+	ec2Sess, err := session.NewSession(ec2AwsConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	// Time (and count) calls to AWS.
 	// But only from controllers, signalled by a nonempty controllerName.
 	if controllerName != "" {
@@ -415,11 +444,14 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 		s.Handlers.Complete.PushBack(func(r *request.Request) {
 			localmetrics.Collector.AddAPICall(controllerName, r.HTTPRequest, r.HTTPResponse, time.Since(r.Time).Seconds(), r.Error)
 		})
+		ec2Sess.Handlers.Complete.PushBack(func(r *request.Request) {
+			localmetrics.Collector.AddAPICall(controllerName, r.HTTPRequest, r.HTTPResponse, time.Since(r.Time).Seconds(), r.Error)
+		})
 	}
 
 	return &awsClient{
-		ec2Client:           ec2.New(s),
 		iamClient:           iam.New(s),
+		ec2Client:           ec2.New(ec2Sess),
 		orgClient:           organizations.New(s),
 		route53client:       route53.New(s),
 		s3Client:            s3.New(s),

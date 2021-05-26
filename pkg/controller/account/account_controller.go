@@ -11,6 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
@@ -33,14 +34,13 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	totalaccountwatcher "github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 )
 
 var log = logf.Log.WithName("controller_account")
 
 const (
-	awsInstanceType = "t2.micro"
-
 	// Service Quota-related constants
 	// vCPUQuotaCode
 	vCPUQuotaCode = "L-1216C47A"
@@ -261,6 +261,18 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 
+	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
+	stringRegions, ok := configMap.Data["regions"]
+	if !ok {
+		err = awsv1alpha1.ErrInvalidConfigMap
+		return reconcile.Result{}, err
+	}
+	if err != nil {
+		reqLogger.Error(err, "failed getting regions from configmap data")
+		return reconcile.Result{}, err
+	}
+	regionAMIs := processConfigMapRegions(stringRegions)
+
 	// Account init for both BYOC and Non-BYOC
 	if currentAcctInstance.ReadyForInitialization() {
 		reqLogger.Info("initializing account", "awsAccountID", currentAcctInstance.Spec.AwsAccountID)
@@ -290,7 +302,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				return reconcile.Result{}, err
 			}
 
-			if err = r.initializeRegions(reqLogger, currentAcctInstance, creds); err != nil {
+			if err = r.initializeRegions(reqLogger, currentAcctInstance, creds, regionAMIs); err != nil {
 				// initializeRegions logs
 				return reconcile.Result{}, err
 			}
@@ -360,7 +372,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		if err = r.initializeRegions(reqLogger, currentAcctInstance, creds); err != nil {
+		if err = r.initializeRegions(reqLogger, currentAcctInstance, creds, regionAMIs); err != nil {
 			// initializeRegions logs
 			return reconcile.Result{}, err
 		}
@@ -608,7 +620,7 @@ func (r *ReconcileAccount) assumeRole(
 	return awsAssumedRoleClient, creds, nil
 }
 
-func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput) error {
+func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) error {
 	// We're about to kick off region init in a goroutine. This status makes subsequent
 	// Reconciles ignore the Account (unless it stays in this state for too long).
 	utils.SetAccountStatus(currentAcctInstance, "Initializing Regions", awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
@@ -617,9 +629,29 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 		return err
 	}
 
+	// Instantiate a client with a default region to retrieve regions we want to initialize
+	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
+		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
+		AwsToken:                *creds.Credentials.SessionToken,
+		AwsRegion:               awsv1alpha1.AwsUSEastOneRegion,
+	})
+	if err != nil {
+		connErr := fmt.Sprintf("unable to connect to default region %s", awsv1alpha1.AwsUSEastOneRegion)
+		reqLogger.Error(err, connErr)
+	}
+
+	regionsEnabledInAccount, err := awsClient.DescribeRegions(&ec2.DescribeRegionsInput{
+		AllRegions: aws.Bool(false),
+	})
+	if err != nil {
+		reqLogger.Error(err, "Failed to retrieve list of regions enabled in this account.")
+		return err
+	}
+
 	// This initializes supported regions, and updates Account state when that's done. There is
 	// no error checking at this level.
-	go r.asyncRegionInit(reqLogger, currentAcctInstance, creds)
+	go r.asyncRegionInit(reqLogger, currentAcctInstance, creds, regionAMIs, regionsEnabledInAccount)
 
 	return nil
 }
@@ -632,9 +664,10 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 // - This goroutine dies in some horrible and unpredictable way.
 // In either case we would expect the main reconciler to eventually notice that the Account has
 // been in the InitializingRegions state for too long, and set it to Failed.
-func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput) {
+func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec, regionsEnabledInAccount *ec2.DescribeRegionsOutput) {
+
 	// Initialize all supported regions by creating and terminating an instance in each
-	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, awsv1alpha1.CoveredRegions, creds)
+	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, regionsEnabledInAccount.Regions, creds, regionAMIs)
 
 	if currentAcctInstance.IsBYOC() {
 		utils.SetAccountStatus(currentAcctInstance, "BYOC Account Ready", awsv1alpha1.AccountReady, AccountReady)
@@ -924,6 +957,22 @@ func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountCondition
 	} else {
 		return "UnhandledError", awsv1alpha1.AccountUnhandledError
 	}
+}
+
+// processConfigMapRegions is a very hacky way of turning the region ami data we store in the configmap into an region-ami map
+func processConfigMapRegions(regionString string) map[string]awsv1alpha1.AmiSpec {
+	output := make(map[string]awsv1alpha1.AmiSpec)
+	regionsDelimited := strings.Split(regionString, "\n")
+	for _, value := range regionsDelimited {
+		tempArr := strings.Split(value, ":")
+		if len(tempArr) == 3 {
+			output[strings.ReplaceAll(tempArr[0], " ", "")] = awsv1alpha1.AmiSpec{
+				Ami:          strings.ReplaceAll(tempArr[1], " ", ""),
+				InstanceType: strings.ReplaceAll(tempArr[2], " ", ""),
+			}
+		}
+	}
+	return output
 }
 
 // getManagedTags retrieves a list of managed tags from the configmap

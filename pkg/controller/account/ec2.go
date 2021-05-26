@@ -24,7 +24,7 @@ import (
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
 // NOTE: This function does not have any returns. In particular, error conditions from the
 // goroutines are logged, but do not result in a failure up the stack.
-func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions map[string]map[string]string, creds *sts.AssumeRoleOutput) {
+func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []*ec2.Region, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
 	ec2Notifications, ec2Errors := make(chan string), make(chan string)
 
@@ -42,8 +42,9 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 	customerTags := r.getCustomTags(reqLogger, account)
 
 	// Create go routines to initialize regions in parallel
-	for region := range regions {
-		go r.InitializeRegion(reqLogger, account, region, regions[region]["initializationAMI"], vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags) //nolint:errcheck // Unable to do anything with the returned error
+
+	for _, region := range regions {
+		go r.InitializeRegion(reqLogger, account, *region.RegionName, regionAMIs[*region.RegionName], vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags) //nolint:errcheck // Unable to do anything with the returned error
 	}
 
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished
@@ -64,7 +65,7 @@ func (r *ReconcileAccount) InitializeRegion(
 	reqLogger logr.Logger,
 	account *awsv1alpha1.Account,
 	region string,
-	ami string,
+	instanceInfo awsv1alpha1.AmiSpec,
 	vCPUQuota float64,
 	ec2Notifications chan string,
 	ec2Errors chan string,
@@ -81,6 +82,7 @@ func (r *ReconcileAccount) InitializeRegion(
 		AwsToken:                *creds.Credentials.SessionToken,
 		AwsRegion:               region,
 	})
+
 	if err != nil {
 		connErr := fmt.Sprintf("unable to connect to region %s when attempting to initialize it", region)
 		reqLogger.Error(err, connErr)
@@ -93,7 +95,7 @@ func (r *ReconcileAccount) InitializeRegion(
 	reqLogger.Info("initializing region", "region", region)
 
 	// Attempt to clean the region from any hanging resources
-	cleaned, err := cleanRegion(awsClient, reqLogger, account.Name)
+	cleaned, err := cleanRegion(awsClient, reqLogger, account.Name, region)
 	if err != nil {
 		cleanErr := fmt.Sprintf("Error while attempting to clean region: %v", err.Error())
 		ec2Errors <- cleanErr
@@ -148,7 +150,7 @@ func (r *ReconcileAccount) InitializeRegion(
 		}
 	}
 
-	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, ami, managedTags, customerTags)
+	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, instanceInfo, managedTags, customerTags)
 
 	if err != nil {
 		createErr := fmt.Sprintf("Unable to create instance in region: %s", region)
@@ -168,9 +170,8 @@ func (r *ReconcileAccount) InitializeRegion(
 }
 
 // BuildAndDestroyEC2Instances runs an ec2 instance and terminates it
-func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, ami string, managedTags []awsclient.AWSTag, customerTags []awsclient.AWSTag) error {
-
-	instanceID, err := CreateEC2Instance(reqLogger, account, awsClient, ami, managedTags, customerTags)
+func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, instanceInfo awsv1alpha1.AmiSpec, managedTags []awsclient.AWSTag, customerTags []awsclient.AWSTag) error {
+	instanceID, err := CreateEC2Instance(reqLogger, account, awsClient, instanceInfo, managedTags, customerTags)
 	if err != nil {
 		// Terminate instance id if it exists
 		if instanceID != "" {
@@ -230,7 +231,7 @@ func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, ac
 }
 
 // CreateEC2Instance creates ec2 instance and returns its instance ID
-func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, client awsclient.Client, ami string, managedTags []awsclient.AWSTag, customerTags []awsclient.AWSTag) (string, error) {
+func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, client awsclient.Client, instanceInfo awsv1alpha1.AmiSpec, managedTags []awsclient.AWSTag, customerTags []awsclient.AWSTag) (string, error) {
 
 	// Retain instance id
 	var timeoutInstanceID string
@@ -248,8 +249,8 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 		tags := awsclient.AWSTags.BuildTags(account, managedTags, customerTags).GetEC2Tags()
 		// Specify the details of the instance that you want to create.
 		runResult, runErr := client.RunInstances(&ec2.RunInstancesInput{
-			ImageId:      aws.String(ami),
-			InstanceType: aws.String(awsInstanceType),
+			ImageId:      aws.String(instanceInfo.Ami),
+			InstanceType: aws.String(instanceInfo.InstanceType),
 			MinCount:     aws.Int64(1),
 			MaxCount:     aws.Int64(1),
 			TagSpecifications: []*ec2.TagSpecification{
@@ -624,8 +625,19 @@ func changeRequestMatches(change *servicequotas.RequestedServiceQuotaChange, quo
 }
 
 // cleanRegion will remove all hanging account creation t2.micro instances running in the current region
-func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string) (bool, error) {
+func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string, region string) (bool, error) {
 	cleaned := false
+	// Make a dry run to certify we have required authentication
+	_, err := client.DescribeInstances(&ec2.DescribeInstancesInput{
+		DryRun: aws.Bool(true),
+	})
+	// If we receive an AuthFailure alert we do not attempt to clean this region
+	if aerr, ok := err.(awserr.Error); ok {
+		if aerr.Code() == "AuthFailure" {
+			logger.Error(err, fmt.Sprintf("We do not have the correct authentication to clean or initialize region: %s backing out gracefully", region))
+			return cleaned, err
+		}
+	}
 	// Get a list of all running t2.micro instances
 	output, err := client.DescribeInstances(&ec2.DescribeInstancesInput{
 		MaxResults: aws.Int64(100),

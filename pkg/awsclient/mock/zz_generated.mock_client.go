@@ -162,6 +162,21 @@ func (mr *MockClientMockRecorder) DescribeInstances(arg0 interface{}) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeInstances", reflect.TypeOf((*MockClient)(nil).DescribeInstances), arg0)
 }
 
+// DescribeRegions mocks base method
+func (m *MockClient) DescribeRegions(input *ec2.DescribeRegionsInput) (*ec2.DescribeRegionsOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DescribeRegions", input)
+	ret0, _ := ret[0].(*ec2.DescribeRegionsOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DescribeRegions indicates an expected call of DescribeRegions
+func (mr *MockClientMockRecorder) DescribeRegions(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeRegions", reflect.TypeOf((*MockClient)(nil).DescribeRegions), input)
+}
+
 // CreateAccessKey mocks base method
 func (m *MockClient) CreateAccessKey(arg0 *iam.CreateAccessKeyInput) (*iam.CreateAccessKeyOutput, error) {
 	m.ctrl.T.Helper()
