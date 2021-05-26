@@ -24,7 +24,7 @@ import (
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
 // NOTE: This function does not have any returns. In particular, error conditions from the
 // goroutines are logged, but do not result in a failure up the stack.
-func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []*ec2.Region, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.InstanceInfo) {
+func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []*ec2.Region, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
 	ec2Notifications, ec2Errors := make(chan string), make(chan string)
 
@@ -65,7 +65,7 @@ func (r *ReconcileAccount) InitializeRegion(
 	reqLogger logr.Logger,
 	account *awsv1alpha1.Account,
 	region string,
-	instanceInfo awsv1alpha1.InstanceInfo,
+	instanceInfo awsv1alpha1.AmiSpec,
 	vCPUQuota float64,
 	ec2Notifications chan string,
 	ec2Errors chan string,
@@ -170,7 +170,7 @@ func (r *ReconcileAccount) InitializeRegion(
 }
 
 // BuildAndDestroyEC2Instances runs an ec2 instance and terminates it
-func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, instanceInfo awsv1alpha1.InstanceInfo, managedTags []awsclient.AWSTag, customerTags []awsclient.AWSTag) error {
+func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, instanceInfo awsv1alpha1.AmiSpec, managedTags []awsclient.AWSTag, customerTags []awsclient.AWSTag) error {
 	instanceID, err := CreateEC2Instance(reqLogger, account, awsClient, instanceInfo, managedTags, customerTags)
 	if err != nil {
 		// Terminate instance id if it exists
@@ -231,7 +231,7 @@ func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, ac
 }
 
 // CreateEC2Instance creates ec2 instance and returns its instance ID
-func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, client awsclient.Client, instanceInfo awsv1alpha1.InstanceInfo, managedTags []awsclient.AWSTag, customerTags []awsclient.AWSTag) (string, error) {
+func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, client awsclient.Client, instanceInfo awsv1alpha1.AmiSpec, managedTags []awsclient.AWSTag, customerTags []awsclient.AWSTag) (string, error) {
 
 	// Retain instance id
 	var timeoutInstanceID string

@@ -620,7 +620,7 @@ func (r *ReconcileAccount) assumeRole(
 	return awsAssumedRoleClient, creds, nil
 }
 
-func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.InstanceInfo) error {
+func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) error {
 	// We're about to kick off region init in a goroutine. This status makes subsequent
 	// Reconciles ignore the Account (unless it stays in this state for too long).
 	utils.SetAccountStatus(currentAcctInstance, "Initializing Regions", awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
@@ -664,7 +664,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 // - This goroutine dies in some horrible and unpredictable way.
 // In either case we would expect the main reconciler to eventually notice that the Account has
 // been in the InitializingRegions state for too long, and set it to Failed.
-func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.InstanceInfo, regionsEnabledInAccount *ec2.DescribeRegionsOutput) {
+func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec, regionsEnabledInAccount *ec2.DescribeRegionsOutput) {
 
 	// Initialize all supported regions by creating and terminating an instance in each
 	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, regionsEnabledInAccount.Regions, creds, regionAMIs)
@@ -960,13 +960,13 @@ func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountCondition
 }
 
 // processConfigMapRegions is a very hacky way of turning the region ami data we store in the configmap into an region-ami map
-func processConfigMapRegions(regionString string) map[string]awsv1alpha1.InstanceInfo {
-	output := make(map[string]awsv1alpha1.InstanceInfo)
+func processConfigMapRegions(regionString string) map[string]awsv1alpha1.AmiSpec {
+	output := make(map[string]awsv1alpha1.AmiSpec)
 	regionsDelimited := strings.Split(regionString, "\n")
 	for _, value := range regionsDelimited {
 		tempArr := strings.Split(value, ":")
 		if len(tempArr) == 3 {
-			output[strings.ReplaceAll(tempArr[0], " ", "")] = awsv1alpha1.InstanceInfo{
+			output[strings.ReplaceAll(tempArr[0], " ", "")] = awsv1alpha1.AmiSpec{
 				Ami:          strings.ReplaceAll(tempArr[1], " ", ""),
 				InstanceType: strings.ReplaceAll(tempArr[2], " ", ""),
 			}

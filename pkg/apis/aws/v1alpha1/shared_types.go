@@ -4,7 +4,7 @@ import (
 	"errors"
 )
 
-type InstanceInfo struct {
+type AmiSpec struct {
 	Ami 			string
 	InstanceType 	string
 }
