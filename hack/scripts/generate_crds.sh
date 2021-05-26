@@ -1,16 +1,12 @@
 #!/bin/bash
 set -eo pipefail
 
-# This bash is the replacement for: ./boilerplate/_lib/container-make op-generate
-#                               or:  make -n generate
+# This bash is the replacement for boilerplate's `op-generate` target.
 
 # What you need to run this
-# 1. operator-sdk v0.16.0
-# 2. CONTROLLER_GEN_VERSION=v0.3.0
+# 1. CONTROLLER_GEN_VERSION=v0.3.0
 #    go get sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION}
-# 3. OPENAPI_GEN_VERSION=v0.19.4
-#    go get k8s.io/code-generator/cmd/openapi-gen@${OPENAPI_GEN_VERSION}
-# 4. YQ_VERSION="3.4.1"
+# 2. YQ_VERSION="3.4.1"
 #    https://github.com/mikefarah/yq/releases/3.4.1
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -29,40 +25,17 @@ for CRD in $(find ./deploy/crds -name '*.yaml'); do
 done
 
 # Fix format to comply with operator-sdk generate crd v0.16.0
+# TODO: Is this actually important?
 echo "--> Fixing format to comply with operator-sdk ..."
-find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'metadata.annotations'
-find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'metadata.creationTimestamp'
-find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'status'
-find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'spec.validation.openAPIV3Schema.properties.status.properties.conditions.x-kubernetes-list-map-keys'
-find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'spec.validation.openAPIV3Schema.properties.status.properties.conditions.x-kubernetes-list-type'
-find ./deploy/crds -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} 'spec.validation.openAPIV3Schema.properties.spec.properties.awsManagedPolicies.x-kubernetes-list-type'
+find ./deploy/crds -name '*_crd.yaml' | while read crd; do
+    yq d -i $crd 'metadata.annotations'
+    yq d -i $crd 'metadata.creationTimestamp'
+    yq d -i $crd 'status'
+    yq d -i $crd 'spec.validation.openAPIV3Schema.properties.status.properties.conditions.x-kubernetes-list-map-keys'
+    yq d -i $crd 'spec.validation.openAPIV3Schema.properties.status.properties.conditions.x-kubernetes-list-type'
+    yq d -i $crd 'spec.validation.openAPIV3Schema.properties.spec.properties.awsManagedPolicies.x-kubernetes-list-type'
 
-echo "--> Running 'operator-sdk generate k8s ..."
-if ! command -v operator-sdk &> /dev/null; then
-  $REPO_ROOT/.operator-sdk/bin/operator-sdk generate k8s
-else
-  operator-sdk generate k8s
-fi
-
-echo "--> Patching CRDs with openAPIV3Schema ..."
-find deploy/ -name '*_crd.yaml' | xargs -n1 -I{} yq d -i {} spec.validation.openAPIV3Schema.type
-
-
-# Run go generate against each target
-echo "--> Running 'go generate' against all vendor targets ..."
-GOOS=$(go env GOOS)
-GOARCH=$(go env GOARCH)
-GOFLAGS_MOD=""
-for target in $(go list -e ./... | egrep -v "/(vendor)/"); do GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 GOFLAGS= go generate $target; done
-
-
-# Don't forget to commit generated files
-echo "--> Generating API files using openapi-gen ..."
-find ./pkg/apis/ -maxdepth 2 -mindepth 2 -type d | xargs -t -n1 -I% \
-		openapi-gen --logtostderr=true \
-			-i % \
-			-o "" \
-			-O zz_generated.openapi \
-			-p % \
-			-h /dev/null \
-			-r "-"
+    # TODO: Scrap this once v3 is dead
+    echo "--> Patching CRDs with openAPIV3Schema: $crd ..."
+    yq d -i $crd spec.validation.openAPIV3Schema.type
+done

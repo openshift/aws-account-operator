@@ -13,9 +13,6 @@ import (
 // AccountClaimSpec defines the desired state of AccountClaim
 // +k8s:openapi-gen=true
 type AccountClaimSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
-	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
 	LegalEntity         LegalEntity `json:"legalEntity"`
 	AwsCredentialSecret SecretRef   `json:"awsCredentialSecret"`
 	Aws                 Aws         `json:"aws"`

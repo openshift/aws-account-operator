@@ -45,7 +45,6 @@ spec:
           description: AccountSpec defines the desired state of Account
           properties:
             awsAccountID:
-              description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
               type: string
             byoc:
               type: boolean
@@ -76,7 +75,6 @@ spec:
           description: AccountStatus defines the observed state of Account
           properties:
             claimed:
-              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
               type: boolean
             conditions:
               items:
