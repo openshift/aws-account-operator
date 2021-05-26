@@ -156,5 +156,11 @@ var DefaultConfigMap = "aws-account-operator-configmap"
 // DefaultConfigMapAccountLimit holds the fallback limit of aws-accounts
 var DefaultConfigMapAccountLimit = 100
 
+// AWSManagedRoleName is the name of the read-only role
+var AWSManagedRoleName = "AWSManagedRole"
+
+// AWSManagedRoleArn is the read-only ARN for the AWSManagedRole
+var AWSManagedRoleArn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+
 // ManagedTagsConfigMapKey defines the default key for the configmap to add the defined tags to AWS resources
 var ManagedTagsConfigMapKey = "aws-managed-tags"
