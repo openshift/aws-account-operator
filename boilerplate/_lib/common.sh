@@ -42,6 +42,11 @@ grpcurl_version() {
     $grpcurl -version 2>&1 | cut -d " " -f 2
 }
 
+misspell_version() {
+    local misspell=$1
+    $misspell version
+}
+
 ## repo_import REPODIR
 #
 # Print the qualified org/name of the current repository, e.g.
