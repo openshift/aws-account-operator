@@ -19,11 +19,6 @@ boilerplate-update:
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-.PHONY: op-generate
-op-generate: ## Generate crd, k8s and openapi
-	@./boilerplate/openshift/golang-osd-operator/ensure.sh operator-sdk
-	@./hack/scripts/generate_crds.sh
-
 .PHONY: check-aws-account-id-env
 check-aws-account-id-env: ## Check if AWS Account Env vars are set
 ifndef OSD_STAGING_1_AWS_ACCOUNT_ID
@@ -252,7 +247,7 @@ predeploy-aws-account-operator: ## Predeploy AWS Account Operator
 	# Create aws-account-operator namespace
 	@oc get namespace ${NAMESPACE} && oc project ${NAMESPACE} || oc create namespace ${NAMESPACE}
 	# Create aws-account-operator CRDs
-	@ls deploy/crds/*crd.yaml | xargs -L1 oc apply -f
+	@ls deploy/crds/*.yaml | xargs -L1 oc apply -f
 	# Create zero size account pool
 	@oc apply -f hack/files/aws.managed.openshift.io_v1alpha1_zero_size_accountpool.yaml
 
