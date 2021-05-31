@@ -171,7 +171,7 @@ delete-ccs-2-namespace: ## Delete CCS (BYOC) namespace
 create-ccs-secret: ## Create CCS (BYOC) Secret
 	# Create CCS Secret
 	./hack/scripts/aws/rotate_iam_access_keys.sh -p osd-staging-2 -u osdCcsAdmin -a ${OSD_STAGING_2_AWS_ACCOUNT_ID} -n ${CCS_NAMESPACE_NAME} -o /dev/stdout | oc apply -f -
-	# Wait for AWS to propogate IAM credentials
+	# Wait for AWS to propagate IAM credentials
 	sleep ${SLEEP_INTERVAL}
 
 
@@ -179,7 +179,7 @@ create-ccs-secret: ## Create CCS (BYOC) Secret
 create-ccs-2-secret: ## Create CCS (BYOC) Secret
 	# Create CCS Secret
 	./hack/scripts/aws/rotate_iam_access_keys.sh -p osd-staging-2 -u osdCcsAdmin -a ${OSD_STAGING_2_AWS_ACCOUNT_ID} -n ${CCS_NAMESPACE_NAME_2} -o /dev/stdout | oc apply -f -
-	# Wait for AWS to propogate IAM credentials
+	# Wait for AWS to propagate IAM credentials
 	sleep ${SLEEP_INTERVAL}
 
 .PHONY: delete-ccs-secret
@@ -343,7 +343,20 @@ test-apis:
 	go test ./... ; \
 	popd
 
-#s Test all
+# Test all
+# GOLANGCI_LINT_CACHE needs to be set to a directory which is writeable
+# Relevant issue - https://github.com/golangci/golangci-lint/issues/734
+GOLANGCI_LINT_CACHE ?= /tmp/golangci-cache
+
+# Spell Check
+.PHONY: check-spell
+check-spell: # Check spelling
+	./hack/scripts/misspell_check.sh
+	GOLANGCI_LINT_CACHE=${GOLANGCI_LINT_CACHE} golangci-lint run -c config/golangci-lint-config.yml
+
+lint: check-spell
+
+# Test all
 .PHONY: test-all
 test-all: lint clean-operator test test-apis test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim ## Runs all integration tests
 

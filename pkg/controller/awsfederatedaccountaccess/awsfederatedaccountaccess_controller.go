@@ -311,7 +311,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 
 // createIAMPolicy creates the IAM policys in AWSFederatedRole inside of our cluster account
 func (r *ReconcileAWSFederatedAccountAccess) createIAMPolicy(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) (*iam.Policy, error) {
-	// Same struct from the afr.Spec.AWSCustomPolicy.Statements , but with json tags as captials due to requirements for the policydoc
+	// Same struct from the afr.Spec.AWSCustomPolicy.Statements , but with json tags as capitals due to requirements for the policydoc
 	type awsStatement struct {
 		Effect    string                 `json:"Effect"`
 		Action    []string               `json:"Action"`
