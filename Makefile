@@ -335,7 +335,7 @@ GOLANGCI_LINT_CACHE ?= /tmp/golangci-cache
 # Spell Check
 .PHONY: check-spell
 check-spell: # Check spelling
-	GOLANGCI_LINT_CACHE=${GOLANGCI_LINT_CACHE} golangci-lint run -c config/golangci-lint-config.yml
+	./hack/scripts/misspell_check.sh
 
 lint: check-spell
 
