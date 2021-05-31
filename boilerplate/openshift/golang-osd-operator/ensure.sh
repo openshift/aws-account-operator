@@ -126,29 +126,6 @@ grpcurl)
     ln -fs "$grpcurl" grpcurl
     ;;
 
-
-misspell)
-    mkdir -p .misspell/bin
-    cd .misspell/bin
-
-    if [[ -x ./misspell  && "$(misspell_version ./misspell)" == "$misspell_VERSION" ]]; then
-        exit 0
-    fi
-
-    if which misspell && [[ "$(misspell_version $(which misspell))" == "$misspell_VERSION" ]]; then
-        misspell=$(realpath $(which misspell))
-    else
-        # mapping from https://github.com/client9/misspell/blob/master/goreleaser.yml
-        [[ "$GOOS" == "darwin" ]] && os=osx || os="$GOOS"
-        misspell="misspell-$MISSPELL_VERSION-$os-64bit"
-        misspell_download_url="https://github.com/client9/misspell/releases/download/v$MISSPELL_VERSION/misspell_${MISSPELL_VERSION}_${os}_64bit.tar.gz"
-        curl -sfL "$misspell_download_url" | tar -xzf - -O misspell > "$misspell"
-        chmod +x "$misspell"
-    fi
-
-    ln -fs "$misspell" misspell
-    ;;
-
 venv)
     # Set up a python virtual environment
     python3 -m venv .venv
