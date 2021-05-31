@@ -328,10 +328,6 @@ delete-sts-accountclaim: ## Deletes a templated STS accountclaim
 .PHONY: test-sts-accountclaim
 test-sts-accountclaim: create-sts-accountclaim-namespace create-sts-accountclaim delete-sts-accountclaim delete-sts-accountclaim-namespace ## Runs a full integration test for STS workflow
 
-# GOLANGCI_LINT_CACHE needs to be set to a directory which is writeable
-# Relevant issue - https://github.com/golangci/golangci-lint/issues/734
-GOLANGCI_LINT_CACHE ?= /tmp/golangci-cache
-
 # Spell Check
 .PHONY: check-spell
 check-spell: # Check spelling
