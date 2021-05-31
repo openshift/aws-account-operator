@@ -1,6 +1,6 @@
 module github.com/openshift/aws-account-operator
 
-go 1.13
+go 1.16
 
 replace github.com/openshift/aws-account-operator/pkg/apis => ./pkg/apis
 
