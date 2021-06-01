@@ -1,0 +1,9 @@
+# Integrate todo bot (https://github.com/probot/probot)
+# https://todo.jasonet.co/
+todo:
+  keyword: ["@todo", "TODO"] # string|string[]
+  bodyKeyword: ["@body", "BODY"] # string|string[]
+  blobLines: 5                # number|boolean, 0 or false to disable
+  autoAssign: true            # string|string[]|boolean
+  label: true                 # boolean|string|string[]
+  reopenClosed: false         # boolean
