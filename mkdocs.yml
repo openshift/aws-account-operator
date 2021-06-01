@@ -1,0 +1,23 @@
+site_name: aws-account-operator
+site_description: 'Documentation for aws-account-operator'
+site_url: https://openshift.github.io/aws-account-operator/
+repo_url: https://github.com/openshift/aws-account-operator
+theme:
+  name: material
+markdown_extensions:
+    - toc:
+        permalink: True
+        separator: "_"
+nav:
+  - Home: README.md
+  - Installation: 1.0-Installation.md
+  - Custom Resources: 2.0-Custom-Resources-and-Controllers.md
+  - Controllers:
+    - Account Pool: 2.1-AccountPool.md
+    - Account: 2.2-Account.md
+    - Account Claim: 2.3-AccountClaim.md
+    - AWSFederatedRole: 2.4-AWSFederatedRole.md
+    - AWSFederatedAccountAccess: 2.5-AWSFederatedAccountAccess.md
+  - Special Items in main.go: 4.0-Special-Items-Main-Go.md
+  - Debugging: 5.0-Debugging.md
+  - Glossary: 0.1-Glossary.md
