@@ -660,9 +660,41 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 		return err
 	}
 
+	if !currentAcctInstance.IsBYOC() { // This is a normal account creation
+		reqLogger.Info("Normal account region initialization")
+		go r.asyncRegionInit(reqLogger, currentAcctInstance, creds, regionAMIs, castAWSRegionType(regionsEnabledInAccount.Regions))
+		return nil
+	}
+
+	accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
+	if acctClaimErr != nil {
+		reqLogger.Info("Accountclaim not found")
+		return acctClaimErr
+	}
+
+	for _, wantedRegion := range accountClaim.Spec.Aws.Regions {
+		found := false
+		for _, enabledRegion := range regionsEnabledInAccount.Regions {
+			reqLogger.Info("Comparing regions", "wantedRegion", wantedRegion, "enabledRegion", enabledRegion)
+			if wantedRegion.Name == *enabledRegion.RegionName {
+				found = true
+			}
+		}
+		if !found {
+			err := utils.SetAccountStatus(
+				r.Client,
+				reqLogger,
+				currentAcctInstance,
+				fmt.Sprintf("AWS region %s is not support supported for AWS account %s", wantedRegion, currentAcctInstance.Name),
+				awsv1alpha1.AccountInitializingRegions,
+			)
+			return err
+		}
+	}
+
 	// This initializes supported regions, and updates Account state when that's done. There is
 	// no error checking at this level.
-	go r.asyncRegionInit(reqLogger, currentAcctInstance, creds, regionAMIs, regionsEnabledInAccount)
+	go r.asyncRegionInit(reqLogger, currentAcctInstance, creds, regionAMIs, accountClaim.Spec.Aws.Regions)
 
 	return nil
 }
@@ -675,10 +707,10 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 // - This goroutine dies in some horrible and unpredictable way.
 // In either case we would expect the main reconciler to eventually notice that the Account has
 // been in the InitializingRegions state for too long, and set it to Failed.
-func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec, regionsEnabledInAccount *ec2.DescribeRegionsOutput) {
+func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec, regionsEnabledInAccount []v1alpha1.AwsRegions) {
 
 	// Initialize all supported regions by creating and terminating an instance in each
-	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, regionsEnabledInAccount.Regions, creds, regionAMIs)
+	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, regionsEnabledInAccount, creds, regionAMIs)
 
 	var err error
 	if currentAcctInstance.IsBYOC() {
@@ -1053,4 +1085,13 @@ func parseTagsFromString(tags string) []awsclient.AWSTag {
 	}
 
 	return parsedTags
+}
+
+
+func castAWSRegionType(regions []*ec2.Region) ([]v1alpha1.AwsRegions) {
+	var awsRegions []v1alpha1.AwsRegions
+	for _, region := range regions {
+		awsRegions = append(awsRegions, v1alpha1.AwsRegions{Name: *region.RegionName})
+	}
+	return awsRegions
 }
