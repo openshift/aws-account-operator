@@ -339,8 +339,7 @@ function main() {
                                                    "$opm_local_executable" \
                                                    "$image_builder" \
                                                    "$prev_good_operator_version" \
-                                                   "${skip_versions[*]:-}") \
-                                                   "${temp_dir}"
+                                                   "${skip_versions[*]:-}")
 
     log "Pushing bundle image $bundle_image_current_commit"
     $engine_cmd push "$bundle_image_current_commit"
