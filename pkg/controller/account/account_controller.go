@@ -652,6 +652,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 		reqLogger.Error(err, connErr)
 	}
 
+	// Get a list of regions enabled in the current account
 	regionsEnabledInAccount, err := awsClient.DescribeRegions(&ec2.DescribeRegionsInput{
 		AllRegions: aws.Bool(false),
 	})
@@ -660,22 +661,22 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 		return err
 	}
 
-	if !currentAcctInstance.IsBYOC() { // This is a normal account creation
-		reqLogger.Info("Normal account region initialization")
+	// For accounts created by the accountpool we want to ensure we initiate all regions
+	if !currentAcctInstance.IsBYOC() {
 		go r.asyncRegionInit(reqLogger, currentAcctInstance, creds, regionAMIs, castAWSRegionType(regionsEnabledInAccount.Regions))
 		return nil
 	}
 
+	// For non OSD accounts we check the desired region from the accountclaim and ensure that the account has
+	// that region enabled, fail otherwise
 	accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
 	if acctClaimErr != nil {
 		reqLogger.Info("Accountclaim not found")
 		return acctClaimErr
 	}
-
 	for _, wantedRegion := range accountClaim.Spec.Aws.Regions {
 		found := false
 		for _, enabledRegion := range regionsEnabledInAccount.Regions {
-			reqLogger.Info("Comparing regions", "wantedRegion", wantedRegion, "enabledRegion", enabledRegion)
 			if wantedRegion.Name == *enabledRegion.RegionName {
 				found = true
 			}
@@ -685,7 +686,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 				r.Client,
 				reqLogger,
 				currentAcctInstance,
-				fmt.Sprintf("AWS region %s is not support supported for AWS account %s", wantedRegion, currentAcctInstance.Name),
+				fmt.Sprintf("AWS region %s is not supported for AWS account %s", wantedRegion, currentAcctInstance.Name),
 				awsv1alpha1.AccountInitializingRegions,
 			)
 			return err
@@ -694,6 +695,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 
 	// This initializes supported regions, and updates Account state when that's done. There is
 	// no error checking at this level.
+	// Only initiate the one requested region
 	go r.asyncRegionInit(reqLogger, currentAcctInstance, creds, regionAMIs, accountClaim.Spec.Aws.Regions)
 
 	return nil
