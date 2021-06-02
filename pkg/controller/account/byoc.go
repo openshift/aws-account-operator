@@ -201,23 +201,9 @@ func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.C
 
 	if (*existingRole != iam.GetRoleOutput{}) {
 		reqLogger.Info(fmt.Sprintf("Found pre-existing role: %s", byocInstanceIDRole))
-
-		// existingRole is not empty
-		policyList, err := GetAttachedPolicies(reqLogger, byocInstanceIDRole, byocAWSClient)
+		err := DeleteBYOCAdminAccessRole(reqLogger, byocAWSClient, byocInstanceIDRole)
 		if err != nil {
 			return roleID, err
-		}
-
-		for _, policy := range policyList.AttachedPolicies {
-			err := DetachPolicyFromRole(reqLogger, policy, byocInstanceIDRole, byocAWSClient)
-			if err != nil {
-				return roleID, err
-			}
-		}
-
-		delErr := DeleteRole(reqLogger, byocInstanceIDRole, byocAWSClient)
-		if delErr != nil {
-			return roleID, delErr
 		}
 	}
 
@@ -252,12 +238,29 @@ func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.C
 			reqLogger.Info(fmt.Sprintf("Found attached policy %s", *policy.PolicyArn))
 			break
 		} else {
-			err = fmt.Errorf("Policy %s never attached to role %s", policyArn, byocInstanceIDRole)
+			err = fmt.Errorf("policy %s never attached to role %s", policyArn, byocInstanceIDRole)
 			return roleID, err
 		}
 	}
 
 	return roleID, err
+}
+
+func DeleteBYOCAdminAccessRole(reqLogger logr.Logger, byocAWSClient awsclient.Client, instanceID string) (err error) {
+	byocInstanceIDRole := fmt.Sprintf("%s-%s", byocRole, instanceID)
+	policyList, err := GetAttachedPolicies(reqLogger, byocInstanceIDRole, byocAWSClient)
+	if err != nil {
+		return err
+	}
+
+	for _, policy := range policyList.AttachedPolicies {
+		err := DetachPolicyFromRole(reqLogger, policy, byocInstanceIDRole, byocAWSClient)
+		if err != nil {
+			return err
+		}
+	}
+
+	return DeleteRole(reqLogger, byocInstanceIDRole, byocAWSClient)
 }
 
 // CreateRole creates the role with the correct assume policy for BYOC for a given roleName

@@ -31,7 +31,6 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 	// Get account claimed by deleted accountclaim
 	reusedAccount, err := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
 	if err != nil {
-
 		// This check ensures that if a BYOC Account CR gets deleted, the rest of the BYOC finalizer logic can still run
 		if !accountClaim.Spec.BYOC {
 			reqLogger.Error(err, "Failed to get claimed account")
@@ -40,7 +39,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		// Cleanup BYOC secret
 		err = r.removeBYOCSecretFinalizer(accountClaim)
 		if err != nil {
-			reqLogger.Error(err, "Failed to remove BYOC secret finalizer")
+			reqLogger.Error(err, "Failed to remove BYOC iamsecret finalizer")
 			return err
 		}
 
@@ -59,7 +58,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 
 	// Region comes from accountClaim
 	clusterAwsRegion := accountClaim.Spec.Aws.Regions[0].Name
-	if reusedAccount.Spec.BYOC {
+	if reusedAccount.IsBYOC() {
 		// AWS credential comes from accountclaim object osdCcsAdmin user
 		// We must use this user as we would other delete the osdManagedAdmin
 		// user that we're going to delete
@@ -86,17 +85,10 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		return err
 	}
 
-	// Remove IAM user we'll remove the IAM user for CCS
-	if utils.AccountCRHasIAMUserIDLabel(reusedAccount) && accountClaim.Spec.BYOC {
-		err = account.CleanUpIAM(reqLogger, awsClient, reusedAccount)
-		if err != nil {
-			reqLogger.Error(err, "Failed to delete IAM user during finalizer cleanup")
-		}
-	} else {
-		reqLogger.Info(fmt.Sprintf("Account: %s has no label", reusedAccount.Name))
-	}
+	if reusedAccount.IsBYOC() {
 
-	if reusedAccount.Spec.BYOC {
+		userID := reusedAccount.Labels[awsv1alpha1.IAMUserIDLabel]
+
 		err := r.client.Delete(context.TODO(), reusedAccount)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete BYOC account from accountclaim cleanup")
@@ -106,6 +98,12 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		err = r.removeBYOCSecretFinalizer(accountClaim)
 		if err != nil {
 			reqLogger.Error(err, "Failed to remove BYOC secret finalizer")
+			return err
+		}
+
+		err = account.DeleteBYOCAdminAccessRole(reqLogger, awsClient, userID)
+		if err != nil {
+			reqLogger.Error(err, "Failed to remove BYOC Admin Access Role")
 			return err
 		}
 

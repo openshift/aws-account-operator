@@ -403,18 +403,30 @@ func CleanUpIAM(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *aw
 }
 
 func deleteIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, user *iam.User) error {
+	var err error
 	// Detach User Policies
-	if err := detachUserPolicies(awsClient, user); err != nil {
+	if err = detachUserPolicies(awsClient, user); err != nil {
 		return fmt.Errorf("failed to detach user policies: %v", err)
 	}
 
 	// Detach User Access Keys
-	if err := deleteAllAccessKeys(awsClient, user); err != nil {
+	if err = deleteAllAccessKeys(awsClient, user); err != nil {
 		return fmt.Errorf("failed to delete all access keys: %v", err)
 	}
 
-	_, err := awsClient.DeleteUser(&iam.DeleteUserInput{UserName: user.UserName})
-	reqLogger.Info(fmt.Sprintf("Deleting IAM user: %s", *user.UserName))
+	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
+	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
+	retry.DefaultDelay = DefaultDelay
+	retry.DefaultAttempts = uint(5)
+	err = retry.Do(
+		func() (err error) {
+			_, err = awsClient.DeleteUser(&iam.DeleteUserInput{UserName: user.UserName})
+			return err
+		},
+
+		// Retry if we receive some specific errors: access denied, rate limit or server-side error
+		retry.RetryIf(retryIfAwsServiceFailureOrInvalidToken),
+	)
 	if err != nil {
 		return fmt.Errorf(fmt.Sprintf("unable to delete IAM user %s", *user.UserName), err)
 	}

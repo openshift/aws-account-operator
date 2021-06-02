@@ -99,7 +99,7 @@ var _ = Describe("AccountClaim", func() {
 
 		It("should retry on a conflict error", func() {
 			accountClaim.DeletionTimestamp = &metav1.Time{Time: time.Now()}
-			accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), "finalizer.aws.managed.openshift.io"))
+			accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), accountClaimFinalizer))
 
 			account := &awsv1alpha1.Account{
 				ObjectMeta: metav1.ObjectMeta{
