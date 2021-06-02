@@ -22,7 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -103,7 +102,7 @@ var _ reconcile.Reconciler = &ReconcileAccount{}
 
 // ReconcileAccount reconciles a Account object
 type ReconcileAccount struct {
-	Client           kubeclientpkg.Client
+	Client           client.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
 }
@@ -137,6 +136,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 		return reconcile.Result{}, nil
 	}
+
+	/*
+		if currentAcctInstance.IsPendingDeletion() {
+			TEST_DO_DELETIONSTUFF()
+		}
+	*/
 
 	// Log accounts that have failed and don't attempt to reconcile them
 	if currentAcctInstance.IsFailed() {
@@ -301,64 +306,21 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, nil
 		}
 
-		var roleToAssume string
-		var iamUserUHC = iamUserNameUHC
-		var iamUserSRE = iamUserNameSRE
+		awsAssumedRoleClient, creds, err := r.getAWSAssumedRoleClient(
+			reqLogger,
+			awsSetupClient,
+			currentAcctInstance,
+			ccsRoleID,
+		)
 
-		if currentAcctInstance.IsBYOC() {
-			// Use the same ID applied to the account name for IAM usernames
-			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
-			iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
-			iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
-			roleToAssume = fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
-		} else {
-			roleToAssume = awsv1alpha1.AccountOperatorIAMRole
-		}
-
-		awsAssumedRoleClient, creds, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, ccsRoleID)
+		// Create IAM users for Account
+		err = r.handleIAMUserCreation(
+			reqLogger,
+			awsAssumedRoleClient,
+			currentAcctInstance,
+			request.Namespace,
+		)
 		if err != nil {
-			// assumeRole logs
-			return reconcile.Result{}, err
-		}
-
-		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
-		if err != nil {
-			reason, errType := getBuildIAMUserErrorReason(err)
-			errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
-			_, stateErr := r.setAccountFailed(
-				reqLogger,
-				currentAcctInstance,
-				errType,
-				reason,
-				errMsg,
-			)
-			if stateErr != nil {
-				reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
-			}
-			return reconcile.Result{}, err
-		}
-
-		currentAcctInstance.Spec.IAMUserSecret = *secretName
-		err = r.Client.Update(context.TODO(), currentAcctInstance)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Create SRE IAM user, we don't care about the credentials because they're saved inside of the build func
-		_, err = r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserSRE, request.Namespace)
-		if err != nil {
-			reason, errType := getBuildIAMUserErrorReason(err)
-			errMsg := fmt.Sprintf("Failed to build IAM SRE user %s: %s", iamUserSRE, err)
-			_, stateErr := r.setAccountFailed(
-				reqLogger,
-				currentAcctInstance,
-				errType,
-				reason,
-				errMsg,
-			)
-			if stateErr != nil {
-				reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
-			}
 			return reconcile.Result{}, err
 		}
 
@@ -370,6 +332,132 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	return reconcile.Result{}, nil
 }
 
+func (r *ReconcileAccount) getAWSAssumedRoleClient(
+	reqLogger logr.Logger,
+	awsSetupClient awsclient.Client,
+	currentAcctInstance *awsv1alpha1.Account,
+	ccsRoleID string,
+) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+	var roleToAssume string
+	if currentAcctInstance.IsBYOC() {
+		// Use the same ID applied to the account name for IAM usernames
+		roleToAssume = fmt.Sprintf("%s-%s", byocRole, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
+	} else {
+		roleToAssume = awsv1alpha1.AccountOperatorIAMRole
+	}
+
+	awsAssumedRoleClient, creds, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, ccsRoleID)
+	if err != nil {
+		// assumeRole logs
+		return nil, nil, err
+	}
+	return awsAssumedRoleClient, creds, nil
+}
+
+func (r *ReconcileAccount) handleIAMUserCreation(
+	reqLogger logr.Logger,
+	awsAssumedRoleClient awsclient.Client,
+	currentAcctInstance *awsv1alpha1.Account,
+	namespace string) error {
+
+	var iamUserUHC = iamUserNameUHC
+	var iamUserSRE = iamUserNameSRE
+
+	if currentAcctInstance.IsBYOC() {
+		// Use the same ID applied to the account name for IAM usernames
+		currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
+		iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
+		iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
+	}
+
+	secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, namespace)
+	if err != nil {
+		reason, errType := getBuildIAMUserErrorReason(err)
+		errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
+		_, stateErr := r.setAccountFailed(
+			reqLogger,
+			currentAcctInstance,
+			errType,
+			reason,
+			errMsg,
+		)
+		if stateErr != nil {
+			reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
+		}
+		return err
+	}
+
+	currentAcctInstance.Spec.IAMUserSecret = *secretName
+	err = r.Client.Update(context.TODO(), currentAcctInstance)
+	if err != nil {
+		return err
+	}
+
+	// Create SRE IAM user, we don't care about the credentials because they're saved inside of the build func
+	_, err = r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserSRE, namespace)
+	if err != nil {
+		reason, errType := getBuildIAMUserErrorReason(err)
+		errMsg := fmt.Sprintf("Failed to build IAM SRE user %s: %s", iamUserSRE, err)
+		_, stateErr := r.setAccountFailed(
+			reqLogger,
+			currentAcctInstance,
+			errType,
+			reason,
+			errMsg,
+		)
+		if stateErr != nil {
+			reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
+		}
+		return stateErr
+	}
+	return nil
+}
+
+/*
+func (r *ReconcileAccount) TEST_DO_DELETIONSTUFF(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) {
+
+	// From finalizeAccountClaim - have not removed from there yet
+	// If the reused account is STS, then we don't have to clean up
+	if currentAcctInstance.Spec.ManualSTSMode {
+		err := r.Client.Delete(context.TODO(), currentAcctInstance)
+		if err != nil {
+			reqLogger.Error(err, "Failed to delete STS account from accountclaim cleanup")
+		}
+	}
+
+	// Remove IAM user we'll remove the IAM user for CCS
+	if utils.AccountCRHasIAMUserIDLabel(currentAcctInstance) && currentAcctInstance.IsBYOC() {
+		err := r.cleanUpIAM(reqLogger, awsClient, currentAcctInstance)
+		if err != nil {
+			reqLogger.Error(err, "Failed to delete IAM user during finalizer cleanup")
+		}
+	} else {
+		reqLogger.Info(fmt.Sprintf("Account: %s has no label", currentAcctInstance.Name))
+	}
+
+	if currentAcctInstance.Spec.BYOC {
+		err := r.Client.Delete(context.TODO(), currentAcctInstance)
+		if err != nil {
+			reqLogger.Error(err, "Failed to delete BYOC account from accountclaim cleanup")
+		}
+
+		// Cleanup BYOC secret
+		err = r.removeBYOCSecretFinalizer(accountClaim)
+		if err != nil {
+			reqLogger.Error(err, "Failed to remove BYOC secret finalizer")
+			return err
+		}
+
+		return nil
+	}
+
+	err = r.resetAccountSpecStatus(reqLogger, currentAcctInstance, accountClaim, awsv1alpha1.AccountReused, "Ready")
+	if err != nil {
+		reqLogger.Error(err, "Failed to reset account entity")
+		return err
+	}
+}
+*/
 func (r *ReconcileAccount) handleAccountInitializingRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) (reconcile.Result, error) {
 	irCond := currentAcctInstance.GetCondition(awsv1alpha1.AccountInitializingRegions)
 	if irCond == nil {
