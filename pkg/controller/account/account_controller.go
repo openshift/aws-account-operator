@@ -317,6 +317,9 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			currentAcctInstance,
 			ccsRoleID,
 		)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
 
 		// Create IAM users for Account
 		err = r.handleIAMUserCreation(
