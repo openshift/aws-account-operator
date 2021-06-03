@@ -126,7 +126,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	var awsSetupClient awsclient.Client
 	if currentAcctInstance.IsPendingDeletion() {
-		awsSetupClient, err = r.getAWSClient(nil, nil)
+		awsSetupClient, err = r.getAWSClient(nil, "")
 		if err != nil {
 			reqLogger.Error(err, "failed building operator AWS client")
 			return reconcile.Result{}, err
@@ -163,7 +163,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	if awsSetupClient == nil {
 		// We expect this secret to exist in the same namespace Account CR's are created
-		awsSetupClient, err = r.getAWSClient(nil, nil)
+		awsSetupClient, err = r.getAWSClient(nil, "")
 		if err != nil {
 			reqLogger.Error(err, "failed building operator AWS client")
 			return reconcile.Result{}, err
@@ -340,10 +340,9 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileAccount) getAWSClient(creds *sts.AssumeRoleOutput, region *string) (awsclient.Client, error) {
-
-	if region == nil {
-		*region = awsv1alpha1.AwsUSEastOneRegion
+func (r *ReconcileAccount) getAWSClient(creds *sts.AssumeRoleOutput, region string) (awsclient.Client, error) {
+	if region == "" {
+		region = awsv1alpha1.AwsUSEastOneRegion
 	}
 
 	if creds != nil {
@@ -351,13 +350,13 @@ func (r *ReconcileAccount) getAWSClient(creds *sts.AssumeRoleOutput, region *str
 			AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
 			AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
 			AwsToken:                *creds.Credentials.SessionToken,
-			AwsRegion:               *region,
+			AwsRegion:               region,
 		})
 	} else {
 		return r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 			SecretName: utils.AwsSecretName,
 			NameSpace:  awsv1alpha1.AccountCrNamespace,
-			AwsRegion:  *region,
+			AwsRegion:  region,
 		})
 	}
 }
@@ -757,7 +756,7 @@ func (r *ReconcileAccount) assumeRole(
 		}
 	}
 
-	customerAWSAccountClient, err := r.getAWSClient(creds, nil)
+	customerAWSAccountClient, err := r.getAWSClient(creds, "")
 	if err != nil {
 		logger.Error(err, "Failed to assume role")
 		reqLogger.Info(err.Error())
@@ -793,7 +792,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 	}
 
 	// Instantiate a client with a default region to retrieve regions we want to initialize
-	awsClient, err := r.getAWSClient(creds, nil)
+	awsClient, err := r.getAWSClient(creds, "")
 	if err != nil {
 		connErr := fmt.Sprintf("unable to connect to default region %s", awsv1alpha1.AwsUSEastOneRegion)
 		reqLogger.Error(err, connErr)

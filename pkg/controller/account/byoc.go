@@ -422,7 +422,7 @@ func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alph
 		return nil, nil, err
 	}
 
-	jumpRoleClient, err := r.getAWSClient(jumpRoleCreds, nil)
+	jumpRoleClient, err := r.getAWSClient(jumpRoleCreds, "")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -433,7 +433,7 @@ func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alph
 		return nil, nil, err
 	}
 
-	customerClient, err := r.getAWSClient(customerAccountCreds, nil)
+	customerClient, err := r.getAWSClient(customerAccountCreds, "")
 	if err != nil {
 		return nil, nil, err
 	}
