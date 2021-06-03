@@ -52,24 +52,31 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 		go r.InitializeRegion(reqLogger, account, region.Name, regionAMIs[region.Name], vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags) //nolint:errcheck // Unable to do anything with the returned error
 	}
 
+	regionInitFailed := false
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished
 	for i := 0; i < len(regions); i++ {
 		select {
 		case msg := <-ec2Notifications:
 			reqLogger.Info(msg)
 		case errMsg := <-ec2Errors:
+			regionInitFailed = true
 			// If we fail to initialize the desired region we want to fail the account
 			reqLogger.Error(errors.New(errMsg.ErrorMsg), errMsg.ErrorMsg)
-			utils.SetAccountStatus(
+			err := utils.SetAccountStatus(
 				r.Client,
 				reqLogger,
 				account,
 				fmt.Sprintf("Account %s failed to initialize expected region %s", account.Name, errMsg.Region),
 				awsv1alpha1.AccountInitializingRegions,
 			)
+			if err != nil {
+				reqLogger.Error(err, "Failed to set account status to failed", "account", account.Name)
+			}
 		}
 	}
-	reqLogger.Info("Completed initializing all supported regions")
+	if !regionInitFailed {
+		reqLogger.Info("Successfully completed initializing desired regions")
+	}
 }
 
 // InitializeRegion sets up a connection to the AWS `region` and then creates and terminates an EC2 instance if necessary
