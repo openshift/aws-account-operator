@@ -76,13 +76,7 @@ func (r *ReconcileAccount) InitializeRegion(
 	var quotaIncreaseRequired bool
 	var caseID string
 
-	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
-		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
-		AwsToken:                *creds.Credentials.SessionToken,
-		AwsRegion:               region,
-	})
-
+	awsClient, err := r.getAWSClient(creds, &region)
 	if err != nil {
 		connErr := fmt.Sprintf("unable to connect to region %s when attempting to initialize it", region)
 		reqLogger.Error(err, connErr)

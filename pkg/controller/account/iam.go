@@ -270,7 +270,7 @@ func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.Att
 		time.Sleep(500 * time.Millisecond)
 		attachPolicyOutput, err = client.AttachUserPolicy(&iam.AttachUserPolicyInput{
 			UserName:  iamUser.UserName,
-			PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
+			PolicyArn: aws.String(adminAccessArn),
 		})
 		if err == nil {
 			break
@@ -394,7 +394,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 	return &iamUserSecretName, nil
 }
 
-func (r *ReconcileAccount) cleanUpIAM(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
+func CleanUpIAM(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
 
 	// We delete user policies, access keys and finally the IAM user themselves.
 	if err := deleteIAMUsers(reqLogger, awsClient, accountCR); err != nil {

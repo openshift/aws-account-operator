@@ -582,7 +582,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 
 	// Build AWS client from root secret
 	rootAwsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
-		SecretName: "aws-account-operator-credentials",
+		SecretName: controllerutils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
 	})

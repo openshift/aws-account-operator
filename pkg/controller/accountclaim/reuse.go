@@ -14,6 +14,7 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 )
@@ -38,7 +39,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		// Cleanup BYOC secret
 		err = r.removeBYOCSecretFinalizer(accountClaim)
 		if err != nil {
-			reqLogger.Error(err, "Failed to remove BYOC secret finalizer")
+			reqLogger.Error(err, "Failed to remove BYOC iamsecret finalizer")
 			return err
 		}
 
@@ -86,7 +87,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 
 	// Remove IAM user we'll remove the IAM user for CCS
 	if utils.AccountCRHasIAMUserIDLabel(reusedAccount) && accountClaim.Spec.BYOC {
-		err = r.cleanUpIAM(reqLogger, awsClient, reusedAccount)
+		err = account.CleanUpIAM(reqLogger, awsClient, reusedAccount)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete IAM user during finalizer cleanup")
 		}
