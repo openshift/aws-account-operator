@@ -166,13 +166,18 @@ var ErrSTSRoleARNMissing = errors.New("STSRoleARNMissing")
 // Validates an AccountClaim object
 func (a *AccountClaim) Validate() error {
 
+	// Validate STS mode first since we only require the
+	// .Spec.STSRoleARN field to be set
+	// By design STS doesn't have long lived credentials so they wont
+	// be present in the AccountClaim
+	if a.Spec.ManualSTSMode {
+		return a.validateSTS()
+	}
+
 	if err := a.validateAWS(); err != nil {
 		return err
 	}
 
-	if a.Spec.ManualSTSMode {
-		return a.validateSTS()
-	}
 	return a.validateBYOC()
 }
 
