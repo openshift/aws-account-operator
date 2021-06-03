@@ -440,7 +440,7 @@ func deleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR
 			}
 
 			// Detach User Access Keys
-			if err = detachUserAccessKeys(awsClient, user); err != nil {
+			if err = deleteAllAccessKeys(awsClient, user); err != nil {
 				return err
 			}
 
@@ -508,21 +508,6 @@ func detachUserPolicies(awsClient awsclient.Client, user *iam.User) error {
 		_, err := awsClient.DetachUserPolicy(&iam.DetachUserPolicyInput{UserName: user.UserName, PolicyArn: attachedPolicy.PolicyArn})
 		if err != nil {
 			return fmt.Errorf(fmt.Sprintf("Unable to detach IAM user policy from user %s", *user.UserName), err)
-		}
-	}
-	return nil
-}
-
-// Detach User Access Keys
-func detachUserAccessKeys(awsClient awsclient.Client, user *iam.User) error {
-	accessKeysOutput, err := awsClient.ListAccessKeys(&iam.ListAccessKeysInput{UserName: user.UserName})
-	if err != nil {
-		return fmt.Errorf(fmt.Sprintf("Unable to list IAM user access keys for user %s", *user.UserName), err)
-	}
-	for _, accessKey := range accessKeysOutput.AccessKeyMetadata {
-		_, err := awsClient.DeleteAccessKey(&iam.DeleteAccessKeyInput{AccessKeyId: accessKey.AccessKeyId, UserName: user.UserName})
-		if err != nil {
-			return fmt.Errorf(fmt.Sprintf("Unable to delete IAM user access key %s for user %s", *accessKey.AccessKeyId, *user.UserName), err)
 		}
 	}
 	return nil

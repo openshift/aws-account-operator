@@ -34,6 +34,7 @@ replace bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-201910
 
 require (
 	github.com/openshift/aws-account-operator/pkg/apis v0.0.0-00010101000000-000000000000
+	k8s.io/kubectl v0.0.0
 	sigs.k8s.io/controller-runtime v0.4.0
 )
 
