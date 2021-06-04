@@ -31,7 +31,6 @@ import (
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	totalaccountwatcher "github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 )
 
@@ -265,7 +264,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 
-	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
+	configMap, err := utils.GetOperatorConfigMap(r.Client)
 	stringRegions, ok := configMap.Data["regions"]
 	if !ok {
 		err = awsv1alpha1.ErrInvalidConfigMap

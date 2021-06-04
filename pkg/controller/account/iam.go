@@ -141,13 +141,21 @@ func retryIfAwsServiceFailureOrInvalidToken(err error) bool {
 	return false
 }
 
+var (
+	GetDelay = getDefaultDelay
+)
+
+func getDefaultDelay() time.Duration {
+	return 3 * time.Second
+}
+
 func listAccessKeys(client awsclient.Client, iamUser *iam.User) (*iam.ListAccessKeysOutput, error) {
 	var result *iam.ListAccessKeysOutput
 	var err error
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
-	retry.DefaultDelay = 3 * time.Second
+	retry.DefaultDelay = GetDelay()
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {
@@ -168,7 +176,7 @@ func deleteAccessKey(client awsclient.Client, accessKeyID *string, username *str
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
-	retry.DefaultDelay = 3 * time.Second
+	retry.DefaultDelay = GetDelay()
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {
@@ -290,7 +298,7 @@ func CreateUserAccessKey(client awsclient.Client, iamUser *iam.User) (*iam.Creat
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
-	retry.DefaultDelay = 3 * time.Second
+	retry.DefaultDelay = GetDelay()
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {

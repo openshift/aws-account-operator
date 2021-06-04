@@ -1,11 +1,14 @@
 package account
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/golang/mock/gomock"
 	"github.com/openshift/aws-account-operator/pkg/apis"
@@ -22,7 +25,6 @@ import (
 type mocks struct {
 	fakeKubeClient client.Client
 	mockCtrl       *gomock.Controller
-	mockAWSClient  *mock.MockClient
 }
 
 // setupDefaultMocks is an easy way to setup all of the default mocks
@@ -120,20 +122,144 @@ func TestGetSTSCredentials(t *testing.T) {
 }
 
 func TestRetryIfAwsServiceFailureOrInvalidToken(t *testing.T) {
-	//err :=
-	//value := retryIfAwsServiceFailureOrInvalidToken()
+	err := awserr.New("ServiceFailure", "", nil)
+	value := retryIfAwsServiceFailureOrInvalidToken(err)
+	assert.True(t, value)
+
+	err = awserr.New("InvalidClientTokenId", "", nil)
+	value = retryIfAwsServiceFailureOrInvalidToken(err)
+	assert.True(t, value)
+
+	err = awserr.New("AccessDenied", "", nil)
+	value = retryIfAwsServiceFailureOrInvalidToken(err)
+	assert.True(t, value)
+
+	err = awserr.New("NotFound", "", nil)
+	value = retryIfAwsServiceFailureOrInvalidToken(err)
+	assert.False(t, value)
+
+	myNewError := errors.New("MyNewError")
+	value = retryIfAwsServiceFailureOrInvalidToken(myNewError)
+	assert.False(t, value)
 }
 
 func TestListAccessKeys(t *testing.T) {
 
+	mocks := setupDefaultMocks(t, []runtime.Object{})
+
+	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+	username := "AwesomeUser"
+	user := iam.User{UserName: &username}
+
+	expectedAccessKeyID := aws.String("hihi")
+
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(
+		&iam.ListAccessKeysOutput{
+			AccessKeyMetadata: []*iam.AccessKeyMetadata{
+				{
+					AccessKeyId: expectedAccessKeyID,
+				},
+			},
+		},
+		nil, // no error
+	)
+
+	returnValue, err := listAccessKeys(mockAWSClient, &user)
+	assert.Nil(t, err)
+	assert.Len(t, returnValue.AccessKeyMetadata, 1)
+	assert.Equal(t, returnValue.AccessKeyMetadata[0].AccessKeyId, expectedAccessKeyID)
+
+	mockAWSClient = mock.NewMockClient(mocks.mockCtrl)
+	returnErr := awserr.New("AccessDenied", "", nil)
+
+	// Should retry 5 times
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(nil, returnErr)
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(nil, returnErr)
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(nil, returnErr)
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(nil, returnErr)
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(nil, returnErr)
+
+	// retries took long, need to mock it out
+	old := getDefaultDelay
+	GetDelay = func() time.Duration {
+		return time.Second * 0
+	}
+
+	returnValue, err = listAccessKeys(mockAWSClient, &user)
+	assert.Nil(t, returnValue)
+	assert.Error(t, err, returnErr)
+	GetDelay = old
 }
 
 func TestDeleteAccessKey(t *testing.T) {
+	mocks := setupDefaultMocks(t, []runtime.Object{})
 
+	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+
+	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(
+		&iam.DeleteAccessKeyOutput{},
+		nil, // no error
+	)
+
+	accessKeyID := "accessKeyID"
+	username := "username"
+
+	deleteAccessKeyOutput, err := deleteAccessKey(mockAWSClient, &accessKeyID, &username)
+	assert.Equal(t, deleteAccessKeyOutput, &iam.DeleteAccessKeyOutput{})
+	assert.Nil(t, err)
+
+	mockAWSClient = mock.NewMockClient(mocks.mockCtrl)
+	returnErr := awserr.New("AccessDenied", "", nil)
+
+	// Should retry 5 times
+	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr)
+	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr)
+	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr)
+	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr)
+	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr)
+
+	// retries took long, need to mock it out
+	old := getDefaultDelay
+	GetDelay = func() time.Duration {
+		return time.Second * 0
+	}
+
+	deleteAccessKeyOutput, err = deleteAccessKey(mockAWSClient, &accessKeyID, &username)
+	assert.Equal(t, deleteAccessKeyOutput, &iam.DeleteAccessKeyOutput{})
+	assert.Error(t, err, returnErr)
+	GetDelay = old
 }
 
 func TestDeleteAllAccessKeys(t *testing.T) {
+	mocks := setupDefaultMocks(t, []runtime.Object{})
 
+	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+	username := "AwesomeUser"
+	user := iam.User{UserName: &username}
+
+	expectedAccessKeyID := aws.String("hihi")
+
+	mockAWSClient.EXPECT().ListAccessKeys(&iam.ListAccessKeysInput{UserName: &username}).Return(
+		&iam.ListAccessKeysOutput{
+			AccessKeyMetadata: []*iam.AccessKeyMetadata{
+				{
+					AccessKeyId: expectedAccessKeyID,
+				},
+			},
+		},
+		nil, // no error
+	)
+	mockAWSClient.EXPECT().DeleteAccessKey(
+		&iam.DeleteAccessKeyInput{
+			AccessKeyId: expectedAccessKeyID,
+			UserName:    &username,
+		}).Return(
+		&iam.DeleteAccessKeyOutput{},
+		nil, // no error
+	)
+
+	err := deleteAllAccessKeys(mockAWSClient, &user)
+	assert.Nil(t, err)
 }
 
 func TestCreateIAMUser(t *testing.T) {
@@ -173,32 +299,6 @@ func TestDetachUserPolicies(t *testing.T) {
 }
 
 func TestDetachRolePolicies(t *testing.T) {
-	// test all AccountConditionType values
-
-	/*
-		var a Account
-		tests := []struct {
-			name                 string
-			accountConditionType string
-			expectedResult       bool
-		}{
-			{
-				name:                 "AccountCreating",
-				accountConditionType: string(AccountCreating),
-				expectedResult:       false,
-			},
-		}
-		for _, tt := range tests {
-			tt := tt
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				a.Status.State = tt.accountConditionType
-				if got := a.IsFailed(); got != tt.expectedResult {
-					t.Errorf("[Account.IsFailed()] Got %v, want %v for state %s", got, tt.expectedResult, tt.accountConditionType)
-				}
-			})
-		}
-	*/
 }
 
 func TestCreateIAMUserSecret(t *testing.T) {
