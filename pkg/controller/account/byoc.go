@@ -252,7 +252,7 @@ func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.C
 			reqLogger.Info(fmt.Sprintf("Found attached policy %s", *policy.PolicyArn))
 			break
 		} else {
-			err = fmt.Errorf("Policy %s never attached to role %s", policyArn, byocInstanceIDRole)
+			err = fmt.Errorf("policy %s never attached to role %s", policyArn, byocInstanceIDRole)
 			return roleID, err
 		}
 	}

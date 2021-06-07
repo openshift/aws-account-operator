@@ -406,12 +406,12 @@ func CleanUpIAM(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *aw
 
 	// We delete user policies, access keys and finally the IAM user themselves.
 	if err := deleteIAMUsers(reqLogger, awsClient, accountCR); err != nil {
-		return err
+		return fmt.Errorf("failed deleting IAM users: %v", err)
 	}
 
 	// If user deletion is successful we can then clean role policies and roles.
 	if err := cleanIAMRoles(reqLogger, awsClient, accountCR); err != nil {
-		return err
+		return fmt.Errorf("failed cleaning IAM roles: %v", err)
 	}
 
 	return nil
@@ -430,7 +430,7 @@ func deleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR
 		clusterNamespaceTag := false
 		getUser, err := awsClient.GetUser(&iam.GetUserInput{UserName: user.UserName})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get aws user: %v", err)
 		}
 		user = getUser.User
 		for _, tag := range user.Tags {
@@ -444,21 +444,21 @@ func deleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR
 		if clusterNameTag && clusterNamespaceTag {
 			// Detach User Policies
 			if err := detachUserPolicies(awsClient, user); err != nil {
-				return err
+				return fmt.Errorf("failed to detach user policies: %v", err)
 			}
 
 			// Detach User Access Keys
 			if err = deleteAllAccessKeys(awsClient, user); err != nil {
-				return err
+				return fmt.Errorf("failed to delete all accesss keys: %v", err)
 			}
 
 			_, err = awsClient.DeleteUser(&iam.DeleteUserInput{UserName: user.UserName})
 			reqLogger.Info(fmt.Sprintf("Deleting IAM user: %s", *user.UserName))
 			if err != nil {
-				return fmt.Errorf(fmt.Sprintf("Unable to delete IAM user %s", *user.UserName), err)
+				return fmt.Errorf(fmt.Sprintf("unable to delete IAM user %s", *user.UserName), err)
 			}
 		} else {
-			reqLogger.Info(fmt.Sprintf("Not deleting user: %s", *user.UserName))
+			reqLogger.Info(fmt.Sprintf("not deleting user: %s", *user.UserName))
 		}
 	}
 	return nil
@@ -491,13 +491,13 @@ func cleanIAMRoles(reqLogger logr.Logger, awsClient awsclient.Client, accountCR 
 		if clusterNameTag && clusterNamespaceTag {
 			// remove attached policies from the role before deletion
 			if err = detachRolePolicies(awsClient, *getRole.Role.RoleName); err != nil {
-				return err
+				return fmt.Errorf("failed to detach role policies: %v", err)
 			}
 
 			_, err = awsClient.DeleteRole(&iam.DeleteRoleInput{RoleName: getRole.Role.RoleName})
 			reqLogger.Info(fmt.Sprintf("Deleting IAM role: %s", *getRole.Role.RoleName))
 			if err != nil {
-				return fmt.Errorf(fmt.Sprintf("Unable to delete IAM role %s", *getRole.Role.RoleName), err)
+				return fmt.Errorf(fmt.Sprintf("unable to delete IAM role %s", *getRole.Role.RoleName), err)
 			}
 		} else {
 			reqLogger.Info(fmt.Sprintf("Not deleting role: %s", *getRole.Role.RoleName))
@@ -510,12 +510,12 @@ func cleanIAMRoles(reqLogger logr.Logger, awsClient awsclient.Client, accountCR 
 func detachUserPolicies(awsClient awsclient.Client, user *iam.User) error {
 	attachedUserPolicies, err := awsClient.ListAttachedUserPolicies(&iam.ListAttachedUserPoliciesInput{UserName: user.UserName})
 	if err != nil {
-		return fmt.Errorf(fmt.Sprintf("Unable to list IAM user policies from user %s", *user.UserName), err)
+		return fmt.Errorf(fmt.Sprintf("unable to list IAM user policies from user %s", *user.UserName), err)
 	}
 	for _, attachedPolicy := range attachedUserPolicies.AttachedPolicies {
 		_, err := awsClient.DetachUserPolicy(&iam.DetachUserPolicyInput{UserName: user.UserName, PolicyArn: attachedPolicy.PolicyArn})
 		if err != nil {
-			return fmt.Errorf(fmt.Sprintf("Unable to detach IAM user policy from user %s", *user.UserName), err)
+			return fmt.Errorf(fmt.Sprintf("unable to detach IAM user policy from user %s", *user.UserName), err)
 		}
 	}
 	return nil
@@ -525,7 +525,7 @@ func detachUserPolicies(awsClient awsclient.Client, user *iam.User) error {
 func detachRolePolicies(awsClient awsclient.Client, roleName string) error {
 	attachedRolePolicies, err := awsClient.ListAttachedRolePolicies(&iam.ListAttachedRolePoliciesInput{RoleName: &roleName})
 	if err != nil {
-		return fmt.Errorf(fmt.Sprintf("Unable to list IAM role policies from role %s", roleName), err)
+		return fmt.Errorf(fmt.Sprintf("unable to list IAM role policies from role %s", roleName), err)
 	}
 	for _, attachedPolicy := range attachedRolePolicies.AttachedPolicies {
 		_, err := awsClient.DetachRolePolicy(&iam.DetachRolePolicyInput{
@@ -533,7 +533,7 @@ func detachRolePolicies(awsClient awsclient.Client, roleName string) error {
 			RoleName:  &roleName,
 		})
 		if err != nil {
-			return fmt.Errorf(fmt.Sprintf("Unable to detach IAM role policy from role %s", roleName), err)
+			return fmt.Errorf(fmt.Sprintf("unable to detach IAM role policy from role %s", roleName), err)
 		}
 	}
 	return nil
