@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/servicequotas"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
-	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
@@ -76,13 +75,7 @@ func (r *ReconcileAccount) InitializeRegion(
 	var quotaIncreaseRequired bool
 	var caseID string
 
-	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
-		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
-		AwsToken:                *creds.Credentials.SessionToken,
-		AwsRegion:               region,
-	})
-
+	awsClient, err := r.getAWSClient(creds, region)
 	if err != nil {
 		connErr := fmt.Sprintf("unable to connect to region %s when attempting to initialize it", region)
 		reqLogger.Error(err, connErr)
@@ -281,7 +274,7 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 					return timeoutInstanceID, runErr
 				}
 			}
-			return timeoutInstanceID, v1alpha1.ErrFailedAWSTypecast
+			return timeoutInstanceID, awsv1alpha1.ErrFailedAWSTypecast
 		}
 
 		// No error was found, instance is running, return instance id
@@ -289,7 +282,7 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 	}
 
 	// Timeout occurred, return instance id and timeout error
-	return timeoutInstanceID, v1alpha1.ErrCreateEC2Instance
+	return timeoutInstanceID, awsv1alpha1.ErrCreateEC2Instance
 }
 
 // DescribeEC2Instances returns the InstanceState code
@@ -312,11 +305,11 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instan
 	}
 
 	if len(result.InstanceStatuses) > 1 {
-		return 0, errors.New("More than one EC2 instance found")
+		return 0, errors.New("more than one EC2 instance found")
 	}
 
 	if len(result.InstanceStatuses) == 0 {
-		return 0, errors.New("No EC2 instances found")
+		return 0, errors.New("no EC2 instances found")
 	}
 	return int(*result.InstanceStatuses[0].InstanceState.Code), nil
 }

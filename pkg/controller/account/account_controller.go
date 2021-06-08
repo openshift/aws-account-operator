@@ -22,7 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -30,10 +29,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	totalaccountwatcher "github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 )
 
@@ -103,7 +100,7 @@ var _ reconcile.Reconciler = &ReconcileAccount{}
 
 // ReconcileAccount reconciles a Account object
 type ReconcileAccount struct {
-	Client           kubeclientpkg.Client
+	Client           client.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
 }
@@ -124,6 +121,20 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, nil
 		}
 		return reconcile.Result{}, err
+	}
+
+	var awsSetupClient awsclient.Client
+	if currentAcctInstance.IsPendingDeletion() {
+		awsSetupClient, err = r.getAWSClient(nil, "")
+		if err != nil {
+			reqLogger.Error(err, "failed building operator AWS client")
+			return reconcile.Result{}, err
+		}
+
+		if err = r.finalizeAccount(reqLogger, awsSetupClient, currentAcctInstance); err != nil {
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{}, nil
 	}
 
 	// Remove finalizer if account CR is BYOC as the accountclaim controller will delete the account CR
@@ -149,15 +160,13 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return r.handleAccountInitializingRegions(reqLogger, currentAcctInstance)
 	}
 
-	// We expect this secret to exist in the same namespace Account CR's are created
-	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-		SecretName: utils.AwsSecretName,
-		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
-	})
-	if err != nil {
-		reqLogger.Error(err, "failed building operator AWS client")
-		return reconcile.Result{}, err
+	if awsSetupClient == nil {
+		// We expect this secret to exist in the same namespace Account CR's are created
+		awsSetupClient, err = r.getAWSClient(nil, "")
+		if err != nil {
+			reqLogger.Error(err, "failed building operator AWS client")
+			return reconcile.Result{}, err
+		}
 	}
 
 	var ccsRoleID string
@@ -178,7 +187,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				"Failed to initialize new CCS account",
 			)
 			if stateErr != nil {
-				reqLogger.Error(stateErr, "failed setting account state", "desiredState", "Failed")
+				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
 			}
 			reqLogger.Error(initErr, "failed initializing new CCS account")
 			return result, initErr
@@ -216,12 +225,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			_, stateErr := r.setAccountFailed(
 				reqLogger,
 				currentAcctInstance,
-				v1alpha1.AccountCreationFailed,
+				awsv1alpha1.AccountCreationFailed,
 				"CreationTimeout",
 				errMsg,
 			)
 			if stateErr != nil {
-				reqLogger.Error(stateErr, "failed setting account state", "desiredState", "Failed")
+				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
 				return reconcile.Result{}, stateErr
 			}
 			return reconcile.Result{}, errors.New(errMsg)
@@ -255,7 +264,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 
-	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
+	configMap, err := utils.GetOperatorConfigMap(r.Client)
 	stringRegions, ok := configMap.Data["regions"]
 	if !ok {
 		err = awsv1alpha1.ErrInvalidConfigMap
@@ -301,64 +310,24 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, nil
 		}
 
-		var roleToAssume string
-		var iamUserUHC = iamUserNameUHC
-		var iamUserSRE = iamUserNameSRE
-
-		if currentAcctInstance.IsBYOC() {
-			// Use the same ID applied to the account name for IAM usernames
-			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
-			iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
-			iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
-			roleToAssume = fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
-		} else {
-			roleToAssume = awsv1alpha1.AccountOperatorIAMRole
-		}
-
-		awsAssumedRoleClient, creds, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, ccsRoleID)
-		if err != nil {
-			// assumeRole logs
-			return reconcile.Result{}, err
-		}
-
-		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
-		if err != nil {
-			reason, errType := getBuildIAMUserErrorReason(err)
-			errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
-			_, stateErr := r.setAccountFailed(
-				reqLogger,
-				currentAcctInstance,
-				errType,
-				reason,
-				errMsg,
-			)
-			if stateErr != nil {
-				reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
-			}
-			return reconcile.Result{}, err
-		}
-
-		currentAcctInstance.Spec.IAMUserSecret = *secretName
-		err = r.Client.Update(context.TODO(), currentAcctInstance)
+		customerAWSAccountClient, creds, err := r.getCustomerAWSAccountClient(
+			reqLogger,
+			awsSetupClient,
+			currentAcctInstance,
+			ccsRoleID,
+		)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 
-		// Create SRE IAM user, we don't care about the credentials because they're saved inside of the build func
-		_, err = r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserSRE, request.Namespace)
+		// Create IAM users for Account
+		err = r.handleIAMUserCreation(
+			reqLogger,
+			customerAWSAccountClient,
+			currentAcctInstance,
+			request.Namespace,
+		)
 		if err != nil {
-			reason, errType := getBuildIAMUserErrorReason(err)
-			errMsg := fmt.Sprintf("Failed to build IAM SRE user %s: %s", iamUserSRE, err)
-			_, stateErr := r.setAccountFailed(
-				reqLogger,
-				currentAcctInstance,
-				errType,
-				reason,
-				errMsg,
-			)
-			if stateErr != nil {
-				reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
-			}
 			return reconcile.Result{}, err
 		}
 
@@ -368,6 +337,191 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileAccount) getAWSClient(creds *sts.AssumeRoleOutput, region string) (awsclient.Client, error) {
+	if region == "" {
+		region = awsv1alpha1.AwsUSEastOneRegion
+	}
+
+	if creds != nil {
+		return r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+			AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
+			AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
+			AwsToken:                *creds.Credentials.SessionToken,
+			AwsRegion:               region,
+		})
+	} else {
+		return r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+			SecretName: utils.AwsSecretName,
+			NameSpace:  awsv1alpha1.AccountCrNamespace,
+			AwsRegion:  region,
+		})
+	}
+}
+
+func (r *ReconcileAccount) getCustomerAWSAccountClient(
+	reqLogger logr.Logger,
+	awsSetupClient awsclient.Client,
+	currentAcctInstance *awsv1alpha1.Account,
+	ccsRoleID string,
+) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+	var roleToAssume string
+	if currentAcctInstance.IsBYOC() {
+		// Use the same ID applied to the account name for IAM usernames
+		roleToAssume = fmt.Sprintf("%s-%s", byocRole, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
+	} else {
+		roleToAssume = awsv1alpha1.AccountOperatorIAMRole
+	}
+
+	customerAWSAccountClient, creds, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, ccsRoleID)
+	if err != nil {
+		// assumeRole logs
+		return nil, nil, err
+	}
+	return customerAWSAccountClient, creds, nil
+}
+
+func (r *ReconcileAccount) handleIAMUserCreation(
+	reqLogger logr.Logger,
+	customerAWSAccountClient awsclient.Client,
+	currentAcctInstance *awsv1alpha1.Account,
+	namespace string) error {
+
+	var iamUserUHC = iamUserNameUHC
+	var iamUserSRE = iamUserNameSRE
+
+	if currentAcctInstance.IsBYOC() {
+		// Use the same ID applied to the account name for IAM usernames
+		currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
+		iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
+		iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
+	}
+
+	secretName, err := r.BuildIAMUser(reqLogger, customerAWSAccountClient, currentAcctInstance, iamUserUHC, namespace)
+	if err != nil {
+		reason, errType := getBuildIAMUserErrorReason(err)
+		errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
+		_, stateErr := r.setAccountFailed(
+			reqLogger,
+			currentAcctInstance,
+			errType,
+			reason,
+			errMsg,
+		)
+		if stateErr != nil {
+			reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
+		}
+		return err
+	}
+
+	currentAcctInstance.Spec.IAMUserSecret = *secretName
+	err = r.Client.Update(context.TODO(), currentAcctInstance)
+	if err != nil {
+		return err
+	}
+
+	// Create SRE IAM user, we don't care about the credentials because they're saved inside of the build func
+	_, err = r.BuildIAMUser(reqLogger, customerAWSAccountClient, currentAcctInstance, iamUserSRE, namespace)
+	if err != nil {
+		reason, errType := getBuildIAMUserErrorReason(err)
+		errMsg := fmt.Sprintf("Failed to build IAM SRE user %s: %s", iamUserSRE, err)
+		_, stateErr := r.setAccountFailed(
+			reqLogger,
+			currentAcctInstance,
+			errType,
+			reason,
+			errMsg,
+		)
+		if stateErr != nil {
+			reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
+		}
+		return stateErr
+	}
+	return nil
+}
+
+func (r *ReconcileAccount) finalizeAccount(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account) error {
+
+	// Remove IAM user we'll remove the IAM user for CCS
+	if utils.AccountCRHasIAMUserIDLabel(account) && account.IsBYOC() {
+		err := CleanUpIAM(reqLogger, awsClient, account)
+		if err != nil {
+			reqLogger.Error(err, "Failed to delete IAM user during finalizer cleanup")
+		}
+	} else {
+		reqLogger.Info(fmt.Sprintf("Account: %s has no label", account.Name))
+	}
+
+	err := r.resetAccountSpecStatus(reqLogger, account, awsv1alpha1.AccountReused, "Ready")
+	if err != nil {
+		reqLogger.Error(err, "Failed to reset account entity")
+		return err
+	}
+
+	return nil
+}
+
+func (r *ReconcileAccount) resetAccountSpecStatus(
+	reqLogger logr.Logger,
+	account *awsv1alpha1.Account,
+	accountState awsv1alpha1.AccountConditionType,
+	conditionStatus string) error {
+
+	// Reset claimlink and carry over legal entity from deleted claim
+	account.Spec.ClaimLink = ""
+	account.Spec.ClaimLinkNamespace = ""
+
+	// LegalEntity is being carried over here to support older accounts, that were claimed
+	// prior to the introduction of reuse (their account's legalEntity will be blank )
+	if account.Spec.LegalEntity.ID == "" {
+
+		accountClaim, err := r.getAccountClaim(account) // TODO This needs to be double checked!
+		if err != nil {
+			reqLogger.Error(err, "Failed to get account claim for account")
+		}
+
+		account.Spec.LegalEntity.ID = accountClaim.Spec.LegalEntity.ID
+		account.Spec.LegalEntity.Name = accountClaim.Spec.LegalEntity.Name
+	}
+
+	err := r.accountSpecUpdate(reqLogger, account)
+	if err != nil {
+		reqLogger.Error(err, "Failed to update account spec for reuse")
+		return err
+	}
+
+	reqLogger.Info(fmt.Sprintf(
+		"Setting RotateCredentials and RotateConsoleCredentials for account %s", account.Spec.AwsAccountID))
+	account.Status.RotateConsoleCredentials = true
+	account.Status.RotateCredentials = true
+
+	// Update account status and add conditions indicating account reuse
+	account.Status.State = conditionStatus
+	account.Status.Claimed = false
+	account.Status.Reused = true
+	conditionMsg := fmt.Sprintf("Account Reuse - %s", conditionStatus)
+	err = utils.SetAccountStatus(
+		r.Client,
+		reqLogger,
+		account,
+		conditionMsg,
+		accountState,
+	)
+	if err != nil {
+		reqLogger.Error(err, "Failed to update account status for reuse")
+		return err
+	}
+
+	return nil
+}
+
+func (r *ReconcileAccount) accountSpecUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	err := r.Client.Update(context.TODO(), account)
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Account spec update for %s failed", account.Name))
+	}
+	return err
 }
 
 func (r *ReconcileAccount) handleAccountInitializingRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) (reconcile.Result, error) {
@@ -417,7 +571,7 @@ func (r *ReconcileAccount) handleAccountInitializingRegions(reqLogger logr.Logge
 			reqLogger,
 			currentAcctInstance,
 			msg,
-			v1alpha1.AccountCreating,
+			awsv1alpha1.AccountCreating,
 		)
 		// The status update will trigger another Reconcile, but be explicit. The requests get
 		// collapsed anyway.
@@ -583,7 +737,7 @@ func (r *ReconcileAccount) assumeRole(
 				errMsg,
 			)
 			if stateErr != nil {
-				reqLogger.Error(stateErr, "failed setting account state", "desiredState", "Failed")
+				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
 			}
 			return nil, nil, credsErr
 		}
@@ -600,12 +754,8 @@ func (r *ReconcileAccount) assumeRole(
 			break
 		}
 	}
-	awsAssumedRoleClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
-		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
-		AwsToken:                *creds.Credentials.SessionToken,
-		AwsRegion:               "us-east-1",
-	})
+
+	customerAWSAccountClient, err := r.getAWSClient(creds, "")
 	if err != nil {
 		logger.Error(err, "Failed to assume role")
 		reqLogger.Info(err.Error())
@@ -618,12 +768,12 @@ func (r *ReconcileAccount) assumeRole(
 			errMsg,
 		)
 		if stateErr != nil {
-			reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
+			reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
 		}
 		return nil, nil, err
 	}
 
-	return awsAssumedRoleClient, creds, nil
+	return customerAWSAccountClient, creds, nil
 }
 
 func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) error {
@@ -641,12 +791,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 	}
 
 	// Instantiate a client with a default region to retrieve regions we want to initialize
-	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
-		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
-		AwsToken:                *creds.Credentials.SessionToken,
-		AwsRegion:               awsv1alpha1.AwsUSEastOneRegion,
-	})
+	awsClient, err := r.getAWSClient(creds, "")
 	if err != nil {
 		connErr := fmt.Sprintf("unable to connect to default region %s", awsv1alpha1.AwsUSEastOneRegion)
 		reqLogger.Error(err, connErr)
@@ -885,7 +1030,7 @@ func (r *ReconcileAccount) statusUpdate(account *awsv1alpha1.Account) error {
 	return err
 }
 
-func (r *ReconcileAccount) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype v1alpha1.AccountConditionType, reason string, message string) (reconcile.Result, error) {
+func (r *ReconcileAccount) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype awsv1alpha1.AccountConditionType, reason string, message string) (reconcile.Result, error) {
 	reqLogger.Info(message)
 
 	// Set the failure in the account

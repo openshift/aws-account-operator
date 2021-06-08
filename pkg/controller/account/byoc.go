@@ -259,7 +259,7 @@ func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.C
 			reqLogger.Info(fmt.Sprintf("Found attached policy %s", *policy.PolicyArn))
 			break
 		} else {
-			err = fmt.Errorf("Policy %s never attached to role %s", policyArn, byocInstanceIDRole)
+			err = fmt.Errorf("policy %s never attached to role %s", policyArn, byocInstanceIDRole)
 			return roleID, err
 		}
 	}
@@ -429,12 +429,7 @@ func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alph
 		return nil, nil, err
 	}
 
-	jumpRoleClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-		AwsCredsSecretIDKey:     *jumpRoleCreds.Credentials.AccessKeyId,
-		AwsCredsSecretAccessKey: *jumpRoleCreds.Credentials.SecretAccessKey,
-		AwsToken:                *jumpRoleCreds.Credentials.SessionToken,
-		AwsRegion:               "us-east-1",
-	})
+	jumpRoleClient, err := r.getAWSClient(jumpRoleCreds, "")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -445,12 +440,7 @@ func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alph
 		return nil, nil, err
 	}
 
-	customerClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-		AwsCredsSecretIDKey:     *customerAccountCreds.Credentials.AccessKeyId,
-		AwsCredsSecretAccessKey: *customerAccountCreds.Credentials.SecretAccessKey,
-		AwsToken:                *customerAccountCreds.Credentials.SessionToken,
-		AwsRegion:               "us-east-1",
-	})
+	customerClient, err := r.getAWSClient(customerAccountCreds, "")
 	if err != nil {
 		return nil, nil, err
 	}

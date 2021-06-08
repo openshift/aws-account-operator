@@ -10,7 +10,6 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
-	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -51,11 +50,11 @@ func Add(mgr manager.Manager) error {
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	reconciler := &ReconcileAccountClaim{
-		client:           controllerutils.NewClientWithMetricsOrDie(log, mgr, controllerName),
+		client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
-	return controllerutils.NewReconcilerWithMetrics(reconciler, controllerName)
+	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -116,7 +115,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	// Add finalizer to the CR in case it's not present (e.g. old accounts)
-	if !controllerutils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
+	if !utils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
 		err := r.addFinalizer(reqLogger, accountClaim)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -125,135 +124,13 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, nil
 	}
 
-	// Check if accountClaim is being deleted, this will trigger the account reuse workflow
-	if accountClaim.DeletionTimestamp != nil {
-		if controllerutils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
-			// Only do AWS cleanup and account reset if accountLink is not empty
-			// We will not attempt AWS cleanup if the account is BYOC since we're not going to reuse these accounts
-			if accountClaim.Spec.AccountLink != "" {
-				err := r.finalizeAccountClaim(reqLogger, accountClaim)
-				if err != nil {
-					// If the finalize/cleanup process fails for an account we don't want to return
-					// we will flag the account with the Failed Reuse condition, and with state = Failed
-
-					// First we want to see if this was an update race condition where the credentials rotator will update the CR while the finalizer is trying to run.  If that's the case, we want to requeue and retry, before outright failing the account.
-					if k8serr.IsConflict(err) {
-						reqLogger.Info("Account CR Modified during CR reset.")
-						return reconcile.Result{}, errors.Wrap(err, "account CR modified during reset")
-					}
-
-					// Get account claimed by deleted accountclaim
-					failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
-					if accountErr != nil {
-						reqLogger.Error(accountErr, "Failed to get claimed account")
-						return reconcile.Result{}, err
-					}
-					// Update account status and add "Reuse Failed" condition
-					accountErr = r.resetAccountSpecStatus(reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed")
-					if accountErr != nil {
-						reqLogger.Error(accountErr, "Failed updating account status for failed reuse")
-						return reconcile.Result{}, err
-					}
-				}
-			}
-
-			// Remove finalizer to unlock deletion of the accountClaim
-			err = r.removeFinalizer(reqLogger, accountClaim, accountClaimFinalizer)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
-		}
-		return reconcile.Result{}, nil
+	if err := r.handleAccountClaimDeletion(reqLogger, accountClaim); err != nil {
+		return reconcile.Result{}, err
 	}
 
-	if accountClaim.Spec.BYOC {
-		reqLogger.Info("Reconciling CCS AccountClaim")
-
-		if !accountClaim.Spec.ManualSTSMode {
-			// Ensure BYOC secret has finalizer
-			reqLogger.Info("Ensuring byoc secret has finalizer")
-			err = r.addBYOCSecretFinalizer(accountClaim)
-			if err != nil {
-				reqLogger.Error(err, "Unable to add finalizer to byoc secret")
-			}
-		}
-
-		if accountClaim.Spec.AccountLink == "" {
-
-			// Create a new account with BYOC flag
-			newAccount := account.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
-			populateBYOCSpec(newAccount, accountClaim)
-			controllerutils.AddFinalizer(newAccount, "finalizer.aws.managed.openshift.io")
-
-			// Create the new account
-			err = r.client.Create(context.TODO(), newAccount)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
-			// Set the accountLink of the AccountClaim to the new account if create is successful
-			accountClaim.Spec.AccountLink = newAccount.Name
-			err = r.client.Update(context.TODO(), accountClaim)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-			// Requeue this claim request in 30 seconds as we need to check to see if the account is ready
-			// so we can update the AccountClaim `status.state` to `true`
-			return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
-		}
-
-		// Get the account and check if its Ready
-		byocAccount := &awsv1alpha1.Account{}
-		err = r.client.Get(context.TODO(), types.NamespacedName{Name: accountClaim.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, byocAccount)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		if byocAccount.Status.State != string(awsv1alpha1.AccountReady) {
-			if byocAccount.Status.State == string(awsv1alpha1.AccountFailed) {
-				err := utils.SetAccountClaimStatus(
-					r.client,
-					reqLogger,
-					accountClaim,
-					"CCS Account Failed",
-					string(awsv1alpha1.CCSAccountClaimFailed),
-					awsv1alpha1.CCSAccountClaimFailed,
-					awsv1alpha1.ClaimStatusError,
-				)
-				return reconcile.Result{}, err
-			}
-			waitMsg := fmt.Sprintf("%s is not Ready yet, requeuing in %d seconds", byocAccount.Name, waitPeriod)
-			reqLogger.Info(waitMsg, "Account Status", byocAccount.Status.State)
-			return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
-		}
-
-		if byocAccount.Status.State == string(awsv1alpha1.AccountReady) && accountClaim.Status.State != awsv1alpha1.ClaimStatusReady {
-			err := utils.SetAccountClaimStatus(
-				r.client,
-				reqLogger,
-				accountClaim,
-				"BYOC account ready",
-				AccountClaimed,
-				awsv1alpha1.AccountClaimed,
-				awsv1alpha1.ClaimStatusReady,
-			)
-			// Update the status on AccountClaim
-			return reconcile.Result{}, err
-		}
-
-		if !accountClaim.Spec.ManualSTSMode {
-			// Create secret for OCM to consume
-			if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
-				err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)
-				if err != nil {
-					return reconcile.Result{}, nil
-				}
-			}
-		}
-
-		return reconcile.Result{}, nil
-
+	res, err := r.handleBYOCAccountClaim(reqLogger, accountClaim)
+	if err != nil || res.RequeueAfter > 0 {
+		return res, err
 	}
 
 	// Return if this claim has been satisfied
@@ -316,7 +193,6 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	if accountClaim.Spec.AccountLink == "" {
 		setAccountLinkOnAccountClaim(reqLogger, unclaimedAccount, accountClaim)
 		return reconcile.Result{}, r.specUpdate(reqLogger, accountClaim)
-
 	}
 
 	// Set awsAccountClaim.Spec.AwsAccountOU
@@ -353,6 +229,155 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileAccountClaim) handleBYOCAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (reconcile.Result, error) {
+	if !accountClaim.Spec.BYOC {
+		return reconcile.Result{}, nil
+	}
+
+	reqLogger.Info("Reconciling CCS AccountClaim")
+
+	if !accountClaim.Spec.ManualSTSMode {
+		// Ensure BYOC secret has finalizer
+		reqLogger.Info("Ensuring byoc secret has finalizer")
+		err := r.addBYOCSecretFinalizer(accountClaim)
+		if err != nil {
+			reqLogger.Error(err, "Unable to add finalizer to byoc secret")
+		}
+	}
+
+	if accountClaim.Spec.AccountLink == "" {
+		// Create and claim a new Account with BYOC flag
+		err := r.createAccountForBYOCClaim(accountClaim)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		// Requeue this claim request in 30 seconds as we need to check to see if the account is ready
+		// so we can update the AccountClaim `status.state` to `true`
+		return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
+	}
+
+	// Get the account and check if its Ready
+	byocAccount := &awsv1alpha1.Account{}
+	err := r.client.Get(
+		context.TODO(),
+		types.NamespacedName{
+			Name:      accountClaim.Spec.AccountLink,
+			Namespace: awsv1alpha1.AccountCrNamespace,
+		},
+		byocAccount,
+	)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Account still isn't ready - either failed or requeue
+	if byocAccount.Status.State != string(awsv1alpha1.AccountReady) {
+		// Account Failed - update status
+		if byocAccount.Status.State == string(awsv1alpha1.AccountFailed) {
+			err := utils.SetAccountClaimStatus(
+				r.client,
+				reqLogger,
+				accountClaim,
+				"CCS Account Failed",
+				string(awsv1alpha1.CCSAccountClaimFailed),
+				awsv1alpha1.CCSAccountClaimFailed,
+				awsv1alpha1.ClaimStatusError,
+			)
+			return reconcile.Result{}, err
+		}
+		waitMsg := fmt.Sprintf("%s is not Ready yet, requeuing in %d seconds", byocAccount.Name, waitPeriod)
+		reqLogger.Info(waitMsg, "Account Status", byocAccount.Status.State)
+		return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
+	}
+
+	if byocAccount.Status.State == string(awsv1alpha1.AccountReady) && accountClaim.Status.State != awsv1alpha1.ClaimStatusReady {
+		err := utils.SetAccountClaimStatus(
+			r.client,
+			reqLogger,
+			accountClaim,
+			"BYOC account ready",
+			AccountClaimed,
+			awsv1alpha1.AccountClaimed,
+			awsv1alpha1.ClaimStatusReady,
+		)
+		// Update the status on AccountClaim
+		return reconcile.Result{}, err
+	}
+
+	if !accountClaim.Spec.ManualSTSMode {
+		// Create secret for OCM to consume
+		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+			err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)
+			if err != nil {
+				return reconcile.Result{}, nil
+			}
+		}
+	}
+
+	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileAccountClaim) createAccountForBYOCClaim(accountClaim *awsv1alpha1.AccountClaim) error {
+	// Create a new account with BYOC flag
+	newAccount := account.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
+	populateBYOCSpec(newAccount, accountClaim)
+	utils.AddFinalizer(newAccount, "finalizer.aws.managed.openshift.io")
+
+	// Create the new account
+	err := r.client.Create(context.TODO(), newAccount)
+	if err != nil {
+		return err
+	}
+
+	// Set the accountLink of the AccountClaim to the new account if create is successful
+	accountClaim.Spec.AccountLink = newAccount.Name
+	err = r.client.Update(context.TODO(), accountClaim)
+	return err
+}
+
+func (r *ReconcileAccountClaim) handleAccountClaimDeletion(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+	// Check if accountClaim is being deleted, this will trigger the account reuse workflow
+	if accountClaim.DeletionTimestamp == nil {
+		return nil
+	}
+
+	if utils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
+		// Only do AWS cleanup and account reset if accountLink is not empty
+		// We will not attempt AWS cleanup if the account is BYOC since we're not going to reuse these accounts
+		if accountClaim.Spec.AccountLink != "" {
+			err := r.finalizeAccountClaim(reqLogger, accountClaim)
+			if err != nil {
+				// If the finalize/cleanup process fails for an account we don't want to return
+				// we will flag the account with the Failed Reuse condition, and with state = Failed
+
+				// First we want to see if this was an update race condition where the credentials rotator will update the CR while the finalizer is trying to run.  If that's the case, we want to requeue and retry, before outright failing the account.
+				if k8serr.IsConflict(err) {
+					reqLogger.Info("Account CR Modified during CR reset.")
+					return errors.Wrap(err, "account CR modified during reset")
+				}
+
+				// Get account claimed by deleted accountclaim
+				failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+				if accountErr != nil {
+					reqLogger.Error(accountErr, "Failed to get claimed account")
+					return err
+				}
+				// Update account status and add "Reuse Failed" condition
+				accountErr = r.resetAccountSpecStatus(reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed")
+				if accountErr != nil {
+					reqLogger.Error(accountErr, "Failed updating account status for failed reuse")
+					return err
+				}
+			}
+		}
+
+		// Remove finalizer to unlock deletion of the accountClaim
+		return r.removeFinalizer(reqLogger, accountClaim, accountClaimFinalizer)
+	}
+
+	return nil
 }
 
 func (r *ReconcileAccountClaim) getClaimedAccount(accountLink string, namespace string) (*awsv1alpha1.Account, error) {
