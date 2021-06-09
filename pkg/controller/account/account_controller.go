@@ -671,13 +671,14 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 			}
 		}
 		if !found {
-			err := utils.SetAccountStatus(
-				r.Client,
-				reqLogger,
+			utils.SetAccountStatus(
 				currentAcctInstance,
 				fmt.Sprintf("AWS region %s is not supported for AWS account %s", wantedRegion, currentAcctInstance.Name),
-				awsv1alpha1.AccountInitializingRegions,
-			)
+				awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
+			if err := r.statusUpdate(currentAcctInstance); err != nil {
+				// statusUpdate logs
+				return err
+			}
 			return err
 		}
 	}
@@ -1078,8 +1079,7 @@ func parseTagsFromString(tags string) []awsclient.AWSTag {
 	return parsedTags
 }
 
-
-func castAWSRegionType(regions []*ec2.Region) ([]v1alpha1.AwsRegions) {
+func castAWSRegionType(regions []*ec2.Region) []v1alpha1.AwsRegions {
 	var awsRegions []v1alpha1.AwsRegions
 	for _, region := range regions {
 		awsRegions = append(awsRegions, v1alpha1.AwsRegions{Name: *region.RegionName})
