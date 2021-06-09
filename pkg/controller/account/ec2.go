@@ -15,7 +15,6 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 
 	retry "github.com/avast/retry-go"
@@ -68,7 +67,7 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 	}
 	// // If an account is BYOC or CCS and region initialization fails we want to fail the account else output success log
 	if regionInitFailed && len(regions) == 1 {
-		err := utils.SetAccountStatus(
+		err := controllerutils.SetAccountStatus(
 			r.Client,
 			reqLogger,
 			account,
