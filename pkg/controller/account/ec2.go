@@ -67,16 +67,12 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 	}
 	// // If an account is BYOC or CCS and region initialization fails we want to fail the account else output success log
 	if regionInitFailed && len(regions) == 1 {
-		err := controllerutils.SetAccountStatus(
-			r.Client,
-			reqLogger,
+		controllerutils.SetAccountStatus(
 			account,
 			fmt.Sprintf("Account %s failed to initialize expected region %s", account.Name, regionInitFailedRegion),
 			awsv1alpha1.AccountInitializingRegions,
+			AccountFailed,
 		)
-		if err != nil {
-			reqLogger.Error(err, "Failed to set account status to failed", "account", account.Name)
-		}
 	} else {
 		reqLogger.Info("Successfully completed initializing desired regions")
 	}
