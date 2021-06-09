@@ -161,13 +161,8 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 	reusedAccount.Status.Claimed = false
 	reusedAccount.Status.Reused = true
 	conditionMsg := fmt.Sprintf("Account Reuse - %s", conditionStatus)
-	err = utils.SetAccountStatus(
-		r.client,
-		reqLogger,
-		reusedAccount,
-		conditionMsg,
-		accountState,
-	)
+	utils.SetAccountStatus(reusedAccount, conditionMsg, accountState, conditionStatus)
+	err = r.accountStatusUpdate(reqLogger, reusedAccount)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update account status for reuse")
 		return err
@@ -545,6 +540,14 @@ func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
 		return err
 	}
 	return nil
+}
+
+func (r *ReconcileAccountClaim) accountStatusUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	err := r.client.Status().Update(context.TODO(), account)
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", account.Name))
+	}
+	return err
 }
 
 func matchAccountForReuse(account *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) bool {

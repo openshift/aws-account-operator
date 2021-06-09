@@ -48,17 +48,16 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		// TODO: Unrecoverable
 		// TODO: set helpful error message
 		if accountClaim != nil {
-			err := utils.SetAccountClaimStatus(
-				r.Client,
-				reqLogger,
+			utils.SetAccountClaimStatus(
 				accountClaim,
 				"Failed to get AccountClaim for CSS account",
 				"FailedRetrievingAccountClaim",
 				awsv1alpha1.ClientError,
 				awsv1alpha1.ClaimStatusError,
 			)
+			err := r.Client.Status().Update(context.TODO(), accountClaim)
 			if err != nil {
-				return "", reconcile.Result{}, err
+				reqLogger.Error(err, "failed to update accountclaim status")
 			}
 		} else {
 			reqLogger.Error(acctClaimErr, "accountclaim is nil")
@@ -83,19 +82,16 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		time.Sleep(500 * time.Millisecond)
 	}
 	if clientErr != nil {
-		reqLogger.Error(clientErr, "There was an error creating a Customer AWS Client")
-		err := utils.SetAccountClaimStatus(
-			r.Client,
-			reqLogger,
+		utils.SetAccountClaimStatus(
 			accountClaim,
 			"Failed to create AWS Client",
 			"AWSClientCreationFailed",
 			awsv1alpha1.ClientError,
 			awsv1alpha1.ClaimStatusError,
 		)
+		err := r.Client.Status().Update(context.TODO(), accountClaim)
 		if err != nil {
-			reqLogger.Info("There was an error updating the accountclaim")
-			return "", reconcile.Result{}, clientErr
+			reqLogger.Error(err, "Failed to create AWS Client")
 		}
 
 		if accountClaim != nil {
@@ -110,22 +106,19 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 
 	validateErr := accountClaim.Validate()
 	if validateErr != nil {
-		reqLogger.Error(validateErr, "Unable to validate accountclaim")
 		// Figure the reason for our failure
 		errReason := validateErr.Error()
-
 		// Update AccountClaim status
-		err := utils.SetAccountClaimStatus(
-			r.Client,
-			reqLogger,
+		utils.SetAccountClaimStatus(
 			accountClaim,
 			"Invalid AccountClaim",
 			errReason,
 			awsv1alpha1.InvalidAccountClaim,
 			awsv1alpha1.ClaimStatusError,
 		)
+		err := r.Client.Status().Update(context.TODO(), accountClaim)
 		if err != nil {
-			reqLogger.Info("There was an error updating the accountclaim")
+			reqLogger.Error(err, "Failed to Update AccountClaim Status")
 		}
 
 		// TODO: Recoverable?
@@ -134,10 +127,9 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 
 	claimErr := claimBYOCAccount(r, reqLogger, account)
 	if claimErr != nil {
-		reqLogger.Error(claimErr, "Failed to claim BYOC account")
-		err := r.setAccountClaimError(reqLogger, account, claimErr.Error())
-		if err != nil {
-			reqLogger.Info("Failed setting accountClaim error state")
+		claimErr := r.setAccountClaimError(reqLogger, account, claimErr.Error())
+		if claimErr != nil {
+			reqLogger.Error(claimErr, "failed setting accountClaim error state")
 		}
 		// TODO: Recoverable?
 		return "", reconcile.Result{}, claimErr
