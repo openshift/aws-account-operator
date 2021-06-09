@@ -62,20 +62,22 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 			regionInitFailed = true
 			// If we fail to initialize the desired region we want to fail the account
 			reqLogger.Error(errors.New(errMsg.ErrorMsg), errMsg.ErrorMsg)
-			err := utils.SetAccountStatus(
-				r.Client,
-				reqLogger,
-				account,
-				fmt.Sprintf("Account %s failed to initialize expected region %s", account.Name, errMsg.Region),
-				awsv1alpha1.AccountInitializingRegions,
-			)
-			if err != nil {
-				reqLogger.Error(err, "Failed to set account status to failed", "account", account.Name)
-			}
 		}
 	}
+	// If the account initialization fails, fail the account. Otherwise log successful initialization
 	if !regionInitFailed {
 		reqLogger.Info("Successfully completed initializing desired regions")
+	} else {
+		err := utils.SetAccountStatus(
+			r.Client,
+			reqLogger,
+			account,
+			fmt.Sprintf("Account %s failed to initialize expected region %s", account.Name, errMsg.Region),
+			awsv1alpha1.AccountInitializingRegions,
+		)
+		if err != nil {
+			reqLogger.Error(err, "Failed to set account status to failed", "account", account.Name)
+		}
 	}
 }
 
