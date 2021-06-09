@@ -9,7 +9,6 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
-	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -212,16 +211,19 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 		if byocAccount.Status.State != string(awsv1alpha1.AccountReady) {
 			if byocAccount.Status.State == string(awsv1alpha1.AccountFailed) {
-				err := utils.SetAccountClaimStatus(
-					r.client,
-					reqLogger,
-					accountClaim,
-					"CCS Account Failed",
-					string(awsv1alpha1.CCSAccountClaimFailed),
+				accountClaim.Status.State = awsv1alpha1.ClaimStatusError
+				message := "CCS Account Failed"
+				accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
+					accountClaim.Status.Conditions,
 					awsv1alpha1.CCSAccountClaimFailed,
-					awsv1alpha1.ClaimStatusError,
+					corev1.ConditionTrue,
+					string(awsv1alpha1.CCSAccountClaimFailed),
+					message,
+					controllerutils.UpdateConditionNever,
+					accountClaim.Spec.BYOCAWSAccountID != "",
 				)
-				return reconcile.Result{}, err
+				// Update the status on AccountClaim
+				return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 			}
 			waitMsg := fmt.Sprintf("%s is not Ready yet, requeuing in %d seconds", byocAccount.Name, waitPeriod)
 			reqLogger.Info(waitMsg, "Account Status", byocAccount.Status.State)
@@ -229,17 +231,19 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		}
 
 		if byocAccount.Status.State == string(awsv1alpha1.AccountReady) && accountClaim.Status.State != awsv1alpha1.ClaimStatusReady {
-			err := utils.SetAccountClaimStatus(
-				r.client,
-				reqLogger,
-				accountClaim,
-				"BYOC account ready",
-				AccountClaimed,
+			accountClaim.Status.State = awsv1alpha1.ClaimStatusReady
+			message := "BYOC account ready"
+			accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
+				accountClaim.Status.Conditions,
 				awsv1alpha1.AccountClaimed,
-				awsv1alpha1.ClaimStatusReady,
+				corev1.ConditionTrue,
+				AccountClaimed,
+				message,
+				controllerutils.UpdateConditionNever,
+				accountClaim.Spec.BYOCAWSAccountID != "",
 			)
 			// Update the status on AccountClaim
-			return reconcile.Result{}, err
+			return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 		}
 
 		if !accountClaim.Spec.ManualSTSMode {
@@ -263,17 +267,21 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	if accountClaim.Status.State == "" {
-		err := utils.SetAccountClaimStatus(
-			r.client,
-			reqLogger,
-			accountClaim,
-			"Attempting to claim account",
-			AccountClaimed,
+		message := "Attempting to claim account"
+		reqLogger.Info(message)
+		accountClaim.Status.State = awsv1alpha1.ClaimStatusPending
+
+		accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
+			accountClaim.Status.Conditions,
 			awsv1alpha1.AccountUnclaimed,
-			awsv1alpha1.ClaimStatusPending,
+			corev1.ConditionTrue,
+			AccountClaimed,
+			message,
+			controllerutils.UpdateConditionNever,
+			accountClaim.Spec.BYOCAWSAccountID != "",
 		)
 		// Update the Spec on AccountClaim
-		return reconcile.Result{}, err
+		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 	}
 
 	accountList := &awsv1alpha1.AccountList{}
@@ -340,16 +348,9 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	if accountClaim.Status.State != awsv1alpha1.ClaimStatusReady && accountClaim.Spec.AccountLink != "" {
-		err := utils.SetAccountClaimStatus(
-			r.client,
-			reqLogger,
-			accountClaim,
-			fmt.Sprintf("Account claim fulfilled by %s", accountClaim.Name),
-			AccountClaimed,
-			awsv1alpha1.AccountClaimed,
-			awsv1alpha1.ClaimStatusReady,
-		)
-		return reconcile.Result{}, err
+		// Set AccountClaim.Status.Conditions and AccountClaim.Status.State to Ready
+		setAccountClaimStatus(reqLogger, unclaimedAccount, accountClaim)
+		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 	}
 
 	return reconcile.Result{}, nil
@@ -451,6 +452,14 @@ func (r *ReconcileAccountClaim) checkIAMSecretExists(name string, namespace stri
 	return true
 }
 
+func (r *ReconcileAccountClaim) statusUpdate(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+	err := r.client.Status().Update(context.TODO(), accountClaim)
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", accountClaim.Name))
+	}
+	return err
+}
+
 func (r *ReconcileAccountClaim) specUpdate(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 	err := r.client.Update(context.TODO(), accountClaim)
 	if err != nil {
@@ -478,6 +487,21 @@ func updateClaimedAccountFields(reqLogger logr.Logger, awsAccount *awsv1alpha1.A
 	awsAccount.Spec.LegalEntity.Name = awsAccountClaim.Spec.LegalEntity.Name
 
 	reqLogger.Info(fmt.Sprintf("Account %s ClaimLink set to AccountClaim %s and carried over LegalEntity ID %s", awsAccount.Name, awsAccountClaim.Name, awsAccount.Spec.LegalEntity.ID))
+}
+
+func setAccountClaimStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
+	message := fmt.Sprintf("Account claim fulfilled by %s", awsAccount.Name)
+	awsAccountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
+		awsAccountClaim.Status.Conditions,
+		awsv1alpha1.AccountClaimed,
+		corev1.ConditionTrue,
+		AccountClaimed,
+		message,
+		controllerutils.UpdateConditionNever,
+		awsAccountClaim.Spec.BYOCAWSAccountID != "",
+	)
+	awsAccountClaim.Status.State = awsv1alpha1.ClaimStatusReady
+	reqLogger.Info(fmt.Sprintf("Account %s condition status updated", awsAccountClaim.Name))
 }
 
 // setAccountLink sets AccountClaim.Spec.AccountLink to Account.ObjectMetadata.Name
