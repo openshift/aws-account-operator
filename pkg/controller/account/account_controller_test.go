@@ -28,7 +28,7 @@ func newTestAccountBuilder() *testAccountBuilder {
 				},
 			},
 			Status: awsv1alpha1.AccountStatus{
-				State:   string(awsv1alpha1.AccountReady),
+				State:   awsv1alpha1.AccountStateStatus(awsv1alpha1.AccountReady),
 				Claimed: false,
 			},
 			Spec: awsv1alpha1.AccountSpec{},
@@ -80,7 +80,7 @@ func (t *testAccountBuilder) WithFinalizers(finalizers []string) *testAccountBui
 
 // Add a state string
 func (t *testAccountBuilder) WithState(state awsv1alpha1.AccountConditionType) *testAccountBuilder {
-	t.acct.Status.State = string(state)
+	t.acct.Status.State = awsv1alpha1.AccountStateStatus(state)
 	return t
 }
 

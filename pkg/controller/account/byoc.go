@@ -49,6 +49,8 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		// TODO: set helpful error message
 		if accountClaim != nil {
 			utils.SetAccountClaimStatus(
+				r.Client,
+				reqLogger,
 				accountClaim,
 				"Failed to get AccountClaim for CSS account",
 				"FailedRetrievingAccountClaim",
@@ -83,6 +85,8 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 	}
 	if clientErr != nil {
 		utils.SetAccountClaimStatus(
+			r.Client,
+			reqLogger,
 			accountClaim,
 			"Failed to create AWS Client",
 			"AWSClientCreationFailed",
@@ -110,6 +114,8 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		errReason := validateErr.Error()
 		// Update AccountClaim status
 		utils.SetAccountClaimStatus(
+			r.Client,
+			reqLogger,
 			accountClaim,
 			"Invalid AccountClaim",
 			errReason,

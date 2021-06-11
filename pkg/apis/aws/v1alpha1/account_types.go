@@ -10,14 +10,7 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// AccountStateStatus defines the various status an Account CR can have
-type AccountStateStatus string
-
 const (
-	// AccountStatusRequested const for Requested status
-	AccountStatusRequested AccountStateStatus = "Requested"
-	// AccountStatusClaimed const for Claimed status
-	AccountStatusClaimed AccountStateStatus = "Claimed"
 	// AccountCrNamespace namespace where AWS accounts will be created
 	AccountCrNamespace = "aws-account-operator"
 	// AccountOperatorIAMRole is the name for IAM user creating resources in account
@@ -56,11 +49,30 @@ type AccountStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions               []AccountCondition `json:"conditions,omitempty"`
-	State                    string             `json:"state,omitempty"`
+	State                    AccountStateStatus `json:"state,omitempty"`
 	RotateCredentials        bool               `json:"rotateCredentials,omitempty"`
 	RotateConsoleCredentials bool               `json:"rotateConsoleCredentials,omitempty"`
 	Reused                   bool               `json:"reused,omitempty"`
 }
+
+// AccountStateStatus defines the various status an Account CR can have
+type AccountStateStatus string
+
+const (
+	// AccountPending indicates an account is pending
+	AccountStatusPending AccountStateStatus = "Pending"
+	// AccountCreating indicates an account is being created
+	AccountStatusCreating AccountStateStatus = "Creating"
+	// AccountFailed indicates account creation has failed
+	AccountStatusFailed AccountStateStatus = "Failed"
+	// AccountInitializingRegions indicates we've kicked off the process of creating and terminating
+	// instances in all supported regions
+	AccountStatusInitializingRegions AccountStateStatus = "InitializingRegions"
+	// AccountReady indicates account creation is ready
+	AccountStatusReady AccountStateStatus = "Ready"
+	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
+	AccountStatusPendingVerification AccountStateStatus = "PendingVerification"
+)
 
 // AccountCondition contains details for the current condition of a AWS account
 type AccountCondition struct {
@@ -163,7 +175,7 @@ func (a *Account) IsFailed() bool {
 		string(AccountInternalError),
 	}
 	for _, state := range failedStates {
-		if a.Status.State == state {
+		if string(a.Status.State) == state {
 			return true
 		}
 	}
@@ -182,17 +194,17 @@ func (a *Account) HasSupportCaseID() bool {
 
 //IsPendingVerification returns true if the account is in a PendingVerification state
 func (a *Account) IsPendingVerification() bool {
-	return a.Status.State == string(AccountPendingVerification)
+	return string(a.Status.State) == string(AccountPendingVerification)
 }
 
 //IsReady returns true if an account is ready
 func (a *Account) IsReady() bool {
-	return a.Status.State == string(AccountReady)
+	return string(a.Status.State) == string(AccountReady)
 }
 
 //IsCreating returns true if an account is creating
 func (a *Account) IsCreating() bool {
-	return a.Status.State == string(AccountCreating)
+	return string(a.Status.State) == string(AccountCreating)
 }
 
 //HasClaimLink returns true if an accounts claim link is not empty
@@ -289,4 +301,55 @@ func (a *Account) GetCondition(conditionType AccountConditionType) *AccountCondi
 		}
 	}
 	return nil
+}
+
+const MaximumAccountConditionTypes = 13
+
+func getAllAccountConditionTypes() [MaximumAccountConditionTypes]AccountConditionType {
+	return [MaximumAccountConditionTypes]AccountConditionType{
+		AccountCreating,
+		AccountReady,
+		AccountFailed,
+		AccountCreationFailed,
+		AccountPending,
+		AccountPendingVerification,
+		AccountReused,
+		AccountClientError,
+		AccountAuthorizationError,
+		AccountAuthenticationError,
+		AccountUnhandledError,
+		AccountInternalError,
+		AccountQuotaIncreaseRequested,
+	}
+}
+
+func IsValidAccountConditionType(conditionType AccountConditionType) bool {
+	for _, ct := range getAllAccountConditionTypes() {
+		if ct == conditionType {
+			return true
+		}
+	}
+	return false
+}
+
+const MaximumAccountStateStatus = 6
+
+func getAllAccountStateStatus() [MaximumAccountStateStatus]AccountStateStatus {
+	return [MaximumAccountStateStatus]AccountStateStatus{
+		AccountStatusPending,
+		AccountStatusCreating,
+		AccountStatusFailed,
+		AccountStatusInitializingRegions,
+		AccountStatusReady,
+		AccountStatusPendingVerification,
+	}
+}
+
+func IsValidAccountStateStatus(stateStatus AccountStateStatus) bool {
+	for _, sStat := range getAllAccountStateStatus() {
+		if sStat == stateStatus {
+			return true
+		}
+	}
+	return false
 }
