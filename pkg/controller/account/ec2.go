@@ -51,7 +51,7 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 		go r.InitializeRegion(reqLogger, account, region.Name, regionAMIs[region.Name], vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags) //nolint:errcheck // Unable to do anything with the returned error
 	}
 
-	var regionInitFailedRegion string
+	var regionInitFailedRegion []string
 	regionInitFailed := false
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished
 	for i := 0; i < len(regions); i++ {
@@ -62,14 +62,14 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 			regionInitFailed = true
 			// If we fail to initialize the desired region we want to fail the account
 			reqLogger.Error(errors.New(errMsg.ErrorMsg), errMsg.ErrorMsg)
-			regionInitFailedRegion = errMsg.Region
+			regionInitFailedRegion = append(regionInitFailedRegion, errMsg.Region)
 		}
 	}
 	// // If an account is BYOC or CCS and region initialization fails we want to fail the account else output success log
 	if regionInitFailed && len(regions) == 1 {
 		controllerutils.SetAccountStatus(
 			account,
-			fmt.Sprintf("Account %s failed to initialize expected region %s", account.Name, regionInitFailedRegion),
+			fmt.Sprintf("Account %s failed to initialize expected region %v", account.Name, regionInitFailedRegion),
 			awsv1alpha1.AccountInitializingRegions,
 			AccountFailed,
 		)
