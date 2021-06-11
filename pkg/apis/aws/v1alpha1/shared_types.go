@@ -65,7 +65,7 @@ var ErrAccMoveRaceCondition = errors.New("ErrAccMoveRaceCondition")
 // ErrChildNotFound indicates that a child was not found inside an OU
 var ErrChildNotFound = errors.New("ChildNotFoundInOU")
 
-// ErrUnexpectedValue indicates that a given variable has an unespected nil value
+// ErrUnexpectedValue indicates that a given variable has an unexpected nil value
 var ErrUnexpectedValue = errors.New("UnexpectedValue")
 
 // ErrInvalidToken indiacates an invalid token
@@ -73,6 +73,9 @@ var ErrInvalidToken = errors.New("InvalidClientTokenId")
 
 // ErrAccessDenied indicates an AWS error from an API call
 var ErrAccessDenied = errors.New("AuthorizationError")
+
+// ErrUnexpectedAccountState indicates our account is in an unexpected state.
+var ErrUnexpectedAccountState = errors.New("ErrUnexpectedAccountState")
 
 // Shared variables
 

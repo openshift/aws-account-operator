@@ -21,7 +21,7 @@ import (
 
 type regionInitializationError struct {
 	ErrorMsg string
-	Region 	 string
+	Region   string
 }
 
 // InitializeSupportedRegions concurrently calls InitializeRegion to create instances in all supported regions
@@ -66,12 +66,17 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 	}
 	// If an account is BYOC or CCS and region initialization fails for the region expected, we want to fail the account else output success log
 	if regionInitFailed && len(regions) == 1 {
-		controllerutils.SetAccountStatus(
+		err := controllerutils.SetAccountStatus(
+			r.Client,
+			reqLogger,
 			account,
 			fmt.Sprintf("Account %s failed to initialize expected region %v", account.Name, regionInitFailedRegion),
 			awsv1alpha1.AccountInitializingRegions,
 			AccountFailed,
 		)
+		if err != nil {
+			reqLogger.Error(err, "Failed to initialize expected regions")
+		}
 	} else {
 		reqLogger.Info("Successfully completed initializing desired regions")
 	}

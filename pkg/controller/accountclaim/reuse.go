@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/go-logr/logr"
+	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
@@ -112,7 +113,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 	}
 	localmetrics.Collector.SetAccountReusedCleanupDuration(time.Since(before).Seconds())
 
-	err = r.resetAccountSpecStatus(reqLogger, reusedAccount, accountClaim, awsv1alpha1.AccountReused, "Ready")
+	err = r.resetAccountSpecStatus(reqLogger, reusedAccount, accountClaim, awsv1alpha1.AccountReused, awsv1alpha1.AccountStatusReady)
 	if err != nil {
 		reqLogger.Error(err, "Failed to reset account entity")
 		return err
@@ -122,7 +123,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 	return nil
 }
 
-func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, reusedAccount *awsv1alpha1.Account, deletedAccountClaim *awsv1alpha1.AccountClaim, accountState awsv1alpha1.AccountConditionType, conditionStatus string) error {
+func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, reusedAccount *awsv1alpha1.Account, deletedAccountClaim *awsv1alpha1.AccountClaim, accountState awsv1alpha1.AccountConditionType, conditionStatus v1alpha1.AccountStateStatus) error {
 
 	// Reset claimlink and carry over legal entity from deleted claim
 	reusedAccount.Spec.ClaimLink = ""
@@ -151,8 +152,15 @@ func (r *ReconcileAccountClaim) resetAccountSpecStatus(reqLogger logr.Logger, re
 	reusedAccount.Status.Claimed = false
 	reusedAccount.Status.Reused = true
 	conditionMsg := fmt.Sprintf("Account Reuse - %s", conditionStatus)
-	utils.SetAccountStatus(reusedAccount, conditionMsg, accountState, conditionStatus)
-	err = r.accountStatusUpdate(reqLogger, reusedAccount)
+	err = utils.SetAccountStatus(
+		r.client,
+		reqLogger,
+		reusedAccount,
+		conditionMsg,
+		accountState,
+		conditionStatus,
+	)
+
 	if err != nil {
 		reqLogger.Error(err, "Failed to update account status for reuse")
 		return err
@@ -423,14 +431,6 @@ func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
 		return err
 	}
 	return nil
-}
-
-func (r *ReconcileAccountClaim) accountStatusUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
-	err := r.client.Status().Update(context.TODO(), account)
-	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", account.Name))
-	}
-	return err
 }
 
 func matchAccountForReuse(account *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) bool {

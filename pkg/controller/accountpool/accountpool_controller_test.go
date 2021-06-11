@@ -53,7 +53,7 @@ const (
 	claimed   = true
 )
 
-func createAccountMock(name string, state string, claimed bool) *awsv1alpha1.Account {
+func createAccountMock(name string, state awsv1alpha1.AccountStateStatus, claimed bool) *awsv1alpha1.Account {
 	leID := ""
 	if claimed {
 		leID = "12345"
@@ -117,8 +117,8 @@ func TestReconcileAccountPool(t *testing.T) {
 						UnclaimedAccounts: 2,
 					},
 				},
-				createAccountMock("account1", "Ready", unclaimed),
-				createAccountMock("account2", "Ready", unclaimed),
+				createAccountMock("account1", awsv1alpha1.AccountStatusReady, unclaimed),
+				createAccountMock("account2", awsv1alpha1.AccountStatusReady, unclaimed),
 			},
 			expectedAccountPool: awsv1alpha1.AccountPool{
 				Spec: awsv1alpha1.AccountPoolSpec{
@@ -176,11 +176,11 @@ func TestReconcileAccountPool(t *testing.T) {
 						PoolSize: 1,
 					},
 				},
-				createAccountMock("account1", "Ready", unclaimed),
-				createAccountMock("account2", "InitializingRegions", unclaimed),
-				createAccountMock("account3", "PendingVerification", unclaimed),
-				createAccountMock("account4", "Failed", unclaimed),
-				createAccountMock("account5", "Ready", claimed),
+				createAccountMock("account1", awsv1alpha1.AccountStatusReady, unclaimed),
+				createAccountMock("account2", awsv1alpha1.AccountStatusInitializingRegions, unclaimed),
+				createAccountMock("account3", awsv1alpha1.AccountStatusPendingVerification, unclaimed),
+				createAccountMock("account4", awsv1alpha1.AccountStatusFailed, unclaimed),
+				createAccountMock("account5", awsv1alpha1.AccountStatusReady, claimed),
 			},
 			expectedAccountPool: awsv1alpha1.AccountPool{
 				Spec: awsv1alpha1.AccountPoolSpec{

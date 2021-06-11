@@ -330,17 +330,15 @@ func (r *ReconcileAccountClaim) handleBYOCAccountClaim(reqLogger logr.Logger, ac
 			// Figure the reason for our failure
 			errReason := validateErr.Error()
 			// Update AccountClaim status
-			utils.SetAccountClaimStatus(
+			_ = utils.SetAccountClaimStatus(
+				r.client,
+				reqLogger,
 				accountClaim,
 				"Invalid AccountClaim",
 				errReason,
 				awsv1alpha1.InvalidAccountClaim,
 				awsv1alpha1.ClaimStatusError,
 			)
-			err := r.client.Status().Update(context.TODO(), accountClaim)
-			if err != nil {
-				reqLogger.Error(err, "Failed to Update AccountClaim Status")
-			}
 
 			// TODO: Recoverable?
 			return reconcile.Result{}, validateErr

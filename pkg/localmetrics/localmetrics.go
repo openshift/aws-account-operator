@@ -276,9 +276,9 @@ func (c *MetricsCollector) collect() {
 		}
 
 		if account.Spec.BYOC {
-			c.ccsAccounts.WithLabelValues(claimed, reused, account.Status.State).Inc()
+			c.ccsAccounts.WithLabelValues(claimed, reused, string(account.Status.State)).Inc()
 		} else {
-			c.accounts.WithLabelValues(claimed, reused, account.Status.State).Inc()
+			c.accounts.WithLabelValues(claimed, reused, string(account.Status.State)).Inc()
 		}
 	}
 

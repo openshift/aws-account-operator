@@ -47,14 +47,15 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		// TODO: Unrecoverable
 		// TODO: set helpful error message
 		if accountClaim != nil {
-			utils.SetAccountClaimStatus(
+			err := utils.SetAccountClaimStatus(
+				r.Client,
+				reqLogger,
 				accountClaim,
 				"Failed to get AccountClaim for CSS account",
 				"FailedRetrievingAccountClaim",
 				awsv1alpha1.ClientError,
 				awsv1alpha1.ClaimStatusError,
 			)
-			err := r.Client.Status().Update(context.TODO(), accountClaim)
 			if err != nil {
 				reqLogger.Error(err, "failed to update accountclaim status")
 			}

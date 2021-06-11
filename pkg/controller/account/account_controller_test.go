@@ -62,7 +62,7 @@ func newTestAccountBuilder() *testAccountBuilder {
 				},
 			},
 			Status: awsv1alpha1.AccountStatus{
-				State:   string(awsv1alpha1.AccountReady),
+				State:   awsv1alpha1.AccountStateStatus(awsv1alpha1.AccountReady),
 				Claimed: false,
 			},
 			Spec: awsv1alpha1.AccountSpec{},
@@ -120,7 +120,7 @@ func (t *testAccountBuilder) WithLabels(labels map[string]string) *testAccountBu
 
 // Add a state string
 func (t *testAccountBuilder) WithState(state awsv1alpha1.AccountConditionType) *testAccountBuilder {
-	t.acct.Status.State = string(state)
+	t.acct.Status.State = awsv1alpha1.AccountStateStatus(state)
 	return t
 }
 
@@ -530,7 +530,7 @@ func TestAccountCreatingToolong(t *testing.T) {
 		{
 			name: "Account creating too long",
 			acct: newTestAccountBuilder().WithStatus(awsv1alpha1.AccountStatus{
-				State: string(awsv1alpha1.AccountCreating),
+				State: awsv1alpha1.AccountStatusCreating,
 				Conditions: []awsv1alpha1.AccountCondition{
 					{
 						Type:          awsv1alpha1.AccountCreating,
@@ -543,7 +543,7 @@ func TestAccountCreatingToolong(t *testing.T) {
 		{
 			name: "Account outside timeout threshold, but not creating",
 			acct: newTestAccountBuilder().WithStatus(awsv1alpha1.AccountStatus{
-				State: string(awsv1alpha1.AccountReady),
+				State: awsv1alpha1.AccountStatusReady,
 				Conditions: []awsv1alpha1.AccountCondition{
 					{
 						Type:          awsv1alpha1.AccountCreating,
@@ -556,7 +556,7 @@ func TestAccountCreatingToolong(t *testing.T) {
 		{
 			name: "Account creating within timout threshold",
 			acct: newTestAccountBuilder().WithStatus(awsv1alpha1.AccountStatus{
-				State: string(awsv1alpha1.AccountCreating),
+				State: awsv1alpha1.AccountStatusCreating,
 				Conditions: []awsv1alpha1.AccountCondition{
 					{
 						Type:          awsv1alpha1.AccountCreating,
