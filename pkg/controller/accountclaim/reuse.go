@@ -86,8 +86,8 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		return err
 	}
 
-	// Remove IAM user we'll remove the IAM user for CCS
-	if utils.AccountCRHasIAMUserIDLabel(reusedAccount) && accountClaim.Spec.BYOC {
+	// Remove IAM user we'll remove the IAM user
+	if utils.AccountCRHasIAMUserIDLabel(reusedAccount) {
 		err = r.cleanUpIAM(reqLogger, awsClient, reusedAccount, accountClaim)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete IAM user during finalizer cleanup")
