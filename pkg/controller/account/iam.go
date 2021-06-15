@@ -450,7 +450,7 @@ func isIAMUserOsdManagedAdminSRE(userName *string) bool {
 	return strings.HasPrefix(*userName, iamUserNameSRE)
 }
 
-// createIAMUserSecretName returns a lower case concatinated string of the input separated by "-"
+// createIAMUserSecretName returns a lower case concatenated string of the input separated by "-"
 func createIAMUserSecretName(account string) string {
 	suffix := "secret"
 	return strings.ToLower(fmt.Sprintf("%s-%s", account, suffix))

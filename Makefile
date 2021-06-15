@@ -337,7 +337,14 @@ delete-sts-accountclaim: ## Deletes a templated STS accountclaim
 .PHONY: test-sts-accountclaim
 test-sts-accountclaim: create-sts-accountclaim-namespace create-sts-accountclaim delete-sts-accountclaim delete-sts-accountclaim-namespace ## Runs a full integration test for STS workflow
 
-#s Test all
+# Spell Check
+.PHONY: check-spell
+check-spell: # Check spelling
+	./hack/scripts/misspell_check.sh
+
+lint: check-spell
+
+# Test all
 .PHONY: test-all
 test-all: lint clean-operator test test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim ## Runs all integration tests
 
