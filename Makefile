@@ -24,6 +24,10 @@ op-generate: ## Generate crd, k8s and openapi
 	@./boilerplate/openshift/golang-osd-operator/ensure.sh operator-sdk
 	@./hack/scripts/generate_crds.sh
 
+.PHONY: serve
+serve: ## Serves the docs locally using docker
+	@docker run --rm -it -p 8000:8000 -v ${PWD}:/docs squidfunk/mkdocs-material
+
 .PHONY: check-aws-account-id-env
 check-aws-account-id-env: ## Check if AWS Account Env vars are set
 ifndef OSD_STAGING_1_AWS_ACCOUNT_ID
