@@ -3,11 +3,12 @@ package federatedaccesstesting
 import (
 	"encoding/base64"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"testing"
+
+	"gopkg.in/yaml.v2"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -187,10 +188,10 @@ func getFederatedAccountAccessCR(t *testing.T, cr string, accountAccessCR *feder
 
 // Fills awsUserSecret struct from the secret
 func getSecretCredentials(t *testing.T, secret *awsUserSecret) {
-	ocSecret := exec.Command("oc", "get", "secret", "-n", "aws-account-operator", "-o", "yaml", "osd-creds-mgmt-osd-staging-1-osdmanagedadminsre-secret")
+	ocSecret := exec.Command("oc", "get", "secret", "-n", "aws-account-operator", "-o", "yaml", "osd-creds-mgmt-osd-staging-1-secret")
 	secretYAML, err := ocSecret.CombinedOutput()
 	if err != nil {
-		t.Fatal("Unable to obtain sre-cli-credentials")
+		t.Fatal("Unable to obtain osdManagedAdmin credentials")
 	}
 	err = yaml.Unmarshal(secretYAML, secret)
 	if err != nil {

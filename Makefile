@@ -228,14 +228,14 @@ delete-ccs: delete-ccs-accountclaim delete-ccs-secret delete-ccs-namespace ## Te
 .PHONY: create-s3-bucket
 create-s3-bucket: ## Create S3 bucket
 	# Get credentials
-	@export AWS_ACCESS_KEY_ID=$(shell oc get secret ${OSD_MANAGED_ADMIN_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); \
-	export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${OSD_MANAGED_ADMIN_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); \
+	@export AWS_ACCESS_KEY_ID=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); \
+	export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); \
 	aws s3api create-bucket --bucket ${REUSE_BUCKET_NAME} --region=us-east-1
 
 .PHONY: list-s3-bucket
 list-s3-bucket:  ## List S3 bucket
 	# Get credentials
-	BUCKETS=$(shell export AWS_ACCESS_KEY_ID=$(shell oc get secret ${OSD_MANAGED_ADMIN_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${OSD_MANAGED_ADMIN_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'); \
+	BUCKETS=$(shell export AWS_ACCESS_KEY_ID=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'); \
 	if [ $$BUCKETS == 0 ]; then echo "Reuse successfully complete"; else echo "Reuse failed"; exit 1; fi
 
 .PHONY: test-reuse
