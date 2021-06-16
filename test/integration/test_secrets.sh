@@ -11,16 +11,12 @@ EXIT_STATUS=$EXIT_PASS
 # Define Expected Secrets and their keys
 # FORMAT: expectedPosftix:VARIABLE_WITH_KEYS
 EXPECTED_SECRETS=(
-  "osdmanagedadminsre-secret:OSDMASRE_SECRET_KEYS"
   "secret:SECRET_KEYS"
 )
 
-OSDMASRE_SECRET_KEYS="aws_access_key_id aws_secret_access_key aws_user_name"
 SECRET_KEYS="aws_access_key_id aws_secret_access_key aws_user_name"
 
 for secret_map in "${EXPECTED_SECRETS[@]}"; do
-  test_secret_validity=false
-  has_session_token=false
   secret=${secret_map%%:*}
   expected_keys=${secret_map#*:}
   test_secret="$(oc get secret osd-creds-mgmt-$TEST_ACCOUNT_CR_NAME-$secret -n $TEST_NAMESPACE -o json | jq '.data')"
