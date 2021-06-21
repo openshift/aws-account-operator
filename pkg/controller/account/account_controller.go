@@ -309,23 +309,19 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, nil
 		}
 
-		// Set IAMUserIDLabel if not there, and requeue
-		if !utils.AccountCRHasIAMUserIDLabel(currentAcctInstance) {
-			utils.AddLabels(
-				currentAcctInstance,
-				utils.GenerateLabel(
-					awsv1alpha1.IAMUserIDLabel,
-					utils.GenerateShortUID(),
-				),
-			)
-			return reconcile.Result{Requeue: true}, r.Client.Update(context.TODO(), currentAcctInstance)
-		}
+		var roleToAssume string
+		var iamUserUHC = iamUserNameUHC
+		var iamUserSRE = iamUserNameSRE
 
-		currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
-		// Use the same ID applied to the account name for IAM usernames
-		iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
-		iamUserSRE := fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
-		roleToAssume := getAssumeRole(currentAcctInstance)
+		if currentAcctInstance.IsBYOC() {
+			// Use the same ID applied to the account name for IAM usernames
+			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
+			iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
+			iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
+			roleToAssume = fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
+		} else {
+			roleToAssume = awsv1alpha1.AccountOperatorIAMRole
+		}
 
 		awsAssumedRoleClient, creds, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, ccsRoleID)
 		if err != nil {
@@ -984,16 +980,6 @@ func (r *ReconcileAccount) setAccountClaimError(reqLogger logr.Logger, currentAc
 func matchSubstring(roleID, role string) (bool, error) {
 	matched, err := regexp.MatchString(roleID, role)
 	return matched, err
-}
-
-func getAssumeRole(c *awsv1alpha1.Account) string {
-	// If the account is a CCS account, return the CCS role
-	if c.IsBYOC() {
-		return fmt.Sprintf("%s-%s", byocRole, c.Labels[awsv1alpha1.IAMUserIDLabel])
-	}
-
-	// Else return the default role
-	return awsv1alpha1.AccountOperatorIAMRole
 }
 
 func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountConditionType) {
