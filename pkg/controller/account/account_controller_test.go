@@ -22,7 +22,6 @@ func newTestAccountBuilder() *testAccountBuilder {
 		acct: awsv1alpha1.Account{
 			TypeMeta: metav1.TypeMeta{},
 			ObjectMeta: metav1.ObjectMeta{
-				Labels:     map[string]string{},
 				Finalizers: []string{},
 				CreationTimestamp: metav1.Time{
 					Time: time.Now().Add(-(5 * time.Minute)), // default tests to 5 minute old acct
@@ -76,12 +75,6 @@ func (t *testAccountBuilder) WithDeletionTimeStamp(timestamp time.Time) *testAcc
 // Add finalizers
 func (t *testAccountBuilder) WithFinalizers(finalizers []string) *testAccountBuilder {
 	t.acct.ObjectMeta.Finalizers = finalizers
-	return t
-}
-
-// Add labels
-func (t *testAccountBuilder) WithLabels(labels map[string]string) *testAccountBuilder {
-	t.acct.ObjectMeta.Labels = labels
 	return t
 }
 
@@ -960,40 +953,6 @@ func TestAccountIsUnclaimedAndCreating(t *testing.T) {
 			test.name,
 			func(t *testing.T) {
 				result := test.acct.acct.IsUnclaimedAndIsCreating()
-				if result != test.expected {
-					t.Error(
-						"for account:", test.acct,
-						"expected", test.expected,
-						"got", result,
-					)
-				}
-			},
-		)
-	}
-}
-
-func TestGetAssumeRole(t *testing.T) {
-	tests := []struct {
-		name     string
-		expected string
-		acct     *testAccountBuilder
-	}{
-		{
-			name:     "Get role for BYOC Account",
-			acct:     newTestAccountBuilder().BYOC(true).WithLabels(map[string]string{awsv1alpha1.IAMUserIDLabel: "xxxxx"}),
-			expected: fmt.Sprintf("%s-%s", byocRole, "xxxxx"),
-		},
-		{
-			name:     "Get role for Non-BYOC Account",
-			acct:     newTestAccountBuilder(),
-			expected: awsv1alpha1.AccountOperatorIAMRole,
-		},
-	}
-	for _, test := range tests {
-		t.Run(
-			test.name,
-			func(t *testing.T) {
-				result := getAssumeRole(&test.acct.acct)
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
