@@ -162,30 +162,27 @@ var _ = Describe("Byoc", func() {
 var testNewBYOCAccountInstances = []*awsv1alpha1.Account{
 	{
 		Spec: awsv1alpha1.AccountSpec{
-			BYOC: true,
-		},
-		Status: awsv1alpha1.AccountStatus{
+			BYOC:    true,
 			Claimed: true,
 			State:   "",
 		},
+		Status: awsv1alpha1.AccountStatus{},
 	},
 	{
 		Spec: awsv1alpha1.AccountSpec{
-			BYOC: true,
-		},
-		Status: awsv1alpha1.AccountStatus{
+			BYOC:    true,
 			Claimed: false,
 			State:   "",
 		},
+		Status: awsv1alpha1.AccountStatus{},
 	},
 	{
 		Spec: awsv1alpha1.AccountSpec{
-			BYOC: true,
-		},
-		Status: awsv1alpha1.AccountStatus{
+			BYOC:    true,
 			Claimed: false,
 			State:   "test state",
 		},
+		Status: awsv1alpha1.AccountStatus{},
 	},
 }
 
@@ -193,39 +190,35 @@ var testNewBYOCAccountInstances = []*awsv1alpha1.Account{
 var testNotNewBYOCAccountInstances = []*awsv1alpha1.Account{
 	{
 		Spec: awsv1alpha1.AccountSpec{
-			BYOC: true,
-		},
-		Status: awsv1alpha1.AccountStatus{
+			BYOC:    true,
 			Claimed: true,
 			State:   "test state",
 		},
+		Status: awsv1alpha1.AccountStatus{},
 	},
 	{
 		Spec: awsv1alpha1.AccountSpec{
-			BYOC: false,
-		},
-		Status: awsv1alpha1.AccountStatus{
+			BYOC:    false,
 			Claimed: true,
 			State:   "",
 		},
+		Status: awsv1alpha1.AccountStatus{},
 	},
 	{
 		Spec: awsv1alpha1.AccountSpec{
-			BYOC: false,
-		},
-		Status: awsv1alpha1.AccountStatus{
+			BYOC:    false,
 			Claimed: false,
 			State:   "",
 		},
+		Status: awsv1alpha1.AccountStatus{},
 	},
 	{
 		Spec: awsv1alpha1.AccountSpec{
-			BYOC: false,
-		},
-		Status: awsv1alpha1.AccountStatus{
+			BYOC:    false,
 			Claimed: false,
 			State:   "test state",
 		},
+		Status: awsv1alpha1.AccountStatus{},
 	},
 }
 

@@ -43,6 +43,11 @@ type AccountSpec struct {
 	ClaimLinkNamespace string      `json:"claimLinkNamespace,omitempty"`
 	LegalEntity        LegalEntity `json:"legalEntity,omitempty"`
 	ManualSTSMode      bool        `json:"manualSTSMode,omitempty"`
+	// Backup status
+	Claimed            bool        `json:"claimed,omitempty"`
+	State              string      `json:"state,omitempty"`
+	Reused             bool        `json:"reused,omitempty"`
+	SupportCaseID      string      `json:"supportCaseID,omitempty"`
 }
 
 // AccountStatus defines the observed state of Account
@@ -51,15 +56,11 @@ type AccountStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
-	Claimed       bool   `json:"claimed,omitempty"`
-	SupportCaseID string `json:"supportCaseID,omitempty"`
 	// +listType=map
 	// +listMapKey=type
 	Conditions               []AccountCondition `json:"conditions,omitempty"`
-	State                    string             `json:"state,omitempty"`
 	RotateCredentials        bool               `json:"rotateCredentials,omitempty"`
 	RotateConsoleCredentials bool               `json:"rotateConsoleCredentials,omitempty"`
-	Reused                   bool               `json:"reused,omitempty"`
 }
 
 // AccountCondition contains details for the current condition of a AWS account
@@ -123,8 +124,8 @@ const (
 // Account is the Schema for the accounts API
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state",description="Status the account"
-// +kubebuilder:printcolumn:name="Claimed",type="boolean",JSONPath=".status.claimed",description="True if the account has been claimed"
+// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".spec.state",description="Status the account"
+// +kubebuilder:printcolumn:name="Claimed",type="boolean",JSONPath=".spec.claimed",description="True if the account has been claimed"
 // +kubebuilder:printcolumn:name="Claim",type="string",JSONPath=".spec.claimLink",description="Link to the account claim CR"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Age since the account was created"
 // +kubebuilder:resource:path=accounts,scope=Namespaced
@@ -163,7 +164,7 @@ func (a *Account) IsFailed() bool {
 		string(AccountInternalError),
 	}
 	for _, state := range failedStates {
-		if a.Status.State == state {
+		if a.Spec.State == state {
 			return true
 		}
 	}
@@ -172,27 +173,27 @@ func (a *Account) IsFailed() bool {
 
 //HasState returns true if an account has a state set at all
 func (a *Account) HasState() bool {
-	return a.Status.State != ""
+	return a.Spec.State != ""
 }
 
 //HasSupportCaseID returns true if an account has a SupportCaseID Set
 func (a *Account) HasSupportCaseID() bool {
-	return a.Status.SupportCaseID != ""
+	return a.Spec.SupportCaseID != ""
 }
 
 //IsPendingVerification returns true if the account is in a PendingVerification state
 func (a *Account) IsPendingVerification() bool {
-	return a.Status.State == string(AccountPendingVerification)
+	return a.Spec.State == string(AccountPendingVerification)
 }
 
 //IsReady returns true if an account is ready
 func (a *Account) IsReady() bool {
-	return a.Status.State == string(AccountReady)
+	return a.Spec.State == string(AccountReady)
 }
 
 //IsCreating returns true if an account is creating
 func (a *Account) IsCreating() bool {
-	return a.Status.State == string(AccountCreating)
+	return a.Spec.State == string(AccountCreating)
 }
 
 //HasClaimLink returns true if an accounts claim link is not empty
@@ -202,7 +203,7 @@ func (a *Account) HasClaimLink() bool {
 
 //IsClaimed returns true if account Status.Claimed is false
 func (a *Account) IsClaimed() bool {
-	return a.Status.Claimed
+	return a.Spec.Claimed
 }
 
 //IsPendingDeletion returns true if a DeletionTimestamp has been set
@@ -277,7 +278,7 @@ func (a *Account) IsUnclaimedAndIsCreating() bool {
 
 //IsInitializingRegions returns true if the account state is InitalizingRegions
 func (a *Account) IsInitializingRegions() bool {
-	return a.Status.State == AccountInitializingRegions
+	return a.Spec.State == AccountInitializingRegions
 }
 
 // GetCondition finds the condition that has the

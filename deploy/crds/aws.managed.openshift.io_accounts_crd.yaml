@@ -4,11 +4,11 @@ metadata:
   name: accounts.aws.managed.openshift.io
 spec:
   additionalPrinterColumns:
-    - JSONPath: .status.state
+    - JSONPath: .spec.state
       description: Status the account
       name: State
       type: string
-    - JSONPath: .status.claimed
+    - JSONPath: .spec.claimed
       description: True if the account has been claimed
       name: Claimed
       type: boolean
@@ -53,6 +53,9 @@ spec:
               type: string
             claimLinkNamespace:
               type: string
+            claimed:
+              description: Backup status
+              type: boolean
             iamUserSecret:
               type: string
             legalEntity:
@@ -68,6 +71,12 @@ spec:
               type: object
             manualSTSMode:
               type: boolean
+            reused:
+              type: boolean
+            state:
+              type: string
+            supportCaseID:
+              type: string
           required:
             - awsAccountID
             - iamUserSecret
@@ -75,10 +84,8 @@ spec:
         status:
           description: AccountStatus defines the observed state of Account
           properties:
-            claimed:
-              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
-              type: boolean
             conditions:
+              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
               items:
                 description: AccountCondition contains details for the current condition of a AWS account
                 properties:
@@ -104,16 +111,10 @@ spec:
                     type: string
                 type: object
               type: array
-            reused:
-              type: boolean
             rotateConsoleCredentials:
               type: boolean
             rotateCredentials:
               type: boolean
-            state:
-              type: string
-            supportCaseID:
-              type: string
           type: object
   version: v1alpha1
   versions:

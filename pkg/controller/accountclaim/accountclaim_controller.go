@@ -209,8 +209,8 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			return reconcile.Result{}, err
 		}
 
-		if byocAccount.Status.State != string(awsv1alpha1.AccountReady) {
-			if byocAccount.Status.State == string(awsv1alpha1.AccountFailed) {
+		if byocAccount.Spec.State != string(awsv1alpha1.AccountReady) {
+			if byocAccount.Spec.State == string(awsv1alpha1.AccountFailed) {
 				accountClaim.Status.State = awsv1alpha1.ClaimStatusError
 				message := "CCS Account Failed"
 				accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
@@ -226,11 +226,11 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 				return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 			}
 			waitMsg := fmt.Sprintf("%s is not Ready yet, requeuing in %d seconds", byocAccount.Name, waitPeriod)
-			reqLogger.Info(waitMsg, "Account Status", byocAccount.Status.State)
+			reqLogger.Info(waitMsg, "Account Status", byocAccount.Spec.State)
 			return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
 		}
 
-		if byocAccount.Status.State == string(awsv1alpha1.AccountReady) && accountClaim.Status.State != awsv1alpha1.ClaimStatusReady {
+		if byocAccount.Spec.State == string(awsv1alpha1.AccountReady) && accountClaim.Status.State != awsv1alpha1.ClaimStatusReady {
 			accountClaim.Status.State = awsv1alpha1.ClaimStatusReady
 			message := "BYOC account ready"
 			accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
@@ -375,9 +375,9 @@ func getUnclaimedAccount(reqLogger logr.Logger, accountList *awsv1alpha1.Account
 	// Range through accounts and select the first one that doesn't have a claim link
 	for _, account := range accountList.Items {
 
-		if !account.Status.Claimed && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
+		if !account.Spec.Claimed && account.Spec.ClaimLink == "" && account.Spec.State == "Ready" {
 			// Check for a reused account with matching legalEntity
-			if account.Status.Reused {
+			if account.Spec.Reused {
 				if matchAccountForReuse(&account, accountClaim) {
 					reusedAccountFound = true
 					reusedAccount = account
