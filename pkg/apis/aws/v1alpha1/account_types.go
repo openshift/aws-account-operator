@@ -194,17 +194,17 @@ func (a *Account) HasSupportCaseID() bool {
 
 //IsPendingVerification returns true if the account is in a PendingVerification state
 func (a *Account) IsPendingVerification() bool {
-	return string(a.Status.State) == string(AccountPendingVerification)
+	return a.Status.State == AccountStatusPendingVerification
 }
 
 //IsReady returns true if an account is ready
 func (a *Account) IsReady() bool {
-	return string(a.Status.State) == string(AccountReady)
+	return a.Status.State == AccountStatusReady
 }
 
 //IsCreating returns true if an account is creating
 func (a *Account) IsCreating() bool {
-	return string(a.Status.State) == string(AccountCreating)
+	return a.Status.State == AccountStatusCreating
 }
 
 //HasClaimLink returns true if an accounts claim link is not empty
