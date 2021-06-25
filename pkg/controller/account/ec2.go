@@ -20,18 +20,13 @@ import (
 	retry "github.com/avast/retry-go"
 )
 
-type regionInitializationError struct {
-	ErrorMsg string
-	Region 	 string
-}
-
 // InitializeSupportedRegions concurrently calls InitializeRegion to create instances in all supported regions
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
 // NOTE: This function does not have any returns. In particular, error conditions from the
 // goroutines are logged, but do not result in a failure up the stack.
 func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []v1alpha1.AwsRegions, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
-	ec2Notifications, ec2Errors := make(chan string), make(chan regionInitializationError)
+	ec2Notifications, ec2Errors := make(chan string), make(chan string)
 
 	// Make sure we close our channels when we're done
 	defer close(ec2Notifications)
@@ -47,35 +42,22 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 	customerTags := r.getCustomTags(reqLogger, account)
 
 	// Create go routines to initialize regions in parallel
+
 	for _, region := range regions {
 		go r.InitializeRegion(reqLogger, account, region.Name, regionAMIs[region.Name], vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags) //nolint:errcheck // Unable to do anything with the returned error
 	}
 
-	var regionInitFailedRegion []string
-	regionInitFailed := false
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished
 	for i := 0; i < len(regions); i++ {
 		select {
 		case msg := <-ec2Notifications:
 			reqLogger.Info(msg)
 		case errMsg := <-ec2Errors:
-			regionInitFailed = true
-			// If we fail to initialize the desired region we want to fail the account
-			reqLogger.Error(errors.New(errMsg.ErrorMsg), errMsg.ErrorMsg)
-			regionInitFailedRegion = append(regionInitFailedRegion, errMsg.Region)
+			reqLogger.Error(errors.New(errMsg), errMsg)
 		}
 	}
-	// // If an account is BYOC or CCS and region initialization fails we want to fail the account else output success log
-	if regionInitFailed && len(regions) == 1 {
-		controllerutils.SetAccountStatus(
-			account,
-			fmt.Sprintf("Account %s failed to initialize expected region %v", account.Name, regionInitFailedRegion),
-			awsv1alpha1.AccountInitializingRegions,
-			AccountFailed,
-		)
-	} else {
-		reqLogger.Info("Successfully completed initializing desired regions")
-	}
+
+	reqLogger.Info("Completed initializing all supported regions")
 }
 
 // InitializeRegion sets up a connection to the AWS `region` and then creates and terminates an EC2 instance if necessary
@@ -86,7 +68,7 @@ func (r *ReconcileAccount) InitializeRegion(
 	instanceInfo awsv1alpha1.AmiSpec,
 	vCPUQuota float64,
 	ec2Notifications chan string,
-	ec2Errors chan regionInitializationError,
+	ec2Errors chan string,
 	creds *sts.AssumeRoleOutput,
 	managedTags []awsclient.AWSTag,
 	customerTags []awsclient.AWSTag,
@@ -105,7 +87,7 @@ func (r *ReconcileAccount) InitializeRegion(
 		connErr := fmt.Sprintf("unable to connect to region %s when attempting to initialize it", region)
 		reqLogger.Error(err, connErr)
 		// Notify Error channel that this region has errored and to move on
-		ec2Errors <- regionInitializationError{ErrorMsg: connErr, Region: region}
+		ec2Errors <- connErr
 
 		return err
 	}
@@ -116,7 +98,7 @@ func (r *ReconcileAccount) InitializeRegion(
 	cleaned, err := cleanRegion(awsClient, reqLogger, account.Name, region)
 	if err != nil {
 		cleanErr := fmt.Sprintf("Error while attempting to clean region: %v", err.Error())
-		ec2Errors <- regionInitializationError{ErrorMsg: cleanErr, Region: region}
+		ec2Errors <- cleanErr
 		return err
 	}
 	if cleaned {
@@ -174,7 +156,7 @@ func (r *ReconcileAccount) InitializeRegion(
 		createErr := fmt.Sprintf("Unable to create instance in region: %s", region)
 		controllerutils.LogAwsError(reqLogger, createErr, nil, err)
 		// Notify Error channel that this region has errored and to move on
-		ec2Errors <- regionInitializationError{ErrorMsg: createErr, Region: region}
+		ec2Errors <- createErr
 
 		return err
 	}
