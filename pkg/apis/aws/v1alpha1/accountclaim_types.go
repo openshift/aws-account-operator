@@ -151,10 +151,13 @@ func init() {
 	SchemeBuilder.Register(&AccountClaim{}, &AccountClaimList{})
 }
 
+// ErrAWSSecretRefMissing is an error for missing AWS Secret References
+var ErrAWSSecretRefMissing = errors.New("AWSSecretRefMissing")
+
 // ErrBYOCAccountIDMissing is an error for missing Account ID
 var ErrBYOCAccountIDMissing = errors.New("BYOCAccountIDMissing")
 
-// ErrBYOCSecretRefMissing is an error for missing Secret References
+// ErrBYOCSecretRefMissing is an error for missing BYOC Secret References
 var ErrBYOCSecretRefMissing = errors.New("BYOCSecretRefMissing")
 
 // ErrSTSRoleARNMissing is an error for missing STS Role ARN definition in the AccountClaim
@@ -162,10 +165,21 @@ var ErrSTSRoleARNMissing = errors.New("STSRoleARNMissing")
 
 // Validates an AccountClaim object
 func (a *AccountClaim) Validate() error {
+	// Validate STS mode first since we only require the
+	// .Spec.STSRoleARN field to be set
+	// By design STS doesn't have long lived credentials so they wont
+	// be present in the AccountClaim
 	if a.Spec.ManualSTSMode {
 		return a.validateSTS()
 	}
-	return a.validateBYOC()
+
+	if a.Spec.BYOC {
+		return a.validateBYOC()
+	}
+
+	// we don't do any validation for non-ccs accounts currently, so
+	// let's keep that behavior
+	return nil
 }
 
 func (a *AccountClaim) validateSTS() error {
@@ -181,6 +195,9 @@ func (a *AccountClaim) validateBYOC() error {
 	}
 	if a.Spec.BYOCSecretRef.Name == "" || a.Spec.BYOCSecretRef.Namespace == "" {
 		return ErrBYOCSecretRefMissing
+	}
+	if a.Spec.AwsCredentialSecret.Name == "" || a.Spec.AwsCredentialSecret.Namespace == "" {
+		return ErrAWSSecretRefMissing
 	}
 
 	return nil
