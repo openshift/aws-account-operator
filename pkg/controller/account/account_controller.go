@@ -621,14 +621,6 @@ func (r *ReconcileAccount) assumeRole(
 }
 
 func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) error {
-	// We're about to kick off region init in a goroutine. This status makes subsequent
-	// Reconciles ignore the Account (unless it stays in this state for too long).
-	utils.SetAccountStatus(currentAcctInstance, "Initializing Regions", awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
-	if err := r.statusUpdate(currentAcctInstance); err != nil {
-		// statusUpdate logs
-		return err
-	}
-
 	// Instantiate a client with a default region to retrieve regions we want to initialize
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
@@ -646,7 +638,21 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 		AllRegions: aws.Bool(false),
 	})
 	if err != nil {
+		// Retry on failures related to the slow AWS API
+		if aerr, ok := err.(awserr.Error); ok {
+			if aerr.Code() == "OptInRequired" {
+				return nil
+			}
+		}
 		reqLogger.Error(err, "Failed to retrieve list of regions enabled in this account.")
+		return err
+	}
+
+	// We're about to kick off region init in a goroutine. This status makes subsequent
+	// Reconciles ignore the Account (unless it stays in this state for too long).
+	utils.SetAccountStatus(currentAcctInstance, "Initializing Regions", awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
+	if err := r.statusUpdate(currentAcctInstance); err != nil {
+		// statusUpdate logs
 		return err
 	}
 
