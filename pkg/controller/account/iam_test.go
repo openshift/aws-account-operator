@@ -69,17 +69,8 @@ func TestIAMCreateSecret(t *testing.T) {
 	err = r.CreateSecret(nullLogger, &account, secret)
 	assert.Nil(t, err)
 
-	/* Can't run a second time ->
-
 	err = r.CreateSecret(nullLogger, &account, secret)
-	assert.Nil(t, err)
-
-
-	Expected nil, but got: &runtime.notRegisteredErr{
-		schemeName:"pkg/runtime/scheme.go:101",
-		gvk:schema.GroupVersionKind{Group:"", Version:"", Kind:""},
-		target:runtime.GroupVersioner(nil), t:(*reflect.rtype)(0x148ad20)}
-	*/
+	assert.Error(t, err, "")
 }
 
 func TestGetSTSCredentials(t *testing.T) {
