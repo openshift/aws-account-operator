@@ -134,6 +134,12 @@ func AddFinalizer(object metav1.Object, finalizer string) {
 	object.SetFinalizers(finalizers.List())
 }
 
+// AddLabels adds a map of labels to an object
+func AddLabels(object metav1.Object, labels map[string]string) {
+	existingLabels := object.GetLabels()
+	object.SetLabels(JoinLabelMaps(labels, existingLabels))
+}
+
 // LogAwsError formats and logs aws error and returns if err was an awserr
 func LogAwsError(logger logr.Logger, errMsg string, customError error, err error) {
 	if aerr, ok := err.(awserr.Error); ok {
