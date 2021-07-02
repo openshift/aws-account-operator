@@ -24,6 +24,8 @@ parameters:
   required: true
 - name: SUPPORT_JUMP_ROLE
   required: true
+- name: SHARD_NAME
+  required: true
 - name: AWS_MANAGED_TAGS
   required: false
 
@@ -67,6 +69,7 @@ objects:
     base: ${BASE_OU_ID}
     sts-jump-role: ${STS_JUMP_ROLE}
     support-jump-role: ${SUPPORT_JUMP_ROLE}
+    shard-name: ${SHARD_NAME}
     aws-managed-tags: "${AWS_MANAGED_TAGS}"
     regions: |
       us-east-1:ami-000db10762d0c4c05:t2.micro
