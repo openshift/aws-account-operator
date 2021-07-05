@@ -2,37 +2,45 @@ package utils
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
-	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // SetAccountStatus sets the condition and state of an account
 func SetAccountStatus(
-	client kubeclientpkg.Client,
+	client client.Client,
 	reqLogger logr.Logger,
-	awsAccount *awsv1alpha1.Account,
+	awsAccount *v1alpha1.Account,
 	message string,
-	ctype awsv1alpha1.AccountConditionType,
-	state awsv1alpha1.AccountStateStatus) error {
+	conditionType v1alpha1.AccountConditionType,
+	state v1alpha1.AccountStateStatus) error {
 
+	var err error
 	if awsAccount == nil {
-		return nil
+		err = v1alpha1.ErrUnexpectedValue
+		reqLogger.Error(err, "SetAccountStatus was passed a nil awsAccount instance")
+		return err
 	}
 
-	if !awsv1alpha1.IsValidAccountConditionType(ctype) { // TODO Should we error out here, or just log and return?
-		return nil
+	if !v1alpha1.IsValidAccountConditionType(conditionType) {
+		err = v1alpha1.ErrUnexpectedAccountState
+		reqLogger.Error(err, fmt.Sprintf("Invalid AccountConditionType received [%s]", string(conditionType)))
+		return err
 	}
 
-	if !awsv1alpha1.IsValidAccountStateStatus(state) { // TODO Should we error out here, or just log and return?
-		return nil
+	if !v1alpha1.IsValidAccountStateStatus(state) {
+		err = v1alpha1.ErrUnexpectedAccountState
+		reqLogger.Error(err, fmt.Sprintf("Invalid AccountStateStatus received [%s]", string(state)))
+		return err
 	}
 
 	awsAccount.Status.Conditions = SetAccountCondition(
 		awsAccount.Status.Conditions,
-		ctype,
+		conditionType,
 		corev1.ConditionTrue,
 		string(state),
 		message,
@@ -41,7 +49,7 @@ func SetAccountStatus(
 	)
 	awsAccount.Status.State = state
 
-	err := client.Status().Update(context.TODO(), awsAccount)
+	err = client.Status().Update(context.TODO(), awsAccount)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update Account Status")
 	}
@@ -51,13 +59,13 @@ func SetAccountStatus(
 
 // SetAccountClaimStatus sets the condition and state of an accountClaim
 func SetAccountClaimStatus(
-	client kubeclientpkg.Client,
+	client client.Client,
 	reqLogger logr.Logger,
-	awsAccountClaim *awsv1alpha1.AccountClaim,
+	awsAccountClaim *v1alpha1.AccountClaim,
 	message string,
 	reason string,
-	ctype awsv1alpha1.AccountClaimConditionType,
-	state awsv1alpha1.ClaimStatus) error {
+	conditionType v1alpha1.AccountClaimConditionType,
+	state v1alpha1.ClaimStatus) error {
 
 	if awsAccountClaim == nil {
 		return nil
@@ -65,7 +73,7 @@ func SetAccountClaimStatus(
 
 	awsAccountClaim.Status.Conditions = SetAccountClaimCondition(
 		awsAccountClaim.Status.Conditions,
-		ctype,
+		conditionType,
 		corev1.ConditionTrue,
 		reason,
 		message,
