@@ -124,7 +124,7 @@ const (
 	AccountInternalError AccountConditionType = "InternalError"
 	// AccountInitializingRegions indicates we've kicked off the process of creating and terminating
 	// instances in all supported regions
-	AccountInitializingRegions = "InitializingRegions"
+	AccountInitializingRegions AccountConditionType = "InitializingRegions"
 	// AccountQuotaIncreaseRequested is set when a quota increase has been requested
 	AccountQuotaIncreaseRequested AccountConditionType = "QuotaIncreaseRequested"
 )
@@ -207,6 +207,11 @@ func (a *Account) IsCreating() bool {
 	return a.Status.State == AccountStatusCreating
 }
 
+//IsInitializingRegions returns true if the account state is InitalizingRegions
+func (a *Account) IsInitializingRegions() bool {
+	return a.Status.State == AccountStatusInitializingRegions
+}
+
 //HasClaimLink returns true if an accounts claim link is not empty
 func (a *Account) HasClaimLink() bool {
 	return a.Spec.ClaimLink != ""
@@ -287,11 +292,6 @@ func (a *Account) IsUnclaimedAndIsCreating() bool {
 		!a.IsClaimed()
 }
 
-//IsInitializingRegions returns true if the account state is InitalizingRegions
-func (a *Account) IsInitializingRegions() bool {
-	return a.Status.State == AccountInitializingRegions
-}
-
 // GetCondition finds the condition that has the
 // specified condition type in the given list. If none exists, then returns nil.
 func (a *Account) GetCondition(conditionType AccountConditionType) *AccountCondition {
@@ -303,7 +303,7 @@ func (a *Account) GetCondition(conditionType AccountConditionType) *AccountCondi
 	return nil
 }
 
-const MaximumAccountConditionTypes = 13
+const MaximumAccountConditionTypes = 14
 
 func getAllAccountConditionTypes() [MaximumAccountConditionTypes]AccountConditionType {
 	return [MaximumAccountConditionTypes]AccountConditionType{
@@ -320,6 +320,7 @@ func getAllAccountConditionTypes() [MaximumAccountConditionTypes]AccountConditio
 		AccountUnhandledError,
 		AccountInternalError,
 		AccountQuotaIncreaseRequested,
+		AccountInitializingRegions,
 	}
 }
 
