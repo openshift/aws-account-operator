@@ -550,14 +550,6 @@ func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
 	return nil
 }
 
-func (r *ReconcileAccountClaim) accountStatusUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
-	err := r.client.Status().Update(context.TODO(), account)
-	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", account.Name))
-	}
-	return err
-}
-
 func matchAccountForReuse(account *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) bool {
 	return account.Spec.LegalEntity.ID == accountClaim.Spec.LegalEntity.ID
 }
