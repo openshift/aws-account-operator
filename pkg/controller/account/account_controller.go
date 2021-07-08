@@ -420,7 +420,7 @@ func (r *ReconcileAccount) handleAccountInitializingRegions(reqLogger logr.Logge
 		// At the time of this writing, that specifically applies to a) non-CCS accounts, and
 		// b) more than 25 minutes between initial Account creation and the Reconcile after
 		// this one.
-		msg := "Recovering from stale region initialization."
+
 		// We're no longer InitializingRegions
 		utils.SetAccountCondition(
 			currentAcctInstance.Status.Conditions,
@@ -428,7 +428,7 @@ func (r *ReconcileAccount) handleAccountInitializingRegions(reqLogger logr.Logge
 			// Switch the Condition off
 			corev1.ConditionFalse,
 			AccountInitializingRegions,
-			msg,
+			"Recovering from stale region initialization.",
 			// Make sure the existing condition is updated
 			utils.UpdateConditionAlways,
 			currentAcctInstance.Spec.BYOC)
@@ -440,7 +440,7 @@ func (r *ReconcileAccount) handleAccountInitializingRegions(reqLogger logr.Logge
 			r.Client,
 			reqLogger,
 			currentAcctInstance,
-			msg,
+			"Recovering from stale region initialization.",
 			v1alpha1.AccountCreating,
 			awsv1alpha1.AccountStatusCreating,
 		)
