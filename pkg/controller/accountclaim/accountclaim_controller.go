@@ -37,6 +37,7 @@ const (
 	byocSecretFinalizer     = accountClaimFinalizer + "/byoc"
 	waitPeriod              = 30
 	controllerName          = "accountclaim"
+	fakeAnnotation          = "managed.openshift.com/fake"
 )
 
 var log = logf.Log.WithName("controller_accountclaim")
@@ -112,6 +113,15 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
+	}
+
+	// Fake Account Claim Process for Hive Testing
+	if accountClaim.Annotations[fakeAnnotation] == "true" {
+		requeue, err := r.processFake(reqLogger, accountClaim)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{Requeue: requeue}, nil
 	}
 
 	// Add finalizer to the CR in case it's not present (e.g. old accounts)
