@@ -111,6 +111,7 @@ spec:
             rotateCredentials:
               type: boolean
             state:
+              description: AccountStateStatus defines the various status an Account CR can have
               type: string
             supportCaseID:
               type: string

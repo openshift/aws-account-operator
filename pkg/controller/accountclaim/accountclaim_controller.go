@@ -209,8 +209,8 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			return reconcile.Result{}, err
 		}
 
-		if byocAccount.Status.State != string(awsv1alpha1.AccountReady) {
-			if byocAccount.Status.State == string(awsv1alpha1.AccountFailed) {
+		if byocAccount.Status.State != awsv1alpha1.AccountStatusReady {
+			if byocAccount.Status.State == awsv1alpha1.AccountStatusFailed {
 				accountClaim.Status.State = awsv1alpha1.ClaimStatusError
 				message := "CCS Account Failed"
 				accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
@@ -230,7 +230,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
 		}
 
-		if byocAccount.Status.State == string(awsv1alpha1.AccountReady) && accountClaim.Status.State != awsv1alpha1.ClaimStatusReady {
+		if byocAccount.Status.State == awsv1alpha1.AccountStatusReady && accountClaim.Status.State != awsv1alpha1.ClaimStatusReady {
 			accountClaim.Status.State = awsv1alpha1.ClaimStatusReady
 			message := "BYOC account ready"
 			accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
