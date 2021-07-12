@@ -107,6 +107,10 @@ func init() {
 
 // Helper Functions
 
+// TODO - Here we're comparing AccountStateStatus to a list of AccountConditionType
+// instead of a list of AccountStateStatus. Previously a.Status.State was a regular string.
+// Should investigate what potential failed states a.Status.State can be and clean up
+// accordingly.
 //IsFailed returns true if an account is in a failed state
 func (a *Account) IsFailed() bool {
 	failedStates := [7]string{

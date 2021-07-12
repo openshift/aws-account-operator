@@ -422,7 +422,7 @@ func (r *ReconcileAccount) handleAccountInitializingRegions(reqLogger logr.Logge
 		// this one.
 
 		// We're no longer InitializingRegions
-		utils.SetAccountCondition(
+		currentAcctInstance.Status.Conditions = utils.SetAccountCondition(
 			currentAcctInstance.Status.Conditions,
 			awsv1alpha1.AccountInitializingRegions,
 			// Switch the Condition off
@@ -431,7 +431,8 @@ func (r *ReconcileAccount) handleAccountInitializingRegions(reqLogger logr.Logge
 			"Recovering from stale region initialization.",
 			// Make sure the existing condition is updated
 			utils.UpdateConditionAlways,
-			currentAcctInstance.Spec.BYOC)
+			currentAcctInstance.Spec.BYOC,
+		)
 		// TODO(efried): This doesn't change the lastTransitionTime, which it really should.
 		// In fact, since the Creating condition is guaranteed to already be present, this
 		// is currently not doing anything more than
@@ -929,28 +930,22 @@ func (r *ReconcileAccount) statusUpdate(account *awsv1alpha1.Account) error {
 
 func (r *ReconcileAccount) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype v1alpha1.AccountConditionType, reason string, message string, state v1alpha1.AccountStateStatus) (reconcile.Result, error) {
 	reqLogger.Info(message)
-	// Update account status and condition
-	account.Status.Conditions = utils.SetAccountCondition(
-		account.Status.Conditions,
-		ctype,
-		corev1.ConditionTrue,
-		reason,
+	err := utils.SetAccountStatus(
+		r.Client,
+		reqLogger,
+		account,
 		message,
-		utils.UpdateConditionNever,
-		account.Spec.BYOC,
+		ctype,
+		state,
 	)
-	account.Status.State = state
-
-	// Set the failure in the accountClaim as well
-	err := r.accountClaimError(reqLogger, account, reason, message)
 	if err != nil {
-		return reconcile.Result{}, err
+		reqLogger.Error(err, "failed to update account status") // TODO - Should this not return reconcile.Result{}, err like the claim error?
 	}
 
-	// Apply update
-	err = r.statusUpdate(account)
+	// Set the failure in the accountClaim as well
+	err = r.accountClaimError(reqLogger, account, reason, message)
 	if err != nil {
-		reqLogger.Error(err, "failed to update account status")
+		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{Requeue: true}, nil
