@@ -5,12 +5,34 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/organizations"
+	"github.com/golang/mock/gomock"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
+	"github.com/openshift/aws-account-operator/pkg/controller/testutils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 type testAccountBuilder struct {
 	acct awsv1alpha1.Account
+}
+
+type mocks struct {
+	fakeKubeClient client.Client
+	mockCtrl       *gomock.Controller
+}
+
+func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
+	mocks := &mocks{
+		fakeKubeClient: fake.NewFakeClient(localObjects...),
+		mockCtrl:       gomock.NewController(t),
+	}
+
+	return mocks
 }
 
 func (t *testAccountBuilder) GetTestAccount() *awsv1alpha1.Account {
@@ -677,6 +699,35 @@ func TestAccountHasAwsAccountID(t *testing.T) {
 				}
 			},
 		)
+	}
+}
+
+// Test tagAccount
+func TestTagAccount(t *testing.T) {
+	mocks := setupDefaultMocks(t, []runtime.Object{})
+
+	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+	accountID := "111111111111"
+	hivename := "hivename"
+
+	awsOutputTag := &organizations.TagResourceOutput{}
+
+	mockAWSClient.EXPECT().TagResource(&organizations.TagResourceInput{
+		ResourceId: &accountID,
+		Tags: []*organizations.Tag{
+			{
+				Key:   aws.String("owner"),
+				Value: aws.String(hivename)}},
+	}).Return(
+		awsOutputTag,
+		nil,
+	)
+
+	r := &ReconcileAccount{shardName: "hivename"}
+	nullLogger := testutils.NullLogger{}
+	err := r.tagAccount(nullLogger, mockAWSClient, accountID)
+	if err != nil {
+		t.Errorf("failed to tag account")
 	}
 }
 

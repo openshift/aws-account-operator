@@ -91,6 +91,17 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
+
+	configMap, err := controllerutils.GetOperatorConfigMap(reconciler.Client)
+	if err != nil {
+		log.Error(err, "failed retrieving configmap")
+	}
+
+	hiveName, ok := configMap.Data["shard-name"]
+	if !ok {
+		log.Error(err, "shard-name key not available in configmap")
+	}
+	reconciler.shardName = hiveName
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -118,6 +129,7 @@ type ReconcileAccount struct {
 	Client           kubeclientpkg.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
+	shardName        string
 }
 
 // Reconcile reads that state of the cluster for a Account object and makes changes based on the state read
@@ -536,7 +548,33 @@ func (r *ReconcileAccount) nonCCSAssignAccountID(reqLogger logr.Logger, currentA
 	// update account cr with awsAccountID from aws
 	currentAcctInstance.Spec.AwsAccountID = awsAccountID
 
+	// tag account with hive shard name
+	err = r.tagAccount(reqLogger, awsSetupClient, awsAccountID)
+	if err != nil {
+		reqLogger.Info("Unable to tag aws account.", "account", currentAcctInstance.Name, "AWSAccountID", awsAccountID, "Error", error.Error(err))
+	}
+
 	return r.Client.Update(context.TODO(), currentAcctInstance)
+}
+
+func (r *ReconcileAccount) tagAccount(reqLogger logr.Logger, awsSetupClient awsclient.Client, awsAccountID string) error {
+
+	inputTag := &organizations.TagResourceInput{
+		ResourceId: aws.String(awsAccountID),
+		Tags: []*organizations.Tag{
+			{
+				Key:   aws.String("owner"),
+				Value: aws.String(r.shardName),
+			},
+		},
+	}
+
+	_, err := awsSetupClient.TagResource(inputTag)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *ReconcileAccount) assumeRole(
