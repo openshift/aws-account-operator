@@ -16,9 +16,9 @@ package awsclient
 import (
 	"context"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/service/route53/route53iface"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/aws/aws-sdk-go/service/servicequotas"
@@ -103,6 +103,7 @@ type Client interface {
 	CreateOrganizationalUnit(*organizations.CreateOrganizationalUnitInput) (*organizations.CreateOrganizationalUnitOutput, error)
 	ListOrganizationalUnitsForParent(*organizations.ListOrganizationalUnitsForParentInput) (*organizations.ListOrganizationalUnitsForParentOutput, error)
 	ListChildren(*organizations.ListChildrenInput) (*organizations.ListChildrenOutput, error)
+	TagResource(*organizations.TagResourceInput) (*organizations.TagResourceOutput, error)
 
 	//sts
 	AssumeRole(*sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error)
@@ -316,6 +317,10 @@ func (c *awsClient) ListChildren(input *organizations.ListChildrenInput) (*organ
 	return c.orgClient.ListChildren(input)
 }
 
+func (c *awsClient) TagResource(input *organizations.TagResourceInput) (*organizations.TagResourceOutput, error) {
+	return c.orgClient.TagResource(input)
+}
+
 func (c *awsClient) AssumeRole(input *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error) {
 	return c.stsClient.AssumeRole(input)
 }
@@ -422,9 +427,9 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 		}, nil
 	}
 	ec2AwsConfig := &aws.Config{
-		Region:      		aws.String(region),
-		Credentials: 		credentials.NewStaticCredentials(awsAccessID, awsAccessSecret, token),
-		EndpointResolver: 	endpoints.ResolverFunc(resolver),
+		Region:           aws.String(region),
+		Credentials:      credentials.NewStaticCredentials(awsAccessID, awsAccessSecret, token),
+		EndpointResolver: endpoints.ResolverFunc(resolver),
 		Retryer: client.DefaultRetryer{
 			NumMaxRetries:    10,
 			MinThrottleDelay: 2 * time.Second,
