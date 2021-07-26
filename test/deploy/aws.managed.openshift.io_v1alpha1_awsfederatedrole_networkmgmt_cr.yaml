@@ -73,7 +73,7 @@ spec:
         resource:
           - "*"
 
-      # DNS Route Propagation
+      # DNS Route Propagation and Resolver endpoint management
       - effect: Allow
         action:
           - "route53resolver:AssociateResolverRule"
@@ -85,6 +85,15 @@ spec:
           - "route53resolver:ListResolverRules"
           - "route53:AssociateVPCWithHostedZone"
           - "route53:DisassociateVPCFromHostedZone"
+          - "route53resolver:CreateResolverEndpoint"
+          - "route53resolver:PutResolverRulePolicy"
+          - "route53resolver:UpdateResolverEndpoint"
+          - "route53resolver:GetResolverRulePolicy"
+          - "route53resolver:UpdateResolverRule"
+          - "route53resolver:GetResolverEndpoint"
+          - "route53resolver:CreateResolverRule"
+          - "route53resolver:DeleteResolverEndpoint"
+          - "route53resolver:ListResolverEndpoints"
         resource:
           - "*"
       - effect: Allow
@@ -95,8 +104,6 @@ spec:
         condition:
           StringEquals:
             ram:RequestedResourceType: route53resolver:ResolverRule
-
-
       # START Targeted Statements
       # AWS VPN
       - effect: Allow
