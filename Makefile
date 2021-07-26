@@ -354,6 +354,7 @@ check-spell: # Check spelling
 	./hack/scripts/misspell_check.sh
 	GOLANGCI_LINT_CACHE=${GOLANGCI_LINT_CACHE} golangci-lint run ./...
 
+# This *adds* `check-spell` to the existing `lint` provided by boilerplate
 lint: check-spell
 
 # Test all
