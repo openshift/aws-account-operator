@@ -661,9 +661,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 
 	// We're about to kick off region init in a goroutine. This status makes subsequent
 	// Reconciles ignore the Account (unless it stays in this state for too long).
-	utils.SetAccountStatus(currentAcctInstance, "Initializing Regions", awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
-	if err := r.accountInstanceUpdate(currentAcctInstance); err != nil {
-		// statusUpdate logs
+	if err := r.accountInstanceUpdate(currentAcctInstance, "Initializing Regions", awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions); err != nil {
 		return err
 	}
 
