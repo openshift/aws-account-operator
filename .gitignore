@@ -93,3 +93,4 @@ tags
 Dockerfile.olm-registry
 saas-aws-account-operator-bundle/
 .docker/
+.misspell/

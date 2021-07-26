@@ -441,7 +441,7 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 	}
 
 	// Time (and count) calls to AWS.
-	// But only from controllers, signalled by a nonempty controllerName.
+	// But only from controllers, signaled by a nonempty controllerName.
 	if controllerName != "" {
 		// The AWS SDK sets Request.Time to Now() when the request is initialized.
 		// We time the whole call, from that point until as late as possible, by adding a handler

@@ -11,7 +11,7 @@ usage() {
     Options
     -a         AWS Account CR Name on cluster
     -n         Cluster kubeadmin context name
-    Can be retrieved with the follwoing command:
+    Can be retrieved with the following command:
     \$ kubectl config view -o jsonpath='{"Cluster name\tServer\n"}{range .clusters[*]}{.name}{"\t"}{.cluster.server}{"\n"}{end}'
 
     -r         Reset cluster account CR status
@@ -22,7 +22,7 @@ usage() {
 
     This will delete secrets in the aws-account-operator namespace
 
-    eg. the following secrets would be deleted: oc get secrets -n aws-acocunt-operator | grep osd-creds-mgmt-4sf3*
+    eg. the following secrets would be deleted: oc get secrets -n aws-account-operator | grep osd-creds-mgmt-4sf3*
 
     This will reset the following fields in the .spec and .status to:
 
@@ -39,7 +39,7 @@ EOF
 }
 
 if ( ! getopts ":a:n:rh" opt); then
-    echo -e "\n    $0 requries an argument!\n"
+    echo -e "\n    $0 requires an argument!\n"
     usage
     exit 1 
 fi

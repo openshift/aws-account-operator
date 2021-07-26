@@ -75,7 +75,7 @@ const (
 	AccountUnclaimed AccountClaimConditionType = "Unclaimed"
 	// BYOCAWSAccountInUse is set when a BYOC AWS Account is in use
 	BYOCAWSAccountInUse AccountClaimConditionType = "BYOCAWSAccountInUse"
-	// ClientError is set when an Error regarding the client occured
+	// ClientError is set when an Error regarding the client occurred
 	ClientError AccountClaimConditionType = "ClientError"
 	// AuthenticationFailed is set when we get an AWS error from STS role assumption
 	AuthenticationFailed AccountClaimConditionType = "AuthenticationFailed"

@@ -68,7 +68,7 @@ func GetOperatorStartTime() *metav1.Time {
 	return &operatorStartTime
 }
 
-// The JSON tags as captials due to requirements for the policydoc
+// The JSON tags as capitals due to requirements for the policydoc
 type awsStatement struct {
 	Effect    string                 `json:"Effect"`
 	Action    []string               `json:"Action"`

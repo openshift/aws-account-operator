@@ -943,7 +943,7 @@ func (r *ReconcileAccount) accountClaimError(reqLogger logr.Logger, account *aws
 		if k8serr.IsNotFound(err) {
 			return nil
 		}
-		reqLogger.Error(err, "Internal error occured, updating accountclaim to reflect this")
+		reqLogger.Error(err, "Internal error occurred, updating accountclaim to reflect this")
 		return err
 	}
 

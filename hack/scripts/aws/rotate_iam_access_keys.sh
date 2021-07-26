@@ -17,7 +17,7 @@ EOF
 
 if ( ! getopts ":a:u:p:r:o:n:svh" opt); then
     echo ""
-    echo "    $0 requries an argument!"
+    echo "    $0 requires an argument!"
     usage
     exit 1
 fi
@@ -117,8 +117,8 @@ IAM_USER=$(aws iam list-users | jq --arg AWS_IAM_USER "$AWS_IAM_USER" '.Users[] 
 
 if [ "$IAM_USER" == "" ]; then
     $VERBOSE && echo "Creating IAM user $AWS_IAM_USER"
-    IAM_USER_OUPUT=$(aws iam create-user --user-name "$AWS_IAM_USER")
-    $VERBOSE && echo "$IAM_USER_OUPUT" | jq '.'
+    IAM_USER_OUTPUT=$(aws iam create-user --user-name "$AWS_IAM_USER")
+    $VERBOSE && echo "$IAM_USER_OUTPUT" | jq '.'
     aws iam attach-user-policy --user-name "$AWS_IAM_USER" --policy-arn "arn:aws:iam::aws:policy/AdministratorAccess"
     # Set IAM_USER after creation
     IAM_USER="$AWS_IAM_USER"

@@ -102,9 +102,9 @@ const (
 	AccountReused AccountConditionType = "Reused"
 	// AccountClientError is set when there was an issue getting a client
 	AccountClientError AccountConditionType = "AccountClientError"
-	// AccountAuthorizationError indicates an autherization error occured
+	// AccountAuthorizationError indicates an authorization error occurred
 	AccountAuthorizationError AccountConditionType = "AuthorizationError"
-	// AccountAuthenticationError indicates an authentication error occured
+	// AccountAuthenticationError indicates an authentication error occurred
 	AccountAuthenticationError AccountConditionType = "AuthenticationError"
 	// AccountUnhandledError indicates a error that isn't handled, probably a go error
 	AccountUnhandledError AccountConditionType = "UnhandledError"

@@ -115,7 +115,7 @@ func (r *ReconcileAccount) InitializeRegion(
 		// to set the quota
 		quotaIncreaseRequired, err = vCPUQuotaNeedsIncrease(awsClient, vCPUQuota)
 		if err != nil {
-			reqLogger.Error(err, "failed retriving current vCPU quota from AWS")
+			reqLogger.Error(err, "failed retrieving current vCPU quota from AWS")
 		}
 	}
 
@@ -123,7 +123,7 @@ func (r *ReconcileAccount) InitializeRegion(
 		reqLogger.Info("vCPU quota increase required", "region", region)
 		caseID, err = checkQuotaRequestHistory(awsClient, vCPUQuota)
 		if err != nil {
-			reqLogger.Error(err, "failed retriving quota change history")
+			reqLogger.Error(err, "failed retrieving quota change history")
 		}
 
 		// If a Case ID was found, log it - the request was already submitted
@@ -520,7 +520,7 @@ func setVCPUQuota(client awsclient.Client, desiredQuota float64) (string, error)
 }
 
 // checkQuotaRequestHistory checks to see if a request for a quota increase has already been submitted
-// This is not ideal, as each region has to check the history, since we have to intialize by region
+// This is not ideal, as each region has to check the history, since we have to initialize by region
 // Ideally this would happen outside the region-specific init, but this requires the awsclient for the
 // specific region.
 func checkQuotaRequestHistory(awsClient awsclient.Client, vCPUQuota float64) (string, error) {
