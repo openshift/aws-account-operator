@@ -45,12 +45,11 @@ func ListIAMUsers(reqLogger logr.Logger, client Client) ([]*iam.User, error) {
 	input := &iam.ListUsersInput{}
 	// List of IAM users to return
 	iamUserList := []*iam.User{}
-	pageNum := 0
 
 	err := client.ListUsersPages(input,
 		func(page *iam.ListUsersOutput, lastPage bool) bool {
 			iamUserList = append(iamUserList, page.Users...)
-			return pageNum <= 3
+			return aws.BoolValue(page.IsTruncated)
 		})
 
 	if err != nil {
