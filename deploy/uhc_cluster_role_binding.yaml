@@ -4,7 +4,7 @@ metadata:
   name: aws-account-operator-client
 subjects:
 - kind: ServiceAccount
-  namespace: aws-account-operator-client
+  namespace: aws-account-operator
   name: aws-account-operator-client
 - kind: Group
   name: aws-account-operator-client
