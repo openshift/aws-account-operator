@@ -736,6 +736,7 @@ func schema_pkg_apis_aws_v1alpha1_AccountStatus(ref common.ReferenceCallback) co
 						},
 					},
 				},
+				Required: []string{"conditions"},
 			},
 		},
 		Dependencies: []string{
