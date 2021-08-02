@@ -117,7 +117,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 	// Fake Account Claim Process for Hive Testing ..
 	// Fake account claims are account claims which have the label `managed.openshift.com/fake: true`
-	// These fake claims are used for testing withn-in hive
+	// These fake claims are used for testing within hive
 	if accountClaim.Annotations[fakeAnnotation] == "true" {
 		requeue, err := r.processFake(reqLogger, accountClaim)
 		if err != nil {
