@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Fake process creates a fake secret in the fake account claim namespace and also handles cleaning up of theses secrets and accounts claims once the crd is deleted.
+// Fake process creates a fake secret in the fake account claim namespace and also handles cleaning up of these secrets and account claims once the crd is deleted.
 // This process has been added to facilitate testing in hive per https://issues.redhat.com/browse/OSD-7173
 func (r *ReconcileAccountClaim) processFake(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (bool, error) {
 	// Add finalizer to the CR in case it's not present (e.g. old accounts)
@@ -39,7 +39,7 @@ func (r *ReconcileAccountClaim) processFake(reqLogger logr.Logger, accountClaim 
 
 			err = r.client.Delete(context.TODO(), &secret)
 			if err != nil {
-				reqLogger.Error(err, "Failed to Fake Secret During Fake cleanup")
+				reqLogger.Error(err, "failed to fake secret during fake cleanup")
 				return true, err
 			}
 		}
