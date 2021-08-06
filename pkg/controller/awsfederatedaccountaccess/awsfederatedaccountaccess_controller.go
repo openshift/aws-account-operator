@@ -668,7 +668,9 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 					return err
 				}
 			}
-			if *policy.PolicyName == federatedRoleCR.Spec.AWSCustomPolicy.Name {
+
+			awsCustomPolicyname := federatedRoleCR.Spec.AWSCustomPolicy.Name + "-" + uidLabel
+			if *policy.PolicyName == awsCustomPolicyname {
 				_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: policy.PolicyArn})
 				if err != nil {
 					if aerr, ok := err.(awserr.Error); ok {
