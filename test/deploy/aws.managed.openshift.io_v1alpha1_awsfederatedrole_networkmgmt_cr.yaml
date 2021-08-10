@@ -94,6 +94,7 @@ spec:
           - "route53:ListHostedZones"
           - "route53:CreateVPCAssociationAuthorization"
           - "route53:DeleteVPCAssociationAuthorization"
+          - "route53:AssociateVPCWithHostedZone"
         resource:
           - "*"          
       - effect: Allow
