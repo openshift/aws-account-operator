@@ -1,0 +1,159 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: accountclaims.aws.managed.openshift.io
+spec:
+  additionalPrinterColumns:
+    - JSONPath: .status.state
+      description: Status the account claim
+      name: State
+      type: string
+    - JSONPath: .spec.accountLink
+      description: Account CR link for the account claim
+      name: Account
+      type: string
+    - JSONPath: .metadata.creationTimestamp
+      description: Age since the account claim was created
+      name: Age
+      type: date
+  group: aws.managed.openshift.io
+  names:
+    kind: AccountClaim
+    listKind: AccountClaimList
+    plural: accountclaims
+    singular: accountclaim
+  scope: Namespaced
+  subresources:
+    status: {}
+  validation:
+    openAPIV3Schema:
+      description: AccountClaim is the Schema for the accountclaims API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: AccountClaimSpec defines the desired state of AccountClaim
+          properties:
+            accountLink:
+              type: string
+            accountOU:
+              type: string
+            aws:
+              description: Aws struct contains specific AWS account configuration options
+              properties:
+                regions:
+                  items:
+                    description: AwsRegions struct contains specific AwsRegion information, at the moment its just name but in the future it will contain specific resource limits etc.
+                    properties:
+                      name:
+                        type: string
+                    required:
+                      - name
+                    type: object
+                  type: array
+              required:
+                - regions
+              type: object
+            awsCredentialSecret:
+              description: SecretRef contains the name of a secret and its namespace
+              properties:
+                name:
+                  type: string
+                namespace:
+                  type: string
+              required:
+                - name
+                - namespace
+              type: object
+            byoc:
+              type: boolean
+            byocAWSAccountID:
+              type: string
+            byocSecretRef:
+              description: SecretRef contains the name of a secret and its namespace
+              properties:
+                name:
+                  type: string
+                namespace:
+                  type: string
+              required:
+                - name
+                - namespace
+              type: object
+            customTags:
+              type: string
+            legalEntity:
+              description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html'
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+              required:
+                - id
+                - name
+              type: object
+            manualSTSMode:
+              type: boolean
+            stsExternalID:
+              type: string
+            stsRoleARN:
+              type: string
+            supportRoleARN:
+              type: string
+          required:
+            - accountLink
+            - aws
+            - awsCredentialSecret
+            - legalEntity
+          type: object
+        status:
+          description: AccountClaimStatus defines the observed state of AccountClaim
+          properties:
+            conditions:
+              items:
+                description: AccountClaimCondition contains details for the current condition of a AWS account claim
+                properties:
+                  lastProbeTime:
+                    description: LastProbeTime is the last time we probed the condition.
+                    format: date-time
+                    type: string
+                  lastTransitionTime:
+                    description: LastTransitionTime is the last time the condition transitioned from one status to another.
+                    format: date-time
+                    type: string
+                  message:
+                    description: Message is a human-readable message indicating details about last transition.
+                    type: string
+                  reason:
+                    description: Reason is a unique, one-word, CamelCase reason for the condition's last transition.
+                    type: string
+                  status:
+                    description: Status is the status of the condition.
+                    type: string
+                  type:
+                    description: Type is the type of the condition.
+                    type: string
+                required:
+                  - status
+                  - type
+                type: object
+              type: array
+            state:
+              description: ClaimStatus is a valid value from AccountClaim.Status
+              type: string
+          required:
+            - conditions
+            - state
+          type: object
+  version: v1alpha1
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
