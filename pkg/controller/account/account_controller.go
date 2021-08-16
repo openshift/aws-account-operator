@@ -73,7 +73,6 @@ const (
 
 	adminAccessArn = "arn:aws:iam::aws:policy/AdministratorAccess"
 	iamUserNameUHC = "osdManagedAdmin"
-	iamUserNameSRE = "osdManagedAdminSRE"
 
 	controllerName = "account"
 )
@@ -323,13 +322,11 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		var roleToAssume string
 		var iamUserUHC = iamUserNameUHC
-		var iamUserSRE = iamUserNameSRE
 
 		if currentAcctInstance.IsBYOC() {
 			// Use the same ID applied to the account name for IAM usernames
 			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
 			iamUserUHC = fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
-			iamUserSRE = fmt.Sprintf("%s-%s", iamUserNameSRE, currentAccInstanceID)
 			roleToAssume = fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
 		} else {
 			roleToAssume = awsv1alpha1.AccountOperatorIAMRole
@@ -362,25 +359,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		currentAcctInstance.Spec.IAMUserSecret = *secretName
 		err = r.Client.Update(context.TODO(), currentAcctInstance)
 		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Create SRE IAM user, we don't care about the credentials because they're saved inside of the build func
-		_, err = r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserSRE, request.Namespace)
-		if err != nil {
-			reason, errType := getBuildIAMUserErrorReason(err)
-			errMsg := fmt.Sprintf("Failed to build IAM SRE user %s: %s", iamUserSRE, err)
-			_, stateErr := r.setAccountFailed(
-				reqLogger,
-				currentAcctInstance,
-				errType,
-				reason,
-				errMsg,
-				AccountFailed,
-			)
-			if stateErr != nil {
-				reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
-			}
 			return reconcile.Result{}, err
 		}
 

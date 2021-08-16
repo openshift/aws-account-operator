@@ -340,13 +340,7 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 		createdIAMUser = CreateUserOutput.User
 	}
 
-	// Determine the kubernetes secret name as its different if the IAM user is osdManagedAdminSRE
-	if isIAMUserOsdManagedAdminSRE(createdIAMUser.UserName) {
-		// Use iamUserNameSRE constant here to ensure we don't double up on suffix for secret name
-		iamUserSecretName = createIAMUserSecretName(fmt.Sprintf("%s-%s", account.Name, iamUserNameSRE))
-	} else {
-		iamUserSecretName = createIAMUserSecretName(account.Name)
-	}
+	iamUserSecretName = createIAMUserSecretName(account.Name)
 
 	reqLogger.Info(fmt.Sprintf("Attaching Admin Policy to IAM user %s", aws.StringValue(createdIAMUser.UserName)))
 
@@ -443,11 +437,6 @@ func (r *ReconcileAccount) DoesSecretExist(namespacedName types.NamespacedName) 
 	}
 
 	return true, nil
-}
-
-// isIAMUserOsdManagedAdminSRE returns true if the username begins with osdManagedAdminSRE
-func isIAMUserOsdManagedAdminSRE(userName *string) bool {
-	return strings.HasPrefix(*userName, iamUserNameSRE)
 }
 
 // createIAMUserSecretName returns a lower case concatenated string of the input separated by "-"
