@@ -337,6 +337,39 @@ delete-sts-accountclaim: ## Deletes a templated STS accountclaim
 .PHONY: test-sts-accountclaim
 test-sts-accountclaim: create-sts-accountclaim-namespace create-sts-accountclaim delete-sts-accountclaim delete-sts-accountclaim-namespace ## Runs a full integration test for STS workflow
 
+### Fake Account Test Workflow
+# Create fake account claim namespace
+.PHONY: create-fake-accountclaim-namespace
+create-fake-accountclaim-namespace: ## Creates namespace for FAKE accountclaim
+	@oc process --local -p NAME=${FAKE_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc apply -f -
+
+# Delete FAKE account claim namespace
+.PHONY: delete-fake-accountclaim-namespace
+delete-fake-accountclaim-namespace: ## Deletes namespace for FAKE accountclaim
+	@oc process --local -p NAME=${FAKE_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete -f -
+
+.PHONY: create-fake-accountclaim
+create-fake-accountclaim: ## Creates a templated FAKE accountclaim
+	# Create FAKE accountclaim
+	@oc process --local -p NAME=${FAKE_CLAIM_NAME} -p NAMESPACE=${FAKE_NAMESPACE_NAME} -f hack/templates/aws.managed.openshift.io_v1alpha1_fake_accountclaim_cr.tmpl | oc apply -f -
+	# Wait for fake accountclaim to become ready
+	@while true; do STATUS=$$(oc get accountclaim ${FAKE_CLAIM_NAME} -n ${FAKE_NAMESPACE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${FAKE_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
+
+.PHONY: validate-fake-accountclaim
+validate-fake-accountclaim: ## Runs a series of checks to validate the fake accountclaim workflow
+	# Validate FAKE accountclaim
+	@test/integration/tests/validate_fake_accountclaim.sh
+
+.PHONY: delete-fake-accountclaim
+delete-fake-accountclaim: ## Deletes a templated FAKE accountclaim
+	# Delete fake accountclaim
+	@oc process --local -p NAME=${FAKE_CLAIM_NAME} -p NAMESPACE=${FAKE_NAMESPACE_NAME} -f hack/templates/aws.managed.openshift.io_v1alpha1_fake_accountclaim_cr.tmpl | oc delete -f -
+
+.PHONY: test-fake-accountclaim
+test-fake-accountclaim: create-fake-accountclaim-namespace create-fake-accountclaim validate-fake-accountclaim delete-fake-accountclaim delete-fake-accountclaim-namespace ## Runs a full integration test for FAKE workflow
+
+
+
 .PHONY: test-apis
 test-apis:
 	@pushd pkg/apis; \
@@ -359,7 +392,7 @@ lint: check-spell
 
 # Test all
 .PHONY: test-all
-test-all: lint clean-operator test test-apis test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim ## Runs all integration tests
+test-all: lint clean-operator test test-apis test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim test-fake-accountclaim ## Runs all integration tests
 
 .PHONY: clean-operator
 clean-operator: ## Clean Operator
