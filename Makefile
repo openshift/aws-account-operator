@@ -45,6 +45,16 @@ ifndef OSD_STAGING_1_OU_BASE_ID
 	$(error OSD_STAGING_1_OU_BASE_ID is undefined)
 endif
 
+.PHONY: check-sts-setup
+check-sts-setup: ## Checks if STS roles are set up correctly
+ifndef STS_JUMP_ROLE
+	$(error STS_JUMP_ROLE is undefined. STS_JUMP_ROLE is the ARN of the role we use as a bastion to access the installation role)
+endif
+ifndef STS_ROLE_ARN
+	$(error STS_ROLE_ARN is undefined. STS_ROLE_ARN is the ARN of the installation role)
+endif
+	hack/scripts/aws/sts-infra-precheck.sh
+
 .PHONY: create-account
 create-account: check-aws-account-id-env ## Create account
 	# Create Account
@@ -255,8 +265,11 @@ predeploy-aws-account-operator: ## Predeploy AWS Account Operator
 	# Create zero size account pool
 	@oc apply -f hack/files/aws.managed.openshift.io_v1alpha1_zero_size_accountpool.yaml
 
+.PHONY: validate-deployment
+validate-deployment: check-aws-account-id-env check-sts-setup ## Validates deployment configuration
+
 .PHONY: predeploy
-predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map ## Predeploy Operator
+predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map validate-deployment ## Predeploy Operator
 
 .PHONY: deploy-local
 deploy-local: ## Deploy Operator locally
@@ -338,6 +351,9 @@ test-apis:
 	go test ./... ; \
 	popd
 
+.PHONY: test-integration
+test-integration: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim ## Runs all integration tests
+
 # Test all
 # GOLANGCI_LINT_CACHE needs to be set to a directory which is writeable
 # Relevant issue - https://github.com/golangci/golangci-lint/issues/734
@@ -352,9 +368,8 @@ check-spell: # Check spelling
 # This *adds* `check-spell` ./hack/scripts/misspell_check.sh the existing `lint` provided by boilerplate
 lint: check-spell
 
-# Test all
 .PHONY: test-all
-test-all: lint clean-operator test test-apis test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim ## Runs all integration tests
+test-all: lint clean-operator test test-apis test-integration ## Runs all tests
 
 .PHONY: clean-operator
 clean-operator: ## Clean Operator
