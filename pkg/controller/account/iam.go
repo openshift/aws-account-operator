@@ -410,7 +410,7 @@ func deleteIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, user *iam.
 
 	// Detach User Access Keys
 	if err := deleteAllAccessKeys(awsClient, user); err != nil {
-		return fmt.Errorf("failed to delete all accesss keys: %v", err)
+		return fmt.Errorf("failed to delete all access keys: %v", err)
 	}
 
 	_, err := awsClient.DeleteUser(&iam.DeleteUserInput{UserName: user.UserName})

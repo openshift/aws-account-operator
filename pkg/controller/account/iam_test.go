@@ -19,24 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
-
-type mocks struct {
-	fakeKubeClient client.Client
-	mockCtrl       *gomock.Controller
-}
-
-// setupDefaultMocks is an easy way to setup all of the default mocks
-func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
-	mocks := &mocks{
-		fakeKubeClient: fake.NewFakeClient(localObjects...),
-		mockCtrl:       gomock.NewController(t),
-	}
-
-	return mocks
-}
 
 func TestIAMCreateSecret(t *testing.T) {
 
@@ -688,45 +671,6 @@ func TestDoesSecretExist(t *testing.T) {
 	value, err = r.DoesSecretExist(namespace)
 	assert.False(t, value)
 	assert.Nil(t, err)
-}
-
-func TestIsIAMUserOsdManagedAdminSRE(t *testing.T) {
-	tests := []struct {
-		name          string
-		paramVal      string
-		expectedValue bool
-	}{
-		{
-			name:          "valid 1",
-			paramVal:      "osdManagedAdminSRE-username",
-			expectedValue: true,
-		},
-		{
-			name:          "valid 2",
-			paramVal:      "osdManagedAdminSRE",
-			expectedValue: true,
-		},
-		{
-			name:          "Case Sensitive",
-			paramVal:      "osdmanagedadminsre", // case sensitive
-			expectedValue: false,
-		},
-		{
-			name:          "Empty String",
-			paramVal:      "",
-			expectedValue: false,
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			value := isIAMUserOsdManagedAdminSRE(&tt.paramVal)
-			if value != tt.expectedValue {
-				t.Errorf("[TestIsIAMUserOsdManagedAdminSRE()] Got %v, wanted %v", value, tt.expectedValue)
-			}
-		})
-	}
 }
 
 func TestCreateIAMUserSecretName(t *testing.T) {
