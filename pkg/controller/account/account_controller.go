@@ -356,102 +356,13 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{Requeue: true}, r.Client.Update(context.TODO(), currentAcctInstance)
 		}
 
-		currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
-		// Use the same ID applied to the account name for IAM usernames
-		iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAccInstanceID)
-		roleToAssume := getAssumeRole(currentAcctInstance)
-
-		awsAssumedRoleClient, creds, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, ccsRoleID)
+		awsAssumedRoleClient, creds, err := r.handleCreateAdminAccessRole(reqLogger, currentAcctInstance, awsSetupClient)
 		if err != nil {
-			reqLogger.Error(err, "An error was encountered retrieving the SRE Access ARN")
 			return reconcile.Result{}, err
 		}
 
-		// Build the tags required to create the Admin Access Role
-		tags := awsclient.AWSTags.BuildTags(
-			currentAcctInstance,
-			r.getManagedTags(reqLogger),
-			r.getCustomTags(reqLogger, currentAcctInstance),
-		).GetIAMTags()
-
-		// In this block we are creating the BYOCAdminAccessRole-XYZ for both CCS and non-CCS accounts.
-		// The dependency on the roleID validation within the assumeRole, and the different aws clients
-		// required between CCS and non-CCS, is what has caused these steps to be done independently.
-		if currentAcctInstance.Spec.BYOC {
-			// The CCS uses the CCS client for creating the BYOCAdminAccessRole and then utilizes the RoleID
-			// generated from that in the assumeRole func for role validation
-
-			// Get the AccountClaim in Order to retrieve the CCSClient
-			accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
-			if acctClaimErr != nil {
-				if accountClaim != nil {
-					utils.SetAccountClaimStatus(
-						accountClaim,
-						"Failed to get AccountClaim for Account",
-						"FailedRetrievingAccountClaim",
-						awsv1alpha1.ClientError,
-						awsv1alpha1.ClaimStatusError,
-					)
-					err := r.Client.Status().Update(context.TODO(), accountClaim)
-					if err != nil {
-						reqLogger.Error(err, "failed to update accountclaim status")
-					}
-				} else {
-					reqLogger.Error(acctClaimErr, "accountclaim is nil")
-				}
-				return reconcile.Result{}, acctClaimErr
-			}
-			ccsClient, err := r.getCCSClient(currentAcctInstance, accountClaim)
-			if err != nil {
-				reqLogger.Error(err, "An error was encountered retrieving CCS Client")
-				return reconcile.Result{}, err
-			}
-
-			roleID, err = createBYOCAdminAccessRole(
-				reqLogger,
-				awsSetupClient,
-				ccsClient,
-				adminAccessArn,
-				currentAccInstanceID,
-				tags,
-				SREAccessARN,
-			)
-
-			if err != nil {
-				reqLogger.Error(err, "createBYOCAdminAccessRole err", roleID)
-				return reconcile.Result{}, err
-			}
-
-			awsAssumedRoleClient, creds, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, roleID)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
-		} else {
-			// Unlike the CCS block, the non-CCS block does not have a dependency on the RoleID to assumeRole. The
-			// awsAssumedRoleClient is what is needed to create the BYOCAdminAccessRole in the non-CCS account.
-			awsAssumedRoleClient, creds, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
-			roleID, err := createBYOCAdminAccessRole(
-				reqLogger,
-				awsSetupClient,
-				awsAssumedRoleClient,
-				adminAccessArn,
-				currentAccInstanceID,
-				tags,
-				SREAccessARN,
-			)
-
-			if err != nil {
-				reqLogger.Error(err, "createBYOCAdminAccessRole err", roleID)
-				return reconcile.Result{}, err
-			}
-		}
-
 		// Use the same ID applied to the account name for IAM usernames
+		iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
 		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
 		if err != nil {
 			reason, errType := getBuildIAMUserErrorReason(err)
@@ -1251,4 +1162,108 @@ func castAWSRegionType(regions []*ec2.Region) []v1alpha1.AwsRegions {
 		awsRegions = append(awsRegions, v1alpha1.AwsRegions{Name: *region.RegionName})
 	}
 	return awsRegions
+}
+
+func (r *ReconcileAccount) handleCreateAdminAccessRole(
+	reqLogger logr.Logger,
+	currentAcctInstance *awsv1alpha1.Account,
+	awsSetupClient awsclient.Client) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+
+	var awsAssumedRoleClient awsclient.Client
+	var creds *sts.AssumeRoleOutput
+	currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
+	roleToAssume := getAssumeRole(currentAcctInstance)
+
+	SREAccessARN, err := r.GetSREAccessARN(reqLogger)
+	if err != nil {
+		reqLogger.Error(err, "An error was encountered retrieving the SRE Access ARN")
+		return nil, nil, err
+	}
+
+	// Build the tags required to create the Admin Access Role
+	tags := awsclient.AWSTags.BuildTags(
+		currentAcctInstance,
+		r.getManagedTags(reqLogger),
+		r.getCustomTags(reqLogger, currentAcctInstance),
+	).GetIAMTags()
+
+	// In this block we are creating the BYOCAdminAccessRole-XYZ for both CCS and non-CCS accounts.
+	// The dependency on the roleID validation within the assumeRole, and the different aws clients
+	// required between CCS and non-CCS, is what has caused these steps to be done independently.
+	if currentAcctInstance.Spec.BYOC {
+		// The CCS uses the CCS client for creating the BYOCAdminAccessRole and then utilizes the RoleID
+		// generated from that in the assumeRole func for role validation
+
+		// Get the AccountClaim in Order to retrieve the CCSClient
+		accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
+		if acctClaimErr != nil {
+			if accountClaim != nil {
+				utils.SetAccountClaimStatus(
+					accountClaim,
+					"Failed to get AccountClaim for Account",
+					"FailedRetrievingAccountClaim",
+					awsv1alpha1.ClientError,
+					awsv1alpha1.ClaimStatusError,
+				)
+				err := r.Client.Status().Update(context.TODO(), accountClaim)
+				if err != nil {
+					reqLogger.Error(err, "failed to update accountclaim status")
+				}
+			} else {
+				reqLogger.Error(acctClaimErr, "accountclaim is nil")
+			}
+			return nil, nil, acctClaimErr
+		}
+		ccsClient, err := r.getCCSClient(currentAcctInstance, accountClaim)
+		if err != nil {
+			reqLogger.Error(err, "An error was encountered retrieving CCS Client")
+			return nil, nil, err
+		}
+
+		currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
+		roleID, err := createBYOCAdminAccessRole(
+			reqLogger,
+			awsSetupClient,
+			ccsClient,
+			adminAccessArn,
+			currentAccInstanceID,
+			tags,
+			SREAccessARN,
+		)
+
+		if err != nil {
+			reqLogger.Error(err, "createBYOCAdminAccessRole err", roleID)
+			return nil, nil, err
+		}
+
+		awsAssumedRoleClient, creds, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, roleID)
+		if err != nil {
+			return nil, nil, err
+		}
+
+	} else {
+		// Unlike the CCS block, the non-CCS block does not have a dependency on the RoleID to assumeRole. The
+		// awsAssumedRoleClient is what is needed to create the BYOCAdminAccessRole in the non-CCS account.
+		awsAssumedRoleClient, creds, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
+		if err != nil {
+			return nil, nil, err
+		}
+
+		roleID, err := createBYOCAdminAccessRole(
+			reqLogger,
+			awsSetupClient,
+			awsAssumedRoleClient,
+			adminAccessArn,
+			currentAccInstanceID,
+			tags,
+			SREAccessARN,
+		)
+
+		if err != nil {
+			reqLogger.Error(err, "createBYOCAdminAccessRole err", roleID)
+			return nil, nil, err
+		}
+	}
+
+	return awsAssumedRoleClient, creds, err
 }
