@@ -44,6 +44,10 @@ type StatementEntry struct {
 	Resource string
 }
 
+var (
+	DefaultDelay = 3 * time.Second
+)
+
 // CreateSecret creates a secret for placing IAM Credentials
 // Takes a logger, the desired name of the secret, the Account CR
 // that will own the secret, and pointer to an empty secret object to fill
@@ -142,7 +146,7 @@ func listAccessKeys(client awsclient.Client, iamUser *iam.User) (*iam.ListAccess
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
-	retry.DefaultDelay = 3 * time.Second
+	retry.DefaultDelay = DefaultDelay
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {
@@ -163,7 +167,7 @@ func deleteAccessKey(client awsclient.Client, accessKeyID *string, username *str
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
-	retry.DefaultDelay = 3 * time.Second
+	retry.DefaultDelay = DefaultDelay
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {
@@ -285,7 +289,7 @@ func CreateUserAccessKey(client awsclient.Client, iamUser *iam.User) (*iam.Creat
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
-	retry.DefaultDelay = 3 * time.Second
+	retry.DefaultDelay = DefaultDelay
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {
@@ -381,6 +385,167 @@ func (r *ReconcileAccount) BuildIAMUser(reqLogger logr.Logger, awsClient awsclie
 
 	// Return secret name
 	return &iamUserSecretName, nil
+}
+
+func CleanUpIAM(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
+
+	// We delete user policies, access keys and finally the IAM user themselves.
+	if err := deleteIAMUsers(reqLogger, awsClient, accountCR); err != nil {
+		return fmt.Errorf("failed deleting IAM users: %v", err)
+	}
+
+	// If user deletion is successful we can then clean role policies and roles.
+	if err := cleanIAMRoles(reqLogger, awsClient, accountCR); err != nil {
+		return fmt.Errorf("failed cleaning IAM roles: %v", err)
+	}
+
+	return nil
+}
+
+func deleteIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, user *iam.User) error {
+	// Detach User Policies
+	if err := detachUserPolicies(awsClient, user); err != nil {
+		return fmt.Errorf("failed to detach user policies: %v", err)
+	}
+
+	// Detach User Access Keys
+	if err := deleteAllAccessKeys(awsClient, user); err != nil {
+		return fmt.Errorf("failed to delete all access keys: %v", err)
+	}
+
+	_, err := awsClient.DeleteUser(&iam.DeleteUserInput{UserName: user.UserName})
+	reqLogger.Info(fmt.Sprintf("Deleting IAM user: %s", *user.UserName))
+	if err != nil {
+		return fmt.Errorf(fmt.Sprintf("unable to delete IAM user %s", *user.UserName), err)
+	}
+
+	return nil
+}
+
+func deleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
+	reqLogger.Info("Cleaning up IAM users")
+
+	users, err := awsclient.ListIAMUsers(reqLogger, awsClient)
+	if err != nil {
+		return fmt.Errorf("failed to list aws iam users: %v", err)
+	}
+
+	for _, user := range users {
+		clusterNameTag := false
+		clusterNamespaceTag := false
+		getUser, err := awsClient.GetUser(&iam.GetUserInput{UserName: user.UserName})
+		if err != nil {
+			return fmt.Errorf("failed to get aws user: %v", err)
+		}
+		user = getUser.User
+		for _, tag := range user.Tags {
+			if *tag.Key == awsv1alpha1.ClusterAccountNameTagKey && *tag.Value == accountCR.Name {
+				clusterNameTag = true
+			}
+			if *tag.Key == awsv1alpha1.ClusterNamespaceTagKey && *tag.Value == accountCR.Namespace {
+				clusterNamespaceTag = true
+			}
+		}
+		if clusterNameTag && clusterNamespaceTag {
+			err = deleteIAMUser(reqLogger, awsClient, user)
+			if err != nil {
+				return err
+			}
+		} else {
+			reqLogger.Info(fmt.Sprintf("not deleting user: %s", *user.UserName))
+		}
+	}
+	return nil
+}
+
+func cleanIAMRole(reqLogger logr.Logger, awsClient awsclient.Client, role *iam.Role) error {
+	// remove attached policies from the role before deletion
+	if err := detachRolePolicies(awsClient, *role.RoleName); err != nil {
+		return fmt.Errorf("failed to detach role policies: %v", err)
+	}
+
+	_, err := awsClient.DeleteRole(&iam.DeleteRoleInput{RoleName: role.RoleName})
+	reqLogger.Info(fmt.Sprintf("Deleting IAM role: %s", *role.RoleName))
+	if err != nil {
+		return fmt.Errorf(fmt.Sprintf("unable to delete IAM role %s", *role.RoleName), err)
+	}
+
+	return nil
+}
+
+func cleanIAMRoles(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
+	reqLogger.Info("Cleaning up IAM roles")
+	roles, err := awsclient.ListIAMRoles(reqLogger, awsClient)
+	if err != nil {
+		return err
+	}
+
+	for _, role := range roles {
+		clusterNameTag := false
+		clusterNamespaceTag := false
+		getRole, err := awsClient.GetRole(&iam.GetRoleInput{RoleName: role.RoleName})
+		if err != nil {
+			return err
+		}
+		role = getRole.Role
+
+		for _, tag := range role.Tags {
+			if *tag.Key == awsv1alpha1.ClusterAccountNameTagKey && *tag.Value == accountCR.Name {
+				clusterNameTag = true
+			}
+			if *tag.Key == awsv1alpha1.ClusterNamespaceTagKey && *tag.Value == accountCR.Namespace {
+				clusterNamespaceTag = true
+			}
+		}
+
+		if clusterNameTag && clusterNamespaceTag {
+			err = cleanIAMRole(reqLogger, awsClient, role)
+			if err != nil {
+				return err
+			}
+		} else {
+			reqLogger.Info(fmt.Sprintf("Not deleting role: %s", *getRole.Role.RoleName))
+		}
+	}
+
+	return nil
+}
+
+// Detach User Policies
+func detachUserPolicies(awsClient awsclient.Client, user *iam.User) error {
+	attachedUserPolicies, err := awsClient.ListAttachedUserPolicies(&iam.ListAttachedUserPoliciesInput{UserName: user.UserName})
+	if err != nil {
+		return fmt.Errorf(fmt.Sprintf("unable to list IAM user policies from user %s", *user.UserName), err)
+	}
+
+	for _, attachedPolicy := range attachedUserPolicies.AttachedPolicies {
+		_, err := awsClient.DetachUserPolicy(&iam.DetachUserPolicyInput{UserName: user.UserName, PolicyArn: attachedPolicy.PolicyArn})
+		if err != nil {
+			return fmt.Errorf(fmt.Sprintf("unable to detach IAM user policy from user %s", *user.UserName), err)
+		}
+	}
+
+	return nil
+}
+
+// Detaches all policies from the role
+func detachRolePolicies(awsClient awsclient.Client, roleName string) error {
+	attachedRolePolicies, err := awsClient.ListAttachedRolePolicies(&iam.ListAttachedRolePoliciesInput{RoleName: &roleName})
+	if err != nil {
+		return fmt.Errorf(fmt.Sprintf("unable to list IAM role policies from role %s", roleName), err)
+	}
+
+	for _, attachedPolicy := range attachedRolePolicies.AttachedPolicies {
+		_, err := awsClient.DetachRolePolicy(&iam.DetachRolePolicyInput{
+			PolicyArn: attachedPolicy.PolicyArn,
+			RoleName:  &roleName,
+		})
+		if err != nil {
+			return fmt.Errorf(fmt.Sprintf("unable to detach IAM role policy from role %s", roleName), err)
+		}
+	}
+
+	return nil
 }
 
 // RotateIAMAccessKeys will delete all AWS access keys assigned to the user and recreate them
