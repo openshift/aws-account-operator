@@ -31,9 +31,6 @@ const (
 // AccountSpec defines the desired state of Account
 // +k8s:openapi-gen=true
 type AccountSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
-	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
 	AwsAccountID  string `json:"awsAccountID"`
 	IAMUserSecret string `json:"iamUserSecret"`
 	BYOC          bool   `json:"byoc,omitempty"`
@@ -48,13 +45,9 @@ type AccountSpec struct {
 // AccountStatus defines the observed state of Account
 // +k8s:openapi-gen=true
 type AccountStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
-	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
 	Claimed       bool   `json:"claimed,omitempty"`
 	SupportCaseID string `json:"supportCaseID,omitempty"`
-	// +listType=map
-	// +listMapKey=type
+	// +optional
 	Conditions               []AccountCondition `json:"conditions,omitempty"`
 	State                    string             `json:"state,omitempty"`
 	RotateCredentials        bool               `json:"rotateCredentials,omitempty"`
@@ -65,6 +58,7 @@ type AccountStatus struct {
 // AccountCondition contains details for the current condition of a AWS account
 type AccountCondition struct {
 	// Type is the type of the condition.
+	// +optional
 	Type AccountConditionType `json:"type,omitempty"`
 	// Status is the status of the condition
 	Status corev1.ConditionStatus `json:"status,omitempty"`

@@ -11,17 +11,11 @@ import (
 // +k8s:openapi-gen=true
 type AccountPoolSpec struct {
 	PoolSize int `json:"poolSize"`
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
-	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
 }
 
 // AccountPoolStatus defines the observed state of AccountPool
 // +k8s:openapi-gen=true
 type AccountPoolStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
-	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
 	PoolSize          int `json:"poolSize"`
 	UnclaimedAccounts int `json:"unclaimedAccounts"`
 	ClaimedAccounts   int `json:"claimedAccounts"`

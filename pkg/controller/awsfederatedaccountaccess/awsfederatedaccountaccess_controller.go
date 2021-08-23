@@ -243,7 +243,7 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 	if err != nil {
 		// if we were unable to create the policy fail this CR.
 		SetStatuswithCondition(currentFAA, "Failed to create custom policy", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
-		reqLogger.Error(err, fmt.Sprintf("Unable to create policy resquested by '%s'", currentFAA.Name))
+		reqLogger.Error(err, fmt.Sprintf("Unable to create policy requested by '%s'", currentFAA.Name))
 
 		err := r.client.Status().Update(context.TODO(), currentFAA)
 		if err != nil {
@@ -668,7 +668,9 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 					return err
 				}
 			}
-			if *policy.PolicyName == federatedRoleCR.Spec.AWSCustomPolicy.Name {
+
+			awsCustomPolicyname := federatedRoleCR.Spec.AWSCustomPolicy.Name + "-" + uidLabel
+			if *policy.PolicyName == awsCustomPolicyname {
 				_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: policy.PolicyArn})
 				if err != nil {
 					if aerr, ok := err.(awserr.Error); ok {

@@ -127,9 +127,10 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 
 	claimErr := claimBYOCAccount(r, reqLogger, account)
 	if claimErr != nil {
-		claimErr := r.setAccountClaimError(reqLogger, account, claimErr.Error())
-		if claimErr != nil {
-			reqLogger.Error(claimErr, "failed setting accountClaim error state")
+		reqLogger.Error(claimErr, "Could not claim BYOC Account")
+		claimStatusErr := r.setAccountClaimError(reqLogger, account, claimErr.Error())
+		if claimStatusErr != nil {
+			reqLogger.Error(claimStatusErr, "failed setting accountClaim error state")
 		}
 		// TODO: Recoverable?
 		return "", reconcile.Result{}, claimErr

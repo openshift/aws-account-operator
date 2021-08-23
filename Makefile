@@ -19,11 +19,6 @@ boilerplate-update:
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-.PHONY: op-generate
-op-generate: ## Generate crd, k8s and openapi
-	@./boilerplate/openshift/golang-osd-operator/ensure.sh operator-sdk
-	@./hack/scripts/generate_crds.sh
-
 .PHONY: serve
 serve: ## Serves the docs locally using docker
 	@docker run --rm -it -p 8000:8000 -v ${PWD}:/docs squidfunk/mkdocs-material
@@ -49,6 +44,16 @@ endif
 ifndef OSD_STAGING_1_OU_BASE_ID
 	$(error OSD_STAGING_1_OU_BASE_ID is undefined)
 endif
+
+.PHONY: check-sts-setup
+check-sts-setup: ## Checks if STS roles are set up correctly
+ifndef STS_JUMP_ROLE
+	$(error STS_JUMP_ROLE is undefined. STS_JUMP_ROLE is the ARN of the role we use as a bastion to access the installation role)
+endif
+ifndef STS_ROLE_ARN
+	$(error STS_ROLE_ARN is undefined. STS_ROLE_ARN is the ARN of the installation role)
+endif
+	hack/scripts/aws/sts-infra-precheck.sh
 
 .PHONY: create-account
 create-account: check-aws-account-id-env ## Create account
@@ -228,14 +233,14 @@ delete-ccs: delete-ccs-accountclaim delete-ccs-secret delete-ccs-namespace ## Te
 .PHONY: create-s3-bucket
 create-s3-bucket: ## Create S3 bucket
 	# Get credentials
-	@export AWS_ACCESS_KEY_ID=$(shell oc get secret ${OSD_MANAGED_ADMIN_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); \
-	export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${OSD_MANAGED_ADMIN_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); \
+	@export AWS_ACCESS_KEY_ID=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); \
+	export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); \
 	aws s3api create-bucket --bucket ${REUSE_BUCKET_NAME} --region=us-east-1
 
 .PHONY: list-s3-bucket
 list-s3-bucket:  ## List S3 bucket
 	# Get credentials
-	BUCKETS=$(shell export AWS_ACCESS_KEY_ID=$(shell oc get secret ${OSD_MANAGED_ADMIN_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${OSD_MANAGED_ADMIN_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'); \
+	BUCKETS=$(shell export AWS_ACCESS_KEY_ID=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'); \
 	if [ $$BUCKETS == 0 ]; then echo "Reuse successfully complete"; else echo "Reuse failed"; exit 1; fi
 
 .PHONY: test-reuse
@@ -256,12 +261,15 @@ predeploy-aws-account-operator: ## Predeploy AWS Account Operator
 	# Create aws-account-operator namespace
 	@oc get namespace ${NAMESPACE} && oc project ${NAMESPACE} || oc create namespace ${NAMESPACE}
 	# Create aws-account-operator CRDs
-	@ls deploy/crds/*crd.yaml | xargs -L1 oc apply -f
+	@ls deploy/crds/*.yaml | xargs -L1 oc apply -f
 	# Create zero size account pool
 	@oc apply -f hack/files/aws.managed.openshift.io_v1alpha1_zero_size_accountpool.yaml
 
+.PHONY: validate-deployment
+validate-deployment: check-aws-account-id-env check-sts-setup ## Validates deployment configuration
+
 .PHONY: predeploy
-predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map ## Predeploy Operator
+predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map validate-deployment ## Predeploy Operator
 
 .PHONY: deploy-local
 deploy-local: ## Deploy Operator locally
@@ -376,6 +384,9 @@ test-apis:
 	go test ./... ; \
 	popd
 
+.PHONY: test-integration
+test-integration: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim test-fake-accountclaim## Runs all integration tests
+
 # Test all
 # GOLANGCI_LINT_CACHE needs to be set to a directory which is writeable
 # Relevant issue - https://github.com/golangci/golangci-lint/issues/734
@@ -390,9 +401,8 @@ check-spell: # Check spelling
 # This *adds* `check-spell` ./hack/scripts/misspell_check.sh the existing `lint` provided by boilerplate
 lint: check-spell
 
-# Test all
 .PHONY: test-all
-test-all: lint clean-operator test test-apis test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim test-fake-accountclaim ## Runs all integration tests
+test-all: lint clean-operator test test-apis test-integration ## Runs all tests
 
 .PHONY: clean-operator
 clean-operator: ## Clean Operator

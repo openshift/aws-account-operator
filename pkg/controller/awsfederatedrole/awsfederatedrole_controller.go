@@ -144,7 +144,6 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	}
 
 	// Validates Custom IAM Policy
-
 	log.Info("Validating Custom Policies")
 	// Build custom policy in AWS-valid JSON and converts to string
 	jsonPolicy, err := utils.MarshalIAMPolicy(*instance)
