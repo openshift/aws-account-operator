@@ -152,12 +152,6 @@ func (t *testAccountBuilder) WithClaimLink(link string) *testAccountBuilder {
 	return t
 }
 
-// Add Labels
-func (t *testAccountBuilder) WithLabels(labels map[string]string) *testAccountBuilder {
-	t.acct.Labels = labels
-	return t
-}
-
 // Set BYOC or not
 func (t *testAccountBuilder) BYOC(byoc bool) *testAccountBuilder {
 	t.acct.Spec.BYOC = byoc
@@ -1064,6 +1058,8 @@ func TestGetAssumeRole(t *testing.T) {
 			},
 		)
 	}
+}
+
 // Test finalizeAccount
 func TestFinalizeAccount(t *testing.T) {
 
