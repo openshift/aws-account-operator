@@ -11,6 +11,11 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/controller/testutils"
+	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -304,5 +309,71 @@ func TestNotNewBYOCAccount(t *testing.T) {
 				"got:", new,
 			)
 		}
+	}
+}
+
+func TestGetSREAccessARN(t *testing.T) {
+	expectedARN := "MyExpectedARN"
+	tests := []struct {
+		name           string
+		expectedErr    bool
+		configMap      corev1.ConfigMap
+		expectedArnVal string
+	}{
+		{
+			name:        "Valid ConfigMap, Works",
+			expectedErr: false,
+			configMap: corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      awsv1alpha1.DefaultConfigMap,
+					Namespace: awsv1alpha1.AccountCrNamespace,
+				},
+				Data: map[string]string{
+					"CCS-Access-Arn": expectedARN,
+				},
+			},
+			expectedArnVal: expectedARN,
+		},
+		{
+			name:           "Can't find ConfigMap, Throws Error",
+			expectedErr:    true,
+			configMap:      corev1.ConfigMap{},
+			expectedArnVal: "",
+		},
+		{
+			name:        "Valid ConfigMap, No CCS-Access-Arn, Throws Error",
+			expectedErr: true,
+			configMap: corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      awsv1alpha1.DefaultConfigMap,
+					Namespace: awsv1alpha1.AccountCrNamespace,
+				},
+				Data: map[string]string{},
+			},
+			expectedArnVal: "",
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+
+				objs := []runtime.Object{&test.configMap}
+				mocks := setupDefaultMocks(t, objs)
+				nullLogger := testutils.NullLogger{}
+				defer mocks.mockCtrl.Finish()
+
+				r := ReconcileAccount{
+					Client: mocks.fakeKubeClient,
+					scheme: scheme.Scheme,
+				}
+
+				retVal, err := r.GetSREAccessARN(nullLogger)
+				assert.Equal(t, test.expectedArnVal, retVal)
+				if test.expectedErr {
+					assert.Error(t, err)
+				}
+			},
+		)
 	}
 }

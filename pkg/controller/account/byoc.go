@@ -118,7 +118,7 @@ func (r *ReconcileAccount) GetSREAccessARN(reqLogger logr.Logger) (string, error
 	SREAccessARN := configMap.Data["CCS-Access-Arn"]
 	if SREAccessARN == "" {
 		reqLogger.Error(awsv1alpha1.ErrInvalidConfigMap, "configmap key missing", "keyName", "CCS-Access-Arn")
-		return "", err
+		return "", awsv1alpha1.ErrInvalidConfigMap
 	}
 
 	return SREAccessARN, nil
