@@ -141,9 +141,8 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
-	res, err := r.handleBYOCAccountClaim(reqLogger, accountClaim)
-	if err != nil || res.RequeueAfter > 0 {
-		return res, err
+	if accountClaim.Spec.BYOC {
+		return r.handleBYOCAccountClaim(reqLogger, accountClaim)
 	}
 
 	// Return if this claim has been satisfied
