@@ -14,7 +14,6 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 )
@@ -51,7 +50,9 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		err := r.client.Delete(context.TODO(), reusedAccount)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete STS account from accountclaim cleanup")
+			return err
 		}
+		return nil
 	}
 
 	var awsClientInput awsclient.NewAwsClientInput
@@ -86,9 +87,6 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 	}
 
 	if reusedAccount.IsBYOC() {
-
-		userID := reusedAccount.Labels[awsv1alpha1.IAMUserIDLabel]
-
 		err := r.client.Delete(context.TODO(), reusedAccount)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete BYOC account from accountclaim cleanup")
@@ -98,12 +96,6 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		err = r.removeBYOCSecretFinalizer(accountClaim)
 		if err != nil {
 			reqLogger.Error(err, "Failed to remove BYOC secret finalizer")
-			return err
-		}
-
-		err = account.DeleteBYOCAdminAccessRole(reqLogger, awsClient, userID)
-		if err != nil {
-			reqLogger.Error(err, "Failed to remove BYOC Admin Access Role")
 			return err
 		}
 

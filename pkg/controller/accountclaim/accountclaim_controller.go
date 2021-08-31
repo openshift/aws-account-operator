@@ -137,8 +137,8 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, nil
 	}
 
-	if err := r.handleAccountClaimDeletion(reqLogger, accountClaim); err != nil {
-		return reconcile.Result{}, err
+	if accountClaim.DeletionTimestamp != nil {
+		return reconcile.Result{}, r.handleAccountClaimDeletion(reqLogger, accountClaim)
 	}
 
 	if accountClaim.Spec.BYOC {
@@ -242,9 +242,6 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 }
 
 func (r *ReconcileAccountClaim) handleAccountClaimDeletion(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
-	if accountClaim.DeletionTimestamp == nil {
-		return nil
-	}
 
 	if !controllerutils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
 		return nil
