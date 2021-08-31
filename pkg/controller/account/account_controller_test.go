@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/golang/mock/gomock"
@@ -19,6 +20,9 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
 type testAccountBuilder struct {
@@ -1176,3 +1180,94 @@ func TestFinalizeAccount_LabelledBYOCAccount(t *testing.T) {
 	}
 	r.finalizeAccount(nullLogger, mockAWSClient, &account)
 }
+
+var _ = Describe("Account Controller", func() {
+	var (
+		nullLogger    testutils.NullLogger
+		mockAWSClient *mock.MockClient
+		accountName   string
+		accountEmail  string
+		ctrl          *gomock.Controller
+	)
+
+	BeforeEach(func() {
+		ctrl = gomock.NewController(GinkgoT())
+		mockAWSClient = mock.NewMockClient(ctrl)
+	})
+
+	AfterEach(func() {
+		ctrl.Finish()
+	})
+
+	Context("Testing CreateAccount", func() {
+		It("AWS returns an error from CreateAccount", func() {
+			// ErrCodeServiceException is mapped to awsv1alpha1.ErrAwsInternalFailure in CreateAccount
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeServiceException, "Error String", nil))
+			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			Expect(err).To(HaveOccurred())
+			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
+			Expect(awsv1alpha1.ErrAwsInternalFailure).To(Equal(err))
+		})
+
+		It("AWS returns an error from DescribeCreateAccountStatus", func() {
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(
+				&organizations.CreateAccountOutput{
+					CreateAccountStatus: &organizations.CreateAccountStatus{
+						Id: aws.String("ID"),
+					},
+				},
+				nil,
+			)
+
+			expectedErr := awserr.New(organizations.ErrCodeServiceException, "Error String", nil)
+			mockAWSClient.EXPECT().DescribeCreateAccountStatus(gomock.Any()).Return(nil, expectedErr) //errors.New("MyError")) //)
+			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			Expect(err).To(HaveOccurred())
+			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
+			Expect(expectedErr).To(Equal(err))
+		})
+
+		It("DescribeCreateAccountStatus returns a FAILED state", func() {
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(
+				&organizations.CreateAccountOutput{
+					CreateAccountStatus: &organizations.CreateAccountStatus{
+						Id: aws.String("ID"),
+					},
+				},
+				nil,
+			)
+			describeCreateAccountStatusOutput := &organizations.DescribeCreateAccountStatusOutput{
+				CreateAccountStatus: &organizations.CreateAccountStatus{
+					State:         aws.String("FAILED"),
+					FailureReason: aws.String("ACCOUNT_LIMIT_EXCEEDED"),
+				},
+			}
+			mockAWSClient.EXPECT().DescribeCreateAccountStatus(gomock.Any()).Return(describeCreateAccountStatusOutput, nil)
+			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			Expect(err).To(HaveOccurred())
+
+			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
+			Expect(awsv1alpha1.ErrAwsAccountLimitExceeded).To(Equal(err))
+		})
+		It("CreateAccount creates account", func() {
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(
+				&organizations.CreateAccountOutput{
+					CreateAccountStatus: &organizations.CreateAccountStatus{
+						Id: aws.String("ID"),
+					},
+				},
+				nil,
+			)
+			describeCreateAccountStatusOutput := &organizations.DescribeCreateAccountStatusOutput{
+				CreateAccountStatus: &organizations.CreateAccountStatus{
+					State: aws.String("SUCCEEDED"),
+				},
+			}
+			mockAWSClient.EXPECT().DescribeCreateAccountStatus(gomock.Any()).Return(describeCreateAccountStatusOutput, nil)
+			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			Expect(err).To(Succeed())
+			Expect(createAccountOutput).To(Equal(describeCreateAccountStatusOutput))
+			Expect(err).Should(BeNil())
+		})
+	})
+})
