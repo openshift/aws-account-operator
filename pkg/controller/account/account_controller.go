@@ -160,6 +160,16 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	if currentAcctInstance.IsPendingDeletion() {
+		if currentAcctInstance.Spec.ManualSTSMode {
+			// if the account is STS, we don't need to do any additional cleanup aside from
+			// removing the finalizer and exiting.
+			err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
+			if err != nil {
+				reqLogger.Error(err, "Failed removing account finalizer")
+			}
+			return reconcile.Result{}, err
+		}
+
 		var awsClient awsclient.Client
 		if currentAcctInstance.IsBYOC() {
 			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
@@ -533,14 +543,6 @@ func (r *ReconcileAccount) finalizeAccount(reqLogger logr.Logger, awsClient awsc
 		} else {
 			reqLogger.Info(fmt.Sprintf("Account: %s has no label", account.Name))
 		}
-
-		/*
-			err = account.DeleteBYOCAdminAccessRole(reqLogger, awsClient, userID)
-			if err != nil {
-				reqLogger.Error(err, "Failed to remove BYOC Admin Access Role")
-				return err
-			}
-		*/
 	}
 }
 
