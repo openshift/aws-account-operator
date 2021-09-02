@@ -23,7 +23,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -125,7 +124,7 @@ var _ reconcile.Reconciler = &ReconcileAccount{}
 
 // ReconcileAccount reconciles a Account object
 type ReconcileAccount struct {
-	Client           kubeclientpkg.Client
+	Client           client.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
 	shardName        string
@@ -149,14 +148,52 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
-	// Remove finalizer if account CR is BYOC as the accountclaim controller will delete the account CR
-	// when the accountClaim CR is deleted as its set as the owner reference
-	if currentAcctInstance.IsBYOCPendingDeletionWithFinalizer() {
-		reqLogger.Info("removing account finalizer")
-		err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
-		if err != nil {
-			reqLogger.Error(err, "failed removing account finalizer")
+	// We expect this secret to exist in the same namespace Account CR's are created
+	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+		SecretName: utils.AwsSecretName,
+		NameSpace:  awsv1alpha1.AccountCrNamespace,
+		AwsRegion:  "us-east-1",
+	})
+	if err != nil {
+		reqLogger.Error(err, "failed building operator AWS client")
+		return reconcile.Result{}, err
+	}
+
+	if currentAcctInstance.IsPendingDeletion() {
+		if currentAcctInstance.Spec.ManualSTSMode {
+			// if the account is STS, we don't need to do any additional cleanup aside from
+			// removing the finalizer and exiting.
+			err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
+			if err != nil {
+				reqLogger.Error(err, "Failed removing account finalizer")
+			}
 			return reconcile.Result{}, err
+		}
+
+		var awsClient awsclient.Client
+		if currentAcctInstance.IsBYOC() {
+			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
+			roleToAssume := fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
+			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
+		} else {
+			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, awsv1alpha1.AccountOperatorIAMRole, "")
+		}
+		if err != nil {
+			reqLogger.Error(err, "failed building operator AWS client")
+			return reconcile.Result{}, err
+		}
+		r.finalizeAccount(reqLogger, awsClient, currentAcctInstance)
+		//return reconcile.Result{}, nil
+
+		// Remove finalizer if account CR is BYOC as the accountclaim controller will delete the account CR
+		// when the accountClaim CR is deleted as its set as the owner reference
+		if currentAcctInstance.IsBYOCPendingDeletionWithFinalizer() {
+			reqLogger.Info("removing account finalizer")
+			err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
+			if err != nil {
+				reqLogger.Error(err, "failed removing account finalizer")
+				return reconcile.Result{}, err
+			}
 		}
 		return reconcile.Result{}, nil
 	}
@@ -170,17 +207,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	// Detect accounts for which we kicked off asynchronous region initialization
 	if currentAcctInstance.IsInitializingRegions() {
 		return r.handleAccountInitializingRegions(reqLogger, currentAcctInstance)
-	}
-
-	// We expect this secret to exist in the same namespace Account CR's are created
-	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-		SecretName: utils.AwsSecretName,
-		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
-	})
-	if err != nil {
-		reqLogger.Error(err, "failed building operator AWS client")
-		return reconcile.Result{}, err
 	}
 
 	var ccsRoleID string
@@ -202,7 +228,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				AccountFailed,
 			)
 			if stateErr != nil {
-				reqLogger.Error(stateErr, "failed setting account state", "desiredState", "Failed")
+				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
 			}
 			reqLogger.Error(initErr, "failed initializing new CCS account")
 			return result, initErr
@@ -242,7 +268,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				AccountFailed,
 			)
 			if stateErr != nil {
-				reqLogger.Error(stateErr, "failed setting account state", "desiredState", "Failed")
+				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
 				return reconcile.Result{}, stateErr
 			}
 			return reconcile.Result{}, errors.New(errMsg)
@@ -356,13 +382,13 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				AccountFailed,
 			)
 			if stateErr != nil {
-				reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
+				reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
 			}
 			return reconcile.Result{}, err
 		}
 
 		currentAcctInstance.Spec.IAMUserSecret = *secretName
-		err = r.Client.Update(context.TODO(), currentAcctInstance)
+		err = r.accountSpecUpdate(reqLogger, currentAcctInstance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -508,6 +534,26 @@ func (r *ReconcileAccount) handleNonCCSPendingVerification(reqLogger logr.Logger
 	return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
 }
 
+func (r *ReconcileAccount) finalizeAccount(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account) {
+	reqLogger.Info("Finalizing Account CR")
+	if !account.Spec.ManualSTSMode && utils.AccountCRHasIAMUserIDLabel(account) {
+		err := CleanUpIAM(reqLogger, awsClient, account)
+		if err != nil {
+			reqLogger.Error(err, "Failed to delete IAM user during finalizer cleanup")
+		} else {
+			reqLogger.Info(fmt.Sprintf("Account: %s has no label", account.Name))
+		}
+	}
+}
+
+func (r *ReconcileAccount) accountSpecUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	err := r.Client.Update(context.TODO(), account)
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Account spec update for %s failed", account.Name))
+	}
+	return err
+}
+
 func (r *ReconcileAccount) nonCCSAssignAccountID(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client) error {
 	// Build Aws Account
 	awsAccountID, err := r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
@@ -537,7 +583,7 @@ func (r *ReconcileAccount) nonCCSAssignAccountID(reqLogger logr.Logger, currentA
 		reqLogger.Info("Unable to tag aws account.", "account", currentAcctInstance.Name, "AWSAccountID", awsAccountID, "Error", error.Error(err))
 	}
 
-	return r.Client.Update(context.TODO(), currentAcctInstance)
+	return r.accountSpecUpdate(reqLogger, currentAcctInstance)
 }
 
 func (r *ReconcileAccount) tagAccount(reqLogger logr.Logger, awsSetupClient awsclient.Client, awsAccountID string) error {
@@ -597,7 +643,7 @@ func (r *ReconcileAccount) assumeRole(
 				AccountFailed,
 			)
 			if stateErr != nil {
-				reqLogger.Error(stateErr, "failed setting account state", "desiredState", "Failed")
+				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
 			}
 			return nil, nil, credsErr
 		}
@@ -633,7 +679,7 @@ func (r *ReconcileAccount) assumeRole(
 			AccountFailed,
 		)
 		if stateErr != nil {
-			reqLogger.Error(err, "failed setting account state", "desiredState", "Failed")
+			reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
 		}
 		return nil, nil, err
 	}

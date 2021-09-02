@@ -14,7 +14,6 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 )
@@ -31,7 +30,6 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 	// Get account claimed by deleted accountclaim
 	reusedAccount, err := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
 	if err != nil {
-
 		// This check ensures that if a BYOC Account CR gets deleted, the rest of the BYOC finalizer logic can still run
 		if !accountClaim.Spec.BYOC {
 			reqLogger.Error(err, "Failed to get claimed account")
@@ -40,7 +38,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		// Cleanup BYOC secret
 		err = r.removeBYOCSecretFinalizer(accountClaim)
 		if err != nil {
-			reqLogger.Error(err, "Failed to remove BYOC secret finalizer")
+			reqLogger.Error(err, "Failed to remove BYOC iamsecret finalizer")
 			return err
 		}
 
@@ -52,14 +50,16 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		err := r.client.Delete(context.TODO(), reusedAccount)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete STS account from accountclaim cleanup")
+			return err
 		}
+		return nil
 	}
 
 	var awsClientInput awsclient.NewAwsClientInput
 
 	// Region comes from accountClaim
 	clusterAwsRegion := accountClaim.Spec.Aws.Regions[0].Name
-	if reusedAccount.Spec.BYOC {
+	if reusedAccount.IsBYOC() {
 		// AWS credential comes from accountclaim object osdCcsAdmin user
 		// We must use this user as we would other delete the osdManagedAdmin
 		// user that we're going to delete
@@ -86,17 +86,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		return err
 	}
 
-	// Remove IAM user we'll remove the IAM user for CCS
-	if utils.AccountCRHasIAMUserIDLabel(reusedAccount) && accountClaim.Spec.BYOC {
-		err = account.CleanUpIAM(reqLogger, awsClient, reusedAccount)
-		if err != nil {
-			reqLogger.Error(err, "Failed to delete IAM user during finalizer cleanup")
-		}
-	} else {
-		reqLogger.Info(fmt.Sprintf("Account: %s has no label", reusedAccount.Name))
-	}
-
-	if reusedAccount.Spec.BYOC {
+	if reusedAccount.IsBYOC() {
 		err := r.client.Delete(context.TODO(), reusedAccount)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete BYOC account from accountclaim cleanup")

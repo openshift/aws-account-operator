@@ -6,13 +6,16 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/golang/mock/gomock"
+	"github.com/openshift/aws-account-operator/pkg/apis"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/controller/testutils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -1055,4 +1058,93 @@ func TestGetAssumeRole(t *testing.T) {
 			},
 		)
 	}
+}
+
+// Test finalizeAccount
+func TestFinalizeAccount(t *testing.T) {
+
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		fmt.Printf("failed adding to scheme in account_controller_test.go")
+	}
+
+	nullLogger := testutils.NullLogger{}
+
+	tests := []struct {
+		name string
+		acct *testAccountBuilder
+	}{
+		{
+			name: "Account has STS Mode enabled",
+			acct: newTestAccountBuilder().WithSpec(awsv1alpha1.AccountSpec{ManualSTSMode: true}),
+		},
+		{
+			name: "Account is BYOC without iamUserId Labels",
+			acct: newTestAccountBuilder().BYOC(true),
+		},
+		{
+			name: "Account is non-BYOC, non-STS",
+			acct: newTestAccountBuilder(),
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			//t.Parallel()
+
+			localObjects := []runtime.Object{
+				&test.acct.acct,
+			}
+
+			mocks := setupDefaultMocks(t, localObjects)
+			mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+
+			// This is necessary for the mocks to report failures like methods not being called an expected number of times.
+			// after mocks is defined
+			defer mocks.mockCtrl.Finish()
+
+			r := ReconcileAccount{
+				Client: mocks.fakeKubeClient,
+				scheme: scheme.Scheme,
+			}
+
+			r.finalizeAccount(nullLogger, mockAWSClient, &test.acct.acct)
+		})
+	}
+}
+
+func TestFinalizeAccount_LabelledBYOCAccount(t *testing.T) {
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		fmt.Printf("failed adding to scheme in account_controller_test.go")
+	}
+	nullLogger := testutils.NullLogger{}
+
+	account := newTestAccountBuilder().BYOC(true).WithLabels(
+		map[string]string{
+			"iamUserId": "iam1234",
+		},
+	).acct
+
+	localObjects := []runtime.Object{&account}
+	mocks := setupDefaultMocks(t, localObjects)
+	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+	mockAWSClient.EXPECT().ListUsersPages(gomock.Any(), gomock.Any())
+	mockAWSClient.EXPECT().ListRoles(gomock.Any()).Return(
+		&iam.ListRolesOutput{
+			Roles:       []*iam.Role{},
+			IsTruncated: aws.Bool(false),
+		},
+		nil,
+	)
+
+	// This is necessary for the mocks to report failures like methods not being called an expected number of times.
+	// after mocks is defined
+	defer mocks.mockCtrl.Finish()
+
+	r := ReconcileAccount{
+		Client: mocks.fakeKubeClient,
+		scheme: scheme.Scheme,
+	}
+	r.finalizeAccount(nullLogger, mockAWSClient, &account)
 }

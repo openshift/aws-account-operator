@@ -136,6 +136,56 @@ var _ = Describe("Byoc", func() {
 		})
 	})
 
+	Context("Testing DeleteBYOCAdminAccessRole", func() {
+		It("Doesn't have RolePolicy attached - Works properly without error", func() {
+			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(&iam.ListAttachedRolePoliciesOutput{}, nil)
+			mockAWSClient.EXPECT().DeleteRole(gomock.Any()).Return(&iam.DeleteRoleOutput{}, nil)
+			err := DeleteBYOCAdminAccessRole(nullLogger, mockAWSClient, "roleName")
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Doesn't has RolePolicy attached - Works properly without error", func() {
+			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(
+				&iam.ListAttachedRolePoliciesOutput{
+					AttachedPolicies: []*iam.AttachedPolicy{
+						{
+							PolicyArn:  aws.String("PolicyArn"),
+							PolicyName: aws.String("PolicyName"),
+						},
+					},
+				},
+				nil,
+			)
+			mockAWSClient.EXPECT().DetachRolePolicy(gomock.Any()).Return(&iam.DetachRolePolicyOutput{}, nil)
+			mockAWSClient.EXPECT().DeleteRole(gomock.Any()).Return(&iam.DeleteRoleOutput{}, nil)
+			err := DeleteBYOCAdminAccessRole(nullLogger, mockAWSClient, "roleName")
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Throws an error on any AWS error on GetAttachedPolicies", func() {
+			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(nil, awserr.New("AWSError", "Some AWS Error", nil))
+			err := DeleteBYOCAdminAccessRole(nullLogger, mockAWSClient, "roleName")
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("Throws an error on any AWS error on DetachRolePolicy", func() {
+			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(
+				&iam.ListAttachedRolePoliciesOutput{
+					AttachedPolicies: []*iam.AttachedPolicy{
+						{
+							PolicyArn:  aws.String("PolicyArn"),
+							PolicyName: aws.String("PolicyName"),
+						},
+					},
+				},
+				nil,
+			)
+			mockAWSClient.EXPECT().DetachRolePolicy(gomock.Any()).Return(nil, awserr.New("AWSError", "Some AWS Error", nil))
+			err := DeleteBYOCAdminAccessRole(nullLogger, mockAWSClient, "roleName")
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
 	Context("Testing CreateRole", func() {
 		It("Works properly without error", func() {
 			mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(&iam.CreateRoleOutput{Role: &iam.Role{RoleId: aws.String("AROA1234567890EXAMPLE")}}, nil)

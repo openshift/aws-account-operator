@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/servicequotas"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
-	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
@@ -24,7 +23,7 @@ import (
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
 // NOTE: This function does not have any returns. In particular, error conditions from the
 // goroutines are logged, but do not result in a failure up the stack.
-func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []v1alpha1.AwsRegions, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) {
+func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []awsv1alpha1.AwsRegions, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
 	ec2Notifications, ec2Errors := make(chan string), make(chan string)
 
@@ -281,7 +280,7 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 					return timeoutInstanceID, runErr
 				}
 			}
-			return timeoutInstanceID, v1alpha1.ErrFailedAWSTypecast
+			return timeoutInstanceID, awsv1alpha1.ErrFailedAWSTypecast
 		}
 
 		// No error was found, instance is running, return instance id
@@ -289,7 +288,7 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 	}
 
 	// Timeout occurred, return instance id and timeout error
-	return timeoutInstanceID, v1alpha1.ErrCreateEC2Instance
+	return timeoutInstanceID, awsv1alpha1.ErrCreateEC2Instance
 }
 
 // DescribeEC2Instances returns the InstanceState code
@@ -312,11 +311,11 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instan
 	}
 
 	if len(result.InstanceStatuses) > 1 {
-		return 0, errors.New("More than one EC2 instance found")
+		return 0, errors.New("more than one EC2 instance found")
 	}
 
 	if len(result.InstanceStatuses) == 0 {
-		return 0, errors.New("No EC2 instances found")
+		return 0, errors.New("no EC2 instances found")
 	}
 	return int(*result.InstanceStatuses[0].InstanceState.Code), nil
 }
