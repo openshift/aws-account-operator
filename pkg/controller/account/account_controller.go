@@ -208,7 +208,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return r.handleAccountInitializingRegions(reqLogger, currentAcctInstance)
 	}
 
-	var ccsRoleID string
 	// If the account is BYOC, needs some different set up
 	if newBYOCAccount(currentAcctInstance) {
 		var result reconcile.Result
