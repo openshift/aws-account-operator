@@ -41,7 +41,7 @@ func claimBYOCAccount(r *ReconcileAccount, reqLogger logr.Logger, currentAcctIns
 	return nil
 }
 
-func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, account *awsv1alpha1.Account, awsSetupClient awsclient.Client, adminAccessArn string) (reconcile.Result, error) {
+func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, account *awsv1alpha1.Account) (reconcile.Result, error) {
 	accountClaim, acctClaimErr := r.getAccountClaim(account)
 	if acctClaimErr != nil {
 		// TODO: Unrecoverable

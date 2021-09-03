@@ -213,7 +213,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		var result reconcile.Result
 		var initErr error
 
-		result, initErr = r.initializeNewCCSAccount(reqLogger, currentAcctInstance, awsSetupClient, adminAccessArn)
+		result, initErr = r.initializeNewCCSAccount(reqLogger, currentAcctInstance)
 		if initErr != nil {
 			// TODO: If we have recoverable results from above, how do we allow them to requeue if state is failed
 			_, stateErr := r.setAccountFailed(
