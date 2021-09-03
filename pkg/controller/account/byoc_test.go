@@ -389,6 +389,37 @@ func TestInitializeNewCCSAccount(t *testing.T) {
 			errExpected:    true,
 			expectedResult: &k8serr.StatusError{},
 		},
+
+		{
+			name: "accountClaim validation fails",
+			acct: &awsv1alpha1.Account{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "AccName",
+					Namespace: awsv1alpha1.AccountCrNamespace,
+				},
+				Spec: awsv1alpha1.AccountSpec{
+					BYOC: true,
+				},
+				Status: awsv1alpha1.AccountStatus{
+					Claimed: false,
+				},
+			},
+			localObjects: []runtime.Object{
+				&awsv1alpha1.AccountClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+					Spec: awsv1alpha1.AccountClaimSpec{
+						BYOC:                true,
+						BYOCAWSAccountID:    "1234",
+						BYOCSecretRef:       awsv1alpha1.SecretRef{},
+						AwsCredentialSecret: awsv1alpha1.SecretRef{},
+					},
+				},
+			},
+			errExpected:    true,
+			expectedResult: awsv1alpha1.ErrBYOCSecretRefMissing,
+		},
 		{
 			name: "claimBYOCAccount returned error",
 			acct: &awsv1alpha1.Account{

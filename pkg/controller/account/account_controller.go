@@ -1219,7 +1219,6 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 			return nil, nil, err
 		}
 
-		currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
 		roleID, err := createBYOCAdminAccessRole(
 			reqLogger,
 			awsSetupClient,
