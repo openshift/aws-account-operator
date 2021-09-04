@@ -10,9 +10,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/go-logr/logr"
 	"github.com/golang/mock/gomock"
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/controller/testutils"
 	"github.com/stretchr/testify/assert"
@@ -20,6 +22,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 )
+
+func init() {
+	// Initialize Testing Defaults
+	defaultSleepDelay = 0 * time.Millisecond
+	defaultDelay = 0 * time.Second
+	testSleepModifier = 0
+}
 
 func TestIAMCreateSecret(t *testing.T) {
 
@@ -61,6 +70,7 @@ func TestGetSTSCredentials(t *testing.T) {
 	mocks := setupDefaultMocks(t, []runtime.Object{})
 	nullLogger := testutils.NullLogger{}
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+	defer mocks.mockCtrl.Finish()
 
 	AccessKeyId := aws.String("MyAccessKeyID")
 	Expiration := aws.Time(time.Now().Add(time.Hour))
@@ -93,7 +103,29 @@ func TestGetSTSCredentials(t *testing.T) {
 	assert.Equal(t, creds.Credentials.SessionToken, SessionToken)
 	assert.NoError(t, err)
 
-	// TODO Test AWS Failure
+	// Test AWS Failure
+	expectedErr := awserr.New("AccessDenied", "", nil)
+	mockAWSClient.EXPECT().AssumeRole(gomock.Any()).Return(
+		&sts.AssumeRoleOutput{
+			Credentials: &sts.Credentials{
+				AccessKeyId:     AccessKeyId,
+				Expiration:      Expiration,
+				SecretAccessKey: SecretAccessKey,
+				SessionToken:    SessionToken,
+			},
+		},
+		expectedErr,
+	).Times(100)
+
+	creds, err = getSTSCredentials(
+		nullLogger,
+		mockAWSClient,
+		"",
+		"",
+		"",
+	)
+	assert.Error(t, err, expectedErr)
+	assert.Equal(t, creds, &sts.AssumeRoleOutput{})
 }
 
 func TestRetryIfAwsServiceFailureOrInvalidToken(t *testing.T) {
@@ -170,20 +202,11 @@ func TestListAccessKeys(t *testing.T) {
 	returnErr := awserr.New("AccessDenied", "", nil)
 
 	// Should retry 5 times
-	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(nil, returnErr)
-	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(nil, returnErr)
-	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(nil, returnErr)
-	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(nil, returnErr)
-	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(nil, returnErr)
-
-	// retries took long, need to mock it out
-	old := DefaultDelay
-	DefaultDelay = 0 * time.Second
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(nil, returnErr).Times(5)
 
 	returnValue, err = listAccessKeys(mockAWSClient, &user)
 	assert.Nil(t, returnValue)
 	assert.Error(t, err, returnErr)
-	DefaultDelay = old
 }
 
 func TestDeleteAccessKey(t *testing.T) {
@@ -207,20 +230,11 @@ func TestDeleteAccessKey(t *testing.T) {
 	returnErr := awserr.New("AccessDenied", "", nil)
 
 	// Should retry 5 times
-	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr)
-	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr)
-	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr)
-	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr)
-	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr)
-
-	// retries took long, need to mock it out
-	old := DefaultDelay
-	DefaultDelay = 0 * time.Second
+	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr).Times(5)
 
 	deleteAccessKeyOutput, err = deleteAccessKey(mockAWSClient, &accessKeyID, &username)
 	assert.Equal(t, deleteAccessKeyOutput, &iam.DeleteAccessKeyOutput{})
 	assert.Error(t, err, returnErr)
-	DefaultDelay = old
 }
 
 func TestDeleteAllAccessKeys(t *testing.T) {
@@ -256,35 +270,108 @@ func TestDeleteAllAccessKeys(t *testing.T) {
 }
 
 func TestCreateIAMUser(t *testing.T) {
-	mocks := setupDefaultMocks(t, []runtime.Object{})
-
-	// This is necessary for the mocks to report failures like methods not being called an expected number of times.
-	// after mocks is defined
-	defer mocks.mockCtrl.Finish()
-
-	nullLogger := testutils.NullLogger{}
-	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
 	userID := aws.String("123456789")
 	usernameStr := "MyUsername"
+	username := aws.String(usernameStr)
+	nullLogger := testutils.NullLogger{}
 
-	expectedCreateUserOutput := &iam.CreateUserOutput{
-		User: &iam.User{
-			UserId:   userID,
-			UserName: aws.String(usernameStr),
+	tests := []struct {
+		name                     string
+		setupAWSMock             func(r *mock.MockClientMockRecorder)
+		expectedCreateUserOutput *iam.CreateUserOutput
+		expectedErr              error
+	}{
+		{
+			name: "Success",
+			setupAWSMock: func(mc *mock.MockClientMockRecorder) {
+				gomock.InOrder(
+					mc.CreateUser(&iam.CreateUserInput{
+						UserName: username,
+					}).Return(
+						&iam.CreateUserOutput{
+							User: &iam.User{
+								UserId:   userID,
+								UserName: username,
+							},
+						},
+						nil, // no error
+					),
+				)
+			},
+			expectedCreateUserOutput: &iam.CreateUserOutput{
+				User: &iam.User{
+					UserId:   userID,
+					UserName: username,
+				},
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "InvalidClientTokenId",
+			setupAWSMock: func(mc *mock.MockClientMockRecorder) {
+				gomock.InOrder(
+					mc.CreateUser(&iam.CreateUserInput{
+						UserName: username,
+					}).Return(nil, awserr.New("InvalidClientTokenId", "", nil)).Times(9),
+				)
+			},
+			expectedCreateUserOutput: &iam.CreateUserOutput{},
+			expectedErr:              awserr.New("InvalidClientTokenId", "", nil),
+		},
+		{
+			name: "AccessDenied",
+			setupAWSMock: func(mc *mock.MockClientMockRecorder) {
+				gomock.InOrder(
+					mc.CreateUser(&iam.CreateUserInput{
+						UserName: username,
+					}).Return(nil, awserr.New("AccessDenied", "", nil)).Times(9),
+				)
+			},
+			expectedCreateUserOutput: &iam.CreateUserOutput{},
+			expectedErr:              awserr.New("AccessDenied", "", nil),
+		},
+		{
+			name: "EntityAlreadyExists",
+			setupAWSMock: func(mc *mock.MockClientMockRecorder) {
+				gomock.InOrder(
+					mc.CreateUser(&iam.CreateUserInput{
+						UserName: username,
+					}).Return(nil, awserr.New(iam.ErrCodeEntityAlreadyExistsException, "", nil)),
+				)
+			},
+			expectedCreateUserOutput: &iam.CreateUserOutput{},
+			expectedErr:              awserr.New(iam.ErrCodeEntityAlreadyExistsException, "", nil),
+		},
+		{
+			name: "OtherErr",
+			setupAWSMock: func(mc *mock.MockClientMockRecorder) {
+				gomock.InOrder(
+					mc.CreateUser(&iam.CreateUserInput{
+						UserName: username,
+					}).Return(nil, awserr.New("OtherErr", "", nil)),
+				)
+			},
+			expectedCreateUserOutput: &iam.CreateUserOutput{},
+			expectedErr:              awserr.New("OtherErr", "", nil),
 		},
 	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				mocks := setupDefaultMocks(t, []runtime.Object{})
+				test.setupAWSMock(mocks.mockAWSClient.EXPECT())
+				// This is necessary for the mocks to report failures like methods not being called an expected number of times.
+				// after mocks is defined
+				defer mocks.mockCtrl.Finish()
 
-	mockAWSClient.EXPECT().CreateUser(&iam.CreateUserInput{
-		UserName: aws.String(usernameStr),
-	}).Return(
-		expectedCreateUserOutput,
-		nil, // no error
-	)
-
-	createUserOutput, err := CreateIAMUser(nullLogger, mockAWSClient, usernameStr)
-	assert.Equal(t, expectedCreateUserOutput, createUserOutput)
-	assert.Nil(t, err)
+				createUserOutput, err := CreateIAMUser(nullLogger, mocks.mockAWSClient, usernameStr)
+				assert.Equal(t, test.expectedCreateUserOutput, createUserOutput)
+				assert.Equal(t, test.expectedErr, err)
+			},
+		)
+	}
 }
 
 func TestAttachAdminUserPolicy(t *testing.T) {
@@ -294,6 +381,7 @@ func TestAttachAdminUserPolicy(t *testing.T) {
 	user := iam.User{UserName: &username}
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
+	// Testing valid state, returns with no issue.
 	mockAWSClient.EXPECT().AttachUserPolicy(gomock.Any()).Return(
 		&iam.AttachUserPolicyOutput{},
 		nil, // no error
@@ -302,6 +390,17 @@ func TestAttachAdminUserPolicy(t *testing.T) {
 	attachAdminUserPolicy, err := AttachAdminUserPolicy(mockAWSClient, &user)
 	assert.Equal(t, attachAdminUserPolicy, &iam.AttachUserPolicyOutput{})
 	assert.Nil(t, err)
+
+	// Testing invalid state, returns error, retries up to 100 times.
+	expectedError := awserr.New("AccessDenied", "", nil)
+	mockAWSClient.EXPECT().AttachUserPolicy(gomock.Any()).Return(
+		&iam.AttachUserPolicyOutput{},
+		expectedError, // no error
+	).Times(100)
+
+	attachAdminUserPolicy, err = AttachAdminUserPolicy(mockAWSClient, &user)
+	assert.Equal(t, attachAdminUserPolicy, &iam.AttachUserPolicyOutput{})
+	assert.Equal(t, err, expectedError)
 }
 
 func TestCreateUserAccessKey(t *testing.T) {
@@ -335,20 +434,11 @@ func TestCreateUserAccessKey(t *testing.T) {
 	returnErr := awserr.New("AccessDenied", "", nil)
 
 	// Should retry 5 times
-	mockAWSClient.EXPECT().CreateAccessKey(gomock.Any()).Return(&iam.CreateAccessKeyOutput{}, returnErr)
-	mockAWSClient.EXPECT().CreateAccessKey(gomock.Any()).Return(&iam.CreateAccessKeyOutput{}, returnErr)
-	mockAWSClient.EXPECT().CreateAccessKey(gomock.Any()).Return(&iam.CreateAccessKeyOutput{}, returnErr)
-	mockAWSClient.EXPECT().CreateAccessKey(gomock.Any()).Return(&iam.CreateAccessKeyOutput{}, returnErr)
-	mockAWSClient.EXPECT().CreateAccessKey(gomock.Any()).Return(&iam.CreateAccessKeyOutput{}, returnErr)
-
-	// retries took long, need to mock it out
-	old := DefaultDelay
-	DefaultDelay = 0 * time.Second
+	mockAWSClient.EXPECT().CreateAccessKey(gomock.Any()).Return(&iam.CreateAccessKeyOutput{}, returnErr).Times(5)
 
 	returnValue, err = CreateUserAccessKey(mockAWSClient, &user)
 	assert.Equal(t, returnValue, &iam.CreateAccessKeyOutput{})
 	assert.Error(t, err, returnErr)
-	DefaultDelay = old
 }
 
 func TestBuildIAMUser(t *testing.T) {
@@ -396,6 +486,99 @@ func TestBuildIAMUser(t *testing.T) {
 	assert.Nil(t, err)
 }
 
+func TestDeleteIAMUser(t *testing.T) {
+	nullLogger := testutils.NullLogger{}
+	mocks := setupDefaultMocks(t, []runtime.Object{})
+	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+	defer mocks.mockCtrl.Finish()
+
+	mockAWSClient.EXPECT().ListAttachedUserPolicies(gomock.Any()).Return(
+		&iam.ListAttachedUserPoliciesOutput{
+			AttachedPolicies: []*iam.AttachedPolicy{},
+		}, nil,
+	)
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(
+		&iam.ListAccessKeysOutput{
+			AccessKeyMetadata: []*iam.AccessKeyMetadata{},
+		}, nil,
+	)
+	mockAWSClient.EXPECT().DeleteUser(&iam.DeleteUserInput{UserName: aws.String("MyUserName")}).Return(
+		nil, nil,
+	)
+
+	user := iam.User{UserName: aws.String("MyUserName")}
+
+	err := deleteIAMUser(nullLogger, mockAWSClient, &user)
+	assert.Nil(t, err)
+}
+
+func TestDeleteIAMUsers(t *testing.T) {
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		fmt.Printf("failed adding to scheme in iam_test.go")
+	}
+
+	nullLogger := testutils.NullLogger{}
+	mocks := setupDefaultMocks(t, []runtime.Object{})
+
+	// This is necessary for the mocks to report failures like methods not being called an expected number of times.
+	// after mocks is defined
+	defer mocks.mockCtrl.Finish()
+
+	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+	username := aws.String("MyUserName")
+	account := newTestAccountBuilder().acct
+	account.Name = *username
+	account.Namespace = "MyNamespace"
+	mockAWSClient.EXPECT().GetUser(gomock.Any()).Return(
+		&iam.GetUserOutput{
+			User: &iam.User{
+				UserName: username,
+				Tags:     getValidTags(&account),
+			},
+		}, nil,
+	)
+
+	// Copied expectations from TestDeleteIAMUser
+	mockAWSClient.EXPECT().ListAttachedUserPolicies(gomock.Any()).Return(
+		&iam.ListAttachedUserPoliciesOutput{
+			AttachedPolicies: []*iam.AttachedPolicy{},
+		}, nil,
+	)
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(
+		&iam.ListAccessKeysOutput{
+			AccessKeyMetadata: []*iam.AccessKeyMetadata{},
+		}, nil,
+	)
+	mockAWSClient.EXPECT().DeleteUser(&iam.DeleteUserInput{UserName: username}).Return(
+		nil, nil,
+	)
+
+	// Need to Monkey Patch awsclient.ListIAMUsers to return a list of users we define.
+	old := listIAMUsers
+	listIAMUsers = func(reqLogger logr.Logger, client awsclient.Client) ([]*iam.User, error) {
+		return []*iam.User{{UserName: username}}, nil
+	}
+
+	err = deleteIAMUsers(nullLogger, mockAWSClient, &account)
+	listIAMUsers = old
+	assert.Nil(t, err)
+}
+
+func getValidTags(account *v1alpha1.Account) []*iam.Tag {
+	return []*iam.Tag{
+		// These tags are required to enter the deletion block
+		{
+			Key:   aws.String(v1alpha1.ClusterAccountNameTagKey),
+			Value: aws.String(account.Name),
+		},
+		{
+			Key:   aws.String(v1alpha1.ClusterNamespaceTagKey),
+			Value: aws.String(account.Namespace),
+		},
+	}
+}
+
 func TestCleanIAMRoles(t *testing.T) {
 	mocks := setupDefaultMocks(t, []runtime.Object{})
 
@@ -410,17 +593,7 @@ func TestCleanIAMRoles(t *testing.T) {
 	expectedRole := &iam.Role{
 		RoleName: expectedRoleName,
 		Arn:      aws.String("LookAtMyArnMyArnIsAmazing"),
-		Tags: []*iam.Tag{
-			// These tags are required to enter the deletion block
-			{
-				Key:   aws.String(v1alpha1.ClusterAccountNameTagKey),
-				Value: aws.String(account.Name),
-			},
-			{
-				Key:   aws.String(v1alpha1.ClusterNamespaceTagKey),
-				Value: aws.String(account.Namespace),
-			},
-		},
+		Tags:     getValidTags(&account),
 	}
 
 	mockAWSClient.EXPECT().ListRoles(gomock.Any()).Return(
@@ -634,6 +807,41 @@ func TestDetachRolePolicies(t *testing.T) {
 	).Return(nil, nil)
 
 	err := detachRolePolicies(mockAWSClient, *expectedRoleName)
+	assert.Nil(t, err)
+}
+
+func TestCreateIAMUserSecret(t *testing.T) {
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		fmt.Printf("failed adding to scheme in iam_test.go")
+	}
+
+	nullLogger := testutils.NullLogger{}
+	mocks := setupDefaultMocks(t, []runtime.Object{})
+
+	// This is necessary for the mocks to report failures like methods not being called an expected number of times.
+	// after mocks is defined
+	defer mocks.mockCtrl.Finish()
+
+	r := ReconcileAccount{
+		Client: mocks.fakeKubeClient,
+		scheme: scheme.Scheme,
+	}
+
+	createAccessKeyOutput := iam.CreateAccessKeyOutput{
+		AccessKey: &iam.AccessKey{
+			UserName:        aws.String("UserName"),
+			AccessKeyId:     aws.String("AccessKeyId"),
+			SecretAccessKey: aws.String("SecretAccessKey"),
+		},
+	}
+	acct := newTestAccountBuilder().acct
+	namespacedName := types.NamespacedName{
+		Namespace: "namespace",
+		Name:      "test",
+	}
+
+	err = r.createIAMUserSecret(nullLogger, &acct, namespacedName, &createAccessKeyOutput)
 	assert.Nil(t, err)
 }
 

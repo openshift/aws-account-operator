@@ -27,6 +27,7 @@ type testAccountBuilder struct {
 type mocks struct {
 	fakeKubeClient client.Client
 	mockCtrl       *gomock.Controller
+	mockAWSClient  *mock.MockClient
 }
 
 func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
@@ -34,6 +35,8 @@ func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
 		fakeKubeClient: fake.NewFakeClient(localObjects...),
 		mockCtrl:       gomock.NewController(t),
 	}
+
+	mocks.mockAWSClient = mock.NewMockClient(mocks.mockCtrl)
 
 	return mocks
 }
