@@ -1,8 +1,6 @@
 package v1alpha1
 
 import (
-	"time"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -229,12 +227,6 @@ func (a *Account) HasAwsv1alpha1Finalizer() bool {
 		}
 	}
 	return false
-}
-
-//IsOlderThan takes a parameter of a time and returns true if the creation timestamp is longer than
-//the passed in time.
-func (a *Account) IsOlderThan(maxDuration time.Duration) bool {
-	return time.Since(a.GetCreationTimestamp().Time) > maxDuration
 }
 
 //IsBYOCPendingDeletionWithFinalizer returns true if account is a BYOC Account,

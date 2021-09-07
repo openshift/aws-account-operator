@@ -13,6 +13,7 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/controller/testutils"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -544,7 +545,7 @@ func TestAccountCreatingToolong(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := test.acct.acct.IsCreating() && test.acct.acct.IsOlderThan(createPendTime)
+				result := test.acct.acct.IsCreating() && utils.CreationConditionOlderThan(test.acct.acct, createPendTime)
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
