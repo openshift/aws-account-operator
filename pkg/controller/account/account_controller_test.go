@@ -521,18 +521,39 @@ func TestAccountCreatingToolong(t *testing.T) {
 		acct     *testAccountBuilder
 	}{
 		{
-			name:     "Account creating too long",
-			acct:     newTestAccountBuilder().WithState(awsv1alpha1.AccountCreating).WithCreationTimeStamp(time.Now().Add(-(createPendTime + time.Minute))), // 1 minute longer than the allowed timeout
+			name: "Account creating too long",
+			acct: newTestAccountBuilder().WithState(awsv1alpha1.AccountCreating).WithStatus(awsv1alpha1.AccountStatus{
+				Conditions: []awsv1alpha1.AccountCondition{
+					{
+						Type:          awsv1alpha1.AccountCreating,
+						LastProbeTime: metav1.Time{Time: time.Now().Add(-(createPendTime + time.Minute))},
+					},
+				},
+			}), // 1 minute longer than the allowed timeout
 			expected: true,
 		},
 		{
-			name:     "Account outside timeout threshold, but not creating",
-			acct:     newTestAccountBuilder().WithState(awsv1alpha1.AccountReady).WithCreationTimeStamp(time.Now().Add(-(createPendTime + time.Minute))), // 1 minute longer than the allowed timeout
+			name: "Account outside timeout threshold, but not creating",
+			acct: newTestAccountBuilder().WithState(awsv1alpha1.AccountReady).WithStatus(awsv1alpha1.AccountStatus{
+				Conditions: []awsv1alpha1.AccountCondition{
+					{
+						Type:          awsv1alpha1.AccountCreating,
+						LastProbeTime: metav1.Time{Time: time.Now().Add(-(createPendTime + time.Minute))},
+					},
+				},
+			}), // 1 minute longer than the allowed timeout
 			expected: false,
 		},
 		{
-			name:     "Account creating within timout threshold",
-			acct:     newTestAccountBuilder().WithState(awsv1alpha1.AccountCreating),
+			name: "Account creating within timout threshold",
+			acct: newTestAccountBuilder().WithState(awsv1alpha1.AccountCreating).WithStatus(awsv1alpha1.AccountStatus{
+				Conditions: []awsv1alpha1.AccountCondition{
+					{
+						Type:          awsv1alpha1.AccountCreating,
+						LastProbeTime: metav1.Time{Time: time.Now()},
+					},
+				},
+			}),
 			expected: false,
 		},
 		{

@@ -118,8 +118,11 @@ func FindAccountClaimCondition(conditions []awsv1alpha1.AccountClaimCondition, c
 
 // creationOlderThan returns true if the given account has been in a creation state for longer than the given time, else false
 func CreationConditionOlderThan(account awsv1alpha1.Account, duration time.Duration) bool {
-	createCondition := account.GetCondition(awsv1alpha1.AccountReady)
-	return time.Since(createCondition.LastProbeTime.Time) > duration
+	createCondition := FindAccountCondition(account.Status.Conditions, awsv1alpha1.AccountCreating)
+	if createCondition != nil {
+		return time.Since(createCondition.LastProbeTime.Time) > duration
+	}
+	return false
 }
 
 // SetAccountCondition sets a condition on a Account resource's status
