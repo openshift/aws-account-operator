@@ -13,6 +13,7 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/controller/testutils"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -520,18 +521,42 @@ func TestAccountCreatingToolong(t *testing.T) {
 		acct     *testAccountBuilder
 	}{
 		{
-			name:     "Account creating too long",
-			acct:     newTestAccountBuilder().WithState(awsv1alpha1.AccountCreating).WithCreationTimeStamp(time.Now().Add(-(createPendTime + time.Minute))), // 1 minute longer than the allowed timeout
+			name: "Account creating too long",
+			acct: newTestAccountBuilder().WithStatus(awsv1alpha1.AccountStatus{
+				State: string(awsv1alpha1.AccountCreating),
+				Conditions: []awsv1alpha1.AccountCondition{
+					{
+						Type:          awsv1alpha1.AccountCreating,
+						LastProbeTime: metav1.Time{Time: time.Now().Add(-(createPendTime + time.Minute))},
+					},
+				},
+			}), // 1 minute longer than the allowed timeout
 			expected: true,
 		},
 		{
-			name:     "Account outside timeout threshold, but not creating",
-			acct:     newTestAccountBuilder().WithState(awsv1alpha1.AccountReady).WithCreationTimeStamp(time.Now().Add(-(createPendTime + time.Minute))), // 1 minute longer than the allowed timeout
+			name: "Account outside timeout threshold, but not creating",
+			acct: newTestAccountBuilder().WithStatus(awsv1alpha1.AccountStatus{
+				State: string(awsv1alpha1.AccountReady),
+				Conditions: []awsv1alpha1.AccountCondition{
+					{
+						Type:          awsv1alpha1.AccountCreating,
+						LastProbeTime: metav1.Time{Time: time.Now().Add(-(createPendTime + time.Minute))},
+					},
+				},
+			}), // 1 minute longer than the allowed timeout
 			expected: false,
 		},
 		{
-			name:     "Account creating within timout threshold",
-			acct:     newTestAccountBuilder().WithState(awsv1alpha1.AccountCreating),
+			name: "Account creating within timout threshold",
+			acct: newTestAccountBuilder().WithStatus(awsv1alpha1.AccountStatus{
+				State: string(awsv1alpha1.AccountCreating),
+				Conditions: []awsv1alpha1.AccountCondition{
+					{
+						Type:          awsv1alpha1.AccountCreating,
+						LastProbeTime: metav1.Time{Time: time.Now()},
+					},
+				},
+			}),
 			expected: false,
 		},
 		{
@@ -544,7 +569,7 @@ func TestAccountCreatingToolong(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := test.acct.acct.IsCreating() && test.acct.acct.IsOlderThan(createPendTime)
+				result := test.acct.acct.IsCreating() && utils.CreationConditionOlderThan(test.acct.acct, createPendTime)
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,

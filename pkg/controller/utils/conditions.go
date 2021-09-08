@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -113,6 +114,12 @@ func FindAccountClaimCondition(conditions []awsv1alpha1.AccountClaimCondition, c
 		}
 	}
 	return nil
+}
+
+// creationOlderThan returns true if the given account has been in a creation state for longer than the given time, else false
+func CreationConditionOlderThan(account awsv1alpha1.Account, duration time.Duration) bool {
+	createCondition := FindAccountCondition(account.Status.Conditions, awsv1alpha1.AccountCreating)
+	return time.Since(createCondition.LastProbeTime.Time) > duration
 }
 
 // SetAccountCondition sets a condition on a Account resource's status
