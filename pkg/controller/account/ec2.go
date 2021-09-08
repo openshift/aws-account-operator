@@ -65,7 +65,7 @@ func (r *ReconcileAccount) InitializeSupportedRegions(reqLogger logr.Logger, acc
 			regionInitFailedRegion = append(regionInitFailedRegion, errMsg.Region)
 		}
 	}
-	// If an account is BYOC or CCS and region initialization fails we want to fail the account else output success log
+	// If an account is BYOC or CCS and region initialization fails for the region expected, we want to fail the account else output success log
 	if regionInitFailed && len(regions) == 1 {
 		controllerutils.SetAccountStatus(
 			account,
