@@ -41,6 +41,9 @@ const (
 	// SREAssumeRole is the name of the role that SREs need to use to role-chain to get temporary
 	// credentials for a CCS account
 	SREAssumeRole = "RH-SREP-CCS-Access"
+
+	// AwsSecretName is a constant for the name of the Kubernetes secret that holds the AWS Credentials
+	AwsSecretName = "aws-account-operator-credentials"
 )
 
 // operatorStartTime is (roughly) the time at which the operator came up.
