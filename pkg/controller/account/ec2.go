@@ -199,10 +199,10 @@ func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, ac
 		time.Sleep(time.Duration(currentWait) * time.Second)
 		var code int
 		code, DescError = DescribeEC2Instances(reqLogger, awsClient, instanceID)
-		if code == 16 {
+		if code == 16 { // 16 represents a successful region initialization
 			reqLogger.Info(fmt.Sprintf("EC2 Instance: %s Running", instanceID))
 			break
-		} else if code == 401 {
+		} else if code == 401 { // 401 represents an UnauthorizedOperation error
 			// Missing permission to perform operations, account needs to fail
 			reqLogger.Error(DescError, fmt.Sprintf("Missing required permissions for account %s", account.Name))
 			return err
