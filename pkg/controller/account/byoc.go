@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -42,7 +41,7 @@ func claimBYOCAccount(r *ReconcileAccount, reqLogger logr.Logger, currentAcctIns
 	return nil
 }
 
-func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, account *awsv1alpha1.Account, awsSetupClient awsclient.Client, adminAccessArn string) (string, reconcile.Result, error) {
+func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, account *awsv1alpha1.Account) (reconcile.Result, error) {
 	accountClaim, acctClaimErr := r.getAccountClaim(account)
 	if acctClaimErr != nil {
 		// TODO: Unrecoverable
@@ -62,46 +61,7 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		} else {
 			reqLogger.Error(acctClaimErr, "accountclaim is nil")
 		}
-		return "", reconcile.Result{}, acctClaimErr
-
-	}
-
-	// Try to get the CCS/STS client five times with half a second interval between attempts
-	// before setting the account claim to an error state
-	var clientErr error
-	var client awsclient.Client
-	for i := 0; i < 5; i++ {
-		if account.Spec.ManualSTSMode {
-			client, _, clientErr = r.getSTSClient(reqLogger, accountClaim, awsSetupClient)
-		} else {
-			client, clientErr = r.getCCSClient(account, accountClaim)
-		}
-		if clientErr == nil {
-			break
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	if clientErr != nil {
-		utils.SetAccountClaimStatus(
-			accountClaim,
-			"Failed to create AWS Client",
-			"AWSClientCreationFailed",
-			awsv1alpha1.ClientError,
-			awsv1alpha1.ClaimStatusError,
-		)
-		err := r.Client.Status().Update(context.TODO(), accountClaim)
-		if err != nil {
-			reqLogger.Error(err, "Failed to create AWS Client")
-		}
-
-		if accountClaim != nil {
-			claimErr := r.setAccountClaimError(reqLogger, account, clientErr.Error())
-			if claimErr != nil {
-				reqLogger.Error(claimErr, "failed setting accountClaim error state")
-			}
-		}
-		// TODO: Recoverable?
-		return "", reconcile.Result{}, clientErr
+		return reconcile.Result{}, acctClaimErr
 	}
 
 	validateErr := accountClaim.Validate()
@@ -122,7 +82,7 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 		}
 
 		// TODO: Recoverable?
-		return "", reconcile.Result{}, validateErr
+		return reconcile.Result{}, validateErr
 	}
 
 	claimErr := claimBYOCAccount(r, reqLogger, account)
@@ -133,53 +93,35 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 			reqLogger.Error(claimStatusErr, "failed setting accountClaim error state")
 		}
 		// TODO: Recoverable?
-		return "", reconcile.Result{}, claimErr
+		return reconcile.Result{}, claimErr
 	}
 
-	// if STS Mode we don't need anything else done here
-	if account.Spec.ManualSTSMode {
-		reqLogger.Info("Skipping Admin Role Creation for STS Account.")
-		return "", reconcile.Result{}, nil
-	}
+	return reconcile.Result{}, nil
+}
 
-	accountID := account.Labels[awsv1alpha1.IAMUserIDLabel]
-
+func (r *ReconcileAccount) GetSREAccessARN(reqLogger logr.Logger) (string, error) {
 	// Get SRE Access ARN from configmap
-	cm := &corev1.ConfigMap{}
-	cmErr := r.Client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
-	if cmErr != nil {
-		reqLogger.Error(cmErr, "There was an error getting the ConfigMap to get the SRE Access Role")
-		return "", reconcile.Result{}, cmErr
+	configMap := &corev1.ConfigMap{}
+	err := r.Client.Get(
+		context.TODO(),
+		types.NamespacedName{
+			Namespace: awsv1alpha1.AccountCrNamespace,
+			Name:      awsv1alpha1.DefaultConfigMap,
+		},
+		configMap,
+	)
+	if err != nil {
+		reqLogger.Error(err, "There was an error getting the ConfigMap to get the SRE Access Role")
+		return "", err
 	}
 
-	SREAccessARN := cm.Data["CCS-Access-Arn"]
+	SREAccessARN := configMap.Data["CCS-Access-Arn"]
 	if SREAccessARN == "" {
 		reqLogger.Error(awsv1alpha1.ErrInvalidConfigMap, "configmap key missing", "keyName", "CCS-Access-Arn")
-		return "", reconcile.Result{}, cmErr
+		return "", awsv1alpha1.ErrInvalidConfigMap
 	}
 
-	// Get list of managed tags to add to resources
-	managedTags := r.getManagedTags(reqLogger)
-	customTags := r.getCustomTags(reqLogger, account)
-
-	// Create access key and role for BYOC account
-	var roleID string
-	var roleErr error
-	if !account.HasState() {
-		tags := awsclient.AWSTags.BuildTags(account, managedTags, customTags).GetIAMTags()
-		roleID, roleErr = createBYOCAdminAccessRole(reqLogger, awsSetupClient, client, adminAccessArn, accountID, tags, SREAccessARN)
-
-		if roleErr != nil {
-			claimErr := r.setAccountClaimError(reqLogger, account, roleErr.Error())
-			if claimErr != nil {
-				reqLogger.Error(claimErr, "failed setting accountClaim error state")
-			}
-			// TODO: Can this be requeued?
-			// TODO: Check idempotency/workflow to return here
-			return "", reconcile.Result{Requeue: true}, roleErr
-		}
-	}
-	return roleID, reconcile.Result{}, nil
+	return SREAccessARN, nil
 }
 
 // Create role for BYOC IAM user to assume
