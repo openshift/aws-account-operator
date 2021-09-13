@@ -691,6 +691,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 	if err != nil {
 		connErr := fmt.Sprintf("unable to connect to default region %s", awsv1alpha1.AwsUSEastOneRegion)
 		reqLogger.Error(err, connErr)
+		return err
 	}
 
 	// Get a list of regions enabled in the current account
