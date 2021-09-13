@@ -148,14 +148,11 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	// We expect this secret to exist in the same namespace Account CR's are created
-	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+	// We build the input here but the client later because we handle the error differently
+	setupClientInput := awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
-	})
-	if err != nil {
-		reqLogger.Error(err, "failed building operator AWS client")
-		return reconcile.Result{}, err
 	}
 
 	if currentAcctInstance.IsPendingDeletion() {
@@ -165,6 +162,25 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
 			if err != nil {
 				reqLogger.Error(err, "Failed removing account finalizer")
+			}
+			return reconcile.Result{}, err
+		}
+
+		awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, setupClientInput)
+		if err != nil {
+			reqLogger.Error(err, "failed building operator AWS client")
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				// If it's AccessDenied we want to just delete the finalizer and continue as we assume
+				// the credentials have been deleted by the customer
+				case "AccessDenied":
+					err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
+					if err != nil {
+						reqLogger.Error(err, "failed removing account finalizer")
+						return reconcile.Result{}, err
+					}
+					return reconcile.Result{}, nil
+				}
 			}
 			return reconcile.Result{}, err
 		}
@@ -201,6 +217,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	if currentAcctInstance.IsFailed() {
 		reqLogger.Info(fmt.Sprintf("Account %s is failed. Ignoring.", currentAcctInstance.Name))
 		return reconcile.Result{}, nil
+	}
+
+	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, setupClientInput)
+	if err != nil {
+		reqLogger.Error(err, "failed building operator AWS client")
+		return reconcile.Result{}, err
 	}
 
 	// Detect accounts for which we kicked off asynchronous region initialization
