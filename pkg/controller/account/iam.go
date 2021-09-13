@@ -45,7 +45,10 @@ type StatementEntry struct {
 }
 
 var (
-	DefaultDelay = 3 * time.Second
+	defaultDelay      = 3 * time.Second
+	defaultSleepDelay = 500 * time.Millisecond
+	// testSleepModifier is set to 0 in tests so that tests don't sleep and cause a slowdown
+	testSleepModifier int = 1
 )
 
 // CreateSecret creates a secret for placing IAM Credentials
@@ -97,7 +100,7 @@ func getSTSCredentials(
 	assumeRoleOutput := &sts.AssumeRoleOutput{}
 	var err error
 	for i := 0; i < 100; i++ {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(defaultSleepDelay)
 		assumeRoleOutput, err = client.AssumeRole(&assumeRoleInput)
 		if err == nil {
 			break
@@ -146,7 +149,7 @@ func listAccessKeys(client awsclient.Client, iamUser *iam.User) (*iam.ListAccess
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
-	retry.DefaultDelay = DefaultDelay
+	retry.DefaultDelay = defaultDelay
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {
@@ -167,7 +170,7 @@ func deleteAccessKey(client awsclient.Client, accessKeyID *string, username *str
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
-	retry.DefaultDelay = DefaultDelay
+	retry.DefaultDelay = defaultDelay
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {
@@ -246,7 +249,7 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 					utils.LogAwsError(reqLogger, "CreateIAMUser: Unexpected AWS Error during creation of IAM user", nil, err)
 					return &iam.CreateUserOutput{}, err
 				}
-				time.Sleep(time.Duration(time.Duration(attempt*5) * time.Second))
+				time.Sleep(time.Duration(time.Duration(attempt*5*testSleepModifier) * time.Second))
 			} else {
 				return &iam.CreateUserOutput{}, err
 			}
@@ -266,7 +269,7 @@ func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.Att
 	attachPolicyOutput := &iam.AttachUserPolicyOutput{}
 	var err error
 	for i := 0; i < 100; i++ {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(defaultSleepDelay)
 		attachPolicyOutput, err = client.AttachUserPolicy(&iam.AttachUserPolicyInput{
 			UserName:  iamUser.UserName,
 			PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
@@ -289,7 +292,7 @@ func CreateUserAccessKey(client awsclient.Client, iamUser *iam.User) (*iam.Creat
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
-	retry.DefaultDelay = DefaultDelay
+	retry.DefaultDelay = defaultDelay
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {
@@ -416,7 +419,7 @@ func deleteIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, user *iam.
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
-	retry.DefaultDelay = DefaultDelay
+	retry.DefaultDelay = defaultDelay
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {
@@ -434,10 +437,15 @@ func deleteIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, user *iam.
 	return nil
 }
 
+// listIAMUsers func pointer is required in order to patch this func for testing purposes.
+var (
+	listIAMUsers = awsclient.ListIAMUsers
+)
+
 func deleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
 	reqLogger.Info("Cleaning up IAM users")
 
-	users, err := awsclient.ListIAMUsers(reqLogger, awsClient)
+	users, err := listIAMUsers(reqLogger, awsClient)
 	if err != nil {
 		return fmt.Errorf("failed to list aws iam users: %v", err)
 	}
