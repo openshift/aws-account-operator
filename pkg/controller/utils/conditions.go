@@ -153,9 +153,7 @@ func SetAccountCondition(
 			status, reason, message,
 			updateConditionCheck,
 		) {
-			if existingCondition.Status != status {
-				existingCondition.LastTransitionTime = now
-			}
+			existingCondition.LastTransitionTime = now
 			existingCondition.Status = status
 			existingCondition.Reason = reason
 			existingCondition.Message = message
