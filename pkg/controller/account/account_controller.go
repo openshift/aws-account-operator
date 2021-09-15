@@ -149,10 +149,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	// We expect this secret to exist in the same namespace Account CR's are created
 	// We build the input here but the client later because we handle the error differently
-	setupClientInput := awsclient.NewAwsClientInput{
+	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 		AwsRegion:  "us-east-1",
+	})
+	if err != nil {
+		reqLogger.Error(err, "failed building operator AWS client")
+		return reconcile.Result{}, err
 	}
 
 	if currentAcctInstance.IsPendingDeletion() {
@@ -166,36 +170,38 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 
-		awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, setupClientInput)
-		if err != nil {
-			reqLogger.Error(err, "failed building operator AWS client")
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				// If it's AccessDenied we want to just delete the finalizer and continue as we assume
-				// the credentials have been deleted by the customer
-				case "AccessDenied":
-					err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
-					if err != nil {
-						reqLogger.Error(err, "failed removing account finalizer")
-						return reconcile.Result{}, err
-					}
-					return reconcile.Result{}, nil
-				}
-			}
-			return reconcile.Result{}, err
-		}
-
 		var awsClient awsclient.Client
 		if currentAcctInstance.IsBYOC() {
 			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
 			roleToAssume := fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
 			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
+			if err != nil {
+				reqLogger.Error(err, "failed building BYOC client from assume_role")
+				if aerr, ok := err.(awserr.Error); ok {
+					switch aerr.Code() {
+					// If it's AccessDenied we want to just delete the finalizer and continue as we assume
+					// the credentials have been deleted by the customer. For additional safety we also only
+					// want to do this for CCS accounts.
+					case "AccessDenied":
+						if currentAcctInstance.IsBYOC() {
+							err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
+							if err != nil {
+								reqLogger.Error(err, "failed removing account finalizer")
+								return reconcile.Result{}, err
+							}
+							reqLogger.Info("Finalizer Removed on CCS Account with ACCESSDENIED")
+							return reconcile.Result{}, nil
+						}
+					}
+				}
+				return reconcile.Result{}, err
+			}
 		} else {
 			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, awsv1alpha1.AccountOperatorIAMRole, "")
-		}
-		if err != nil {
-			reqLogger.Error(err, "failed building operator AWS client")
-			return reconcile.Result{}, err
+			if err != nil {
+				reqLogger.Error(err, "failed building AWS client from assume_role")
+				return reconcile.Result{}, err
+			}
 		}
 		r.finalizeAccount(reqLogger, awsClient, currentAcctInstance)
 		//return reconcile.Result{}, nil
@@ -217,12 +223,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	if currentAcctInstance.IsFailed() {
 		reqLogger.Info(fmt.Sprintf("Account %s is failed. Ignoring.", currentAcctInstance.Name))
 		return reconcile.Result{}, nil
-	}
-
-	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, setupClientInput)
-	if err != nil {
-		reqLogger.Error(err, "failed building operator AWS client")
-		return reconcile.Result{}, err
 	}
 
 	// Detect accounts for which we kicked off asynchronous region initialization
