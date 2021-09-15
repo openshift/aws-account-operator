@@ -148,7 +148,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	// We expect this secret to exist in the same namespace Account CR's are created
-	// We build the input here but the client later because we handle the error differently
 	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
