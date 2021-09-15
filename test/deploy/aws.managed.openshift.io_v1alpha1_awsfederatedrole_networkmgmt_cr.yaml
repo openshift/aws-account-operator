@@ -17,6 +17,7 @@ spec:
       - effect: Allow
         action:
           - "ec2:CreateTransitGatewayVpcAttachment"
+          - "ec2:CreateTransitGateway"
         resource:
           - "arn:aws:ec2:*:*:subnet/*"
           - "arn:aws:ec2:*:*:transit-gateway/*"
@@ -38,6 +39,15 @@ spec:
           - "iam:PutRolePolicy"
         resource:
           - "arn:aws:iam::*:role/aws-service-role/transitgateway.amazonaws.com/AWSServiceRoleForVPCTransitGateway*"
+
+      # AWS Route table manipulation to support AWS Transit Gateways
+      - effect: Allow
+        acount:
+          - "ec2:CreateRoute"
+          - "ec2:DeleteRoute"
+          - "ec2:ReplaceRoute"
+        resource:
+         - "arn:aws:ec2:*:*:route-table/*"
 
       # AWS EC2
       - effect: Allow
