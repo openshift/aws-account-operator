@@ -174,12 +174,33 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
 			roleToAssume := fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
 			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
+			if err != nil {
+				reqLogger.Error(err, "failed building BYOC client from assume_role")
+				if aerr, ok := err.(awserr.Error); ok {
+					switch aerr.Code() {
+					// If it's AccessDenied we want to just delete the finalizer and continue as we assume
+					// the credentials have been deleted by the customer. For additional safety we also only
+					// want to do this for CCS accounts.
+					case "AccessDenied":
+						if currentAcctInstance.IsBYOC() {
+							err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
+							if err != nil {
+								reqLogger.Error(err, "failed removing account finalizer")
+								return reconcile.Result{}, err
+							}
+							reqLogger.Info("Finalizer Removed on CCS Account with ACCESSDENIED")
+							return reconcile.Result{}, nil
+						}
+					}
+				}
+				return reconcile.Result{}, err
+			}
 		} else {
 			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, awsv1alpha1.AccountOperatorIAMRole, "")
-		}
-		if err != nil {
-			reqLogger.Error(err, "failed building operator AWS client")
-			return reconcile.Result{}, err
+			if err != nil {
+				reqLogger.Error(err, "failed building AWS client from assume_role")
+				return reconcile.Result{}, err
+			}
 		}
 		r.finalizeAccount(reqLogger, awsClient, currentAcctInstance)
 		//return reconcile.Result{}, nil
