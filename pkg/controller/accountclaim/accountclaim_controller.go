@@ -209,7 +209,17 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	if accountClaim.Spec.AccountLink == "" {
 		setAccountLinkOnAccountClaim(reqLogger, unclaimedAccount, accountClaim)
 		return reconcile.Result{}, r.specUpdate(reqLogger, accountClaim)
+	}
 
+	if !accountClaim.Spec.ManualSTSMode {
+		if accountClaim.Spec.STSRoleARN == "" {
+			instanceID := unclaimedAccount.Labels[awsv1alpha1.IAMUserIDLabel]
+			accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, unclaimedAccount.Spec.AwsAccountID, instanceID)
+			err := r.specUpdate(reqLogger, accountClaim)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+		}
 	}
 
 	// Set awsAccountClaim.Spec.AwsAccountOU
@@ -351,6 +361,15 @@ func (r *ReconcileAccountClaim) handleBYOCAccountClaim(reqLogger logr.Logger, ac
 	}
 
 	if !accountClaim.Spec.ManualSTSMode {
+		if accountClaim.Spec.STSRoleARN == "" {
+			instanceID := byocAccount.Labels[awsv1alpha1.IAMUserIDLabel]
+			accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, byocAccount.Spec.AwsAccountID, instanceID)
+			err := r.specUpdate(reqLogger, accountClaim)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+
 		// Create secret for OCM to consume
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)

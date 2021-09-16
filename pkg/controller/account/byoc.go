@@ -150,46 +150,17 @@ func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.C
 	}
 
 	// Create the base role
-	roleID, croleErr := CreateRole(reqLogger, byocInstanceIDRole, accessArnList, byocAWSClient, tags)
-	if croleErr != nil {
-		return roleID, croleErr
-	}
-	reqLogger.Info(fmt.Sprintf("New RoleID created: %s", roleID))
-
-	reqLogger.Info(fmt.Sprintf("Attaching policy %s to role %s", policyArn, byocInstanceIDRole))
-	// Attach the specified policy to the BYOC role
-	_, attachErr := byocAWSClient.AttachRolePolicy(&iam.AttachRolePolicyInput{
-		RoleName:  aws.String(byocInstanceIDRole),
-		PolicyArn: aws.String(policyArn),
-	})
-
-	if attachErr != nil {
-		return roleID, attachErr
-	}
-
-	reqLogger.Info(fmt.Sprintf("Checking if policy %s has been attached", policyArn))
-
-	// Attaching the policy suffers from an eventual consistency problem
-	policyList, listErr := GetAttachedPolicies(reqLogger, byocInstanceIDRole, byocAWSClient)
-	if listErr != nil {
+	roleID, err = CreateRole(reqLogger, byocInstanceIDRole, accessArnList, byocAWSClient, tags)
+	if err != nil {
 		return roleID, err
 	}
-
-	for _, policy := range policyList.AttachedPolicies {
-		if *policy.PolicyArn == policyArn {
-			reqLogger.Info(fmt.Sprintf("Found attached policy %s", *policy.PolicyArn))
-			break
-		} else {
-			err = fmt.Errorf("policy %s never attached to role %s", policyArn, byocInstanceIDRole)
-			return roleID, err
-		}
-	}
+	reqLogger.Info(fmt.Sprintf("New RoleID created: %s", roleID))
+	err = attachAndEnsureRolePolicies(reqLogger, byocAWSClient, byocInstanceIDRole, policyArn)
 
 	return roleID, err
 }
 
-func DeleteBYOCAdminAccessRole(reqLogger logr.Logger, byocAWSClient awsclient.Client, instanceID string) (err error) {
-	byocInstanceIDRole := fmt.Sprintf("%s-%s", byocRole, instanceID)
+func DeleteBYOCAdminAccessRole(reqLogger logr.Logger, byocAWSClient awsclient.Client, byocInstanceIDRole string) (err error) {
 	policyList, err := GetAttachedPolicies(reqLogger, byocInstanceIDRole, byocAWSClient)
 	if err != nil {
 		return err
