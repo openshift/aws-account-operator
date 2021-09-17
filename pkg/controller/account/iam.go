@@ -287,7 +287,7 @@ func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.Att
 
 func attachAndEnsureRolePolicies(reqLogger logr.Logger, client awsclient.Client, roleName string, policyArn string) error {
 	reqLogger.Info(fmt.Sprintf("Attaching policy %s to role %s", policyArn, roleName))
-	// Attach the specified policy to the BYOC role
+	// Attach the specified policy to the Role
 	_, attachErr := client.AttachRolePolicy(&iam.AttachRolePolicyInput{
 		RoleName:  aws.String(roleName),
 		PolicyArn: aws.String(policyArn),

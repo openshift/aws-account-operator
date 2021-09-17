@@ -1323,7 +1323,7 @@ func createManagedOpenShiftSupportRole(reqLogger logr.Logger, setupClient awscli
 
 	getUserOutput, err := setupClient.GetUser(&iam.GetUserInput{})
 	if err != nil {
-		reqLogger.Error(err, "Failed to get non-BYOC IAM User info")
+		reqLogger.Error(err, "Failed to get IAM User info")
 		return "", err
 	}
 	principalARN := *getUserOutput.User.Arn
