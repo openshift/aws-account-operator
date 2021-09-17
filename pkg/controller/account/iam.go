@@ -285,6 +285,39 @@ func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.Att
 	return attachPolicyOutput, nil
 }
 
+func attachAndEnsureRolePolicies(reqLogger logr.Logger, client awsclient.Client, roleName string, policyArn string) error {
+	reqLogger.Info(fmt.Sprintf("Attaching policy %s to role %s", policyArn, roleName))
+	// Attach the specified policy to the BYOC role
+	_, attachErr := client.AttachRolePolicy(&iam.AttachRolePolicyInput{
+		RoleName:  aws.String(roleName),
+		PolicyArn: aws.String(policyArn),
+	})
+
+	if attachErr != nil {
+		return attachErr
+	}
+
+	reqLogger.Info(fmt.Sprintf("Checking if policy %s has been attached", policyArn))
+
+	// Attaching the policy suffers from an eventual consistency problem
+	policyList, err := GetAttachedPolicies(reqLogger, roleName, client)
+	if err != nil {
+		return err
+	}
+
+	for _, policy := range policyList.AttachedPolicies {
+		if *policy.PolicyArn == policyArn {
+			reqLogger.Info(fmt.Sprintf("Found attached policy %s", *policy.PolicyArn))
+			break
+		} else {
+			err = fmt.Errorf("Policy %s never attached to role %s", policyArn, roleName)
+			return err
+		}
+	}
+
+	return nil
+}
+
 // CreateUserAccessKey creates a new IAM Access Key in AWS and returns aws.CreateAccessKeyOutput struct containing access key and secret
 func CreateUserAccessKey(client awsclient.Client, iamUser *iam.User) (*iam.CreateAccessKeyOutput, error) {
 	var result *iam.CreateAccessKeyOutput
