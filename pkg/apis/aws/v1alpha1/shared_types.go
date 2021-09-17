@@ -122,3 +122,7 @@ var ManagedTagsConfigMapKey = "aws-managed-tags"
 var ManagedOpenShiftSupportRole = "ManagedOpenShift-Support"
 
 var ManagedOpenShiftSupportRoleARN = "arn:aws:iam::%s:role/ManagedOpenShift-Support-%s"
+
+var CCSAccessARN = "CCS-Access-Arn"
+
+var SupportJumpRole = "support-jump-role"

@@ -212,13 +212,9 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	if !accountClaim.Spec.ManualSTSMode {
-		if accountClaim.Spec.STSRoleARN == "" {
-			instanceID := unclaimedAccount.Labels[awsv1alpha1.IAMUserIDLabel]
-			accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, unclaimedAccount.Spec.AwsAccountID, instanceID)
-			err := r.specUpdate(reqLogger, accountClaim)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
+		err = r.setSupportRoleARNManagedOpenshift(reqLogger, accountClaim, unclaimedAccount)
+		if err != nil {
+			return reconcile.Result{}, err
 		}
 	}
 
@@ -249,6 +245,15 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileAccountClaim) setSupportRoleARNManagedOpenshift(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
+	if accountClaim.Spec.STSRoleARN == "" {
+		instanceID := account.Labels[awsv1alpha1.IAMUserIDLabel]
+		accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
+		return r.specUpdate(reqLogger, accountClaim)
+	}
+	return nil
 }
 
 func (r *ReconcileAccountClaim) handleAccountClaimDeletion(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
@@ -361,13 +366,9 @@ func (r *ReconcileAccountClaim) handleBYOCAccountClaim(reqLogger logr.Logger, ac
 	}
 
 	if !accountClaim.Spec.ManualSTSMode {
-		if accountClaim.Spec.STSRoleARN == "" {
-			instanceID := byocAccount.Labels[awsv1alpha1.IAMUserIDLabel]
-			accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, byocAccount.Spec.AwsAccountID, instanceID)
-			err := r.specUpdate(reqLogger, accountClaim)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
+		err = r.setSupportRoleARNManagedOpenshift(reqLogger, accountClaim, byocAccount)
+		if err != nil {
+			return reconcile.Result{}, err
 		}
 
 		// Create secret for OCM to consume

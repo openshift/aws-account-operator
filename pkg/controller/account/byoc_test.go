@@ -537,22 +537,25 @@ func TestInitializeNewCCSAccount(t *testing.T) {
 
 func TestGetSREAccessARN(t *testing.T) {
 	expectedARN := "MyExpectedARN"
+	ccsAccessARN := "CCS-Access-Arn"
 	tests := []struct {
 		name           string
 		expectedErr    bool
+		arnName        string
 		configMap      corev1.ConfigMap
 		expectedArnVal string
 	}{
 		{
 			name:        "Valid ConfigMap, Works",
 			expectedErr: false,
+			arnName:     ccsAccessARN,
 			configMap: corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      awsv1alpha1.DefaultConfigMap,
 					Namespace: awsv1alpha1.AccountCrNamespace,
 				},
 				Data: map[string]string{
-					"CCS-Access-Arn": expectedARN,
+					ccsAccessARN: expectedARN,
 				},
 			},
 			expectedArnVal: expectedARN,
@@ -591,7 +594,7 @@ func TestGetSREAccessARN(t *testing.T) {
 					scheme: scheme.Scheme,
 				}
 
-				retVal, err := r.GetSREAccessARN(nullLogger)
+				retVal, err := r.GetSREAccessARN(nullLogger, test.arnName)
 				assert.Equal(t, test.expectedArnVal, retVal)
 				if test.expectedErr {
 					assert.Error(t, err)

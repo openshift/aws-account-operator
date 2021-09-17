@@ -10,6 +10,7 @@ usage() {
     -o         AWS Account OU BASE ID
     -r         AWS Account OU ROOT ID
     -s         AWS Account STS Jump Role ARN
+    -m         AWS Account Support Jump Role ARN
     -v         AWS VCPU Quota
 EOF
 }
@@ -30,6 +31,9 @@ while getopts ":a:o:r:v:s:h" opt; do
             ;;
         s)
             STS_JUMP_ARN="$OPTARG" >&2
+            ;;
+        m)
+            SUPPORT_JUMP_ROLE="$OPTARG" >&2
             ;;
         h)
             echo "Invalid option: -$OPTARG" >&2
@@ -79,5 +83,11 @@ if [ -z "${STS_JUMP_ARN+x}" ]; then
     exit 1
 fi
 
+if [ -z "${SUPPORT_JUMP_ROLE+x}" ]; then
+    echo "AWS SUPPORT ARN for Jump Role not set"
+    usage
+    exit 1
+fi
+
 echo "Deploying AWS Account Operator Configmap"
-oc process -p ROOT="${AWS_ROOT_OU}" -p BASE="${AWS_BASE_OU}" -p ACCOUNTLIMIT="${AWS_ACCOUNT_LIMIT}" -p VCPU_QUOTA="${AWS_VCPU_QUOTA}" -p OPERATOR_NAMESPACE=aws-account-operator -p STS_JUMP_ARN="${STS_JUMP_ARN}" -f hack/templates/aws.managed.openshift.io_v1alpha1_configmap.tmpl | oc apply -f -
+oc process -p ROOT="${AWS_ROOT_OU}" -p BASE="${AWS_BASE_OU}" -p ACCOUNTLIMIT="${AWS_ACCOUNT_LIMIT}" -p VCPU_QUOTA="${AWS_VCPU_QUOTA}" -p OPERATOR_NAMESPACE=aws-account-operator -p STS_JUMP_ARN="${STS_JUMP_ARN}" -p SUPPORT_JUMP_ROLE="${SUPPORT_JUMP_ROLE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_configmap.tmpl | oc apply -f -

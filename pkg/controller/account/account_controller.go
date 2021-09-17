@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
@@ -1190,16 +1189,11 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 	currentAcctInstance *awsv1alpha1.Account,
 	awsSetupClient awsclient.Client) (awsclient.Client, *sts.AssumeRoleOutput, error) {
 
+	var err error
 	var awsAssumedRoleClient awsclient.Client
 	var creds *sts.AssumeRoleOutput
 	currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
 	roleToAssume := getAssumeRole(currentAcctInstance)
-
-	SREAccessARN, err := r.GetSREAccessARN(reqLogger)
-	if err != nil {
-		reqLogger.Error(err, "An error was encountered retrieving the SRE Access ARN")
-		return nil, nil, err
-	}
 
 	// Build the tags required to create the Admin Access Role
 	tags := awsclient.AWSTags.BuildTags(
@@ -1241,33 +1235,31 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 			return nil, nil, err
 		}
 
-		roleID, err := createBYOCAdminAccessRole(
+		roleID, err := r.createBYOCAdminAccessRole(
 			reqLogger,
 			awsSetupClient,
 			ccsClient,
 			adminAccessArn,
 			currentAccInstanceID,
 			tags,
-			SREAccessARN,
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "createBYOCAdminAccessRole err", roleID)
+			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for CCS Account", roleID)
 			return nil, nil, err
 		}
 
-		_, err = createManagedOpenShiftSupportRole(
+		_, err = r.createManagedOpenShiftSupportRole(
 			reqLogger,
 			awsSetupClient,
 			ccsClient,
 			adminAccessArn,
 			currentAccInstanceID,
 			tags,
-			SREAccessARN,
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "createManagedOpenShiftSupportRole err", roleID)
+			reqLogger.Error(err, "Encountered error while creating ManagedOpenShiftSupportRole for CCS Account", roleID)
 			return nil, nil, err
 		}
 
@@ -1284,99 +1276,34 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 			return nil, nil, err
 		}
 
-		roleID, err := createBYOCAdminAccessRole(
+		roleID, err := r.createBYOCAdminAccessRole(
 			reqLogger,
 			awsSetupClient,
 			awsAssumedRoleClient,
 			adminAccessArn,
 			currentAccInstanceID,
 			tags,
-			SREAccessARN,
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "createBYOCAdminAccessRole err", roleID)
+			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for non-CCS Account", roleID)
 			return nil, nil, err
 		}
 
-		_, err = createManagedOpenShiftSupportRole(
+		_, err = r.createManagedOpenShiftSupportRole(
 			reqLogger,
 			awsSetupClient,
 			awsAssumedRoleClient,
 			adminAccessArn,
 			currentAccInstanceID,
 			tags,
-			SREAccessARN,
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "createManagedOpenShiftSupportRole err", roleID)
+			reqLogger.Error(err, "Encountered error while creating ManagedOpenShiftSupportRole for non-CCS Account", roleID)
 			return nil, nil, err
 		}
 	}
 
 	return awsAssumedRoleClient, creds, err
-}
-
-func createManagedOpenShiftSupportRole(reqLogger logr.Logger, setupClient awsclient.Client, client awsclient.Client, policyArn string, instanceID string, tags []*iam.Tag, SREAccessARN string) (string, error) {
-	reqLogger.Info("Creating ManagedOpenShiftSupportRole")
-
-	getUserOutput, err := setupClient.GetUser(&iam.GetUserInput{})
-	if err != nil {
-		reqLogger.Error(err, "Failed to get IAM User info")
-		return "", err
-	}
-	principalARN := *getUserOutput.User.Arn
-	accessArnList := []string{principalARN, SREAccessARN}
-
-	managedSupRoleWithID := fmt.Sprintf("%s-%s", awsv1alpha1.ManagedOpenShiftSupportRole, instanceID)
-
-	var roleID string
-	existingRole, err := GetExistingRole(reqLogger, managedSupRoleWithID, client)
-	if err != nil {
-		return roleID, err
-	}
-
-	roleIsValid := false
-	// We found the role already exists, we need to ensure the policies attached are as expected.
-	if (*existingRole != iam.GetRoleOutput{}) {
-		reqLogger.Info(fmt.Sprintf("Found pre-existing role: %s", managedSupRoleWithID))
-		reqLogger.Info("Verifying role policies are correct")
-		roleID = *existingRole.Role.RoleId
-		// existingRole is not empty
-		policyList, err := GetAttachedPolicies(reqLogger, managedSupRoleWithID, client)
-		if err != nil {
-			return roleID, err
-		}
-
-		for _, policy := range policyList.AttachedPolicies {
-			if policy.PolicyArn != &policyArn {
-				reqLogger.Info("Found undesired policy, attempting removal")
-				err := DetachPolicyFromRole(reqLogger, policy, managedSupRoleWithID, client)
-				if err != nil {
-					return roleID, err
-				}
-			} else {
-				reqLogger.Info(fmt.Sprintf("Role already contains correct policy: %s", *policy.PolicyArn))
-				roleIsValid = true
-			}
-		}
-	}
-
-	if roleIsValid {
-		return roleID, nil
-	}
-
-	// Role doesn't exist, create new role and attach desired Policy.
-	if roleID == "" {
-		// Create the base role
-		roleID, err = CreateRole(reqLogger, managedSupRoleWithID, accessArnList, client, tags)
-		if err != nil {
-			return roleID, err
-		}
-	}
-	reqLogger.Info(fmt.Sprintf("New RoleID created: %s", roleID))
-	err = attachAndEnsureRolePolicies(reqLogger, client, managedSupRoleWithID, policyArn)
-
-	return roleID, err
 }

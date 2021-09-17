@@ -99,7 +99,7 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileAccount) GetSREAccessARN(reqLogger logr.Logger) (string, error) {
+func (r *ReconcileAccount) GetSREAccessARN(reqLogger logr.Logger, arnName string) (string, error) {
 	// Get SRE Access ARN from configmap
 	configMap := &corev1.ConfigMap{}
 	err := r.Client.Get(
@@ -115,9 +115,9 @@ func (r *ReconcileAccount) GetSREAccessARN(reqLogger logr.Logger) (string, error
 		return "", err
 	}
 
-	SREAccessARN := configMap.Data["CCS-Access-Arn"]
+	SREAccessARN := configMap.Data[arnName]
 	if SREAccessARN == "" {
-		reqLogger.Error(awsv1alpha1.ErrInvalidConfigMap, "configmap key missing", "keyName", "CCS-Access-Arn")
+		reqLogger.Error(awsv1alpha1.ErrInvalidConfigMap, "configmap key missing", "keyName", arnName)
 		return "", awsv1alpha1.ErrInvalidConfigMap
 	}
 
@@ -125,13 +125,19 @@ func (r *ReconcileAccount) GetSREAccessARN(reqLogger logr.Logger) (string, error
 }
 
 // Create role for BYOC IAM user to assume
-func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.Client, byocAWSClient awsclient.Client, policyArn string, instanceID string, tags []*iam.Tag, SREAccessARN string) (roleID string, err error) {
+func (r *ReconcileAccount) createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.Client, byocAWSClient awsclient.Client, policyArn string, instanceID string, tags []*iam.Tag) (roleID string, err error) {
 	getUserOutput, err := awsSetupClient.GetUser(&iam.GetUserInput{})
 	if err != nil {
 		reqLogger.Error(err, "Failed to get non-BYOC IAM User info")
 		return roleID, err
 	}
+
 	principalARN := *getUserOutput.User.Arn
+	SREAccessARN, err := r.GetSREAccessARN(reqLogger, awsv1alpha1.CCSAccessARN)
+	if err != nil {
+		return roleID, err
+	}
+
 	accessArnList := []string{principalARN, SREAccessARN}
 
 	byocInstanceIDRole := fmt.Sprintf("%s-%s", byocRole, instanceID)

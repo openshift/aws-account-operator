@@ -662,3 +662,72 @@ func createIAMUserSecretName(account string) string {
 	suffix := "secret"
 	return strings.ToLower(fmt.Sprintf("%s-%s", account, suffix))
 }
+
+func (r *ReconcileAccount) createManagedOpenShiftSupportRole(reqLogger logr.Logger, setupClient awsclient.Client, client awsclient.Client, policyArn string, instanceID string, tags []*iam.Tag) (roleID string, err error) {
+	reqLogger.Info("Creating ManagedOpenShiftSupportRole")
+
+	getUserOutput, err := setupClient.GetUser(&iam.GetUserInput{})
+	if err != nil {
+		reqLogger.Error(err, "Failed to get IAM User info")
+		return roleID, err
+	}
+
+	principalARN := *getUserOutput.User.Arn
+	SREAccessARN, err := r.GetSREAccessARN(reqLogger, awsv1alpha1.SupportJumpRole)
+	if err != nil {
+		reqLogger.Error(err, "Unable to find STS JUMP ROLE in configmap")
+		return roleID, err
+	}
+
+	accessArnList := []string{principalARN, SREAccessARN}
+
+	managedSupRoleWithID := fmt.Sprintf("%s-%s", awsv1alpha1.ManagedOpenShiftSupportRole, instanceID)
+
+	existingRole, err := GetExistingRole(reqLogger, managedSupRoleWithID, client)
+	if err != nil {
+		return roleID, err
+	}
+
+	roleIsValid := false
+	// We found the role already exists, we need to ensure the policies attached are as expected.
+	if (*existingRole != iam.GetRoleOutput{}) {
+		reqLogger.Info(fmt.Sprintf("Found pre-existing role: %s", managedSupRoleWithID))
+		reqLogger.Info("Verifying role policies are correct")
+		roleID = *existingRole.Role.RoleId
+		// existingRole is not empty
+		policyList, err := GetAttachedPolicies(reqLogger, managedSupRoleWithID, client)
+		if err != nil {
+			return roleID, err
+		}
+
+		for _, policy := range policyList.AttachedPolicies {
+			if policy.PolicyArn != &policyArn {
+				reqLogger.Info("Found undesired policy, attempting removal")
+				err := DetachPolicyFromRole(reqLogger, policy, managedSupRoleWithID, client)
+				if err != nil {
+					return roleID, err
+				}
+			} else {
+				reqLogger.Info(fmt.Sprintf("Role already contains correct policy: %s", *policy.PolicyArn))
+				roleIsValid = true
+			}
+		}
+	}
+
+	if roleIsValid {
+		return roleID, nil
+	}
+
+	// Role doesn't exist, create new role and attach desired Policy.
+	if roleID == "" {
+		// Create the base role
+		roleID, err = CreateRole(reqLogger, managedSupRoleWithID, accessArnList, client, tags)
+		if err != nil {
+			return roleID, err
+		}
+	}
+	reqLogger.Info(fmt.Sprintf("New RoleID created: %s", roleID))
+	err = attachAndEnsureRolePolicies(reqLogger, client, managedSupRoleWithID, policyArn)
+
+	return roleID, err
+}
