@@ -1135,7 +1135,10 @@ func (r *ReconcileAccount) getCustomTags(log logr.Logger, account *awsv1alpha1.A
 
 	accountClaim, err := r.getAccountClaim(account)
 	if err != nil {
-		log.Error(err, "Error getting AccountClaim to get custom tags")
+		// We expect this error for non-ccs accounts
+		if account.IsBYOC() {
+			log.Error(err, "Error getting AccountClaim to get custom tags")
+		}
 		return tags
 	}
 
