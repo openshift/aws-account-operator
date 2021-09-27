@@ -598,18 +598,41 @@ func schema_pkg_apis_aws_v1alpha1_AccountPoolStatus(ref common.ReferenceCallback
 					},
 					"unclaimedAccounts": {
 						SchemaProps: spec.SchemaProps{
-							Type:   []string{"integer"},
-							Format: "int32",
+							Description: "UnclaimedAccounts is an approximate value representing the amount of non-failed accounts",
+							Type:        []string{"integer"},
+							Format:      "int32",
 						},
 					},
 					"claimedAccounts": {
 						SchemaProps: spec.SchemaProps{
-							Type:   []string{"integer"},
-							Format: "int32",
+							Description: "ClaimedAccounts is an approximate value representing the amount of accounts that are currently claimed",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"availableAccounts": {
+						SchemaProps: spec.SchemaProps{
+							Description: "AvailableAccounts denotes accounts that HAVE NEVER BEEN CLAIMED, so NOT reused, and are READY to be claimed.  This differs from the UnclaimedAccounts, who similarly HAVE NEVER BEEN CLAIMED, but include ALL non-FAILED states",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"accountsProgressing": {
+						SchemaProps: spec.SchemaProps{
+							Description: "AccountsProgressing shows the approximate value of the number of accounts that are in the creation workflow (Creating, PendingVerification, InitializingRegions)",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"awsLimitDelta": {
+						SchemaProps: spec.SchemaProps{
+							Description: "AWSLimitDelta shows the approximate difference between the number of AWS accounts currently created and the limit. This should be the same across all hive shards in an environment",
+							Type:        []string{"integer"},
+							Format:      "int32",
 						},
 					},
 				},
-				Required: []string{"poolSize", "unclaimedAccounts", "claimedAccounts"},
+				Required: []string{"poolSize", "unclaimedAccounts", "claimedAccounts", "availableAccounts", "accountsProgressing", "awsLimitDelta"},
 			},
 		},
 	}

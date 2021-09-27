@@ -266,6 +266,39 @@ func (a *Account) IsInitializingRegions() bool {
 	return a.Status.State == AccountInitializingRegions
 }
 
+//IsProgressing returns true if the account state is Creating, Pending Verification, or InitializingRegions
+func (a *Account) IsProgressing() bool {
+	if a.Status.State == string(AccountCreating) ||
+		a.Status.State == string(AccountPendingVerification) ||
+		a.Status.State == string(AccountInitializingRegions) {
+		return true
+	}
+	return false
+}
+
+// HasBeenClaimed lets us know if an account has been claimed at some point and can only be reused by clusters in the same legal entity
+func (a *Account) HasBeenClaimedAtLeastOnce() bool {
+	return a.Spec.LegalEntity.ID != "" || a.Status.Reused
+}
+
+//HasNeverBeenClaimed returns true if the account is not claimed AND has no legalEntity set, meaning it hasn't been claimed before and is not available for reuse
+func (a *Account) HasNeverBeenClaimed() bool {
+	return !a.Status.Claimed && a.Spec.LegalEntity.ID == ""
+}
+
+//IsOwnedByAccountPool returns true if the account has an ownerreference type that is the accountpool
+func (a *Account) IsOwnedByAccountPool() bool {
+	if a.ObjectMeta.OwnerReferences == nil {
+		return false
+	}
+	for _, ref := range a.ObjectMeta.OwnerReferences {
+		if ref.Kind == "AccountPool" {
+			return true
+		}
+	}
+	return false
+}
+
 // GetCondition finds the condition that has the
 // specified condition type in the given list. If none exists, then returns nil.
 func (a *Account) GetCondition(conditionType AccountConditionType) *AccountCondition {

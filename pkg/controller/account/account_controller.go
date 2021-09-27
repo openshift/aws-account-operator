@@ -570,14 +570,23 @@ func (r *ReconcileAccount) accountSpecUpdate(reqLogger logr.Logger, account *aws
 
 func (r *ReconcileAccount) nonCCSAssignAccountID(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client) error {
 	// Build Aws Account
-	awsAccountID, err := r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
-	if err != nil {
-		return err
+	var awsAccountID string
+
+	switch utils.DetectDevMode {
+	case utils.DevModeProduction:
+		var err error
+		awsAccountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
+		if err != nil {
+			return err
+		}
+	default:
+		log.Info("Running in development mode, skipping account creation")
+		awsAccountID = "123456789012"
 	}
 
 	// set state creating if the account was able to create
 	utils.SetAccountStatus(currentAcctInstance, AccountCreating, awsv1alpha1.AccountCreating, AccountCreating)
-	err = r.statusUpdate(currentAcctInstance)
+	err := r.statusUpdate(currentAcctInstance)
 
 	if err != nil {
 		return err

@@ -48,6 +48,9 @@ type MetricsCollector struct {
 	accountClaims                   *prometheus.GaugeVec
 	accountReuseAvailable           *prometheus.GaugeVec
 	accountPoolSize                 *prometheus.GaugeVec
+	awsLimitDelta                   *prometheus.GaugeVec
+	availableOSDAccounts            *prometheus.GaugeVec
+	accountsProgressing             *prometheus.GaugeVec
 	accountReadyDuration            prometheus.Histogram
 	ccsAccountReadyDuration         prometheus.Histogram
 	accountClaimReadyDuration       prometheus.Histogram
@@ -94,6 +97,24 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 		accountPoolSize: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "aws_account_operator_account_pool_size",
 			Help:        "Report the size of account pool cr",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}, []string{"namespace", "pool_name"}),
+
+		awsLimitDelta: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name:        "aws_account_operator_aws_limit_delta",
+			Help:        "How many accounts the operator can create before hitting the configured limit",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}, []string{"namespace", "pool_name"}),
+
+		availableOSDAccounts: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name:        "aws_account_operator_available_non_ccs_accounts",
+			Help:        "Unclaimed, unused OSD accounts available for any legal_entity to claim",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}, []string{"namespace", "pool_name"}),
+
+		accountsProgressing: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name:        "aws_account_operator_accounts_progressing",
+			Help:        "New non-ccs accounts that are creating towards Ready",
 			ConstLabels: prometheus.Labels{"name": operatorName},
 		}, []string{"namespace", "pool_name"}),
 
@@ -162,6 +183,11 @@ func (c *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	c.ccsAccounts.Describe(ch)
 	c.accountClaims.Describe(ch)
 	c.accountPoolSize.Describe(ch)
+	c.awsLimitDelta.Describe(ch)
+	c.availableOSDAccounts.Describe(ch)
+	c.accountsProgressing.Describe(ch)
+	c.accountPoolSize.Describe(ch)
+	c.accountPoolSize.Describe(ch)
 	c.accountReuseAvailable.Describe(ch)
 	c.accountReadyDuration.Describe(ch)
 	c.ccsAccountReadyDuration.Describe(ch)
@@ -181,6 +207,9 @@ func (c *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.ccsAccounts.Collect(ch)
 	c.accountClaims.Collect(ch)
 	c.accountPoolSize.Collect(ch)
+	c.awsLimitDelta.Collect(ch)
+	c.availableOSDAccounts.Collect(ch)
+	c.accountsProgressing.Collect(ch)
 	c.accountReuseAvailable.Collect(ch)
 	c.accountReadyDuration.Collect(ch)
 	c.ccsAccountReadyDuration.Collect(ch)
@@ -199,6 +228,9 @@ func (c *MetricsCollector) collect() {
 	c.ccsAccounts.Reset()
 	c.accountClaims.Reset()
 	c.accountPoolSize.Reset()
+	c.awsLimitDelta.Reset()
+	c.availableOSDAccounts.Reset()
+	c.accountsProgressing.Reset()
 	c.accountReuseAvailable.Reset()
 
 	ctx := context.TODO()
@@ -256,6 +288,9 @@ func (c *MetricsCollector) collect() {
 
 	for _, pool := range accountPool.Items {
 		c.accountPoolSize.WithLabelValues(pool.Namespace, pool.Name).Set(float64(pool.Spec.PoolSize))
+		c.accountPoolSize.WithLabelValues(pool.Namespace, pool.Name).Set(float64(pool.Status.AWSLimitDelta))
+		c.availableOSDAccounts.WithLabelValues(pool.Namespace, pool.Name).Set(float64(pool.Status.AvailableAccounts))
+		c.accountsProgressing.WithLabelValues(pool.Namespace, pool.Name).Set(float64(pool.Status.AccountsProgressing))
 	}
 }
 
