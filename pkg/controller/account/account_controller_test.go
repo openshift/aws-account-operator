@@ -1200,13 +1200,41 @@ var _ = Describe("Account Controller", func() {
 	})
 
 	Context("Testing CreateAccount", func() {
-		It("AWS returns an error from CreateAccount", func() {
+
+		It("AWS returns ErrCodeConstraintViolationException from CreateAccount", func() {
+			// ErrCodeConstraintViolationException is mapped to awsv1alpha1.ErrAwsAccountLimitExceeded in CreateAccount
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeConstraintViolationException, "Error String", nil))
+			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			Expect(err).To(HaveOccurred())
+			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
+			Expect(awsv1alpha1.ErrAwsAccountLimitExceeded).To(Equal(err))
+		})
+
+		It("AWS returns ErrCodeServiceException from CreateAccount", func() {
 			// ErrCodeServiceException is mapped to awsv1alpha1.ErrAwsInternalFailure in CreateAccount
 			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeServiceException, "Error String", nil))
 			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsInternalFailure).To(Equal(err))
+		})
+
+		It("AWS returns ErrCodeTooManyRequestsException from CreateAccount", func() {
+			// ErrCodeTooManyRequestsException is mapped to awsv1alpha1.ErrAwsTooManyRequests in CreateAccount
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeTooManyRequestsException, "Error String", nil))
+			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			Expect(err).To(HaveOccurred())
+			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
+			Expect(awsv1alpha1.ErrAwsTooManyRequests).To(Equal(err))
+		})
+
+		It("AWS returns error from CreateAccount", func() {
+			// Unhandled AWS exceptions get mapped awsv1alpha1.ErrAwsFailedCreateAccount in CreateAccount
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeDuplicateAccountException, "Error String", nil))
+			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			Expect(err).To(HaveOccurred())
+			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
+			Expect(awsv1alpha1.ErrAwsFailedCreateAccount).To(Equal(err))
 		})
 
 		It("AWS returns an error from DescribeCreateAccountStatus", func() {
