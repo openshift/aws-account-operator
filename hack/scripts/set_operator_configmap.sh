@@ -15,7 +15,7 @@ usage() {
 EOF
 }
 
-while getopts ":a:o:r:v:s:h" opt; do
+while getopts ":a:o:r:v:s:m:h" opt; do
     case $opt in
         a)
             AWS_ACCOUNT_LIMIT="$OPTARG" >&2
