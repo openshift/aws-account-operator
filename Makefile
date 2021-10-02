@@ -243,8 +243,14 @@ list-s3-bucket:  ## List S3 bucket
 	BUCKETS=$(shell export AWS_ACCESS_KEY_ID=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'); \
 	if [ $$BUCKETS == 0 ]; then echo "Reuse successfully complete"; else echo "Reuse failed"; exit 1; fi
 
+.PHONY: validate-reuse
+validate-reuse:
+	# Validate re-use
+	@IS_READY=$$(oc get account -n aws-account-operator ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -o json | jq -r '.status.state'); if [ "$$IS_READY" != "Ready" ]; then echo "Reused Account is not Ready"; exit 1; fi;
+	@IS_REUSED=$$(oc get account -n aws-account-operator ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -o json | jq -r '.status.reused'); if [ "$$IS_REUSED" != true ]; then echo "Account is not Reused"; exit 1; fi;
+
 .PHONY: test-reuse
-test-reuse: check-aws-account-id-env create-accountclaim-namespace create-accountclaim create-s3-bucket delete-accountclaim delete-accountclaim-namespace list-s3-bucket
+test-reuse: check-aws-account-id-env create-accountclaim-namespace create-accountclaim create-s3-bucket delete-accountclaim delete-accountclaim-namespace validate-reuse list-s3-bucket
 	$(MAKE) delete-account ## Test reuse
 
 .PHONY: test-secrets
