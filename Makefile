@@ -302,7 +302,7 @@ endif
 .PHONY: create-ou-map
 create-ou-map: check-ou-mapping-configmap-env ## Test apply OU map CR
 	# Create OU map
-	@hack/scripts/set_operator_configmap.sh -a 0 -v 1 -r "${OSD_STAGING_1_OU_ROOT_ID}" -o "${OSD_STAGING_1_OU_BASE_ID}" -s "${STS_JUMP_ARN}"
+	@hack/scripts/set_operator_configmap.sh -a 0 -v 1 -r "${OSD_STAGING_1_OU_ROOT_ID}" -o "${OSD_STAGING_1_OU_BASE_ID}" -s "${STS_JUMP_ARN}" -m "${SUPPORT_JUMP_ROLE}"
 
 .PHONY: delete-ou-map
 delete-ou-map: ## Test delete OU map CR
