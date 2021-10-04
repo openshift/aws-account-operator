@@ -12,7 +12,7 @@ accClaim=$(oc get accountclaim "$STS_CLAIM_NAME" -n "$STS_NAMESPACE_NAME" -o jso
 
 # validate accountclaim has finalizer
 if [[ $(jq '.metadata.finalizers | length' <<< "$accClaim") -lt 1 ]]; then
-  echo "No finalizers set on fake accountclaim."
+  echo "No finalizers set on accountclaim."
   exit 1
 fi
 
@@ -91,7 +91,6 @@ if [[ $(jq -r '.spec.claimLinkNamespace' <<< "$account") !=  ${STS_NAMESPACE_NAM
   echo "STS Account should have .spec.claimLinkNamespace set to ${STS_NAMESPACE_NAME}."
   exit 1
 fi
-
 
 AccountLegalEntity=$(jq -r '.spec.legalEntity' <<< "$account")
 # -S sorts the keys to ensure ordering isn't an issue
