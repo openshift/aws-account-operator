@@ -200,8 +200,9 @@ func TestAccountLimitsReached(t *testing.T) {
 				objs := []runtime.Object{configMap}
 				mocks := setupDefaultMocks(t, objs)
 				nullLogger := testutils.NullLogger{}
+				taw := newTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
 
-				result, _ := accountLimitReached(mocks.fakeKubeClient, nullLogger, test.testCount)
+				result, _ := taw.accountLimitReached(nullLogger, test.testCount)
 
 				if result != test.expected {
 					t.Error(

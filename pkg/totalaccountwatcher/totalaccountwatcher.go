@@ -24,20 +24,26 @@ import (
 var ErrAwsAccountLimitExceeded = errors.New("AccountLimitExceeded")
 
 // TotalAccountWatcher global var for TotalAccountWatcher
-var TotalAccountWatcher = &totalAccountWatcher{}
+var TotalAccountWatcher = &AccountWatcher{}
 
 var log = logf.Log.WithName("aws-account-operator")
 
-type totalAccountWatcher struct {
+type AccountWatcherIface interface {
+	GetAccountCount() int
+	GetLimit() int
+}
+
+type AccountWatcher struct {
 	watchInterval        time.Duration
 	awsClient            awsclient.Client
 	client               client.Client
 	total                int
 	accountsCanBeCreated bool
+	limit                int
 }
 
 // initialize creates a global instance of the TotalAccountWatcher
-func initialize(client client.Client, watchInterval time.Duration) *totalAccountWatcher {
+func initialize(client client.Client, watchInterval time.Duration) *AccountWatcher {
 	log.Info("Initializing the totalAccountWatcher")
 
 	// NOTE(efried): This is a snowflake use of awsclient.IBuilder. Everyone else puts the
@@ -68,8 +74,8 @@ func newTotalAccountWatcher(
 	client client.Client,
 	awsClient awsclient.Client,
 	watchInterval time.Duration,
-) *totalAccountWatcher {
-	return &totalAccountWatcher{
+) *AccountWatcher {
+	return &AccountWatcher{
 		watchInterval: watchInterval,
 		awsClient:     awsClient,
 		client:        client,
@@ -80,7 +86,7 @@ func newTotalAccountWatcher(
 
 // TotalAccountWatcher will trigger AwsLimitUpdate every `scanInternal` and only stop if the operator is killed or a
 // message is sent on the stopCh
-func (s *totalAccountWatcher) Start(log logr.Logger, stopCh <-chan struct{}, client client.Client, watchInterval time.Duration) {
+func (s *AccountWatcher) Start(log logr.Logger, stopCh <-chan struct{}, client client.Client, watchInterval time.Duration) {
 	log.Info("Starting the totalAccountWatcher")
 	s = initialize(client, watchInterval)
 	for {
@@ -98,7 +104,7 @@ func (s *totalAccountWatcher) Start(log logr.Logger, stopCh <-chan struct{}, cli
 }
 
 // UpdateTotalAccounts will update the TotalAccountWatcher's total field
-func (s *totalAccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
+func (s *AccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 
 	accountTotal, err := s.getTotalAwsAccounts()
 	if err != nil {
@@ -117,7 +123,7 @@ func (s *totalAccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 	// AccountsCanBeCreated is a bool that returns the opposite of accountLimitReached.
 	// If the account limit is reached, we do NOT want to create accounts.  However, if the
 	// account limit has NOT been reached, then account creation can happen.
-	limitReached, err := accountLimitReached(s.client, log, accountTotal)
+	limitReached, err := s.accountLimitReached(log, accountTotal)
 	if err != nil {
 		s.accountsCanBeCreated = false
 		return err
@@ -127,7 +133,7 @@ func (s *totalAccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 }
 
 // TotalAwsAccounts returns the total number of aws accounts in the aws org
-func (s *totalAccountWatcher) getTotalAwsAccounts() (int, error) {
+func (s *AccountWatcher) getTotalAwsAccounts() (int, error) {
 	var nextToken *string
 
 	accountTotal := 0
@@ -154,13 +160,23 @@ func (s *totalAccountWatcher) getTotalAwsAccounts() (int, error) {
 }
 
 // AccountsCanBeCreated returns whether we can create accounts or not
-func (s *totalAccountWatcher) AccountsCanBeCreated() bool {
+func (s *AccountWatcher) AccountsCanBeCreated() bool {
 	return s.accountsCanBeCreated
 }
 
+// GetAccountCount returns the number of accounts that are currently recorded.
+func (s *AccountWatcher) GetAccountCount() int {
+	return s.total
+}
+
+// GetLimit returns the soft limit we have set in the configmap
+func (s *AccountWatcher) GetLimit() int {
+	return s.limit
+}
+
 // accountLimitReached returns True if our account limit is reached or False if the account limit is not reached and we can create accounts.
-func accountLimitReached(kubeClient client.Client, log logr.Logger, currentAccounts int) (bool, error) {
-	limit, err := getAwsAccountLimit(kubeClient)
+func (s *AccountWatcher) accountLimitReached(log logr.Logger, currentAccounts int) (bool, error) {
+	limit, err := s.getAwsAccountLimit()
 	if err != nil {
 		log.Error(err, "There was an error getting the limits.  Using the default value.")
 		return true, err
@@ -169,9 +185,9 @@ func accountLimitReached(kubeClient client.Client, log logr.Logger, currentAccou
 }
 
 // getAwsAccountLimit gets the limit from the ConfigMap or on error returns a default value.
-func getAwsAccountLimit(kubeClient client.Client) (int, error) {
+func (s *AccountWatcher) getAwsAccountLimit() (int, error) {
 	configMap := &corev1.ConfigMap{}
-	err := kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, configMap)
+	err := s.client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, configMap)
 	if err != nil {
 		return -1, err
 	}
@@ -186,5 +202,7 @@ func getAwsAccountLimit(kubeClient client.Client) (int, error) {
 		return -1, err
 	}
 
+	// persist the limit
+	s.limit = limit
 	return limit, nil
 }
