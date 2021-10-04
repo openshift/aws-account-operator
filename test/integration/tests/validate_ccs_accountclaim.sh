@@ -12,7 +12,7 @@ accClaim=$(oc get accountclaim "$CCS_CLAIM_NAME" -n "$CCS_NAMESPACE_NAME" -o jso
 
 # validate accountclaim has finalizer
 if [[ $(jq '.metadata.finalizers | length' <<< "$accClaim") -lt 1 ]]; then
-  echo "No finalizers set on fake accountclaim."
+  echo "No finalizers set on accountclaim."
   exit 1
 fi
 
