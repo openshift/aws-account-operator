@@ -342,8 +342,13 @@ delete-sts-accountclaim: ## Deletes a templated STS accountclaim
 	# Delete sts accountclaim
 	@oc process --local -p NAME=${STS_CLAIM_NAME} -p NAMESPACE=${STS_NAMESPACE_NAME} -p STS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p STS_ROLE_ARN=${STS_ROLE_ARN} -f hack/templates/aws.managed.openshift.io_v1alpha1_sts_accountclaim_cr.tmpl | oc delete -f -
 
-.PHONY: test-sts-accountclaim
-test-sts-accountclaim: create-sts-accountclaim-namespace create-sts-accountclaim delete-sts-accountclaim delete-sts-accountclaim-namespace ## Runs a full integration test for STS workflow
+.PHONY: validate-sts
+validate-sts:
+	# Validate STS
+	test/integration/tests/validate_sts_accountclaim.sh
+
+.PHONY: test-sts
+test-sts: create-sts-accountclaim-namespace create-sts-accountclaim validate-sts delete-sts-accountclaim delete-sts-accountclaim-namespace ## Runs a full integration test for STS workflow
 
 ### Fake Account Test Workflow
 # Create fake account claim namespace
@@ -385,7 +390,7 @@ test-apis:
 	popd
 
 .PHONY: test-integration
-test-integration: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim test-fake-accountclaim## Runs all integration tests
+test-integration: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts test-fake-accountclaim## Runs all integration tests
 
 # Test all
 # GOLANGCI_LINT_CACHE needs to be set to a directory which is writeable
