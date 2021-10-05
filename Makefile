@@ -211,6 +211,11 @@ create-ccs-2-accountclaim: ## Create CSS AccountClaim
 	# Wait for accountclaim to become ready
 	@while true; do STATUS=$$(oc get accountclaim ${CCS_CLAIM_NAME} -n ${CCS_NAMESPACE_NAME_2} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${CCS_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
+.PHONY: validate-ccs
+validate-ccs:
+	# Validate CCS
+	test/integration/tests/validate_ccs_accountclaim.sh
+
 .PHONY: delete-ccs-accountclaim
 delete-ccs-accountclaim: ## Delete CCS AccountClaim
 	# Delete ccs accountclaim
@@ -225,7 +230,7 @@ delete-ccs-2-accountclaim: ## Delete CSS AccountClaim
 test-ccs: create-ccs delete-ccs ## Test CCS
 
 .PHONY: create-ccs
-create-ccs: create-ccs-namespace create-ccs-secret create-ccs-accountclaim ## Deploy a test CCS account
+create-ccs: create-ccs-namespace create-ccs-secret create-ccs-accountclaim validate-ccs ## Deploy a test CCS account
 
 .PHONY: delete-ccs
 delete-ccs: delete-ccs-accountclaim delete-ccs-secret delete-ccs-namespace ## Teardown the test CCS account
