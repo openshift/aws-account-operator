@@ -403,6 +403,37 @@ func TestAttachAdminUserPolicy(t *testing.T) {
 	assert.Equal(t, err, expectedError)
 }
 
+func TestAttachAndEnsureRolePolicies(t *testing.T) {
+
+	nullLogger := testutils.NullLogger{}
+	mocks := setupDefaultMocks(t, []runtime.Object{})
+	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+	defer mocks.mockCtrl.Finish()
+
+	managedSupRoleWithID := "RoleName-aabbcc"
+	policyArn := "MyPolicyARN"
+
+	mockAWSClient.EXPECT().AttachRolePolicy(&iam.AttachRolePolicyInput{
+		RoleName:  aws.String(managedSupRoleWithID),
+		PolicyArn: aws.String(policyArn),
+	}).Return(nil, nil)
+
+	mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(
+		&iam.ListAttachedRolePoliciesOutput{
+			AttachedPolicies: []*iam.AttachedPolicy{
+				{
+					PolicyArn:  aws.String(policyArn),
+					PolicyName: aws.String("PolicyName"),
+				},
+			},
+		},
+		nil,
+	)
+
+	err := attachAndEnsureRolePolicies(nullLogger, mockAWSClient, managedSupRoleWithID, policyArn)
+	assert.Nil(t, err)
+}
+
 func TestCreateUserAccessKey(t *testing.T) {
 
 	mocks := setupDefaultMocks(t, []runtime.Object{})

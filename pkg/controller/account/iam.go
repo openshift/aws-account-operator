@@ -285,6 +285,39 @@ func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.Att
 	return attachPolicyOutput, nil
 }
 
+func attachAndEnsureRolePolicies(reqLogger logr.Logger, client awsclient.Client, roleName string, policyArn string) error {
+	reqLogger.Info(fmt.Sprintf("Attaching policy %s to role %s", policyArn, roleName))
+	// Attach the specified policy to the Role
+	_, attachErr := client.AttachRolePolicy(&iam.AttachRolePolicyInput{
+		RoleName:  aws.String(roleName),
+		PolicyArn: aws.String(policyArn),
+	})
+
+	if attachErr != nil {
+		return attachErr
+	}
+
+	reqLogger.Info(fmt.Sprintf("Checking if policy %s has been attached", policyArn))
+
+	// Attaching the policy suffers from an eventual consistency problem
+	policyList, err := GetAttachedPolicies(reqLogger, roleName, client)
+	if err != nil {
+		return err
+	}
+
+	for _, policy := range policyList.AttachedPolicies {
+		if *policy.PolicyArn == policyArn {
+			reqLogger.Info(fmt.Sprintf("Found attached policy %s", *policy.PolicyArn))
+			break
+		} else {
+			err = fmt.Errorf("Policy %s never attached to role %s", policyArn, roleName)
+			return err
+		}
+	}
+
+	return nil
+}
+
 // CreateUserAccessKey creates a new IAM Access Key in AWS and returns aws.CreateAccessKeyOutput struct containing access key and secret
 func CreateUserAccessKey(client awsclient.Client, iamUser *iam.User) (*iam.CreateAccessKeyOutput, error) {
 	var result *iam.CreateAccessKeyOutput
@@ -628,4 +661,73 @@ func (r *ReconcileAccount) DoesSecretExist(namespacedName types.NamespacedName) 
 func createIAMUserSecretName(account string) string {
 	suffix := "secret"
 	return strings.ToLower(fmt.Sprintf("%s-%s", account, suffix))
+}
+
+func (r *ReconcileAccount) createManagedOpenShiftSupportRole(reqLogger logr.Logger, setupClient awsclient.Client, client awsclient.Client, policyArn string, instanceID string, tags []*iam.Tag) (roleID string, err error) {
+	reqLogger.Info("Creating ManagedOpenShiftSupportRole")
+
+	getUserOutput, err := setupClient.GetUser(&iam.GetUserInput{})
+	if err != nil {
+		reqLogger.Error(err, "Failed to get IAM User info")
+		return roleID, err
+	}
+
+	principalARN := *getUserOutput.User.Arn
+	SREAccessARN, err := r.GetSREAccessARN(reqLogger, awsv1alpha1.SupportJumpRole)
+	if err != nil {
+		reqLogger.Error(err, "Unable to find STS JUMP ROLE in configmap")
+		return roleID, err
+	}
+
+	accessArnList := []string{principalARN, SREAccessARN}
+
+	managedSupRoleWithID := fmt.Sprintf("%s-%s", awsv1alpha1.ManagedOpenShiftSupportRole, instanceID)
+
+	existingRole, err := GetExistingRole(reqLogger, managedSupRoleWithID, client)
+	if err != nil {
+		return roleID, err
+	}
+
+	roleIsValid := false
+	// We found the role already exists, we need to ensure the policies attached are as expected.
+	if (*existingRole != iam.GetRoleOutput{}) {
+		reqLogger.Info(fmt.Sprintf("Found pre-existing role: %s", managedSupRoleWithID))
+		reqLogger.Info("Verifying role policies are correct")
+		roleID = *existingRole.Role.RoleId
+		// existingRole is not empty
+		policyList, err := GetAttachedPolicies(reqLogger, managedSupRoleWithID, client)
+		if err != nil {
+			return roleID, err
+		}
+
+		for _, policy := range policyList.AttachedPolicies {
+			if policy.PolicyArn != &policyArn {
+				reqLogger.Info("Found undesired policy, attempting removal")
+				err := DetachPolicyFromRole(reqLogger, policy, managedSupRoleWithID, client)
+				if err != nil {
+					return roleID, err
+				}
+			} else {
+				reqLogger.Info(fmt.Sprintf("Role already contains correct policy: %s", *policy.PolicyArn))
+				roleIsValid = true
+			}
+		}
+	}
+
+	if roleIsValid {
+		return roleID, nil
+	}
+
+	// Role doesn't exist, create new role and attach desired Policy.
+	if roleID == "" {
+		// Create the base role
+		roleID, err = CreateRole(reqLogger, managedSupRoleWithID, accessArnList, client, tags)
+		if err != nil {
+			return roleID, err
+		}
+	}
+	reqLogger.Info(fmt.Sprintf("New RoleID created: %s", roleID))
+	err = attachAndEnsureRolePolicies(reqLogger, client, managedSupRoleWithID, policyArn)
+
+	return roleID, err
 }

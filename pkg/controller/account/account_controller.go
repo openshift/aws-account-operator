@@ -171,8 +171,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		var awsClient awsclient.Client
 		if currentAcctInstance.IsBYOC() {
-			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
-			roleToAssume := fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
+			roleToAssume := getAssumeRole(currentAcctInstance)
 			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
 			if err != nil {
 				reqLogger.Error(err, "failed building BYOC client from assume_role")
@@ -1202,16 +1201,11 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 	currentAcctInstance *awsv1alpha1.Account,
 	awsSetupClient awsclient.Client) (awsclient.Client, *sts.AssumeRoleOutput, error) {
 
+	var err error
 	var awsAssumedRoleClient awsclient.Client
 	var creds *sts.AssumeRoleOutput
 	currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
 	roleToAssume := getAssumeRole(currentAcctInstance)
-
-	SREAccessARN, err := r.GetSREAccessARN(reqLogger)
-	if err != nil {
-		reqLogger.Error(err, "An error was encountered retrieving the SRE Access ARN")
-		return nil, nil, err
-	}
 
 	// Build the tags required to create the Admin Access Role
 	tags := awsclient.AWSTags.BuildTags(
@@ -1253,18 +1247,31 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 			return nil, nil, err
 		}
 
-		roleID, err := createBYOCAdminAccessRole(
+		roleID, err := r.createBYOCAdminAccessRole(
 			reqLogger,
 			awsSetupClient,
 			ccsClient,
 			adminAccessArn,
 			currentAccInstanceID,
 			tags,
-			SREAccessARN,
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "createBYOCAdminAccessRole err", roleID)
+			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for CCS Account", roleID)
+			return nil, nil, err
+		}
+
+		_, err = r.createManagedOpenShiftSupportRole(
+			reqLogger,
+			awsSetupClient,
+			ccsClient,
+			adminAccessArn,
+			currentAccInstanceID,
+			tags,
+		)
+
+		if err != nil {
+			reqLogger.Error(err, "Encountered error while creating ManagedOpenShiftSupportRole for CCS Account", roleID)
 			return nil, nil, err
 		}
 
@@ -1281,18 +1288,31 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 			return nil, nil, err
 		}
 
-		roleID, err := createBYOCAdminAccessRole(
+		roleID, err := r.createBYOCAdminAccessRole(
 			reqLogger,
 			awsSetupClient,
 			awsAssumedRoleClient,
 			adminAccessArn,
 			currentAccInstanceID,
 			tags,
-			SREAccessARN,
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "createBYOCAdminAccessRole err", roleID)
+			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for non-CCS Account", roleID)
+			return nil, nil, err
+		}
+
+		_, err = r.createManagedOpenShiftSupportRole(
+			reqLogger,
+			awsSetupClient,
+			awsAssumedRoleClient,
+			adminAccessArn,
+			currentAccInstanceID,
+			tags,
+		)
+
+		if err != nil {
+			reqLogger.Error(err, "Encountered error while creating ManagedOpenShiftSupportRole for non-CCS Account", roleID)
 			return nil, nil, err
 		}
 	}
