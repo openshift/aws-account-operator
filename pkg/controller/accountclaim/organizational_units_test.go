@@ -25,8 +25,16 @@ var _ = Describe("Organizational Unit", func() {
 		ctrl          *gomock.Controller
 		mockAWSClient *mock.MockClient
 		ouName        = "ouName"
+		ouID          = "ouID"
 		baseID        = "baseID"
 		myID          = "MyID"
+		parentID      = "parentID"
+		awsAccountID  = "12345"
+		account       = awsv1alpha1.Account{
+			Spec: awsv1alpha1.AccountSpec{
+				AwsAccountID: awsAccountID,
+			},
+		}
 	)
 
 	BeforeEach(func() {
@@ -104,6 +112,67 @@ var _ = Describe("Organizational Unit", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(output).To(BeEmpty())
 			Expect(err).To(BeEquivalentTo(expectedErr))
+		})
+	})
+
+	Context("MoveAccount", func() {
+		It("Moves Account", func() {
+			mockAWSClient.EXPECT().MoveAccount(&organizations.MoveAccountInput{
+				AccountId:           &awsAccountID,
+				DestinationParentId: &ouID,
+				SourceParentId:      &parentID,
+			}).Return(nil, nil)
+			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Errors as Account already in correct OU", func() {
+			expectedErr := awserr.New("AccountNotFoundException", "Some AWS Error", nil)
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
+			mockAWSClient.EXPECT().ListChildren(gomock.Any()).Return(
+				&organizations.ListChildrenOutput{
+					Children: []*organizations.Child{
+						{
+							Id: &awsAccountID,
+						},
+					},
+				},
+				nil,
+			)
+			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(Equal(awsv1alpha1.ErrAccAlreadyInOU))
+		})
+
+		It("Account not Found", func() {
+			expectedErr := awserr.New("AccountNotFoundException", "Some AWS Error", nil)
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
+			mockAWSClient.EXPECT().ListChildren(gomock.Any()).Return(
+				&organizations.ListChildrenOutput{
+					Children:  []*organizations.Child{},
+					NextToken: nil,
+				},
+				nil,
+			)
+			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(Equal(expectedErr))
+		})
+
+		It("Race Condition on MoveAccount", func() {
+			expectedErr := awserr.New("ConcurrentModificationException", "Some AWS Error", nil)
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
+			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(Equal(awsv1alpha1.ErrAccMoveRaceCondition))
+		})
+
+		It("MoveAccount default err handling", func() {
+			expectedErr := awserr.New("OtherErr", "Some AWS Error", nil)
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
+			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(Equal(expectedErr))
 		})
 	})
 })

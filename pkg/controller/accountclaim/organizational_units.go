@@ -139,7 +139,7 @@ func MoveAccount(reqLogger logr.Logger, client awsclient.Client, account *awsv1a
 				childType := "ACCOUNT"
 				check, accErr := findChildInOU(reqLogger, client, ouID, childType, account.Spec.AwsAccountID)
 				if accErr != nil {
-					return err
+					return err // To be discussed - This should return accErr instead?
 				}
 				if check {
 					return awsv1alpha1.ErrAccAlreadyInOU
