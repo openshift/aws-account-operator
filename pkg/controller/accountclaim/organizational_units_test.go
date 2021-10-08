@@ -9,6 +9,10 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
@@ -24,12 +28,14 @@ var _ = Describe("Organizational Unit", func() {
 		nullLogger    testutils.NullLogger
 		ctrl          *gomock.Controller
 		mockAWSClient *mock.MockClient
+		r             ReconcileAccountClaim
 		ouName        = "ouName"
 		ouID          = "ouID"
 		baseID        = "baseID"
 		myID          = "MyID"
 		parentID      = "parentID"
 		awsAccountID  = "12345"
+		accountClaim  = awsv1alpha1.AccountClaim{}
 		account       = awsv1alpha1.Account{
 			Spec: awsv1alpha1.AccountSpec{
 				AwsAccountID: awsAccountID,
@@ -44,6 +50,104 @@ var _ = Describe("Organizational Unit", func() {
 
 	AfterEach(func() {
 		ctrl.Finish()
+	})
+
+	Context("MoveAccountToOU", func() {
+		It("No ConfigMap", func() {
+			localObjects := []runtime.Object{}
+			r = ReconcileAccountClaim{
+				scheme: scheme.Scheme,
+				client: fake.NewFakeClient(localObjects...),
+			}
+			err := MoveAccountToOU(&r, nullLogger, mockAWSClient, &accountClaim, &account)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("ConfigMap invalid", func() {
+			cm := corev1.ConfigMap{
+				ObjectMeta: v1.ObjectMeta{
+					Namespace: awsv1alpha1.AccountCrNamespace,
+					Name:      awsv1alpha1.DefaultConfigMap,
+				},
+				Data: map[string]string{
+					"base": "",
+				},
+			}
+			localObjects := []runtime.Object{&cm}
+			r = ReconcileAccountClaim{
+				scheme: scheme.Scheme,
+				client: fake.NewFakeClient(localObjects...),
+			}
+
+			err := MoveAccountToOU(&r, nullLogger, mockAWSClient, &accountClaim, &account)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(awsv1alpha1.ErrInvalidConfigMap))
+		})
+
+		It("Invalid LegalEntity", func() {
+			cm := corev1.ConfigMap{
+				ObjectMeta: v1.ObjectMeta{
+					Namespace: awsv1alpha1.AccountCrNamespace,
+					Name:      awsv1alpha1.DefaultConfigMap,
+				},
+				Data: map[string]string{
+					"base": "",
+					"root": "",
+				},
+			}
+			localObjects := []runtime.Object{&cm}
+			r = ReconcileAccountClaim{
+				scheme: scheme.Scheme,
+				client: fake.NewFakeClient(localObjects...),
+			}
+
+			accountClaim.Spec = awsv1alpha1.AccountClaimSpec{
+				LegalEntity: awsv1alpha1.LegalEntity{
+					ID: "",
+				},
+			}
+			err := MoveAccountToOU(&r, nullLogger, mockAWSClient, &accountClaim, &account)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(awsv1alpha1.ErrUnexpectedValue))
+		})
+
+		It("Success", func() {
+			cm := corev1.ConfigMap{
+				ObjectMeta: v1.ObjectMeta{
+					Namespace: awsv1alpha1.AccountCrNamespace,
+					Name:      awsv1alpha1.DefaultConfigMap,
+				},
+				Data: map[string]string{
+					"base": "base",
+					"root": "root",
+				},
+			}
+			accountClaim.Spec = awsv1alpha1.AccountClaimSpec{
+				LegalEntity: awsv1alpha1.LegalEntity{
+					ID: ouName,
+				},
+			}
+
+			localObjects := []runtime.Object{&accountClaim, &cm}
+			r = ReconcileAccountClaim{
+				scheme: scheme.Scheme,
+				client: fake.NewFakeClient(localObjects...),
+			}
+
+			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any()).Return(
+				&organizations.CreateOrganizationalUnitOutput{
+					OrganizationalUnit: &organizations.OrganizationalUnit{
+						Id: &myID,
+					},
+				},
+				nil,
+			)
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, nil)
+
+			err := MoveAccountToOU(&r, nullLogger, mockAWSClient, &accountClaim, &account)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(accountClaim.Spec.AccountOU).To(Equal(myID))
+		})
 	})
 
 	Context("CreateOrFindOU", func() {

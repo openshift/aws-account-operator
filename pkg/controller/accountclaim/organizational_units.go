@@ -12,26 +12,14 @@ import (
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	awsclient "github.com/openshift/aws-account-operator/pkg/awsclient"
-	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 )
 
 // MoveAccountToOU takes care of all the logic surrounding moving an account into an OU
-func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
-	// aws client
-	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
-		SecretName: controllerutils.AwsSecretName,
-		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
-	})
-	if err != nil {
-		unexpectedErrorMsg := "OU: Failed to build aws client"
-		reqLogger.Info(unexpectedErrorMsg)
-		return err
-	}
+func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, awsClient awsclient.Client, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
 
 	// Search for ConfigMap that holds OU mapping
 	instance := &corev1.ConfigMap{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, instance)
+	err := r.client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, instance)
 	if err != nil {
 		// If we failed to retrieve the ConfigMap, simply leave the account in Root
 		unexpectedErrorMsg := "OU: Failed to find OU mapping ConfigMap, leaving account in root"
@@ -59,6 +47,7 @@ func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountCla
 	if err != nil {
 		return err
 	}
+
 	err = validateValue(&ouID)
 	if err != nil {
 		return err
