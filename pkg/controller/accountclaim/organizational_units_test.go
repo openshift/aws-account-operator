@@ -3,6 +3,7 @@ package accountclaim
 import (
 	"testing"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/go-logr/logr"
 	"github.com/golang/mock/gomock"
@@ -12,7 +13,100 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
+	"github.com/openshift/aws-account-operator/pkg/controller/testutils"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
+
+var _ = Describe("Organizational Unit", func() {
+	var (
+		nullLogger    testutils.NullLogger
+		ctrl          *gomock.Controller
+		mockAWSClient *mock.MockClient
+		ouName        = "ouName"
+		baseID        = "baseID"
+		myID          = "MyID"
+	)
+
+	BeforeEach(func() {
+		ctrl = gomock.NewController(GinkgoT())
+		mockAWSClient = mock.NewMockClient(ctrl)
+	})
+
+	AfterEach(func() {
+		ctrl.Finish()
+	})
+
+	Context("CreateOrFindOU", func() {
+		It("Create new OU", func() {
+			mockAWSClient.EXPECT().CreateOrganizationalUnit(
+				&organizations.CreateOrganizationalUnitInput{
+					Name:     &ouName,
+					ParentId: &baseID,
+				},
+			).Return(
+				&organizations.CreateOrganizationalUnitOutput{
+					OrganizationalUnit: &organizations.OrganizationalUnit{
+						Id: &myID,
+					},
+				},
+				nil,
+			)
+			output, err := CreateOrFindOU(nullLogger, mockAWSClient, ouName, baseID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(Equal(myID))
+		})
+
+		It("Invalid Input", func() {
+			output, err := CreateOrFindOU(nullLogger, mockAWSClient, "", "")
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(BeEquivalentTo(awsv1alpha1.ErrUnexpectedValue))
+			Expect(output).To(BeEmpty())
+		})
+
+		It("Duplicate OU Found", func() {
+			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any()).Return(
+				&organizations.CreateOrganizationalUnitOutput{
+					OrganizationalUnit: &organizations.OrganizationalUnit{
+						Id: &myID,
+					},
+				},
+				awserr.New("DuplicateOrganizationalUnitException", "Some AWS Error", nil),
+			)
+			mockAWSClient.EXPECT().ListOrganizationalUnitsForParent(gomock.Any()).Return(
+				&organizations.ListOrganizationalUnitsForParentOutput{
+					OrganizationalUnits: []*organizations.OrganizationalUnit{
+						{
+							Id:   &myID,
+							Name: &ouName,
+						},
+					},
+				},
+				nil,
+			)
+			output, err := CreateOrFindOU(nullLogger, mockAWSClient, ouName, baseID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(Equal(myID))
+		})
+
+		It("CreateOrganizationalUnit default err handling", func() {
+			expectedErr := awserr.New("defaultErr", "Some AWS Error", nil)
+			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any()).Return(
+				&organizations.CreateOrganizationalUnitOutput{
+					OrganizationalUnit: &organizations.OrganizationalUnit{
+						Id: &myID,
+					},
+				},
+				expectedErr,
+			)
+			output, err := CreateOrFindOU(nullLogger, mockAWSClient, ouName, baseID)
+			Expect(err).To(HaveOccurred())
+			Expect(output).To(BeEmpty())
+			Expect(err).To(BeEquivalentTo(expectedErr))
+		})
+	})
+})
 
 func TestFindOUIDFromName(t *testing.T) {
 	// OrganizationalUnit list for testing

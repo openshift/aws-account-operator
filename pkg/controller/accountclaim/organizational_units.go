@@ -55,7 +55,7 @@ func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountCla
 		return err
 	}
 
-	ouID, err := CreateOrFindOU(reqLogger, awsClient, accountClaim, ouName, baseID)
+	ouID, err := CreateOrFindOU(reqLogger, awsClient, ouName, baseID)
 	if err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func MoveAccountToOU(r *ReconcileAccountClaim, reqLogger logr.Logger, accountCla
 }
 
 // CreateOrFindOU will create or find an existing OU and return its ID
-func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, accountClaim *awsv1alpha1.AccountClaim, ouName string, baseID string) (string, error) {
+func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, ouName string, baseID string) (string, error) {
 	// Create/Find account OU
 	createCreateOrganizationalUnitInput := organizations.CreateOrganizationalUnitInput{
 		Name:     &ouName,
