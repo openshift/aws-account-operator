@@ -377,6 +377,16 @@ func TestFindOUIDFromName(t *testing.T) {
 			expectedErr:          nil,
 			findOUIDFromNameFunc: findouIDFromName,
 		},
+		{
+			name:                 "ListOrganizationalUnitsForParent Err encountered",
+			listOUForParentOut:   &organizations.ListOrganizationalUnitsForParentOutput{},
+			listOUForParentErr:   awserr.New("AccountNotFoundException", "Some AWS Error", nil),
+			parentID:             "000",
+			ouName:               "one",
+			expectedOUID:         "",
+			expectedErr:          awserr.New("AccountNotFoundException", "Some AWS Error", nil),
+			findOUIDFromNameFunc: findouIDFromName,
+		},
 	}
 
 	for _, test := range tests {
