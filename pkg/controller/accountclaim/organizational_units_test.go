@@ -111,6 +111,57 @@ var _ = Describe("Organizational Unit", func() {
 			Expect(err).To(MatchError(awsv1alpha1.ErrUnexpectedValue))
 		})
 
+		It("Account already in OU error", func() {
+			cm := corev1.ConfigMap{
+				ObjectMeta: v1.ObjectMeta{
+					Namespace: awsv1alpha1.AccountCrNamespace,
+					Name:      awsv1alpha1.DefaultConfigMap,
+				},
+				Data: map[string]string{
+					"base": "base",
+					"root": "root",
+				},
+			}
+			accountClaim.Spec = awsv1alpha1.AccountClaimSpec{
+				LegalEntity: awsv1alpha1.LegalEntity{
+					ID: ouName,
+				},
+			}
+
+			localObjects := []runtime.Object{&accountClaim, &cm}
+			r = ReconcileAccountClaim{
+				scheme: scheme.Scheme,
+				client: fake.NewFakeClient(localObjects...),
+			}
+
+			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any()).Return(
+				&organizations.CreateOrganizationalUnitOutput{
+					OrganizationalUnit: &organizations.OrganizationalUnit{
+						Id: &myID,
+					},
+				},
+				nil,
+			)
+
+			// Needed for
+			expectedErr := awserr.New("AccountNotFoundException", "Some AWS Error", nil)
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
+			mockAWSClient.EXPECT().ListChildren(gomock.Any()).Return(
+				&organizations.ListChildrenOutput{
+					Children: []*organizations.Child{
+						{
+							Id: &awsAccountID,
+						},
+					},
+				},
+				nil,
+			)
+
+			err := MoveAccountToOU(&r, nullLogger, mockAWSClient, &accountClaim, &account)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(accountClaim.Spec.AccountOU).To(Equal(myID))
+		})
+
 		It("Success", func() {
 			cm := corev1.ConfigMap{
 				ObjectMeta: v1.ObjectMeta{
