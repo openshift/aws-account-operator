@@ -52,8 +52,8 @@ var _ = Describe("Organizational Unit", func() {
 		ctrl.Finish()
 	})
 
-	Context("MoveAccountToOU", func() {
-		It("No ConfigMap", func() {
+	When("Moving an Account to an OU", func() {
+		It("Should error when no ConfigMap can be found", func() {
 			localObjects := []runtime.Object{}
 			r = ReconcileAccountClaim{
 				scheme: scheme.Scheme,
@@ -63,7 +63,7 @@ var _ = Describe("Organizational Unit", func() {
 			Expect(err).To(HaveOccurred())
 		})
 
-		It("ConfigMap invalid", func() {
+		It("Should error when an invaid ConfigMap is found", func() {
 			cm := corev1.ConfigMap{
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: awsv1alpha1.AccountCrNamespace,
@@ -84,7 +84,7 @@ var _ = Describe("Organizational Unit", func() {
 			Expect(err).To(MatchError(awsv1alpha1.ErrInvalidConfigMap))
 		})
 
-		It("Invalid LegalEntity", func() {
+		It("Should error when the AccountClaim has an empty LegalEntity ID", func() {
 			cm := corev1.ConfigMap{
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: awsv1alpha1.AccountCrNamespace,
@@ -111,7 +111,7 @@ var _ = Describe("Organizational Unit", func() {
 			Expect(err).To(MatchError(awsv1alpha1.ErrUnexpectedValue))
 		})
 
-		It("Account already in OU error", func() {
+		It("Should error when moving an Account to an OU it's already in", func() {
 			cm := corev1.ConfigMap{
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: awsv1alpha1.AccountCrNamespace,
@@ -162,7 +162,7 @@ var _ = Describe("Organizational Unit", func() {
 			Expect(accountClaim.Spec.AccountOU).To(Equal(myID))
 		})
 
-		It("Success", func() {
+		It("Should successfully move Account to OU", func() {
 			cm := corev1.ConfigMap{
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: awsv1alpha1.AccountCrNamespace,
@@ -201,8 +201,8 @@ var _ = Describe("Organizational Unit", func() {
 		})
 	})
 
-	Context("CreateOrFindOU", func() {
-		It("Create new OU", func() {
+	When("Creating or Finding an OU", func() {
+		It("Should create new OU if it doesn't already exists", func() {
 			mockAWSClient.EXPECT().CreateOrganizationalUnit(
 				&organizations.CreateOrganizationalUnitInput{
 					Name:     &ouName,
@@ -221,14 +221,14 @@ var _ = Describe("Organizational Unit", func() {
 			Expect(output).To(Equal(myID))
 		})
 
-		It("Invalid Input", func() {
+		It("Should fail when provided with invalid input", func() {
 			output, err := CreateOrFindOU(nullLogger, mockAWSClient, "", "")
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(BeEquivalentTo(awsv1alpha1.ErrUnexpectedValue))
 			Expect(output).To(BeEmpty())
 		})
 
-		It("Duplicate OU Found", func() {
+		It("Should return OU ID when OU already exists", func() {
 			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any()).Return(
 				&organizations.CreateOrganizationalUnitOutput{
 					OrganizationalUnit: &organizations.OrganizationalUnit{
@@ -253,7 +253,7 @@ var _ = Describe("Organizational Unit", func() {
 			Expect(output).To(Equal(myID))
 		})
 
-		It("CreateOrganizationalUnit default err handling", func() {
+		It("Should return unhandled aws errors when attempting to create OU", func() {
 			expectedErr := awserr.New("defaultErr", "Some AWS Error", nil)
 			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any()).Return(
 				&organizations.CreateOrganizationalUnitOutput{
@@ -270,8 +270,8 @@ var _ = Describe("Organizational Unit", func() {
 		})
 	})
 
-	Context("MoveAccount", func() {
-		It("Moves Account", func() {
+	When("Moving Account", func() {
+		It("Should move successfully", func() {
 			mockAWSClient.EXPECT().MoveAccount(&organizations.MoveAccountInput{
 				AccountId:           &awsAccountID,
 				DestinationParentId: &ouID,
@@ -281,7 +281,7 @@ var _ = Describe("Organizational Unit", func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 
-		It("Errors as Account already in correct OU", func() {
+		It("Should error when Account already in correct OU", func() {
 			expectedErr := awserr.New("AccountNotFoundException", "Some AWS Error", nil)
 			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
 			mockAWSClient.EXPECT().ListChildren(gomock.Any()).Return(
@@ -299,9 +299,11 @@ var _ = Describe("Organizational Unit", func() {
 			Expect(err).To(Equal(awsv1alpha1.ErrAccAlreadyInOU))
 		})
 
-		It("Account not Found", func() {
-			expectedErr := awserr.New("AccountNotFoundException", "Some AWS Error", nil)
-			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
+		It("Should throw an error when Account cannot be found", func() {
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(
+				nil,
+				awserr.New("AccountNotFoundException", "Some AWS Error", nil),
+			)
 			mockAWSClient.EXPECT().ListChildren(gomock.Any()).Return(
 				&organizations.ListChildrenOutput{
 					Children:  []*organizations.Child{},
@@ -311,10 +313,10 @@ var _ = Describe("Organizational Unit", func() {
 			)
 			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
 			Expect(err).To(HaveOccurred())
-			Expect(err).To(Equal(expectedErr))
+			Expect(err).To(Equal(awsv1alpha1.ErrChildNotFound))
 		})
 
-		It("Race Condition on MoveAccount", func() {
+		It("Should error when encountering a race condition when attempting to move account", func() {
 			expectedErr := awserr.New("ConcurrentModificationException", "Some AWS Error", nil)
 			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
 			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
@@ -322,7 +324,7 @@ var _ = Describe("Organizational Unit", func() {
 			Expect(err).To(Equal(awsv1alpha1.ErrAccMoveRaceCondition))
 		})
 
-		It("MoveAccount default err handling", func() {
+		It("Should return error directly when an unexpected error has occurred", func() {
 			expectedErr := awserr.New("OtherErr", "Some AWS Error", nil)
 			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
 			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)

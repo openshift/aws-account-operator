@@ -126,11 +126,11 @@ func MoveAccount(reqLogger logr.Logger, client awsclient.Client, account *awsv1a
 				accountNotFound := fmt.Sprintf("Account %s was not found in root, checking if the account already in the correct OU", account.Spec.LegalEntity.Name)
 				reqLogger.Info(accountNotFound)
 				childType := "ACCOUNT"
-				check, accErr := findChildInOU(reqLogger, client, ouID, childType, account.Spec.AwsAccountID)
+				found, accErr := findChildInOU(reqLogger, client, ouID, childType, account.Spec.AwsAccountID)
 				if accErr != nil {
-					return err // To be discussed - This should return accErr instead?
+					return accErr
 				}
-				if check {
+				if found {
 					return awsv1alpha1.ErrAccAlreadyInOU
 				}
 			case "ConcurrentModificationException":
