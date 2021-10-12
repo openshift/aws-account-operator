@@ -112,131 +112,135 @@ var _ = Describe("AccountClaim", func() {
 	})
 
 	Context("Finalizers", func() {
-		It("should add finalizer correctly", func() {
-			// Objects to track in the fake client.
-			objs := []runtime.Object{accountClaim}
-			r.client = fake.NewFakeClient(objs...)
+		When("updating the accountclaim finalizers", func() {
+			When("the accountclaim doesn't exist", func() {
+				BeforeEach(func() {
+					// Objects to track in the fake client.
+					objs := []runtime.Object{}
+					r.client = fake.NewFakeClient(objs...)
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, true)
+				})
 
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
-			err := r.addFinalizer(nullLogger, accountClaim)
-			Expect(err).NotTo(HaveOccurred())
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 1, false)
+				It("should not add finalizer as account claim doesn't exist", func() {
+
+					err := r.addFinalizer(nullLogger, accountClaim)
+					Expect(err).To(HaveOccurred())
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, true)
+				})
+
+				It("should not remove finalizer as account claim doesn't exist", func() {
+
+					err := r.removeFinalizer(nullLogger, accountClaim, accountClaimFinalizer)
+					Expect(err).To(HaveOccurred())
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, true)
+				})
+			})
+
+			When("the accountclaim does exist", func() {
+				It("should add finalizer correctly", func() {
+					// Objects to track in the fake client.
+					objs := []runtime.Object{accountClaim}
+					r.client = fake.NewFakeClient(objs...)
+
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
+					err := r.addFinalizer(nullLogger, accountClaim)
+					Expect(err).NotTo(HaveOccurred())
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 1, false)
+				})
+
+				It("should remove finalizer from account claim", func() {
+					// Objects to track in the fake client.
+					objs := []runtime.Object{accountClaim}
+					// Add the finalizer here to ensure we are able to remove it.
+					accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), accountClaimFinalizer))
+					r.client = fake.NewFakeClient(objs...)
+
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 1, false)
+					err := r.removeFinalizer(nullLogger, accountClaim, accountClaimFinalizer)
+					Expect(err).ToNot(HaveOccurred())
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
+				})
+
+			})
 		})
-		It("should not add finalizer as account claim doesn't exist", func() {
-			// Objects to track in the fake client.
-			objs := []runtime.Object{}
-			r.client = fake.NewFakeClient(objs...)
 
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, true)
-			err := r.addFinalizer(nullLogger, accountClaim)
-			Expect(err).To(HaveOccurred())
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, true)
-		})
+		When("Updating the byoc secret finalizers", func() {
 
-		It("should remove finalizer from account claim", func() {
-			// Objects to track in the fake client.
-			objs := []runtime.Object{accountClaim}
-			// Add the finalizer here to ensure we are able to remove it.
-			accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), accountClaimFinalizer))
-			r.client = fake.NewFakeClient(objs...)
-
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 1, false)
-			err := r.removeFinalizer(nullLogger, accountClaim, accountClaimFinalizer)
-			Expect(err).ToNot(HaveOccurred())
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
-		})
-
-		It("should not remove finalizer as account claim doesn't exist", func() {
-			// Objects to track in the fake client.
-			objs := []runtime.Object{}
-			r.client = fake.NewFakeClient(objs...)
-
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, true)
-			err := r.removeFinalizer(nullLogger, accountClaim, accountClaimFinalizer)
-			Expect(err).To(HaveOccurred())
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, true)
-		})
-
-		It("should add byoc secret finalizer", func() {
-			// Objects to track in the fake client.
-			accountClaim.Spec.BYOCSecretRef = v1alpha1.SecretRef{
-				Name:      name,
-				Namespace: namespace,
-			}
-			byocSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
+			BeforeEach(func() {
+				accountClaim.Spec.BYOCSecretRef = v1alpha1.SecretRef{
 					Name:      name,
 					Namespace: namespace,
-				},
-			}
-			objs := []runtime.Object{accountClaim, byocSecret}
-			r.client = fake.NewFakeClient(objs...)
+				}
+			})
 
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
-			helperValidateSecretFinalizer(&r.client, namespacedName, 0, false)
-			err := r.addBYOCSecretFinalizer(accountClaim)
-			Expect(err).ToNot(HaveOccurred())
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
-			helperValidateSecretFinalizer(&r.client, namespacedName, 1, false)
-		})
+			When("Byoc Secret Exists", func() {
+				It("should add byoc secret finalizer", func() {
+					// Objects to track in the fake client.
+					byocSecret := &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      name,
+							Namespace: namespace,
+						},
+					}
+					objs := []runtime.Object{accountClaim, byocSecret}
+					r.client = fake.NewFakeClient(objs...)
 
-		It("should not find byoc secret", func() {
-			// Objects to track in the fake client.
-			accountClaim.Spec.BYOCSecretRef = v1alpha1.SecretRef{
-				Name:      name,
-				Namespace: namespace,
-			}
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
+					helperValidateSecretFinalizer(&r.client, namespacedName, 0, false)
+					err := r.addBYOCSecretFinalizer(accountClaim)
+					Expect(err).ToNot(HaveOccurred())
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
+					helperValidateSecretFinalizer(&r.client, namespacedName, 1, false)
+				})
 
-			objs := []runtime.Object{accountClaim}
-			r.client = fake.NewFakeClient(objs...)
+				It("should remove byoc secret finalizer", func() {
+					// Objects to track in the fake client.
+					byocSecret := &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      name,
+							Namespace: namespace,
+						},
+					}
+					utils.AddFinalizer(byocSecret, byocSecretFinalizer)
+					objs := []runtime.Object{accountClaim, byocSecret}
+					r.client = fake.NewFakeClient(objs...)
 
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
-			helperValidateSecretFinalizer(&r.client, namespacedName, 0, true)
-			err := r.addBYOCSecretFinalizer(accountClaim)
-			Expect(err).To(HaveOccurred())
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
-			helperValidateSecretFinalizer(&r.client, namespacedName, 0, true)
-		})
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
+					helperValidateSecretFinalizer(&r.client, namespacedName, 1, false)
+					err := r.removeBYOCSecretFinalizer(accountClaim)
+					Expect(err).ToNot(HaveOccurred())
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
+					helperValidateSecretFinalizer(&r.client, namespacedName, 0, false)
+				})
+			})
 
-		It("should remove byoc secret finalizer", func() {
-			// Objects to track in the fake client.
-			accountClaim.Spec.BYOCSecretRef = v1alpha1.SecretRef{
-				Name:      name,
-				Namespace: namespace,
-			}
-			byocSecret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: namespace,
-				},
-			}
-			utils.AddFinalizer(byocSecret, byocSecretFinalizer)
-			objs := []runtime.Object{accountClaim, byocSecret}
-			r.client = fake.NewFakeClient(objs...)
+			When("Byoc Secret doesn't exists", func() {
+				It("should not find byoc secret", func() {
+					// Objects to track in the fake client.
+					objs := []runtime.Object{accountClaim}
+					r.client = fake.NewFakeClient(objs...)
 
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
-			helperValidateSecretFinalizer(&r.client, namespacedName, 1, false)
-			err := r.removeBYOCSecretFinalizer(accountClaim)
-			Expect(err).ToNot(HaveOccurred())
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
-			helperValidateSecretFinalizer(&r.client, namespacedName, 0, false)
-		})
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
+					helperValidateSecretFinalizer(&r.client, namespacedName, 0, true)
+					err := r.addBYOCSecretFinalizer(accountClaim)
+					Expect(err).To(HaveOccurred())
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
+					helperValidateSecretFinalizer(&r.client, namespacedName, 0, true)
+				})
 
-		It("should not remove byoc secret finalizer as secret doesn't exist", func() {
-			// Objects to track in the fake client.
-			accountClaim.Spec.BYOCSecretRef = v1alpha1.SecretRef{
-				Name:      name,
-				Namespace: namespace,
-			}
-			objs := []runtime.Object{accountClaim}
-			r.client = fake.NewFakeClient(objs...)
+				It("should not remove byoc secret finalizer as secret doesn't exist", func() {
+					// Objects to track in the fake client.
+					objs := []runtime.Object{accountClaim}
+					r.client = fake.NewFakeClient(objs...)
 
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
-			helperValidateSecretFinalizer(&r.client, namespacedName, 0, true)
-			err := r.removeBYOCSecretFinalizer(accountClaim)
-			Expect(err).ToNot(HaveOccurred())
-			helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
-			helperValidateSecretFinalizer(&r.client, namespacedName, 0, true)
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
+					helperValidateSecretFinalizer(&r.client, namespacedName, 0, true)
+					err := r.removeBYOCSecretFinalizer(accountClaim)
+					Expect(err).ToNot(HaveOccurred())
+					helperValidateAccClaimFinalizer(&r.client, namespacedName, 0, false)
+					helperValidateSecretFinalizer(&r.client, namespacedName, 0, true)
+				})
+			})
 		})
 	})
 })
