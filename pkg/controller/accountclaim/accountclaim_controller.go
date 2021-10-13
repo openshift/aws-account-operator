@@ -220,7 +220,20 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 	// Set awsAccountClaim.Spec.AwsAccountOU
 	if accountClaim.Spec.AccountOU == "" || accountClaim.Spec.AccountOU == "ROOT" {
-		err = MoveAccountToOU(r, reqLogger, accountClaim, unclaimedAccount)
+
+		// aws client
+		awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
+			SecretName: controllerutils.AwsSecretName,
+			NameSpace:  awsv1alpha1.AccountCrNamespace,
+			AwsRegion:  "us-east-1",
+		})
+		if err != nil {
+			unexpectedErrorMsg := "OU: Failed to build aws client"
+			reqLogger.Info(unexpectedErrorMsg)
+			return reconcile.Result{}, err
+		}
+
+		err = MoveAccountToOU(r, reqLogger, awsClient, accountClaim, unclaimedAccount)
 		if err != nil {
 			if err == awsv1alpha1.ErrAccMoveRaceCondition {
 				// Due to a race condition, we need to requeue the reconcile to ensure that the account was correctly moved into the correct OU
