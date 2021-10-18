@@ -149,8 +149,6 @@ objects:
             - "ec2:ModifyVpcPeeringConnectionOptions"
             - "ec2:RejectVpcPeeringConnection"
             - "ec2:DisableVgwRoutePropagation"
-            - "ec2:GetVpnConnectionDeviceTypes"
-            - "ec2:GetVpnConnectionDeviceSampleConfiguration"
             - "ec2:EnableVgwRoutePropagation"
             - "ec2:CreateNetworkInterface"
             - "ec2:ModifyNetworkInterfaceAttribute"
