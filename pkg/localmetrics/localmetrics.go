@@ -288,7 +288,7 @@ func (c *MetricsCollector) collect() {
 
 	for _, pool := range accountPool.Items {
 		c.accountPoolSize.WithLabelValues(pool.Namespace, pool.Name).Set(float64(pool.Spec.PoolSize))
-		c.accountPoolSize.WithLabelValues(pool.Namespace, pool.Name).Set(float64(pool.Status.AWSLimitDelta))
+		c.awsLimitDelta.WithLabelValues(pool.Namespace, pool.Name).Set(float64(pool.Status.AWSLimitDelta))
 		c.availableOSDAccounts.WithLabelValues(pool.Namespace, pool.Name).Set(float64(pool.Status.AvailableAccounts))
 		c.accountsProgressing.WithLabelValues(pool.Namespace, pool.Name).Set(float64(pool.Status.AccountsProgressing))
 	}
