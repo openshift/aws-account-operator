@@ -349,7 +349,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createIAMPolicy(awsClient awsclient
 		policyName = afr.Spec.AWSCustomPolicy.Name + "-" + uidLabel
 	} else {
 		// Just in case the UID somehow doesn't exist
-		return nil, err
+		return nil, errors.New("Failed to get UID label")
 	}
 
 	output, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
@@ -398,7 +398,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createIAMRole(awsClient awsclient.C
 		roleName = afr.Name + "-" + uidLabel
 	} else {
 		// Just in case the UID somehow doesn't exist
-		return nil, err
+		return nil, errors.New("Failed to get UID label")
 	}
 
 	createRoleOutput, err := awsClient.CreateRole(&iam.CreateRoleInput{
