@@ -1257,7 +1257,7 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for CCS Account", roleID)
+			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for CCS Account", "roleID", roleID)
 			return nil, nil, err
 		}
 
@@ -1271,7 +1271,7 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "Encountered error while creating ManagedOpenShiftSupportRole for CCS Account", roleID)
+			reqLogger.Error(err, "Encountered error while creating ManagedOpenShiftSupportRole for CCS Account", "roleID", roleID)
 			return nil, nil, err
 		}
 
@@ -1298,7 +1298,7 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for non-CCS Account", roleID)
+			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for non-CCS Account", "roleID", roleID)
 			return nil, nil, err
 		}
 
