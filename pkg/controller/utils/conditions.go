@@ -153,24 +153,14 @@ func SetAccountCondition(
 			status, reason, message,
 			updateConditionCheck,
 		) {
-			if existingCondition.Status != status {
-				existingCondition.LastTransitionTime = now
-			}
+
+			existingCondition.LastTransitionTime = now
 			existingCondition.Status = status
 			existingCondition.Reason = reason
 			existingCondition.Message = message
 		}
 		// Need to always update the probe time, so if the condition occurs again
 		// or we probe and the condition is still active, the date is updated.
-		conditions = append(conditions,
-			awsv1alpha1.AccountCondition{
-				Type:               conditionType,
-				Status:             existingCondition.Status,
-				Reason:             existingCondition.Reason,
-				Message:            existingCondition.Message,
-				LastTransitionTime: existingCondition.LastTransitionTime,
-				LastProbeTime:      now,
-			})
 	}
 
 	if conditionType == awsv1alpha1.AccountReady {
