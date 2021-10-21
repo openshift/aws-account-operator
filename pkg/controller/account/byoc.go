@@ -99,7 +99,7 @@ func (r *ReconcileAccount) initializeNewCCSAccount(reqLogger logr.Logger, accoun
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileAccount) GetSREAccessARN(reqLogger logr.Logger) (string, error) {
+func (r *ReconcileAccount) GetSREAccessARN(reqLogger logr.Logger, arnName string) (string, error) {
 	// Get SRE Access ARN from configmap
 	configMap := &corev1.ConfigMap{}
 	err := r.Client.Get(
@@ -115,9 +115,9 @@ func (r *ReconcileAccount) GetSREAccessARN(reqLogger logr.Logger) (string, error
 		return "", err
 	}
 
-	SREAccessARN := configMap.Data["CCS-Access-Arn"]
+	SREAccessARN := configMap.Data[arnName]
 	if SREAccessARN == "" {
-		reqLogger.Error(awsv1alpha1.ErrInvalidConfigMap, "configmap key missing", "keyName", "CCS-Access-Arn")
+		reqLogger.Error(awsv1alpha1.ErrInvalidConfigMap, "configmap key missing", "keyName", arnName)
 		return "", awsv1alpha1.ErrInvalidConfigMap
 	}
 
@@ -125,13 +125,19 @@ func (r *ReconcileAccount) GetSREAccessARN(reqLogger logr.Logger) (string, error
 }
 
 // Create role for BYOC IAM user to assume
-func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.Client, byocAWSClient awsclient.Client, policyArn string, instanceID string, tags []*iam.Tag, SREAccessARN string) (roleID string, err error) {
+func (r *ReconcileAccount) createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.Client, byocAWSClient awsclient.Client, policyArn string, instanceID string, tags []*iam.Tag) (roleID string, err error) {
 	getUserOutput, err := awsSetupClient.GetUser(&iam.GetUserInput{})
 	if err != nil {
 		reqLogger.Error(err, "Failed to get non-BYOC IAM User info")
 		return roleID, err
 	}
+
 	principalARN := *getUserOutput.User.Arn
+	SREAccessARN, err := r.GetSREAccessARN(reqLogger, awsv1alpha1.CCSAccessARN)
+	if err != nil {
+		return roleID, err
+	}
+
 	accessArnList := []string{principalARN, SREAccessARN}
 
 	byocInstanceIDRole := fmt.Sprintf("%s-%s", byocRole, instanceID)
@@ -143,53 +149,24 @@ func createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.C
 
 	if (*existingRole != iam.GetRoleOutput{}) {
 		reqLogger.Info(fmt.Sprintf("Found pre-existing role: %s", byocInstanceIDRole))
-		err := DeleteBYOCAdminAccessRole(reqLogger, byocAWSClient, byocInstanceIDRole)
+		err := DeleteBYOCAdminAccessRole(reqLogger, byocAWSClient, instanceID)
 		if err != nil {
 			return roleID, err
 		}
 	}
 
 	// Create the base role
-	roleID, croleErr := CreateRole(reqLogger, byocInstanceIDRole, accessArnList, byocAWSClient, tags)
-	if croleErr != nil {
-		return roleID, croleErr
-	}
-	reqLogger.Info(fmt.Sprintf("New RoleID created: %s", roleID))
-
-	reqLogger.Info(fmt.Sprintf("Attaching policy %s to role %s", policyArn, byocInstanceIDRole))
-	// Attach the specified policy to the BYOC role
-	_, attachErr := byocAWSClient.AttachRolePolicy(&iam.AttachRolePolicyInput{
-		RoleName:  aws.String(byocInstanceIDRole),
-		PolicyArn: aws.String(policyArn),
-	})
-
-	if attachErr != nil {
-		return roleID, attachErr
-	}
-
-	reqLogger.Info(fmt.Sprintf("Checking if policy %s has been attached", policyArn))
-
-	// Attaching the policy suffers from an eventual consistency problem
-	policyList, listErr := GetAttachedPolicies(reqLogger, byocInstanceIDRole, byocAWSClient)
-	if listErr != nil {
+	roleID, err = CreateRole(reqLogger, byocInstanceIDRole, accessArnList, byocAWSClient, tags)
+	if err != nil {
 		return roleID, err
 	}
-
-	for _, policy := range policyList.AttachedPolicies {
-		if *policy.PolicyArn == policyArn {
-			reqLogger.Info(fmt.Sprintf("Found attached policy %s", *policy.PolicyArn))
-			break
-		} else {
-			err = fmt.Errorf("policy %s never attached to role %s", policyArn, byocInstanceIDRole)
-			return roleID, err
-		}
-	}
+	reqLogger.Info(fmt.Sprintf("New RoleID created: %s", roleID))
+	err = attachAndEnsureRolePolicies(reqLogger, byocAWSClient, byocInstanceIDRole, policyArn)
 
 	return roleID, err
 }
 
-func DeleteBYOCAdminAccessRole(reqLogger logr.Logger, byocAWSClient awsclient.Client, instanceID string) (err error) {
-	byocInstanceIDRole := fmt.Sprintf("%s-%s", byocRole, instanceID)
+func DeleteBYOCAdminAccessRole(reqLogger logr.Logger, byocAWSClient awsclient.Client, byocInstanceIDRole string) (err error) {
 	policyList, err := GetAttachedPolicies(reqLogger, byocInstanceIDRole, byocAWSClient)
 	if err != nil {
 		return err

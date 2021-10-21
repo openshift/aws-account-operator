@@ -7,6 +7,7 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
+	"github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -35,8 +36,10 @@ func Add(mgr manager.Manager) error {
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	reconciler := &ReconcileAccountPool{
-		client: utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
-		scheme: mgr.GetScheme()}
+		client:         utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
+		scheme:         mgr.GetScheme(),
+		accountWatcher: totalaccountwatcher.TotalAccountWatcher,
+	}
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -71,8 +74,9 @@ var _ reconcile.Reconciler = &ReconcileAccountPool{}
 type ReconcileAccountPool struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client client.Client
-	scheme *runtime.Scheme
+	client         client.Client
+	scheme         *runtime.Scheme
+	accountWatcher totalaccountwatcher.AccountWatcherIface
 }
 
 // Reconcile reads that state of the cluster for a AccountPool object and makes changes based on the state read
@@ -96,41 +100,27 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 		return reconcile.Result{}, err
 	}
 
-	// Get the number of desired unclaimed AWS accounts in the pool
-	poolSizeCount := currentAccountPool.Spec.PoolSize
-
-	//Get the number of actual unclaimed AWS accounts in the pool
-	accountList := &awsv1alpha1.AccountList{}
-
-	listOpts := []client.ListOption{
-		client.InNamespace(awsv1alpha1.AccountCrNamespace),
-	}
-	if err = r.client.List(context.TODO(), accountList, listOpts...); err != nil {
+	// Calculate unclaimed accounts vs claimed accounts
+	calculatedStatus, err := r.calculateAccountPoolStatus()
+	if err != nil {
 		return reconcile.Result{}, err
 	}
+	// Update the pool size after we calculate all other values
+	calculatedStatus.PoolSize = currentAccountPool.Spec.PoolSize
 
-	unclaimedAccountCount := 0
-	claimedAccountCount := 0
-	for _, account := range accountList.Items {
-		// We don't want to count reused accounts here, filter by LegalEntity.ID
-		if !account.Status.Claimed && account.Spec.LegalEntity.ID == "" {
-			if !account.IsFailed() {
-				unclaimedAccountCount++
-			}
-		} else {
-			claimedAccountCount++
-		}
-	}
-
-	if updateAccountPoolStatus(currentAccountPool, unclaimedAccountCount, claimedAccountCount) {
-		currentAccountPool.Status.PoolSize = currentAccountPool.Spec.PoolSize
-		currentAccountPool.Status.UnclaimedAccounts = unclaimedAccountCount
-		currentAccountPool.Status.ClaimedAccounts = claimedAccountCount
+	if shouldUpdateAccountPoolStatus(currentAccountPool, calculatedStatus) {
+		currentAccountPool.Status = calculatedStatus
 		err = r.client.Status().Update(context.TODO(), currentAccountPool)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 	}
+
+	// Get the number of desired unclaimed AWS accounts in the pool
+	poolSizeCount := currentAccountPool.Spec.PoolSize
+	unclaimedAccountCount := calculatedStatus.UnclaimedAccounts
+
+	reqLogger.Info(fmt.Sprintf("AccountPool Calculations Completed: %+v", calculatedStatus))
 
 	if unclaimedAccountCount >= poolSizeCount {
 		reqLogger.Info(fmt.Sprintf("unclaimed account pool satisfied, unclaimedAccounts %d >= poolSize %d", unclaimedAccountCount, poolSizeCount))
@@ -155,15 +145,71 @@ func (r *ReconcileAccountPool) Reconcile(request reconcile.Request) (reconcile.R
 	return reconcile.Result{}, nil
 }
 
-func updateAccountPoolStatus(currentAccountPool *awsv1alpha1.AccountPool, unclaimedAccounts int, claimedAccounts int) bool {
-	if currentAccountPool.Status.PoolSize != currentAccountPool.Spec.PoolSize {
-		return true
-	} else if currentAccountPool.Status.UnclaimedAccounts != unclaimedAccounts {
-		return true
-	} else if currentAccountPool.Status.ClaimedAccounts != claimedAccounts {
-		return true
-	} else {
-		return false
+// Calculates the unclaimedAccountCount and Claimed Account Counts
+func (r *ReconcileAccountPool) calculateAccountPoolStatus() (awsv1alpha1.AccountPoolStatus, error) {
+	unclaimedAccountCount := 0
+	claimedAccountCount := 0
+	availableAccounts := 0
+	accountsProgressing := 0
+
+	//Get the number of actual unclaimed AWS accounts in the pool
+	accountList := &awsv1alpha1.AccountList{}
+
+	listOpts := []client.ListOption{
+		client.InNamespace(awsv1alpha1.AccountCrNamespace),
+	}
+	if err := r.client.List(context.TODO(), accountList, listOpts...); err != nil {
+		return awsv1alpha1.AccountPoolStatus{}, err
 	}
 
+	for _, account := range accountList.Items {
+		// if the account is not owned by the accountpool, skip it
+		if !account.IsOwnedByAccountPool() {
+			continue
+		}
+
+		// count unclaimed accounts
+		if account.HasNeverBeenClaimed() {
+			if !account.IsFailed() {
+				unclaimedAccountCount++
+			}
+		}
+
+		// count claimed accounts
+		if account.HasBeenClaimedAtLeastOnce() {
+			claimedAccountCount++
+		}
+
+		// count available accounts
+		if account.HasNeverBeenClaimed() && account.IsReady() {
+			availableAccounts++
+		}
+
+		// count accounts progressing towards ready by looking at the state
+		if account.IsProgressing() {
+			accountsProgressing++
+		}
+	}
+
+	accountDelta := r.calculateAccountDelta()
+
+	return awsv1alpha1.AccountPoolStatus{
+		UnclaimedAccounts:   unclaimedAccountCount,
+		ClaimedAccounts:     claimedAccountCount,
+		AvailableAccounts:   availableAccounts,
+		AccountsProgressing: accountsProgressing,
+		AWSLimitDelta:       accountDelta,
+	}, nil
+}
+
+func (r *ReconcileAccountPool) calculateAccountDelta() int {
+	accounts := r.accountWatcher.GetAccountCount()
+	limit := r.accountWatcher.GetLimit()
+
+	return limit - accounts
+}
+
+// We only want to update the account pool status if something in the status has changed
+func shouldUpdateAccountPoolStatus(currentAccountPool *awsv1alpha1.AccountPool, calculatedStatus awsv1alpha1.AccountPoolStatus) bool {
+	return currentAccountPool.Status != calculatedStatus
 }

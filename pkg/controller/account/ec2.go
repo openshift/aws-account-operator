@@ -216,9 +216,13 @@ func (r *ReconcileAccount) BuildAndDestroyEC2Instances(reqLogger logr.Logger, ac
 		time.Sleep(time.Duration(currentWait) * time.Second)
 		var code int
 		code, DescError = DescribeEC2Instances(reqLogger, awsClient, instanceID)
-		if code == 16 {
+		if code == 16 { // 16 represents a successful region initialization
 			reqLogger.Info(fmt.Sprintf("EC2 Instance: %s Running", instanceID))
 			break
+		} else if code == 401 { // 401 represents an UnauthorizedOperation error
+			// Missing permission to perform operations, account needs to fail
+			reqLogger.Error(DescError, fmt.Sprintf("Missing required permissions for account %s", account.Name))
+			return err
 		}
 
 	}
@@ -318,6 +322,7 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instan
 	// 48 : terminated
 	// 64 : stopping
 	// 80 : stopped
+	// 401 : failed
 
 	result, err := client.DescribeInstanceStatus(&ec2.DescribeInstanceStatusInput{
 		InstanceIds: aws.StringSlice([]string{instanceID}),
@@ -325,6 +330,11 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instan
 
 	if err != nil {
 		controllerutils.LogAwsError(reqLogger, "New AWS Error while describing EC2 instance", nil, err)
+		if aerr, ok := err.(awserr.Error); ok {
+			if aerr.Code() == "UnauthorizedOperation" {
+				return 401, err
+			}
+		}
 		return 0, err
 	}
 

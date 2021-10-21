@@ -5,8 +5,8 @@ import (
 )
 
 type AmiSpec struct {
-	Ami 			string
-	InstanceType 	string
+	Ami          string
+	InstanceType string
 }
 
 // Custom errors
@@ -117,3 +117,12 @@ var AwsUSEastOneRegion = "us-east-1"
 
 // ManagedTagsConfigMapKey defines the default key for the configmap to add the defined tags to AWS resources
 var ManagedTagsConfigMapKey = "aws-managed-tags"
+
+// ManagedOpenShift-Support role used to access non-STS clusters.
+var ManagedOpenShiftSupportRole = "ManagedOpenShift-Support"
+
+var ManagedOpenShiftSupportRoleARN = "arn:aws:iam::%s:role/ManagedOpenShift-Support-%s"
+
+var CCSAccessARN = "CCS-Access-Arn"
+
+var SupportJumpRole = "support-jump-role"

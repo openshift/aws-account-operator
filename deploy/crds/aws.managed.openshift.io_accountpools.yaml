@@ -29,6 +29,18 @@ spec:
       jsonPath: .status.claimedAccounts
       name: Claimed Accounts
       type: integer
+    - description: Number of ready accounts
+      jsonPath: .status.availableAccounts
+      name: Available Accounts
+      type: integer
+    - description: Number of accounts progressing towards ready
+      jsonPath: .status.accountsProgressing
+      name: Accounts Progressing
+      type: integer
+    - description: Difference between accounts created and soft limit
+      jsonPath: .status.awsLimitDelta
+      name: AWS Limit Delta
+      type: integer
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -57,13 +69,36 @@ spec:
           status:
             description: AccountPoolStatus defines the observed state of AccountPool
             properties:
+              accountsProgressing:
+                description: AccountsProgressing shows the approximate value of the
+                  number of accounts that are in the creation workflow (Creating,
+                  PendingVerification, InitializingRegions)
+                type: integer
+              availableAccounts:
+                description: AvailableAccounts denotes accounts that HAVE NEVER BEEN
+                  CLAIMED, so NOT reused, and are READY to be claimed.  This differs
+                  from the UnclaimedAccounts, who similarly HAVE NEVER BEEN CLAIMED,
+                  but include ALL non-FAILED states
+                type: integer
+              awsLimitDelta:
+                description: AWSLimitDelta shows the approximate difference between
+                  the number of AWS accounts currently created and the limit. This
+                  should be the same across all hive shards in an environment
+                type: integer
               claimedAccounts:
+                description: ClaimedAccounts is an approximate value representing
+                  the amount of accounts that are currently claimed
                 type: integer
               poolSize:
                 type: integer
               unclaimedAccounts:
+                description: UnclaimedAccounts is an approximate value representing
+                  the amount of non-failed accounts
                 type: integer
             required:
+            - accountsProgressing
+            - availableAccounts
+            - awsLimitDelta
             - claimedAccounts
             - poolSize
             - unclaimedAccounts

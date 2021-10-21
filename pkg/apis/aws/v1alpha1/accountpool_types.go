@@ -16,9 +16,22 @@ type AccountPoolSpec struct {
 // AccountPoolStatus defines the observed state of AccountPool
 // +k8s:openapi-gen=true
 type AccountPoolStatus struct {
-	PoolSize          int `json:"poolSize"`
+	PoolSize int `json:"poolSize"`
+
+	// UnclaimedAccounts is an approximate value representing the amount of non-failed accounts
 	UnclaimedAccounts int `json:"unclaimedAccounts"`
-	ClaimedAccounts   int `json:"claimedAccounts"`
+
+	// ClaimedAccounts is an approximate value representing the amount of accounts that are currently claimed
+	ClaimedAccounts int `json:"claimedAccounts"`
+
+	// AvailableAccounts denotes accounts that HAVE NEVER BEEN CLAIMED, so NOT reused, and are READY to be claimed.  This differs from the UnclaimedAccounts, who similarly HAVE NEVER BEEN CLAIMED, but include ALL non-FAILED states
+	AvailableAccounts int `json:"availableAccounts"`
+
+	// AccountsProgressing shows the approximate value of the number of accounts that are in the creation workflow (Creating, PendingVerification, InitializingRegions)
+	AccountsProgressing int `json:"accountsProgressing"`
+
+	// AWSLimitDelta shows the approximate difference between the number of AWS accounts currently created and the limit. This should be the same across all hive shards in an environment
+	AWSLimitDelta int `json:"awsLimitDelta"`
 }
 
 // +genclient
@@ -30,6 +43,9 @@ type AccountPoolStatus struct {
 // +kubebuilder:printcolumn:name="Pool Size",type="integer",JSONPath=".status.poolSize",description="Desired pool size"
 // +kubebuilder:printcolumn:name="Unclaimed Accounts",type="integer",JSONPath=".status.unclaimedAccounts",description="Number of unclaimed accounts"
 // +kubebuilder:printcolumn:name="Claimed Accounts",type="integer",JSONPath=".status.claimedAccounts",description="Number of claimed accounts"
+// +kubebuilder:printcolumn:name="Available Accounts",type="integer",JSONPath=".status.availableAccounts",description="Number of ready accounts"
+// +kubebuilder:printcolumn:name="Accounts Progressing",type="integer",JSONPath=".status.accountsProgressing",description="Number of accounts progressing towards ready"
+// +kubebuilder:printcolumn:name="AWS Limit Delta",type="integer",JSONPath=".status.awsLimitDelta",description="Difference between accounts created and soft limit"
 // +kubebuilder:resource:path=accountpools,scope=Namespaced
 type AccountPool struct {
 	metav1.TypeMeta   `json:",inline"`

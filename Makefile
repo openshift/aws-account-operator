@@ -211,6 +211,11 @@ create-ccs-2-accountclaim: ## Create CSS AccountClaim
 	# Wait for accountclaim to become ready
 	@while true; do STATUS=$$(oc get accountclaim ${CCS_CLAIM_NAME} -n ${CCS_NAMESPACE_NAME_2} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${CCS_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
+.PHONY: validate-ccs
+validate-ccs:
+	# Validate CCS
+	test/integration/tests/validate_ccs_accountclaim.sh
+
 .PHONY: delete-ccs-accountclaim
 delete-ccs-accountclaim: ## Delete CCS AccountClaim
 	# Delete ccs accountclaim
@@ -225,7 +230,7 @@ delete-ccs-2-accountclaim: ## Delete CSS AccountClaim
 test-ccs: create-ccs delete-ccs ## Test CCS
 
 .PHONY: create-ccs
-create-ccs: create-ccs-namespace create-ccs-secret create-ccs-accountclaim ## Deploy a test CCS account
+create-ccs: create-ccs-namespace create-ccs-secret create-ccs-accountclaim validate-ccs ## Deploy a test CCS account
 
 .PHONY: delete-ccs
 delete-ccs: delete-ccs-accountclaim delete-ccs-secret delete-ccs-namespace ## Teardown the test CCS account
@@ -243,8 +248,14 @@ list-s3-bucket:  ## List S3 bucket
 	BUCKETS=$(shell export AWS_ACCESS_KEY_ID=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'); \
 	if [ $$BUCKETS == 0 ]; then echo "Reuse successfully complete"; else echo "Reuse failed"; exit 1; fi
 
+.PHONY: validate-reuse
+validate-reuse:
+	# Validate re-use
+	@IS_READY=$$(oc get account -n aws-account-operator ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -o json | jq -r '.status.state'); if [ "$$IS_READY" != "Ready" ]; then echo "Reused Account is not Ready"; exit 1; fi;
+	@IS_REUSED=$$(oc get account -n aws-account-operator ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -o json | jq -r '.status.reused'); if [ "$$IS_REUSED" != true ]; then echo "Account is not Reused"; exit 1; fi;
+
 .PHONY: test-reuse
-test-reuse: check-aws-account-id-env create-accountclaim-namespace create-accountclaim create-s3-bucket delete-accountclaim delete-accountclaim-namespace list-s3-bucket
+test-reuse: check-aws-account-id-env create-accountclaim-namespace create-accountclaim create-s3-bucket delete-accountclaim delete-accountclaim-namespace validate-reuse list-s3-bucket
 	$(MAKE) delete-account ## Test reuse
 
 .PHONY: test-secrets
@@ -302,7 +313,7 @@ endif
 .PHONY: create-ou-map
 create-ou-map: check-ou-mapping-configmap-env ## Test apply OU map CR
 	# Create OU map
-	@hack/scripts/set_operator_configmap.sh -a 0 -v 1 -r "${OSD_STAGING_1_OU_ROOT_ID}" -o "${OSD_STAGING_1_OU_BASE_ID}" -s "${STS_JUMP_ARN}"
+	@hack/scripts/set_operator_configmap.sh -a 0 -v 1 -r "${OSD_STAGING_1_OU_ROOT_ID}" -o "${OSD_STAGING_1_OU_BASE_ID}" -s "${STS_JUMP_ARN}" -m "${SUPPORT_JUMP_ROLE}"
 
 .PHONY: delete-ou-map
 delete-ou-map: ## Test delete OU map CR
@@ -342,8 +353,13 @@ delete-sts-accountclaim: ## Deletes a templated STS accountclaim
 	# Delete sts accountclaim
 	@oc process --local -p NAME=${STS_CLAIM_NAME} -p NAMESPACE=${STS_NAMESPACE_NAME} -p STS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p STS_ROLE_ARN=${STS_ROLE_ARN} -f hack/templates/aws.managed.openshift.io_v1alpha1_sts_accountclaim_cr.tmpl | oc delete -f -
 
-.PHONY: test-sts-accountclaim
-test-sts-accountclaim: create-sts-accountclaim-namespace create-sts-accountclaim delete-sts-accountclaim delete-sts-accountclaim-namespace ## Runs a full integration test for STS workflow
+.PHONY: validate-sts
+validate-sts:
+	# Validate STS
+	test/integration/tests/validate_sts_accountclaim.sh
+
+.PHONY: test-sts
+test-sts: create-sts-accountclaim-namespace create-sts-accountclaim validate-sts delete-sts-accountclaim delete-sts-accountclaim-namespace ## Runs a full integration test for STS workflow
 
 ### Fake Account Test Workflow
 # Create fake account claim namespace
@@ -385,7 +401,7 @@ test-apis:
 	popd
 
 .PHONY: test-integration
-test-integration: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts-accountclaim test-fake-accountclaim## Runs all integration tests
+test-integration: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts test-fake-accountclaim## Runs all integration tests
 
 # Test all
 # GOLANGCI_LINT_CACHE needs to be set to a directory which is writeable

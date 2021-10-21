@@ -171,15 +171,35 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		var awsClient awsclient.Client
 		if currentAcctInstance.IsBYOC() {
-			currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
-			roleToAssume := fmt.Sprintf("%s-%s", byocRole, currentAccInstanceID)
+			roleToAssume := getAssumeRole(currentAcctInstance)
 			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
+			if err != nil {
+				reqLogger.Error(err, "failed building BYOC client from assume_role")
+				if aerr, ok := err.(awserr.Error); ok {
+					switch aerr.Code() {
+					// If it's AccessDenied we want to just delete the finalizer and continue as we assume
+					// the credentials have been deleted by the customer. For additional safety we also only
+					// want to do this for CCS accounts.
+					case "AccessDenied":
+						if currentAcctInstance.IsBYOC() {
+							err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
+							if err != nil {
+								reqLogger.Error(err, "failed removing account finalizer")
+								return reconcile.Result{}, err
+							}
+							reqLogger.Info("Finalizer Removed on CCS Account with ACCESSDENIED")
+							return reconcile.Result{}, nil
+						}
+					}
+				}
+				return reconcile.Result{}, err
+			}
 		} else {
 			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, awsv1alpha1.AccountOperatorIAMRole, "")
-		}
-		if err != nil {
-			reqLogger.Error(err, "failed building operator AWS client")
-			return reconcile.Result{}, err
+			if err != nil {
+				reqLogger.Error(err, "failed building AWS client from assume_role")
+				return reconcile.Result{}, err
+			}
 		}
 		r.finalizeAccount(reqLogger, awsClient, currentAcctInstance)
 		//return reconcile.Result{}, nil
@@ -549,14 +569,23 @@ func (r *ReconcileAccount) accountSpecUpdate(reqLogger logr.Logger, account *aws
 
 func (r *ReconcileAccount) nonCCSAssignAccountID(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client) error {
 	// Build Aws Account
-	awsAccountID, err := r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
-	if err != nil {
-		return err
+	var awsAccountID string
+
+	switch utils.DetectDevMode {
+	case utils.DevModeProduction:
+		var err error
+		awsAccountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
+		if err != nil {
+			return err
+		}
+	default:
+		log.Info("Running in development mode, skipping account creation")
+		awsAccountID = "123456789012"
 	}
 
 	// set state creating if the account was able to create
 	utils.SetAccountStatus(currentAcctInstance, AccountCreating, awsv1alpha1.AccountCreating, AccountCreating)
-	err = r.statusUpdate(currentAcctInstance)
+	err := r.statusUpdate(currentAcctInstance)
 
 	if err != nil {
 		return err
@@ -691,6 +720,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 	if err != nil {
 		connErr := fmt.Sprintf("unable to connect to default region %s", awsv1alpha1.AwsUSEastOneRegion)
 		reqLogger.Error(err, connErr)
+		return err
 	}
 
 	// Get a list of regions enabled in the current account
@@ -1113,7 +1143,10 @@ func (r *ReconcileAccount) getCustomTags(log logr.Logger, account *awsv1alpha1.A
 
 	accountClaim, err := r.getAccountClaim(account)
 	if err != nil {
-		log.Error(err, "Error getting AccountClaim to get custom tags")
+		// We expect this error for non-ccs accounts
+		if account.IsBYOC() {
+			log.Error(err, "Error getting AccountClaim to get custom tags")
+		}
 		return tags
 	}
 
@@ -1168,16 +1201,11 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 	currentAcctInstance *awsv1alpha1.Account,
 	awsSetupClient awsclient.Client) (awsclient.Client, *sts.AssumeRoleOutput, error) {
 
+	var err error
 	var awsAssumedRoleClient awsclient.Client
 	var creds *sts.AssumeRoleOutput
 	currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
 	roleToAssume := getAssumeRole(currentAcctInstance)
-
-	SREAccessARN, err := r.GetSREAccessARN(reqLogger)
-	if err != nil {
-		reqLogger.Error(err, "An error was encountered retrieving the SRE Access ARN")
-		return nil, nil, err
-	}
 
 	// Build the tags required to create the Admin Access Role
 	tags := awsclient.AWSTags.BuildTags(
@@ -1219,18 +1247,31 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 			return nil, nil, err
 		}
 
-		roleID, err := createBYOCAdminAccessRole(
+		roleID, err := r.createBYOCAdminAccessRole(
 			reqLogger,
 			awsSetupClient,
 			ccsClient,
 			adminAccessArn,
 			currentAccInstanceID,
 			tags,
-			SREAccessARN,
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "createBYOCAdminAccessRole err", roleID)
+			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for CCS Account", roleID)
+			return nil, nil, err
+		}
+
+		_, err = r.createManagedOpenShiftSupportRole(
+			reqLogger,
+			awsSetupClient,
+			ccsClient,
+			adminAccessArn,
+			currentAccInstanceID,
+			tags,
+		)
+
+		if err != nil {
+			reqLogger.Error(err, "Encountered error while creating ManagedOpenShiftSupportRole for CCS Account", roleID)
 			return nil, nil, err
 		}
 
@@ -1247,18 +1288,31 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 			return nil, nil, err
 		}
 
-		roleID, err := createBYOCAdminAccessRole(
+		roleID, err := r.createBYOCAdminAccessRole(
 			reqLogger,
 			awsSetupClient,
 			awsAssumedRoleClient,
 			adminAccessArn,
 			currentAccInstanceID,
 			tags,
-			SREAccessARN,
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "createBYOCAdminAccessRole err", roleID)
+			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for non-CCS Account", roleID)
+			return nil, nil, err
+		}
+
+		_, err = r.createManagedOpenShiftSupportRole(
+			reqLogger,
+			awsSetupClient,
+			awsAssumedRoleClient,
+			adminAccessArn,
+			currentAccInstanceID,
+			tags,
+		)
+
+		if err != nil {
+			reqLogger.Error(err, "Encountered error while creating ManagedOpenShiftSupportRole for non-CCS Account", roleID)
 			return nil, nil, err
 		}
 	}

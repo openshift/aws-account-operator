@@ -209,12 +209,31 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	if accountClaim.Spec.AccountLink == "" {
 		setAccountLinkOnAccountClaim(reqLogger, unclaimedAccount, accountClaim)
 		return reconcile.Result{}, r.specUpdate(reqLogger, accountClaim)
+	}
 
+	if !accountClaim.Spec.ManualSTSMode {
+		err = r.setSupportRoleARNManagedOpenshift(reqLogger, accountClaim, unclaimedAccount)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	// Set awsAccountClaim.Spec.AwsAccountOU
 	if accountClaim.Spec.AccountOU == "" || accountClaim.Spec.AccountOU == "ROOT" {
-		err = MoveAccountToOU(r, reqLogger, accountClaim, unclaimedAccount)
+
+		// aws client
+		awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
+			SecretName: controllerutils.AwsSecretName,
+			NameSpace:  awsv1alpha1.AccountCrNamespace,
+			AwsRegion:  "us-east-1",
+		})
+		if err != nil {
+			unexpectedErrorMsg := "OU: Failed to build aws client"
+			reqLogger.Info(unexpectedErrorMsg)
+			return reconcile.Result{}, err
+		}
+
+		err = MoveAccountToOU(r, reqLogger, awsClient, accountClaim, unclaimedAccount)
 		if err != nil {
 			if err == awsv1alpha1.ErrAccMoveRaceCondition {
 				// Due to a race condition, we need to requeue the reconcile to ensure that the account was correctly moved into the correct OU
@@ -239,6 +258,15 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *ReconcileAccountClaim) setSupportRoleARNManagedOpenshift(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
+	if accountClaim.Spec.STSRoleARN == "" {
+		instanceID := account.Labels[awsv1alpha1.IAMUserIDLabel]
+		accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
+		return r.specUpdate(reqLogger, accountClaim)
+	}
+	return nil
 }
 
 func (r *ReconcileAccountClaim) handleAccountClaimDeletion(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
@@ -351,6 +379,11 @@ func (r *ReconcileAccountClaim) handleBYOCAccountClaim(reqLogger logr.Logger, ac
 	}
 
 	if !accountClaim.Spec.ManualSTSMode {
+		err = r.setSupportRoleARNManagedOpenshift(reqLogger, accountClaim, byocAccount)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
 		// Create secret for OCM to consume
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)

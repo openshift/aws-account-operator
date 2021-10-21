@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -348,7 +349,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createIAMPolicy(awsClient awsclient
 		policyName = afr.Spec.AWSCustomPolicy.Name + "-" + uidLabel
 	} else {
 		// Just in case the UID somehow doesn't exist
-		return nil, err
+		return nil, errors.New("Failed to get UID label")
 	}
 
 	output, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
@@ -397,7 +398,7 @@ func (r *ReconcileAWSFederatedAccountAccess) createIAMRole(awsClient awsclient.C
 		roleName = afr.Name + "-" + uidLabel
 	} else {
 		// Just in case the UID somehow doesn't exist
-		return nil, err
+		return nil, errors.New("Failed to get UID label")
 	}
 
 	createRoleOutput, err := awsClient.CreateRole(&iam.CreateRoleInput{
@@ -632,7 +633,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 				switch aerr.Code() {
 				case "NoSuchEntity":
 					// Delete any custom policies made
-					err = r.deleteNonAttachedCustomPolicy(reqLogger, awsClient, federatedRoleCR)
+					err = r.deleteNonAttachedCustomPolicy(reqLogger, awsClient, currentFAA, federatedRoleCR)
 					if err != nil {
 						return err
 					}
@@ -650,8 +651,8 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 				return err
 			}
 		}
-		for _, policy := range attachedPolicyOutput.AttachedPolicies {
-			_, err = awsClient.DetachRolePolicy(&iam.DetachRolePolicyInput{RoleName: aws.String(roleName), PolicyArn: policy.PolicyArn})
+		for _, attachedPolicy := range attachedPolicyOutput.AttachedPolicies {
+			_, err = awsClient.DetachRolePolicy(&iam.DetachRolePolicyInput{RoleName: aws.String(roleName), PolicyArn: attachedPolicy.PolicyArn})
 			if err != nil {
 				if aerr, ok := err.(awserr.Error); ok {
 					switch aerr.Code() {
@@ -669,25 +670,9 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 				}
 			}
 
-			awsCustomPolicyname := federatedRoleCR.Spec.AWSCustomPolicy.Name + "-" + uidLabel
-			if *policy.PolicyName == awsCustomPolicyname {
-				_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: policy.PolicyArn})
-				if err != nil {
-					if aerr, ok := err.(awserr.Error); ok {
-						switch aerr.Code() {
-						default:
-							reqLogger.Error(
-								aerr,
-								fmt.Sprint(aerr.Error()),
-							)
-							reqLogger.Error(err, fmt.Sprintf("%v", err))
-							return err
-						}
-					} else {
-						reqLogger.Error(err, "NOther error while trying to detach policies")
-						return err
-					}
-				}
+			err = checkAndDeletePolicy(reqLogger, awsClient, uidLabel, federatedRoleCR.Spec.AWSCustomPolicy.Name, attachedPolicy.PolicyName, attachedPolicy.PolicyArn)
+			if err != nil {
+				return err
 			}
 		}
 
@@ -709,7 +694,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 				return err
 			}
 		} else {
-			reqLogger.Error(err, "NOther error while trying to detach policies")
+			reqLogger.Error(err, "Other error while trying to detach policies")
 			return err
 		}
 	}
@@ -717,7 +702,13 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 	return nil
 }
 
-func (r *ReconcileAWSFederatedAccountAccess) deleteNonAttachedCustomPolicy(reqLogger logr.Logger, awsClient awsclient.Client, federatedRoleCR *awsv1alpha1.AWSFederatedRole) error {
+func (r *ReconcileAWSFederatedAccountAccess) deleteNonAttachedCustomPolicy(reqLogger logr.Logger, awsClient awsclient.Client, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, federatedRoleCR *awsv1alpha1.AWSFederatedRole) error {
+
+	// Get the UID
+	uidLabel, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
+	if !ok {
+		return errors.New("Unable to get UID label")
+	}
 
 	var policyMarker *string
 	// Paginate through custom policies
@@ -735,18 +726,9 @@ func (r *ReconcileAWSFederatedAccountAccess) deleteNonAttachedCustomPolicy(reqLo
 		}
 
 		for _, policy := range policyListOutput.Policies {
-			if *policy.PolicyName == federatedRoleCR.Spec.AWSCustomPolicy.Name {
-				_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: policy.Arn})
-				if err != nil {
-					if aerr, ok := err.(awserr.Error); ok {
-						switch aerr.Code() {
-						default:
-							reqLogger.Error(aerr, fmt.Sprint(aerr.Error()))
-							return err
-						}
-					}
-					return err
-				}
+			err = checkAndDeletePolicy(reqLogger, awsClient, uidLabel, federatedRoleCR.Spec.AWSCustomPolicy.Name, policy.PolicyName, policy.Arn)
+			if err != nil {
+				return err
 			}
 		}
 
@@ -767,4 +749,38 @@ func hasLabel(awsFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess, 
 		return true
 	}
 	return false
+}
+
+func checkAndDeletePolicy(reqLogger logr.Logger, awsClient awsclient.Client, uidLabel string, crPolicyName string, policyName *string, policyArn *string) error {
+
+	var awsCustomPolicyname string
+	awsCustomPolicyname = getPolicyNameWithUID(awsCustomPolicyname, crPolicyName, uidLabel)
+
+	if *policyName == awsCustomPolicyname {
+		_, err := awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: policyArn})
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				default:
+					reqLogger.Error(
+						aerr,
+						fmt.Sprint(aerr.Error()),
+					)
+					reqLogger.Error(err, fmt.Sprintf("%v", err))
+					return err
+				}
+			} else {
+				reqLogger.Error(err, "Other error while trying to detach policies")
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func getPolicyNameWithUID(awsCustomPolicyname string, crPolicyName string, uidLabel string) string {
+	if !strings.HasSuffix(crPolicyName, "-"+uidLabel) {
+		crPolicyName = crPolicyName + "-" + uidLabel
+	}
+	return crPolicyName
 }
