@@ -161,6 +161,7 @@ func SetAccountCondition(
 		}
 		// Need to always update the probe time, so if the condition occurs again
 		// or we probe and the condition is still active, the date is updated.
+		existingCondition.LastProbeTime = now
 	}
 
 	if conditionType == awsv1alpha1.AccountReady {
