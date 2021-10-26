@@ -149,7 +149,7 @@ func (r *ReconcileAccount) createBYOCAdminAccessRole(reqLogger logr.Logger, awsS
 
 	if (*existingRole != iam.GetRoleOutput{}) {
 		reqLogger.Info(fmt.Sprintf("Found pre-existing role: %s", byocInstanceIDRole))
-		err := DeleteBYOCAdminAccessRole(reqLogger, byocAWSClient, instanceID)
+		err := DeleteBYOCAdminAccessRole(reqLogger, byocAWSClient, byocInstanceIDRole)
 		if err != nil {
 			return roleID, err
 		}
