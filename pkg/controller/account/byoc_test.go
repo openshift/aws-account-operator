@@ -19,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -41,10 +42,77 @@ var _ = Describe("Byoc", func() {
 			PolicyName: aws.String("ManagedPolicyName"),
 		}
 		userARN = "arn:aws:iam::123456789012:user/JohnDoe"
+
 	})
 
 	AfterEach(func() {
 		ctrl.Finish()
+	})
+
+	Context("Testing createBYOCAdminAccessRole", func() {
+		var (
+			// ccsAccessRoleArn is the mocked ARN of the root role assumed by aao
+			ccsAccessRoleArn string
+			//byocAdminAccessRoleInstanceId is the unique InstanceID of the Role used  to create the full role name
+			byocAdminAccessRoleInstanceId string
+			// byocAdminAccessRoleName is the full Name of the Role created by createBYOCAdminAccessRole(), consisting of the prefix `byocName` and the suffix `byocAdminAccessRoleInstanceId`
+			byocAdminAccessRoleName string
+			// expectedRoleID is the assigned ID of the created role
+			expectedRoleID string
+			// aaoConfigMap is the Configmap for configuring the awsAccountOperator itself
+			aaoConfigMap *corev1.ConfigMap
+			// byocMockAWSClient is the mock aws client for customers account
+			byocMockAWSClient *mock.MockClient
+			// reconcileAccount represents the Reconciliation of an Account Object
+			reconcileAccount *ReconcileAccount
+		)
+
+		BeforeEach(func() {
+			ccsAccessRoleArn = "arn:aws:iam::123456789012:role/ccs-access-role"
+			byocAdminAccessRoleInstanceId = "123456"
+			byocAdminAccessRoleName = fmt.Sprintf("%s-%s", byocRole, byocAdminAccessRoleInstanceId)
+			expectedRoleID = "MyAwesomeRoleID"
+
+			aaoConfigMap = &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      awsv1alpha1.DefaultConfigMap,
+					Namespace: awsv1alpha1.AccountCrNamespace,
+				},
+				Data: map[string]string{
+					awsv1alpha1.CCSAccessARN: ccsAccessRoleArn,
+				},
+			}
+			byocMockAWSClient = mock.NewMockClient(ctrl)
+
+			reconcileAccount = &ReconcileAccount{
+				Client: fake.NewFakeClient([]runtime.Object{aaoConfigMap}...),
+			}
+
+			mockAWSClient.EXPECT().GetUser(&iam.GetUserInput{}).Return(&iam.GetUserOutput{User: &iam.User{Arn: &userARN}}, nil)
+			byocMockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(&iam.CreateRoleOutput{Role: &iam.Role{RoleId: aws.String(expectedRoleID)}}, nil)
+			byocMockAWSClient.EXPECT().AttachRolePolicy(&iam.AttachRolePolicyInput{PolicyArn: policyFake.PolicyArn, RoleName: aws.String(byocAdminAccessRoleName)}).Return(nil, nil)
+			// is called once for happy path and twice when recreating the role
+			byocMockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(&iam.ListAttachedRolePoliciesOutput{AttachedPolicies: []*iam.AttachedPolicy{}}, nil).MinTimes(1).MaxTimes(2)
+		})
+
+		It("Should Create the BYOC Admin Access Role", func() {
+			byocMockAWSClient.EXPECT().GetRole(&iam.GetRoleInput{RoleName: aws.String(byocAdminAccessRoleName)}).Return(&iam.GetRoleOutput{}, nil)
+
+			roleID, err := reconcileAccount.createBYOCAdminAccessRole(nullLogger, mockAWSClient, byocMockAWSClient, *policyFake.PolicyArn, byocAdminAccessRoleInstanceId, []*iam.Tag{})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(roleID).To(Equal(expectedRoleID))
+		})
+
+		It("Should Re-Create an existing BYOC Admin Access Role", func() {
+			byocMockAWSClient.EXPECT().GetRole(&iam.GetRoleInput{RoleName: aws.String(byocAdminAccessRoleName)}).Return(&iam.GetRoleOutput{Role: &iam.Role{RoleName: aws.String(byocAdminAccessRoleName)}}, nil)
+			byocMockAWSClient.EXPECT().DeleteRole(&iam.DeleteRoleInput{RoleName: aws.String(byocAdminAccessRoleName)}).Return(&iam.DeleteRoleOutput{}, nil)
+
+			roleID, err := reconcileAccount.createBYOCAdminAccessRole(nullLogger, mockAWSClient, byocMockAWSClient, *policyFake.PolicyArn, byocAdminAccessRoleInstanceId, []*iam.Tag{})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(roleID).To(Equal(expectedRoleID))
+		})
 	})
 
 	Context("Testing GetExistingRole", func() {
