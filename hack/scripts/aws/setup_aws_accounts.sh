@@ -14,7 +14,7 @@ EOF
 
 if ( ! getopts ":a:b:u" opt); then
     echo ""
-    echo "    $0 requries an argument!"
+    echo "    $0 requires an argument!"
     usage
     exit 1
 fi
