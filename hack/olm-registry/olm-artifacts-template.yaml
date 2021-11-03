@@ -221,6 +221,8 @@ objects:
             - "ec2:DeleteVpnConnection"
             - "ec2:EnableVgwRoutePropagation"
             - "ec2:DisableVgwRoutePropagation"
+            - "ec2:GetVpnConnectionDeviceTypes"
+            - "ec2:GetVpnConnectionDeviceSampleConfiguration"
           resource:
             - "*"
         - effect: Allow
