@@ -31,6 +31,7 @@ var _ = Describe("AccountClaim", func() {
 		accountClaim *awsv1alpha1.AccountClaim
 		r            *ReconcileAccountClaim
 		ctrl         *gomock.Controller
+		req          reconcile.Request
 	)
 
 	err := apis.AddToScheme(scheme.Scheme)
@@ -60,6 +61,12 @@ var _ = Describe("AccountClaim", func() {
 				},
 			},
 		}
+		req = reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      name,
+				Namespace: namespace,
+			},
+		}
 
 		// Create the reconciler with a mocking AWS client IBuilder.
 		r = &ReconcileAccountClaim{
@@ -75,18 +82,11 @@ var _ = Describe("AccountClaim", func() {
 		ctrl.Finish()
 	})
 
-	Context("Reconcile", func() {
+	When("Reconciling an AccountClaim", func() {
 		It("should reconcile correctly", func() {
 			// Objects to track in the fake client.
 			objs := []runtime.Object{accountClaim}
 			r.client = fake.NewFakeClient(objs...)
-
-			req := reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      name,
-					Namespace: namespace,
-				},
-			}
 
 			_, err := r.Reconcile(req)
 
@@ -119,12 +119,6 @@ var _ = Describe("AccountClaim", func() {
 				fake.NewFakeClient(objs...),
 				true,
 			}
-			req := reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      name,
-					Namespace: namespace,
-				},
-			}
 
 			// TODO: As written, this is just triggering error paths for each of the cleanup
 			//       funcs, proving that errors in those cleanups don't propagate up to Reconcile.
@@ -141,6 +135,57 @@ var _ = Describe("AccountClaim", func() {
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("account CR modified during reset: Conflict"))
+		})
+
+		When("Accountclaim is BYOC", func() {
+
+			BeforeEach(func() {
+				accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), accountClaimFinalizer))
+				accountClaim.Spec.BYOC = true
+				accountClaim.Spec.AccountLink = ""
+			})
+
+			It("should fail validation", func() {
+				// fail validation if BYOC is not associated with an account
+				accountClaim.Spec.BYOCAWSAccountID = ""
+
+				r.client = fake.NewFakeClient(accountClaim)
+
+				_, err := r.Reconcile(req)
+
+				Expect(err).To(HaveOccurred())
+				ac := awsv1alpha1.AccountClaim{}
+				err = r.client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ac.Status.State).To(Equal(awsv1alpha1.ClaimStatusError))
+			})
+
+			It("Should create a BYOC Account", func() {
+				dummySecretRef := awsv1alpha1.SecretRef{
+					Name:      "name",
+					Namespace: "namespace",
+				}
+				accountClaim.Spec.BYOCSecretRef = dummySecretRef
+				accountClaim.Spec.AwsCredentialSecret = dummySecretRef
+				accountClaim.Spec.BYOCAWSAccountID = "123456"
+
+				r.client = fake.NewFakeClient(accountClaim)
+
+				_, err := r.Reconcile(req)
+				Expect(err).NotTo(HaveOccurred())
+
+				ac := awsv1alpha1.AccountClaim{}
+				err = r.client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				Expect(err).NotTo(HaveOccurred())
+
+				account := awsv1alpha1.Account{}
+				err = r.client.Get(context.TODO(), types.NamespacedName{Name: ac.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, &account)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(account.Spec.BYOC).To(BeTrue())
+				Expect(account.Spec.LegalEntity.ID).To(Equal(accountClaim.Spec.LegalEntity.ID))
+				Expect(account.Spec.AwsAccountID).To(Equal(accountClaim.Spec.BYOCAWSAccountID))
+			})
 		})
 	})
 })
