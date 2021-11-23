@@ -158,6 +158,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
+	// Add finalizer to non-sts account cr
+	if !currentAcctInstance.Spec.ManualSTSMode {
+		err := r.addFinalizer(reqLogger, currentAcctInstance)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
 	if currentAcctInstance.IsPendingDeletion() {
 		if currentAcctInstance.Spec.ManualSTSMode {
 			// if the account is STS, we don't need to do any additional cleanup aside from
