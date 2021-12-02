@@ -28,6 +28,8 @@ parameters:
   required: true
 - name: AWS_MANAGED_TAGS
   required: false
+- name: GOVCLOUD
+  required: false
 
 objects:
 - apiVersion: operators.coreos.com/v1alpha1
@@ -71,6 +73,7 @@ objects:
     support-jump-role: ${SUPPORT_JUMP_ROLE}
     shard-name: ${SHARD_NAME}
     aws-managed-tags: "${AWS_MANAGED_TAGS}"
+    govcloud: "${GOVCLOUD}"
     regions: |
       us-east-1:ami-000db10762d0c4c05:t2.micro
       us-east-2:ami-094720ddca649952f:t2.micro
