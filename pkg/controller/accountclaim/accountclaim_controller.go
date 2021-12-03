@@ -263,6 +263,16 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 func (r *ReconcileAccountClaim) setSupportRoleARNManagedOpenshift(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
 	if accountClaim.Spec.STSRoleARN == "" {
 		instanceID := account.Labels[awsv1alpha1.IAMUserIDLabel]
+
+		// get configMap and check if account is fedramp
+		configMap, err := controllerutils.GetOperatorConfigMap(r.client)
+		if err != nil {
+			log.Error(err, "failed retrieving configmap")
+		}
+		_, ok := configMap.Data["fedramp"]
+		if ok {
+			accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.FedrampManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
+		}
 		accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
 		return r.specUpdate(reqLogger, accountClaim)
 	}
