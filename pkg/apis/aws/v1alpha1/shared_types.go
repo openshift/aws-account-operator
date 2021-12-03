@@ -123,6 +123,9 @@ var ManagedOpenShiftSupportRole = "ManagedOpenShift-Support"
 
 var ManagedOpenShiftSupportRoleARN = "arn:aws:iam::%s:role/ManagedOpenShift-Support-%s"
 
+// fedramp arn
+var FedrampManagedOpenShiftSupportRoleARN = "arn:aws-us-gov:iam::%s:role/ManagedOpenShift-Support-%s"
+
 var CCSAccessARN = "CCS-Access-Arn"
 
 var SupportJumpRole = "support-jump-role"
