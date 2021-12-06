@@ -104,7 +104,8 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	if !ok {
 		log.Error(err, "fedramp key not available in configmap")
 	}
-	reconciler.fedramp = fr
+	frBool, _ := strconv.ParseBool(fr)
+	reconciler.fedramp = frBool
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -133,7 +134,7 @@ type ReconcileAccount struct {
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
 	shardName        string
-	fedramp		 string
+	fedramp		 bool
 }
 
 // Reconcile reads that state of the cluster for a Account object and makes changes based on the state read
@@ -656,7 +657,7 @@ func (r *ReconcileAccount) assumeRole(
 	roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
 
 	// if account if fedramp use the appropriate iam arn
-	if r.fedramp == "true" {
+	if r.fedramp {
 		roleArn = fmt.Sprintf("arn:aws-us-gov:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
 	}
 	// Use the role session name to uniquely identify a session when the same role
