@@ -153,11 +153,15 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
+	awsRegion := "us-east-1"
+	if r.fedramp {
+		awsRegion = "us-gov-east-1"
+	}
 	// We expect this secret to exist in the same namespace Account CR's are created
 	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
+		AwsRegion:  awsRegion,
 	})
 	if err != nil {
 		reqLogger.Error(err, "failed building operator AWS client")

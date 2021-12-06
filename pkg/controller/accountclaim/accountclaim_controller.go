@@ -236,10 +236,14 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	if accountClaim.Spec.AccountOU == "" || accountClaim.Spec.AccountOU == "ROOT" {
 
 		// aws client
+		awsRegion := "us-east-1"
+		if r.fedramp {
+			awsRegion = "us-gov-east-1"
+		}
 		awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 			SecretName: controllerutils.AwsSecretName,
 			NameSpace:  awsv1alpha1.AccountCrNamespace,
-			AwsRegion:  "us-east-1",
+			AwsRegion:  awsRegion,
 		})
 		if err != nil {
 			unexpectedErrorMsg := "OU: Failed to build aws client"
