@@ -3,6 +3,7 @@ package accountclaim
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -66,7 +67,8 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	if !ok {
 		log.Error(err, "fedramp key not available in configmap")
 	}
-	reconciler.fedramp = fr
+	frBool, _ := strconv.ParseBool(fr)
+	reconciler.fedramp = frBool
 	return controllerutils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -104,7 +106,7 @@ type ReconcileAccountClaim struct {
 	client           client.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
-	fedramp          string
+	fedramp          bool
 }
 
 // Reconcile reads that state of the cluster for a AccountClaim object and makes changes based on the state read
@@ -278,7 +280,7 @@ func (r *ReconcileAccountClaim) setSupportRoleARNManagedOpenshift(reqLogger logr
 		accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
 
 		// if account if fedramp use the appropriate iam arn
-		if r.fedramp == "true" {
+		if r.fedramp {
 			accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.FedrampManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
 		}
 		return r.specUpdate(reqLogger, accountClaim)
