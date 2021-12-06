@@ -56,6 +56,17 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
+
+	configMap, err := controllerutils.GetOperatorConfigMap(reconciler.client)
+	if err != nil {
+		log.Error(err, "failed retrieving configmap")
+	}
+
+	fr, ok := configMap.Data["fedramp"]
+	if !ok {
+		log.Error(err, "fedramp key not available in configmap")
+	}
+	reconciler.fedramp = fr
 	return controllerutils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -93,6 +104,7 @@ type ReconcileAccountClaim struct {
 	client           client.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
+	fedramp          string
 }
 
 // Reconcile reads that state of the cluster for a AccountClaim object and makes changes based on the state read
@@ -263,17 +275,12 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 func (r *ReconcileAccountClaim) setSupportRoleARNManagedOpenshift(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
 	if accountClaim.Spec.STSRoleARN == "" {
 		instanceID := account.Labels[awsv1alpha1.IAMUserIDLabel]
+		accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
 
-		// get configMap and check if account is fedramp
-		configMap, err := controllerutils.GetOperatorConfigMap(r.client)
-		if err != nil {
-			log.Error(err, "failed retrieving configmap")
-		}
-		_, ok := configMap.Data["fedramp"]
-		if ok {
+		// if account if fedramp use the appropriate iam arn
+		if r.fedramp == "true" {
 			accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.FedrampManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
 		}
-		accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
 		return r.specUpdate(reqLogger, accountClaim)
 	}
 	return nil

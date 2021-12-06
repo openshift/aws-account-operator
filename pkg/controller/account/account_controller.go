@@ -99,6 +99,12 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		log.Error(err, "shard-name key not available in configmap")
 	}
 	reconciler.shardName = hiveName
+
+	fr, ok := configMap.Data["fedramp"]
+	if !ok {
+		log.Error(err, "fedramp key not available in configmap")
+	}
+	reconciler.fedramp = fr
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -127,6 +133,7 @@ type ReconcileAccount struct {
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
 	shardName        string
+	fedramp			 string
 }
 
 // Reconcile reads that state of the cluster for a Account object and makes changes based on the state read
@@ -643,23 +650,15 @@ func (r *ReconcileAccount) assumeRole(
 	roleToAssume string,
 	ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
 
-	var roleArn string
-
-	// get configMap and check if account is fedramp
-	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
-	if err != nil {
-		log.Error(err, "failed retrieving configmap")
-	}
-	_ , ok := configMap.Data["fedramp"]
-	if ok {
-		fmt.Sprintln("Account is govcloud")
-		roleArn = fmt.Sprintf("arn:aws-us-gov:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
-		// log.Error(err, "fedramp key not available in configmap")
-	}
-
 	// The role ARN made up of the account number and the role which is the default role name
 	// created in child accounts
+	var roleArn string
 	roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
+
+	// if account if fedramp use the appropriate iam arn
+	if r.fedramp == "true" {
+		roleArn = fmt.Sprintf("arn:aws-us-gov:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
+	}
 	// Use the role session name to uniquely identify a session when the same role
 	// is assumed by different principals or for different reasons.
 	var roleSessionName = "awsAccountOperator"
