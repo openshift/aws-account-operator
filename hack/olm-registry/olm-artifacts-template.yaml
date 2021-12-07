@@ -30,6 +30,7 @@ parameters:
   required: false
 - name: FEDRAMP
   required: false
+  value: "false"
 
 objects:
 - apiVersion: operators.coreos.com/v1alpha1
