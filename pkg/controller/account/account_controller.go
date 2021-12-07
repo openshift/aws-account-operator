@@ -102,8 +102,13 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	if !ok {
 		log.Error(err, "fedramp key not available in configmap")
 	}
-	frBool, _ := strconv.ParseBool(fr)
-	reconciler.fedramp = frBool
+	if fr != "" {
+		frBool, _ := strconv.ParseBool(fr)
+		if frBool {
+			log.Info("Running in fedramp env")
+		}
+		reconciler.fedramp = frBool
+	}
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
