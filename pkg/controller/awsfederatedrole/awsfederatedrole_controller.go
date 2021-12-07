@@ -4,12 +4,14 @@ import (
 	"context"
 	goerr "errors"
 	"fmt"
+	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
+	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 
@@ -48,6 +50,22 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
+
+	configMap, err := controllerutils.GetOperatorConfigMap(reconciler.client)
+	if err != nil {
+		log.Error(err, "failed retrieving configmap")
+	}
+
+	// Check if fedramp env
+	var frBool bool
+	fr, ok := configMap.Data["fedramp"]
+	if ok {
+		frBool, _ = strconv.ParseBool(fr)
+		if frBool {
+			log.Info("Running in fedramp env")
+		}
+	}
+	reconciler.fedramp = frBool
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -78,6 +96,7 @@ type ReconcileAWSFederatedRole struct {
 	client           client.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
+	fedramp          bool
 }
 
 // Reconcile reads that state of the cluster for a AWSFederatedRole object and makes changes based on the state read
@@ -134,10 +153,14 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		return reconcile.Result{}, nil
 	}
 	// Setup AWS client
+	awsRegion := "us-east-1"
+	if r.fedramp {
+		awsRegion = "us-gov-east-1"
+	}
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 		SecretName: awsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
+		AwsRegion:  awsRegion,
 	})
 	if err != nil {
 		return reconcile.Result{}, err

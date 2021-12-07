@@ -98,17 +98,16 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	}
 	reconciler.shardName = hiveName
 
+	// Check if fedramp env
+	var frBool bool
 	fr, ok := configMap.Data["fedramp"]
-	if !ok {
-		log.Error(err, "fedramp key not available in configmap")
-	}
-	if fr != "" {
-		frBool, _ := strconv.ParseBool(fr)
+	if ok {
+		frBool, _ = strconv.ParseBool(fr)
 		if frBool {
 			log.Info("Running in fedramp env")
 		}
-		reconciler.fedramp = frBool
 	}
+	reconciler.fedramp = frBool
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
