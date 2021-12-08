@@ -28,6 +28,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/openshift/aws-account-operator/pkg/controller/account"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
@@ -190,6 +192,9 @@ func main() {
 		log.Error(err, "Manager exited non-zero")
 		os.Exit(1)
 	}
+
+	// Post-manager reconcile initialization
+	account.Reconciler.PostManagerInit()
 }
 
 func initOperatorConfigMapVars(kubeClient client.Client) {

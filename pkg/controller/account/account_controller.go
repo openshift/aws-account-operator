@@ -83,23 +83,13 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	reconciler := &ReconcileAccount{
+	Reconciler = &ReconcileAccount{
 		Client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
 
-	configMap, err := controllerutils.GetOperatorConfigMap(reconciler.Client)
-	if err != nil {
-		log.Error(err, "failed retrieving configmap")
-	}
-
-	hiveName, ok := configMap.Data["shard-name"]
-	if !ok {
-		log.Error(err, "shard-name key not available in configmap")
-	}
-	reconciler.shardName = hiveName
-	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
+	return utils.NewReconcilerWithMetrics(Reconciler, controllerName)
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -119,14 +109,41 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	return nil
 }
 
-var _ reconcile.Reconciler = &ReconcileAccount{}
+// Reconciler is the global version of the Reconciler
+var Reconciler *ReconcileAccount = &ReconcileAccount{}
 
 // ReconcileAccount reconciles a Account object
 type ReconcileAccount struct {
+	// postInitHasRun tracks whether the PostManagerInit function has run yet.
+	// the PostManagerInit function should only run once.
+	postInitHasRun bool
+
 	Client           client.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
 	shardName        string
+}
+
+// PostManagerInit is called by the command function _after_ the manager has initialized,
+// giving us access to to the host kubernetes objects like the configmap
+func (r *ReconcileAccount) PostManagerInit() {
+	if r.postInitHasRun {
+		log.Error(fmt.Errorf("PostManagerInit should only be run once"), "Skipping:")
+		return
+	}
+
+	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
+	if err != nil {
+		log.Error(err, "failed retrieving configmap")
+	}
+
+	hiveName, ok := configMap.Data["shard-name"]
+	if !ok {
+		log.Error(err, "shard-name key not available in configmap")
+	}
+	r.shardName = hiveName
+
+	r.postInitHasRun = true
 }
 
 // Reconcile reads that state of the cluster for a Account object and makes changes based on the state read
