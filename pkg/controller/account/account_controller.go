@@ -151,6 +151,11 @@ func (r *ReconcileAccount) PostManagerInit() {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+	if !r.postInitHasRun {
+		log.Info("PostInit has not run yet. Requeueing.")
+		return reconcile.Result{Requeue: true}, nil
+	}
+
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Fetch the Account instance
