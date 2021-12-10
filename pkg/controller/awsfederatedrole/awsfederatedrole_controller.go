@@ -4,14 +4,12 @@ import (
 	"context"
 	goerr "errors"
 	"fmt"
-	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
-	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 
@@ -50,22 +48,6 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
-
-	configMap, err := controllerutils.GetOperatorConfigMap(reconciler.client)
-	if err != nil {
-		log.Error(err, "failed retrieving configmap")
-	}
-
-	// Check if fedramp env
-	var frBool bool
-	fr, ok := configMap.Data["fedramp"]
-	if ok {
-		frBool, _ = strconv.ParseBool(fr)
-		if frBool {
-			log.Info("Running in fedramp env")
-		}
-	}
-	reconciler.fedramp = frBool
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -96,7 +78,6 @@ type ReconcileAWSFederatedRole struct {
 	client           client.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
-	fedramp          bool
 }
 
 // Reconcile reads that state of the cluster for a AWSFederatedRole object and makes changes based on the state read
@@ -106,9 +87,22 @@ type ReconcileAWSFederatedRole struct {
 func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
+	configMap, err := utils.GetOperatorConfigMap(r.client)
+	if err != nil {
+		log.Error(err, "failed retrieving configmap")
+	}
+	ifFedramp, err := utils.IsFedramp(configMap)
+	if err != nil {
+		log.Error(err, "Unable to verify if cluster is fedramp")
+	}
+	if ifFedramp == true {
+		log.Info("Running in fedramp mode, skip AWSFederatedRole controller")
+		return reconcile.Result{}, nil
+	}
+
 	// Fetch the AWSFederatedRole instance
 	instance := &awsv1alpha1.AWSFederatedRole{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
+	err = r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -154,7 +148,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	}
 	// Setup AWS client
 	awsRegion := "us-east-1"
-	if r.fedramp {
+	if ifFedramp == true {
 		awsRegion = "us-gov-east-1"
 	}
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
