@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -60,22 +59,6 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
-
-	configMap, err := controllerutils.GetOperatorConfigMap(reconciler.client)
-	if err != nil {
-		log.Error(err, "failed retrieving configmap")
-	}
-
-	// Check if fedramp env
-	var frBool bool
-	fr, ok := configMap.Data["fedramp"]
-	if ok {
-		frBool, _ := strconv.ParseBool(fr)
-		if frBool {
-			log.Info("Running in fedramp env")
-		}
-	}
-	reconciler.fedramp = frBool
 	return controllerutils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -210,9 +193,18 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		return reconcile.Result{}, err
 	}
 
+	configMap, err := controllerutils.GetOperatorConfigMap(r.client)
+	if err != nil {
+		log.Error(err, "failed retrieving configmap")
+	}
+	ifFedramp, err := controllerutils.IsFedramp(configMap)
+	if err != nil {
+		log.Error(err, "Unable to verify if cluster is fedramp")
+	}
+
 	// Get aws client
 	awsRegion := "us-east-1"
-	if r.fedramp {
+	if ifFedramp {
 		awsRegion = "us-gov-east-1"
 	}
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
@@ -603,9 +595,18 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 
 	roleName := currentFAA.Spec.AWSFederatedRole.Name + "-" + uidLabel
 
+	configMap, err := controllerutils.GetOperatorConfigMap(r.client)
+	if err != nil {
+		log.Error(err, "failed retrieving configmap")
+	}
+	ifFedramp, err := controllerutils.IsFedramp(configMap)
+	if err != nil {
+		log.Error(err, "Unable to verify if cluster is fedramp")
+	}
+
 	// Build AWS client from root secret
 	awsRegion := "us-east-1"
-	if r.fedramp {
+	if ifFedramp {
 		awsRegion = "us-gov-east-1"
 	}
 	rootAwsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{

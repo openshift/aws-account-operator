@@ -3,7 +3,6 @@ package accountclaim
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -58,21 +57,6 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		awsClientBuilder: &awsclient.Builder{},
 	}
 
-	configMap, err := controllerutils.GetOperatorConfigMap(reconciler.client)
-	if err != nil {
-		log.Error(err, "failed retrieving configmap")
-	}
-
-	// Check if fedramp env
-	var frBool bool
-	fr, ok := configMap.Data["fedramp"]
-	if ok {
-		frBool, _ = strconv.ParseBool(fr)
-		if frBool {
-			log.Info("Running in fedramp env")
-		}
-	}
-	reconciler.fedramp = frBool
 	return controllerutils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -110,7 +94,6 @@ type ReconcileAccountClaim struct {
 	client           client.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
-	fedramp          bool
 }
 
 // Reconcile reads that state of the cluster for a AccountClaim object and makes changes based on the state read
@@ -239,11 +222,21 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 	// Set awsAccountClaim.Spec.AwsAccountOU
 	if accountClaim.Spec.AccountOU == "" || accountClaim.Spec.AccountOU == "ROOT" {
 
-		// aws client
+		// Determine if in fedramp env
+		configMap, err := utils.GetOperatorConfigMap(r.client)
+		if err != nil {
+			log.Error(err, "failed retrieving configmap")
+		}
+		ifFedramp, err := utils.IsFedramp(configMap)
+		if err != nil {
+			log.Error(err, "Unable to verify if cluster is fedramp")
+		}
 		awsRegion := "us-east-1"
-		if r.fedramp {
+		if ifFedramp {
 			awsRegion = "us-gov-east-1"
 		}
+
+		// aws client
 		awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 			SecretName: controllerutils.AwsSecretName,
 			NameSpace:  awsv1alpha1.AccountCrNamespace,
@@ -288,7 +281,15 @@ func (r *ReconcileAccountClaim) setSupportRoleARNManagedOpenshift(reqLogger logr
 		accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
 
 		// if account if fedramp use the appropriate iam arn
-		if r.fedramp {
+		configMap, err := utils.GetOperatorConfigMap(r.client)
+		if err != nil {
+			log.Error(err, "failed retrieving configmap")
+		}
+		ifFedramp, err := utils.IsFedramp(configMap)
+		if err != nil {
+			log.Error(err, "Unable to verify if cluster is fedramp")
+		}
+		if ifFedramp {
 			accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.FedrampManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
 		}
 		return r.specUpdate(reqLogger, accountClaim)

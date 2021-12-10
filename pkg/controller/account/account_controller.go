@@ -98,16 +98,6 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	}
 	reconciler.shardName = hiveName
 
-	// Check if fedramp env
-	var frBool bool
-	fr, ok := configMap.Data["fedramp"]
-	if ok {
-		frBool, _ = strconv.ParseBool(fr)
-		if frBool {
-			log.Info("Running in fedramp env")
-		}
-	}
-	reconciler.fedramp = frBool
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -136,7 +126,6 @@ type ReconcileAccount struct {
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
 	shardName        string
-	fedramp		 bool
 }
 
 // Reconcile reads that state of the cluster for a Account object and makes changes based on the state read
@@ -157,8 +146,18 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
+	// Determine if in fedramp env 
+	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
+	if err != nil {
+		log.Error(err, "Failed retrieving configmap")
+	}
+	ifFedramp, err := controllerutils.IsFedramp(configMap)
+	if err != nil {
+		log.Error(err, "Unable to verify if cluster is fedramp")
+	}
+
 	awsRegion := "us-east-1"
-	if r.fedramp {
+	if ifFedramp == true {
 		awsRegion = "us-gov-east-1"
 	}
 	// We expect this secret to exist in the same namespace Account CR's are created
@@ -337,7 +336,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 
-	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
+	// Get region from configmap data
 	stringRegions, ok := configMap.Data["regions"]
 	if !ok {
 		err = awsv1alpha1.ErrInvalidConfigMap
@@ -662,8 +661,17 @@ func (r *ReconcileAccount) assumeRole(
 	var roleArn string
 	roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
 
-	// if account if fedramp use the appropriate iam arn
-	if r.fedramp {
+	// Determine if in fedramp env 
+	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
+	if err != nil {
+		log.Error(err, "Failed retrieving configmap")
+	}
+	ifFedramp, err := controllerutils.IsFedramp(configMap)
+	if err != nil {
+		log.Error(err, "Unable to verify if cluster is fedramp")
+	}
+	// ifFedramp change the role ARN 
+	if ifFedramp {
 		roleArn = fmt.Sprintf("arn:aws-us-gov:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
 	}
 	// Use the role session name to uniquely identify a session when the same role
@@ -710,11 +718,16 @@ func (r *ReconcileAccount) assumeRole(
 			break
 		}
 	}
+
+	awsRegion := "us-east-1"
+	if ifFedramp == true {
+		awsRegion = "us-gov-east-1"
+	}
 	awsAssumedRoleClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
 		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
 		AwsToken:                *creds.Credentials.SessionToken,
-		AwsRegion:               "us-east-1",
+		AwsRegion:               awsRegion,
 	})
 	if err != nil {
 		logger.Error(err, "Failed to assume role")
@@ -738,15 +751,28 @@ func (r *ReconcileAccount) assumeRole(
 }
 
 func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) error {
+	// Determine if in fedramp env 
+	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
+	if err != nil {
+		log.Error(err, "Failed retrieving configmap")
+	}
+	ifFedramp, err := controllerutils.IsFedramp(configMap)
+	if err != nil {
+		log.Error(err, "Unable to verify if cluster is fedramp")
+	}
+	awsRegion := "us-east-1"
+	if ifFedramp == true {
+		awsRegion = "us-gov-east-1"
+	}
 	// Instantiate a client with a default region to retrieve regions we want to initialize
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
 		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
 		AwsToken:                *creds.Credentials.SessionToken,
-		AwsRegion:               awsv1alpha1.AwsUSEastOneRegion,
+		AwsRegion:               awsRegion,
 	})
 	if err != nil {
-		connErr := fmt.Sprintf("unable to connect to default region %s", awsv1alpha1.AwsUSEastOneRegion)
+		connErr := fmt.Sprintf("unable to connect to default region %s", awsRegion)
 		reqLogger.Error(err, connErr)
 		return err
 	}
