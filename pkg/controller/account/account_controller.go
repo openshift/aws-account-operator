@@ -146,7 +146,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
-	// Determine if in fedramp env 
+	// Determine if in fedramp env
 	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
@@ -661,7 +661,7 @@ func (r *ReconcileAccount) assumeRole(
 	var roleArn string
 	roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
 
-	// Determine if in fedramp env 
+	// Determine if in fedramp env
 	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
@@ -670,7 +670,7 @@ func (r *ReconcileAccount) assumeRole(
 	if err != nil {
 		log.Error(err, "Unable to verify if cluster is fedramp")
 	}
-	// ifFedramp change the role ARN 
+	// ifFedramp change the role ARN
 	if ifFedramp {
 		roleArn = fmt.Sprintf("arn:aws-us-gov:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
 	}
@@ -751,7 +751,7 @@ func (r *ReconcileAccount) assumeRole(
 }
 
 func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) error {
-	// Determine if in fedramp env 
+	// Determine if in fedramp env
 	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
