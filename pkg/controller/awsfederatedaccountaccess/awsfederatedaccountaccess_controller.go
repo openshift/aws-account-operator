@@ -89,7 +89,6 @@ type ReconcileAWSFederatedAccountAccess struct {
 	client           client.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
-	fedramp          bool
 }
 
 // Reconcile reads that state of the cluster for a AWSFederatedAccountAccess object and makes changes based on the state read

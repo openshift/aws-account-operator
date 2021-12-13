@@ -159,7 +159,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	awsRegion := "us-east-1"
-	if ifFedramp == true {
+	if ifFedramp {
 		awsRegion = "us-gov-east-1"
 	}
 	// We expect this secret to exist in the same namespace Account CR's are created
@@ -722,7 +722,7 @@ func (r *ReconcileAccount) assumeRole(
 	}
 
 	awsRegion := "us-east-1"
-	if ifFedramp == true {
+	if ifFedramp {
 		awsRegion = "us-gov-east-1"
 	}
 	awsAssumedRoleClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
@@ -763,7 +763,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 		log.Error(err, "Unable to verify if cluster is fedramp")
 	}
 	awsRegion := "us-east-1"
-	if ifFedramp == true {
+	if ifFedramp {
 		awsRegion = "us-gov-east-1"
 	}
 	// Instantiate a client with a default region to retrieve regions we want to initialize
