@@ -229,6 +229,16 @@ func (a *Account) HasAwsv1alpha1Finalizer() bool {
 	return false
 }
 
+func (a *Account) IsSTS() bool {
+	return a.Spec.ManualSTSMode
+}
+
+func (a *Account) IsNonSTSPendingDeletionWithFinalizer() bool {
+	return a.IsPendingDeletion() &&
+		!a.IsSTS() &&
+		a.HasAwsv1alpha1Finalizer()
+}
+
 //IsBYOCPendingDeletionWithFinalizer returns true if account is a BYOC Account,
 // has been marked for deletion (deletion timestamp set), and has a finalizer set.
 func (a *Account) IsBYOCPendingDeletionWithFinalizer() bool {
