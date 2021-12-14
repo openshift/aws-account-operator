@@ -103,64 +103,6 @@ func (r *ReconcileAccount) GetSREAccessARN(reqLogger logr.Logger, arnName string
 	return SREAccessARN, nil
 }
 
-// Create role for BYOC IAM user to assume
-func (r *ReconcileAccount) createBYOCAdminAccessRole(reqLogger logr.Logger, awsSetupClient awsclient.Client, byocAWSClient awsclient.Client, policyArn string, instanceID string, tags []*iam.Tag) (roleID string, err error) {
-	getUserOutput, err := awsSetupClient.GetUser(&iam.GetUserInput{})
-	if err != nil {
-		reqLogger.Error(err, "Failed to get non-BYOC IAM User info")
-		return roleID, err
-	}
-
-	principalARN := *getUserOutput.User.Arn
-	SREAccessARN, err := r.GetSREAccessARN(reqLogger, awsv1alpha1.CCSAccessARN)
-	if err != nil {
-		return roleID, err
-	}
-
-	accessArnList := []string{principalARN, SREAccessARN}
-
-	byocInstanceIDRole := fmt.Sprintf("%s-%s", byocRole, instanceID)
-
-	existingRole, err := GetExistingRole(reqLogger, byocInstanceIDRole, byocAWSClient)
-	if err != nil {
-		return roleID, err
-	}
-
-	if (*existingRole != iam.GetRoleOutput{}) {
-		reqLogger.Info(fmt.Sprintf("Found pre-existing role: %s", byocInstanceIDRole))
-		err := DeleteBYOCAdminAccessRole(reqLogger, byocAWSClient, byocInstanceIDRole)
-		if err != nil {
-			return roleID, err
-		}
-	}
-
-	// Create the base role
-	roleID, err = CreateRole(reqLogger, byocInstanceIDRole, accessArnList, byocAWSClient, tags)
-	if err != nil {
-		return roleID, err
-	}
-	reqLogger.Info(fmt.Sprintf("New RoleID created: %s", roleID))
-	err = attachAndEnsureRolePolicies(reqLogger, byocAWSClient, byocInstanceIDRole, policyArn)
-
-	return roleID, err
-}
-
-func DeleteBYOCAdminAccessRole(reqLogger logr.Logger, byocAWSClient awsclient.Client, byocInstanceIDRole string) (err error) {
-	policyList, err := GetAttachedPolicies(reqLogger, byocInstanceIDRole, byocAWSClient)
-	if err != nil {
-		return err
-	}
-
-	for _, policy := range policyList.AttachedPolicies {
-		err := DetachPolicyFromRole(reqLogger, policy, byocInstanceIDRole, byocAWSClient)
-		if err != nil {
-			return err
-		}
-	}
-
-	return DeleteRole(reqLogger, byocInstanceIDRole, byocAWSClient)
-}
-
 // CreateRole creates the role with the correct assume policy for BYOC for a given roleName
 func CreateRole(reqLogger logr.Logger, byocRole string, accessArnList []string, byocAWSClient awsclient.Client, tags []*iam.Tag) (string, error) {
 	assumeRolePolicyDoc := struct {

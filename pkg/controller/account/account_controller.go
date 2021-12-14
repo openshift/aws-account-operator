@@ -67,8 +67,6 @@ const (
 	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
 	AccountPendingVerification = "PendingVerification"
 
-	byocRole = "BYOCAdminAccess"
-
 	adminAccessArn = "arn:aws:iam::aws:policy/AdministratorAccess"
 	iamUserNameUHC = "osdManagedAdmin"
 
@@ -1087,9 +1085,9 @@ func matchSubstring(roleID, role string) (bool, error) {
 }
 
 func getAssumeRole(c *awsv1alpha1.Account) string {
-	// If the account is a CCS account, return the CCS role
+	// If the account is a CCS account, return the ManagedOpenShiftSupport role
 	if c.IsBYOC() {
-		return fmt.Sprintf("%s-%s", byocRole, c.Labels[awsv1alpha1.IAMUserIDLabel])
+		return fmt.Sprintf("%s-%s", awsv1alpha1.ManagedOpenShiftSupportRole, c.Labels[awsv1alpha1.IAMUserIDLabel])
 	}
 
 	// Else return the default role
@@ -1222,11 +1220,11 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 		r.getCustomTags(reqLogger, currentAcctInstance),
 	).GetIAMTags()
 
-	// In this block we are creating the BYOCAdminAccessRole-XYZ for both CCS and non-CCS accounts.
+	// In this block we are creating the ManagedOpenShift-Support-XYZ for both CCS and non-CCS accounts.
 	// The dependency on the roleID validation within the assumeRole, and the different aws clients
 	// required between CCS and non-CCS, is what has caused these steps to be done independently.
 	if currentAcctInstance.Spec.BYOC {
-		// The CCS uses the CCS client for creating the BYOCAdminAccessRole and then utilizes the RoleID
+		// The CCS uses the CCS client for creating the ManagedOpenShift-Support and then utilizes the RoleID
 		// generated from that in the assumeRole func for role validation
 
 		// Get the AccountClaim in Order to retrieve the CCSClient
@@ -1255,21 +1253,7 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 			return nil, nil, err
 		}
 
-		roleID, err := r.createBYOCAdminAccessRole(
-			reqLogger,
-			awsSetupClient,
-			ccsClient,
-			adminAccessArn,
-			currentAccInstanceID,
-			tags,
-		)
-
-		if err != nil {
-			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for CCS Account", "roleID", roleID)
-			return nil, nil, err
-		}
-
-		_, err = r.createManagedOpenShiftSupportRole(
+		roleID, err := r.createManagedOpenShiftSupportRole(
 			reqLogger,
 			awsSetupClient,
 			ccsClient,
@@ -1290,13 +1274,13 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 
 	} else {
 		// Unlike the CCS block, the non-CCS block does not have a dependency on the RoleID to assumeRole. The
-		// awsAssumedRoleClient is what is needed to create the BYOCAdminAccessRole in the non-CCS account.
+		// awsAssumedRoleClient is what is needed to create the ManagedOpenShift-Support in the non-CCS account.
 		awsAssumedRoleClient, creds, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
 		if err != nil {
 			return nil, nil, err
 		}
 
-		roleID, err := r.createBYOCAdminAccessRole(
+		roleID, err := r.createManagedOpenShiftSupportRole(
 			reqLogger,
 			awsSetupClient,
 			awsAssumedRoleClient,
@@ -1306,21 +1290,7 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for non-CCS Account", "roleID", roleID)
-			return nil, nil, err
-		}
-
-		_, err = r.createManagedOpenShiftSupportRole(
-			reqLogger,
-			awsSetupClient,
-			awsAssumedRoleClient,
-			adminAccessArn,
-			currentAccInstanceID,
-			tags,
-		)
-
-		if err != nil {
-			reqLogger.Error(err, "Encountered error while creating ManagedOpenShiftSupportRole for non-CCS Account", roleID)
+			reqLogger.Error(err, "Encountered error while creating ManagedOpenShiftSupportRole for non-CCS Account", "roleID", roleID)
 			return nil, nil, err
 		}
 	}
