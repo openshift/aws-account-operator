@@ -212,9 +212,9 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		r.finalizeAccount(reqLogger, awsClient, currentAcctInstance)
 		//return reconcile.Result{}, nil
 
-		// Remove finalizer if account CR is BYOC as the accountclaim controller will delete the account CR
-		// when the accountClaim CR is deleted as its set as the owner reference
-		if currentAcctInstance.IsBYOCPendingDeletionWithFinalizer() {
+		// Remove finalizer if account CR is non STS. For CCS accounts, the accountclaim controller will delete the account CR
+		// when the accountClaim CR is deleted as its set as the owner reference.
+		if currentAcctInstance.IsNonSTSPendingDeletionWithFinalizer() {
 			reqLogger.Info("removing account finalizer")
 			err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
 			if err != nil {
