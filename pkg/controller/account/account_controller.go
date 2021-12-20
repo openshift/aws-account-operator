@@ -67,8 +67,10 @@ const (
 	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
 	AccountPendingVerification = "PendingVerification"
 
-	adminAccessArn = "arn:aws:iam::aws:policy/AdministratorAccess"
-	iamUserNameUHC = "osdManagedAdmin"
+	standardAdminAccessArnPrefix = "arn:aws:iam"
+	govcloudAdminAccessArnPrefix = "arn:aws-us-gov:iam"
+	adminAccessArnSuffix         = "::aws:policy/AdministratorAccess"
+	iamUserNameUHC               = "osdManagedAdmin"
 
 	controllerName = "account"
 )
@@ -1263,6 +1265,22 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 	var creds *sts.AssumeRoleOutput
 	currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
 	roleToAssume := getAssumeRole(currentAcctInstance)
+
+	var adminAccessArn string
+	cm := &corev1.ConfigMap{}
+	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: awsv1alpha1.DefaultConfigMap, Namespace: awsv1alpha1.AccountCrNamespace}, cm)
+	if err != nil {
+		return nil, nil, err
+	}
+	fedramp, err := controllerutils.IsFedramp(cm)
+	if err != nil {
+		return nil, nil, err
+	}
+	if fedramp {
+		adminAccessArn = strings.Join([]string{govcloudAdminAccessArnPrefix, adminAccessArnSuffix}, "")
+	} else {
+		adminAccessArn = strings.Join([]string{standardAdminAccessArnPrefix, adminAccessArnSuffix}, "")
+	}
 
 	// Build the tags required to create the Admin Access Role
 	tags := awsclient.AWSTags.BuildTags(
