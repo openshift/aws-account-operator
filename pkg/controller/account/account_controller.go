@@ -67,8 +67,10 @@ const (
 	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
 	AccountPendingVerification = "PendingVerification"
 
-	adminAccessArn = "arn:aws:iam::aws:policy/AdministratorAccess"
-	iamUserNameUHC = "osdManagedAdmin"
+	standardAdminAccessArnPrefix = "arn:aws:iam"
+	govcloudAdminAccessArnPrefix = "arn:aws-us-gov:iam"
+	adminAccessArnSuffix         = "::aws:policy/AdministratorAccess"
+	iamUserNameUHC               = "osdManagedAdmin"
 
 	controllerName = "account"
 )
@@ -146,7 +148,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
-	// Determine if in fedramp env 
+	// Determine if in fedramp env
 	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
@@ -157,7 +159,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	awsRegion := "us-east-1"
-	if ifFedramp {
+	if ifFedramp == true {
 		awsRegion = "us-gov-east-1"
 	}
 	// We expect this secret to exist in the same namespace Account CR's are created
@@ -316,9 +318,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			if !currentAcctInstance.HasAwsAccountID() {
 				// before doing anything make sure we are not over the limit if we are just error
 				if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
-					reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached")
-					// We don't expect the limit to change very frequently, so wait a while before requeueing to avoid hot lopping.
-					return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(5) * time.Minute}, nil
+					// fedramp clusters are all CCS, so the account limit is irrelevant there
+					if !ifFedramp {
+						reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached")
+						// We don't expect the limit to change very frequently, so wait a while before requeueing to avoid hot lopping.
+						return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(5) * time.Minute}, nil
+					}
 				}
 
 				if err := r.nonCCSAssignAccountID(reqLogger, currentAcctInstance, awsSetupClient); err != nil {
@@ -661,7 +666,7 @@ func (r *ReconcileAccount) assumeRole(
 	var roleArn string
 	roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
 
-	// Determine if in fedramp env 
+	// Determine if in fedramp env
 	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
@@ -670,7 +675,8 @@ func (r *ReconcileAccount) assumeRole(
 	if err != nil {
 		log.Error(err, "Unable to verify if cluster is fedramp")
 	}
-	// ifFedramp change the role ARN 
+  
+	// ifFedramp change the role ARN
 	if ifFedramp {
 		roleArn = fmt.Sprintf("arn:aws-us-gov:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
 	}
@@ -720,7 +726,7 @@ func (r *ReconcileAccount) assumeRole(
 	}
 
 	awsRegion := "us-east-1"
-	if ifFedramp {
+	if ifFedramp == true {
 		awsRegion = "us-gov-east-1"
 	}
 	awsAssumedRoleClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
@@ -751,7 +757,7 @@ func (r *ReconcileAccount) assumeRole(
 }
 
 func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) error {
-	// Determine if in fedramp env 
+	// Determine if in fedramp env
 	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
@@ -761,7 +767,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 		log.Error(err, "Unable to verify if cluster is fedramp")
 	}
 	awsRegion := "us-east-1"
-	if ifFedramp {
+	if ifFedramp == true {
 		awsRegion = "us-gov-east-1"
 	}
 	// Instantiate a client with a default region to retrieve regions we want to initialize
@@ -1260,6 +1266,22 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 	var creds *sts.AssumeRoleOutput
 	currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
 	roleToAssume := getAssumeRole(currentAcctInstance)
+
+	var adminAccessArn string
+	cm := &corev1.ConfigMap{}
+	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: awsv1alpha1.DefaultConfigMap, Namespace: awsv1alpha1.AccountCrNamespace}, cm)
+	if err != nil {
+		return nil, nil, err
+	}
+	fedramp, err := controllerutils.IsFedramp(cm)
+	if err != nil {
+		return nil, nil, err
+	}
+	if fedramp {
+		adminAccessArn = strings.Join([]string{govcloudAdminAccessArnPrefix, adminAccessArnSuffix}, "")
+	} else {
+		adminAccessArn = strings.Join([]string{standardAdminAccessArnPrefix, adminAccessArnSuffix}, "")
+	}
 
 	// Build the tags required to create the Admin Access Role
 	tags := awsclient.AWSTags.BuildTags(

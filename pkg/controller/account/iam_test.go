@@ -3,6 +3,7 @@ package account
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -378,7 +379,7 @@ func TestAttachAdminUserPolicy(t *testing.T) {
 	mocks := setupDefaultMocks(t, []runtime.Object{})
 
 	username := "AwesomeUser"
-	user := iam.User{UserName: &username}
+	user := iam.User{UserName: &username, Arn: aws.String("arn:aws:iam::1234567890:user/AwesomeUser")}
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
 	// Testing valid state, returns with no issue.
@@ -497,11 +498,12 @@ func TestBuildIAMUser(t *testing.T) {
 	}).Return(&iam.GetUserOutput{
 		User: &iam.User{
 			UserName: &username,
+			Arn:      aws.String("arn:aws:iam::1234567890:user/AwesomeUser"),
 		},
 	}, nil)
 	mockAWSClient.EXPECT().AttachUserPolicy(&iam.AttachUserPolicyInput{
 		UserName:  &username,
-		PolicyArn: aws.String(adminAccessArn),
+		PolicyArn: aws.String(strings.Join([]string{standardAdminAccessArnPrefix, adminAccessArnSuffix}, "")),
 	}).Return(&iam.AttachUserPolicyOutput{}, nil)
 
 	r := ReconcileAccount{

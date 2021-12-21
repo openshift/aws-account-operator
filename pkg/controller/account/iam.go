@@ -265,6 +265,8 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 // AttachAdminUserPolicy attaches the AdministratorAccess policy to a target user
 // Takes a logger, an AWS client for the target account, and the target IAM user's username
 func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.AttachUserPolicyOutput, error) {
+	// grab the ARN base to support govcloud without passing in another argument
+	awsARNBase := strings.Split(*iamUser.Arn, "::")[0]
 
 	attachPolicyOutput := &iam.AttachUserPolicyOutput{}
 	var err error
@@ -272,7 +274,7 @@ func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.Att
 		time.Sleep(defaultSleepDelay)
 		attachPolicyOutput, err = client.AttachUserPolicy(&iam.AttachUserPolicyInput{
 			UserName:  iamUser.UserName,
-			PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
+			PolicyArn: aws.String(fmt.Sprintf("%s::aws:policy/AdministratorAccess", awsARNBase)),
 		})
 		if err == nil {
 			break
