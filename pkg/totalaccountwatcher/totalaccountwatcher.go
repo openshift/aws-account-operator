@@ -46,6 +46,21 @@ type AccountWatcher struct {
 func initialize(client client.Client, watchInterval time.Duration) *AccountWatcher {
 	log.Info("Initializing the totalAccountWatcher")
 
+	cm := &corev1.ConfigMap{}
+	err := client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	if err != nil {
+		log.Error(err, "Failed to get configmap")
+	}
+
+	awsRegion := awsv1alpha1.AwsUSEastOneRegion
+	fr, ok := cm.Data["fedramp"]
+	if ok {
+		frBool, _ := strconv.ParseBool(fr)
+		if frBool {
+			awsRegion = awsv1alpha1.AwsUSGovEastOneRegion
+		}
+	}
+
 	// NOTE(efried): This is a snowflake use of awsclient.IBuilder. Everyone else puts the
 	// IBuilder in their struct and uses it to GetClient() dynamically as needed. This one grabs a
 	// single client one time and stores it in a global.
@@ -53,7 +68,7 @@ func initialize(client client.Client, watchInterval time.Duration) *AccountWatch
 	awsClient, err := builder.GetClient("", client, awsclient.NewAwsClientInput{
 		SecretName: controllerutils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
+		AwsRegion:  awsRegion,
 	})
 
 	if err != nil {

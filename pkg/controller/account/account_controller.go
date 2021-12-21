@@ -67,10 +67,10 @@ const (
 	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
 	AccountPendingVerification = "PendingVerification"
 
-	byocRole = "BYOCAdminAccess"
-
-	adminAccessArn = "arn:aws:iam::aws:policy/AdministratorAccess"
-	iamUserNameUHC = "osdManagedAdmin"
+	standardAdminAccessArnPrefix = "arn:aws:iam"
+	govcloudAdminAccessArnPrefix = "arn:aws-us-gov:iam"
+	adminAccessArnSuffix         = "::aws:policy/AdministratorAccess"
+	iamUserNameUHC               = "osdManagedAdmin"
 
 	controllerName = "account"
 )
@@ -148,7 +148,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
-	// Determine if in fedramp env 
+	// Determine if in fedramp env
 	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
@@ -159,7 +159,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 
 	awsRegion := "us-east-1"
-	if ifFedramp {
+	if ifFedramp == true {
 		awsRegion = "us-gov-east-1"
 	}
 	// We expect this secret to exist in the same namespace Account CR's are created
@@ -227,9 +227,9 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		r.finalizeAccount(reqLogger, awsClient, currentAcctInstance)
 		//return reconcile.Result{}, nil
 
-		// Remove finalizer if account CR is BYOC as the accountclaim controller will delete the account CR
-		// when the accountClaim CR is deleted as its set as the owner reference
-		if currentAcctInstance.IsBYOCPendingDeletionWithFinalizer() {
+		// Remove finalizer if account CR is non STS. For CCS accounts, the accountclaim controller will delete the account CR
+		// when the accountClaim CR is deleted as its set as the owner reference.
+		if currentAcctInstance.IsNonSTSPendingDeletionWithFinalizer() {
 			reqLogger.Info("removing account finalizer")
 			err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
 			if err != nil {
@@ -318,9 +318,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			if !currentAcctInstance.HasAwsAccountID() {
 				// before doing anything make sure we are not over the limit if we are just error
 				if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
-					reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached")
-					// We don't expect the limit to change very frequently, so wait a while before requeueing to avoid hot lopping.
-					return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(5) * time.Minute}, nil
+					// fedramp clusters are all CCS, so the account limit is irrelevant there
+					if !ifFedramp {
+						reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached")
+						// We don't expect the limit to change very frequently, so wait a while before requeueing to avoid hot lopping.
+						return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(5) * time.Minute}, nil
+					}
 				}
 
 				if err := r.nonCCSAssignAccountID(reqLogger, currentAcctInstance, awsSetupClient); err != nil {
@@ -663,7 +666,7 @@ func (r *ReconcileAccount) assumeRole(
 	var roleArn string
 	roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
 
-	// Determine if in fedramp env 
+	// Determine if in fedramp env
 	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
@@ -672,7 +675,8 @@ func (r *ReconcileAccount) assumeRole(
 	if err != nil {
 		log.Error(err, "Unable to verify if cluster is fedramp")
 	}
-	// ifFedramp change the role ARN 
+  
+	// ifFedramp change the role ARN
 	if ifFedramp {
 		roleArn = fmt.Sprintf("arn:aws-us-gov:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
 	}
@@ -722,7 +726,7 @@ func (r *ReconcileAccount) assumeRole(
 	}
 
 	awsRegion := "us-east-1"
-	if ifFedramp {
+	if ifFedramp == true {
 		awsRegion = "us-gov-east-1"
 	}
 	awsAssumedRoleClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
@@ -753,7 +757,7 @@ func (r *ReconcileAccount) assumeRole(
 }
 
 func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) error {
-	// Determine if in fedramp env 
+	// Determine if in fedramp env
 	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
@@ -763,7 +767,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 		log.Error(err, "Unable to verify if cluster is fedramp")
 	}
 	awsRegion := "us-east-1"
-	if ifFedramp {
+	if ifFedramp == true {
 		awsRegion = "us-gov-east-1"
 	}
 	// Instantiate a client with a default region to retrieve regions we want to initialize
@@ -1135,9 +1139,9 @@ func matchSubstring(roleID, role string) (bool, error) {
 }
 
 func getAssumeRole(c *awsv1alpha1.Account) string {
-	// If the account is a CCS account, return the CCS role
+	// If the account is a CCS account, return the ManagedOpenShiftSupport role
 	if c.IsBYOC() {
-		return fmt.Sprintf("%s-%s", byocRole, c.Labels[awsv1alpha1.IAMUserIDLabel])
+		return fmt.Sprintf("%s-%s", awsv1alpha1.ManagedOpenShiftSupportRole, c.Labels[awsv1alpha1.IAMUserIDLabel])
 	}
 
 	// Else return the default role
@@ -1263,6 +1267,22 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 	currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
 	roleToAssume := getAssumeRole(currentAcctInstance)
 
+	var adminAccessArn string
+	cm := &corev1.ConfigMap{}
+	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: awsv1alpha1.DefaultConfigMap, Namespace: awsv1alpha1.AccountCrNamespace}, cm)
+	if err != nil {
+		return nil, nil, err
+	}
+	fedramp, err := controllerutils.IsFedramp(cm)
+	if err != nil {
+		return nil, nil, err
+	}
+	if fedramp {
+		adminAccessArn = strings.Join([]string{govcloudAdminAccessArnPrefix, adminAccessArnSuffix}, "")
+	} else {
+		adminAccessArn = strings.Join([]string{standardAdminAccessArnPrefix, adminAccessArnSuffix}, "")
+	}
+
 	// Build the tags required to create the Admin Access Role
 	tags := awsclient.AWSTags.BuildTags(
 		currentAcctInstance,
@@ -1270,11 +1290,11 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 		r.getCustomTags(reqLogger, currentAcctInstance),
 	).GetIAMTags()
 
-	// In this block we are creating the BYOCAdminAccessRole-XYZ for both CCS and non-CCS accounts.
+	// In this block we are creating the ManagedOpenShift-Support-XYZ for both CCS and non-CCS accounts.
 	// The dependency on the roleID validation within the assumeRole, and the different aws clients
 	// required between CCS and non-CCS, is what has caused these steps to be done independently.
 	if currentAcctInstance.Spec.BYOC {
-		// The CCS uses the CCS client for creating the BYOCAdminAccessRole and then utilizes the RoleID
+		// The CCS uses the CCS client for creating the ManagedOpenShift-Support and then utilizes the RoleID
 		// generated from that in the assumeRole func for role validation
 
 		// Get the AccountClaim in Order to retrieve the CCSClient
@@ -1303,21 +1323,7 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 			return nil, nil, err
 		}
 
-		roleID, err := r.createBYOCAdminAccessRole(
-			reqLogger,
-			awsSetupClient,
-			ccsClient,
-			adminAccessArn,
-			currentAccInstanceID,
-			tags,
-		)
-
-		if err != nil {
-			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for CCS Account", "roleID", roleID)
-			return nil, nil, err
-		}
-
-		_, err = r.createManagedOpenShiftSupportRole(
+		roleID, err := r.createManagedOpenShiftSupportRole(
 			reqLogger,
 			awsSetupClient,
 			ccsClient,
@@ -1338,13 +1344,13 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 
 	} else {
 		// Unlike the CCS block, the non-CCS block does not have a dependency on the RoleID to assumeRole. The
-		// awsAssumedRoleClient is what is needed to create the BYOCAdminAccessRole in the non-CCS account.
+		// awsAssumedRoleClient is what is needed to create the ManagedOpenShift-Support in the non-CCS account.
 		awsAssumedRoleClient, creds, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
 		if err != nil {
 			return nil, nil, err
 		}
 
-		roleID, err := r.createBYOCAdminAccessRole(
+		roleID, err := r.createManagedOpenShiftSupportRole(
 			reqLogger,
 			awsSetupClient,
 			awsAssumedRoleClient,
@@ -1354,21 +1360,7 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 		)
 
 		if err != nil {
-			reqLogger.Error(err, "Encountered error while creating BYOCAdminAccessRole for non-CCS Account", "roleID", roleID)
-			return nil, nil, err
-		}
-
-		_, err = r.createManagedOpenShiftSupportRole(
-			reqLogger,
-			awsSetupClient,
-			awsAssumedRoleClient,
-			adminAccessArn,
-			currentAccInstanceID,
-			tags,
-		)
-
-		if err != nil {
-			reqLogger.Error(err, "Encountered error while creating ManagedOpenShiftSupportRole for non-CCS Account", roleID)
+			reqLogger.Error(err, "Encountered error while creating ManagedOpenShiftSupportRole for non-CCS Account", "roleID", roleID)
 			return nil, nil, err
 		}
 	}
