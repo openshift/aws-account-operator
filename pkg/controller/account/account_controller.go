@@ -675,6 +675,7 @@ func (r *ReconcileAccount) assumeRole(
 	if err != nil {
 		log.Error(err, "Unable to verify if cluster is fedramp")
 	}
+  
 	// ifFedramp change the role ARN
 	if ifFedramp {
 		roleArn = fmt.Sprintf("arn:aws-us-gov:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)

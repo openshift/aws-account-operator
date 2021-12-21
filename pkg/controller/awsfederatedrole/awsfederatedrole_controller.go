@@ -95,6 +95,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	if err != nil {
 		log.Error(err, "Unable to verify if cluster is fedramp")
 	}
+
 	if ifFedramp == true {
 		log.Info("Running in fedramp mode, skip AWSFederatedRole controller")
 		return reconcile.Result{}, nil
