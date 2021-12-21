@@ -171,18 +171,18 @@ func main() {
 	// work
 	stopCh := signals.SetupSignalHandler()
 
-	// Define an awsClient for any processes that need to run during operator startup or independent routines to use
-	awsClient, err := client.New(cfg, client.Options{})
+	// Define a kubeClient for any processes that need to run during operator startup or independent routines to use
+	kubeClient, err := client.New(cfg, client.Options{})
 	if err != nil {
-		log.Error(err, "Failed to create an AWS client")
+		log.Error(err, "Failed to create a kubernetes client")
 		os.Exit(1)
 	}
 
 	// Initialize our ConfigMap with default values if necessary.
-	initOperatorConfigMapVars(awsClient)
+	initOperatorConfigMapVars(kubeClient)
 
 	// Initialize the TotalAccountWatcher
-	go totalaccountwatcher.TotalAccountWatcher.Start(log, stopCh, awsClient, totalWatcherInterval)
+	go totalaccountwatcher.TotalAccountWatcher.Start(log, stopCh, kubeClient, totalWatcherInterval)
 
 	log.Info("Starting the Cmd.")
 
