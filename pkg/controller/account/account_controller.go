@@ -34,6 +34,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	totalaccountwatcher "github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var log = logf.Log.WithName("controller_account")
@@ -224,6 +225,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 		return reconcile.Result{}, nil
 	}
+
+	go func() {
+		r.probeAccountState(reqLogger, currentAcctInstance)
+	}()
 
 	// Log accounts that have failed and don't attempt to reconcile them
 	if currentAcctInstance.IsFailed() {
@@ -419,6 +424,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 	}
+
 	return reconcile.Result{}, nil
 }
 
@@ -1326,4 +1332,43 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 	}
 
 	return awsAssumedRoleClient, creds, err
+}
+
+func (r *ReconcileAccount) probeAccountState(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) {
+
+	if currentAcctInstance.IsFailed() {
+		now := metav1.Now()
+		existingCondition := utils.FindAccountCondition(currentAcctInstance.Status.Conditions, awsv1alpha1.AccountFailed)
+		// Update lastTransitionTime if they have changes from one status to another since the last probe
+		if existingCondition.Status != corev1.ConditionTrue {
+			existingCondition.Status = corev1.ConditionTrue
+			existingCondition.LastTransitionTime = now
+		}
+		// Update lastProbeTime
+		existingCondition.LastProbeTime = now
+
+		// Apply update
+		err := r.statusUpdate(currentAcctInstance)
+		if err != nil {
+			reqLogger.Error(err, "failed to update account status")
+		}
+	}
+
+	if currentAcctInstance.IsReady() {
+		now := metav1.Now()
+		existingCondition := utils.FindAccountCondition(currentAcctInstance.Status.Conditions, awsv1alpha1.AccountReady)
+		// Update lastTransitionTime if they have changes from one status to another since the last probe
+		if existingCondition.Status != corev1.ConditionTrue {
+			existingCondition.Status = corev1.ConditionTrue
+			existingCondition.LastTransitionTime = now
+		}
+		// Update lastProbeTime
+		existingCondition.LastProbeTime = now
+
+		// Apply update
+		err := r.statusUpdate(currentAcctInstance)
+		if err != nil {
+			reqLogger.Error(err, "failed to update account status")
+		}
+	}
 }
