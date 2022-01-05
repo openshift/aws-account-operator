@@ -96,7 +96,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		log.Error(err, "Unable to verify if cluster is fedramp")
 	}
 
-	if ifFedramp == true {
+	if ifFedramp {
 		log.Info("Running in fedramp mode, skip AWSFederatedRole controller")
 		return reconcile.Result{}, nil
 	}
@@ -149,7 +149,7 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 	}
 	// Setup AWS client
 	awsRegion := "us-east-1"
-	if ifFedramp == true {
+	if ifFedramp {
 		awsRegion = "us-gov-east-1"
 	}
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
