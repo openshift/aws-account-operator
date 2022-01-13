@@ -25,7 +25,7 @@ CONTAINER_ENGINE_CONFIG_DIR = .docker
 # ==> Podman uses --authfile=PATH *after* the `login` subcommand; but
 # also accepts REGISTRY_AUTH_FILE from the env. See
 # https://www.mankier.com/1/podman-login#Options---authfile=path
-export REGISTRY_AUTH_FILE = ${CONTAINER_ENGINE_CONFIG_DIR}
+export REGISTRY_AUTH_FILE = ${CONTAINER_ENGINE_CONFIG_DIR}/config.json
 # ==> Docker uses --config=PATH *before* (any) subcommand; so we'll glue
 # that to the CONTAINER_ENGINE variable itself. (NOTE: I tried half a
 # dozen other ways to do this. This was the least ugly one that actually
