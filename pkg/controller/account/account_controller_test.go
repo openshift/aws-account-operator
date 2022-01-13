@@ -1067,7 +1067,7 @@ func TestGetAssumeRole(t *testing.T) {
 		{
 			name:     "Get role for BYOC Account",
 			acct:     newTestAccountBuilder().BYOC(true).WithLabels(map[string]string{awsv1alpha1.IAMUserIDLabel: "xxxxx"}),
-			expected: fmt.Sprintf("%s-%s", awsv1alpha1.ManagedOpenShiftSupportRole, "xxxxx"),
+			expected: fmt.Sprintf("%s-%s", byocRole, "xxxxx"),
 		},
 		{
 			name:     "Get role for Non-BYOC Account",
