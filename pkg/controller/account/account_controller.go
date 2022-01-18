@@ -226,9 +226,10 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, nil
 	}
 
-	go func() {
-		r.probeAccountState(reqLogger, currentAcctInstance)
-	}()
+	err = r.probeAccountState(reqLogger, currentAcctInstance)
+	if err != nil {
+		reqLogger.Error(err, "failed account probing")
+	}
 
 	// Log accounts that have failed and don't attempt to reconcile them
 	if currentAcctInstance.IsFailed() {
@@ -1334,7 +1335,7 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 	return awsAssumedRoleClient, creds, err
 }
 
-func (r *ReconcileAccount) probeAccountState(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) {
+func (r *ReconcileAccount) probeAccountState(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) error {
 
 	if currentAcctInstance.IsFailed() {
 		now := metav1.Now()
@@ -1351,6 +1352,7 @@ func (r *ReconcileAccount) probeAccountState(reqLogger logr.Logger, currentAcctI
 		err := r.statusUpdate(currentAcctInstance)
 		if err != nil {
 			reqLogger.Error(err, "failed to update account status")
+			return err
 		}
 	}
 
@@ -1369,6 +1371,8 @@ func (r *ReconcileAccount) probeAccountState(reqLogger logr.Logger, currentAcctI
 		err := r.statusUpdate(currentAcctInstance)
 		if err != nil {
 			reqLogger.Error(err, "failed to update account status")
+			return err
 		}
 	}
+	return nil
 }
