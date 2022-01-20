@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/openshift/aws-account-operator/config"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
@@ -56,6 +57,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
+
 	return controllerutils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -220,12 +222,25 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 	// Set awsAccountClaim.Spec.AwsAccountOU
 	if accountClaim.Spec.AccountOU == "" || accountClaim.Spec.AccountOU == "ROOT" {
+		// Determine if in fedramp env
+		configMap, err := utils.GetOperatorConfigMap(r.client)
+		if err != nil {
+			log.Error(err, "failed retrieving configmap")
+		}
+		config.IsFedramp, err = utils.IsFedramp(configMap)
+		if err != nil {
+			log.Error(err, "Unable to verify if cluster is fedramp")
+		}
+		awsRegion := awsv1alpha1.AwsUSEastOneRegion
+		if config.IsFedramp {
+			awsRegion = awsv1alpha1.AwsUSGovEastOneRegion
+		}
 
 		// aws client
 		awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 			SecretName: controllerutils.AwsSecretName,
 			NameSpace:  awsv1alpha1.AccountCrNamespace,
-			AwsRegion:  "us-east-1",
+			AwsRegion:  awsRegion,
 		})
 		if err != nil {
 			unexpectedErrorMsg := "OU: Failed to build aws client"
@@ -264,6 +279,11 @@ func (r *ReconcileAccountClaim) setSupportRoleARNManagedOpenshift(reqLogger logr
 	if accountClaim.Spec.STSRoleARN == "" {
 		instanceID := account.Labels[awsv1alpha1.IAMUserIDLabel]
 		accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
+
+		// if account if fedramp use the appropriate iam arn
+		if config.IsFedramp {
+			accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.FedrampManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
+		}
 		return r.specUpdate(reqLogger, accountClaim)
 	}
 	return nil

@@ -21,3 +21,6 @@ const (
 	// OperatorNamespace stores a string indicating the Kubernetes namespace in which the operator runs
 	OperatorNamespace string = "aws-account-operator"
 )
+
+// for use across the operator
+var IsFedramp = false

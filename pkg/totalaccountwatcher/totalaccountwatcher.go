@@ -12,6 +12,7 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	corev1 "k8s.io/api/core/v1"
@@ -46,6 +47,23 @@ type AccountWatcher struct {
 func initialize(client client.Client, watchInterval time.Duration) *AccountWatcher {
 	log.Info("Initializing the totalAccountWatcher")
 
+	cm, err := utils.GetOperatorConfigMap(client)
+	if err != nil {
+		log.Error(err, "Failed to get configmap")
+	}
+
+	awsRegion := awsv1alpha1.AwsUSEastOneRegion
+	fr, ok := cm.Data["fedramp"]
+	if ok {
+		frBool, err := strconv.ParseBool(fr)
+		if err != nil {
+			return nil
+		}
+		if frBool {
+			awsRegion = awsv1alpha1.AwsUSGovEastOneRegion
+		}
+	}
+
 	// NOTE(efried): This is a snowflake use of awsclient.IBuilder. Everyone else puts the
 	// IBuilder in their struct and uses it to GetClient() dynamically as needed. This one grabs a
 	// single client one time and stores it in a global.
@@ -53,7 +71,7 @@ func initialize(client client.Client, watchInterval time.Duration) *AccountWatch
 	awsClient, err := builder.GetClient("", client, awsclient.NewAwsClientInput{
 		SecretName: controllerutils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
+		AwsRegion:  awsRegion,
 	})
 
 	if err != nil {

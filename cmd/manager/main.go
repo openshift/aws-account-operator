@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -193,23 +194,35 @@ func main() {
 }
 
 func initOperatorConfigMapVars(kubeClient client.Client) {
+	// Check if config map exists.
+	cm := &corev1.ConfigMap{}
+	err := kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	if err != nil {
+		log.Error(err, "There was an error getting the default configmap.")
+		return
+	}
+
+	// Check if fedramp env
+	awsRegion := awsv1alpha1.AwsUSEastOneRegion
+	fr, ok := cm.Data["fedramp"]
+	if ok {
+		frBool, _ := strconv.ParseBool(fr)
+		if frBool {
+			awsRegion = awsv1alpha1.AwsUSGovEastOneRegion
+			log.Info("Running in fedramp env")
+		}
+	}
+
+	// Get aws client
 	builder := &awsclient.Builder{}
 	awsClient, err := builder.GetClient("", kubeClient, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
+		AwsRegion:  awsRegion,
 	})
 
 	if err != nil {
 		log.Error(err, "Failed creating AWS client")
-		return
-	}
-
-	// Check if config map exists.
-	cm := &corev1.ConfigMap{}
-	err = kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
-	if err != nil {
-		log.Error(err, "There was an error getting the default configmap.")
 		return
 	}
 

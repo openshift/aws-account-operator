@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 
+	"github.com/openshift/aws-account-operator/config"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 
@@ -87,9 +88,23 @@ type ReconcileAWSFederatedRole struct {
 func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
+	configMap, err := utils.GetOperatorConfigMap(r.client)
+	if err != nil {
+		log.Error(err, "failed retrieving configmap")
+	}
+	config.IsFedramp, err = utils.IsFedramp(configMap)
+	if err != nil {
+		log.Error(err, "Unable to verify if cluster is fedramp")
+	}
+
+	if config.IsFedramp {
+		log.Info("Running in fedramp mode, skip AWSFederatedRole controller")
+		return reconcile.Result{}, nil
+	}
+
 	// Fetch the AWSFederatedRole instance
 	instance := &awsv1alpha1.AWSFederatedRole{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
+	err = r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -134,10 +149,14 @@ func (r *ReconcileAWSFederatedRole) Reconcile(request reconcile.Request) (reconc
 		return reconcile.Result{}, nil
 	}
 	// Setup AWS client
+	awsRegion := awsv1alpha1.AwsUSEastOneRegion
+	if config.IsFedramp {
+		awsRegion = awsv1alpha1.AwsUSGovEastOneRegion
+	}
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 		SecretName: awsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
+		AwsRegion:  awsRegion,
 	})
 	if err != nil {
 		return reconcile.Result{}, err

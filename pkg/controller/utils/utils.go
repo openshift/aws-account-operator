@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -218,4 +219,16 @@ func GetOperatorConfigMap(kubeClient client.Client) (*corev1.ConfigMap, error) {
 		types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace,
 			Name: awsv1alpha1.DefaultConfigMap}, configMap)
 	return configMap, err
+}
+
+// IsFedramp takes operator configmap and returns bool to indicate if fedramp environment
+func IsFedramp(configMap *corev1.ConfigMap) (bool, error) {
+	// Check if fedramp env
+	fr, ok := configMap.Data["fedramp"]
+	if !ok {
+		// Since fedramp param is not required, if fedramp param does not exist then assume fedramp=false
+		return false, nil
+	}
+
+	return strconv.ParseBool(fr)
 }

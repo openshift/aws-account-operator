@@ -14,6 +14,8 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/openshift/aws-account-operator/config"
+	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
@@ -192,11 +194,24 @@ func (r *ReconcileAWSFederatedAccountAccess) Reconcile(request reconcile.Request
 		return reconcile.Result{}, err
 	}
 
+	configMap, err := controllerutils.GetOperatorConfigMap(r.client)
+	if err != nil {
+		log.Error(err, "failed retrieving configmap")
+	}
+	config.IsFedramp, err = controllerutils.IsFedramp(configMap)
+	if err != nil {
+		log.Error(err, "Unable to verify if cluster is fedramp")
+	}
+
 	// Get aws client
+	awsRegion := v1alpha1.AwsUSEastOneRegion
+	if config.IsFedramp {
+		awsRegion = v1alpha1.AwsUSGovEastOneRegion
+	}
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 		SecretName: currentFAA.Spec.AWSCustomerCredentialSecret.Name,
 		NameSpace:  currentFAA.Spec.AWSCustomerCredentialSecret.Namespace,
-		AwsRegion:  "us-east-1",
+		AwsRegion:  awsRegion,
 	})
 	if err != nil {
 		reqLogger.Error(err, "Unable to create aws client for region ")
@@ -582,10 +597,14 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 	roleName := currentFAA.Spec.AWSFederatedRole.Name + "-" + uidLabel
 
 	// Build AWS client from root secret
+	awsRegion := awsv1alpha1.AwsUSEastOneRegion
+	if config.IsFedramp {
+		awsRegion = awsv1alpha1.AwsUSGovEastOneRegion
+	}
 	rootAwsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 		SecretName: controllerutils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
+		AwsRegion:  awsRegion,
 	})
 	if err != nil {
 		reqLogger.Error(err, "Unable to create root aws client for region ")
@@ -615,7 +634,7 @@ func (r *ReconcileAWSFederatedAccountAccess) cleanFederatedRoles(reqLogger logr.
 		AwsCredsSecretIDKey:     *assumeRoleOutput.Credentials.AccessKeyId,
 		AwsCredsSecretAccessKey: *assumeRoleOutput.Credentials.SecretAccessKey,
 		AwsToken:                *assumeRoleOutput.Credentials.SessionToken,
-		AwsRegion:               "us-east-1",
+		AwsRegion:               awsRegion,
 	})
 	if err != nil {
 		reqLogger.Error(err, "Unable to create aws client for target linked account in region ")

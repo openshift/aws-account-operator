@@ -115,6 +115,9 @@ var DefaultConfigMapAccountLimit = 100
 // AwsUSEastOneRegion holds the key for the aws east one region
 var AwsUSEastOneRegion = "us-east-1"
 
+// AwsUSGovEastOneRegion holds the key for the aws us gov east one region
+var AwsUSGovEastOneRegion = "us-gov-east-1"
+
 // ManagedTagsConfigMapKey defines the default key for the configmap to add the defined tags to AWS resources
 var ManagedTagsConfigMapKey = "aws-managed-tags"
 
@@ -122,6 +125,9 @@ var ManagedTagsConfigMapKey = "aws-managed-tags"
 var ManagedOpenShiftSupportRole = "ManagedOpenShift-Support"
 
 var ManagedOpenShiftSupportRoleARN = "arn:aws:iam::%s:role/ManagedOpenShift-Support-%s"
+
+// fedramp arn
+var FedrampManagedOpenShiftSupportRoleARN = "arn:aws-us-gov:iam::%s:role/ManagedOpenShift-Support-%s"
 
 var CCSAccessARN = "CCS-Access-Arn"
 
