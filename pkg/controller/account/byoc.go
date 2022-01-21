@@ -262,7 +262,7 @@ func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alph
 	}
 
 	awsRegion := awsv1alpha1.AwsUSEastOneRegion
-	if config.IsFedramp {
+	if config.IsFedramp() {
 		awsRegion = awsv1alpha1.AwsUSGovEastOneRegion
 	}
 
@@ -302,7 +302,7 @@ func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alph
 
 func (r *ReconcileAccount) getCCSClient(currentAcct *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) (awsclient.Client, error) {
 	awsRegion := awsv1alpha1.AwsUSEastOneRegion
-	if config.IsFedramp {
+	if config.IsFedramp() {
 		awsRegion = awsv1alpha1.AwsUSGovEastOneRegion
 	}
 

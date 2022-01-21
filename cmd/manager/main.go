@@ -29,6 +29,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	operatorconfig "github.com/openshift/aws-account-operator/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
@@ -180,6 +181,9 @@ func main() {
 
 	// Initialize our ConfigMap with default values if necessary.
 	initOperatorConfigMapVars(kubeClient)
+
+	// SetIsFedramp determines if operator is running in fedramp mode.
+	operatorconfig.SetIsFedramp(kubeClient)
 
 	// Initialize the TotalAccountWatcher
 	go totalaccountwatcher.TotalAccountWatcher.Start(log, stopCh, kubeClient, totalWatcherInterval)

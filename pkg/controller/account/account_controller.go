@@ -148,20 +148,14 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
-	// Determine if in fedramp env
 	configMap, err := utils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
 		return reconcile.Result{}, err
 	}
-	config.IsFedramp, err = utils.IsFedramp(configMap)
-	if err != nil {
-		log.Error(err, "Unable to verify if cluster is fedramp")
-		return reconcile.Result{}, err
-	}
 
 	awsRegion := awsv1alpha1.AwsUSEastOneRegion
-	if config.IsFedramp {
+	if config.IsFedramp() {
 		awsRegion = awsv1alpha1.AwsUSGovEastOneRegion
 	}
 	// We expect this secret to exist in the same namespace Account CR's are created
@@ -321,7 +315,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				// before doing anything make sure we are not over the limit if we are just error
 				if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
 					// fedramp clusters are all CCS, so the account limit is irrelevant there
-					if !config.IsFedramp {
+					if !config.IsFedramp() {
 						reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached")
 						// We don't expect the limit to change very frequently, so wait a while before requeueing to avoid hot lopping.
 						return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(5) * time.Minute}, nil
@@ -669,7 +663,7 @@ func (r *ReconcileAccount) assumeRole(
 	roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
 
 	// if Fedramp change the role ARN
-	if config.IsFedramp {
+	if config.IsFedramp() {
 		roleArn = fmt.Sprintf("arn:aws-us-gov:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
 	}
 	// Use the role session name to uniquely identify a session when the same role
@@ -718,7 +712,7 @@ func (r *ReconcileAccount) assumeRole(
 	}
 
 	awsRegion := v1alpha1.AwsUSEastOneRegion
-	if config.IsFedramp {
+	if config.IsFedramp() {
 		awsRegion = v1alpha1.AwsUSGovEastOneRegion
 	}
 	awsAssumedRoleClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
@@ -750,7 +744,7 @@ func (r *ReconcileAccount) assumeRole(
 
 func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) error {
 	awsRegion := v1alpha1.AwsUSEastOneRegion
-	if config.IsFedramp {
+	if config.IsFedramp() {
 		awsRegion = v1alpha1.AwsUSGovEastOneRegion
 	}
 	// Instantiate a client with a default region to retrieve regions we want to initialize
@@ -1251,7 +1245,7 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 	roleToAssume := getAssumeRole(currentAcctInstance)
 
 	var adminAccessArn string
-	if config.IsFedramp {
+	if config.IsFedramp() {
 		adminAccessArn = strings.Join([]string{govcloudAdminAccessArnPrefix, adminAccessArnSuffix}, "")
 	} else {
 		adminAccessArn = strings.Join([]string{standardAdminAccessArnPrefix, adminAccessArnSuffix}, "")
