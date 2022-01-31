@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/openshift/aws-account-operator/config"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
@@ -260,6 +261,8 @@ func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alph
 		return nil, nil, cmErr
 	}
 
+	awsRegion := config.GetDefaultRegion()
+
 	jumpRoleCreds, err := getSTSCredentials(log, operatorAWSClient, stsAccessARN, "", "awsAccountOperator")
 	if err != nil {
 		return nil, nil, err
@@ -269,7 +272,7 @@ func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alph
 		AwsCredsSecretIDKey:     *jumpRoleCreds.Credentials.AccessKeyId,
 		AwsCredsSecretAccessKey: *jumpRoleCreds.Credentials.SecretAccessKey,
 		AwsToken:                *jumpRoleCreds.Credentials.SessionToken,
-		AwsRegion:               "us-east-1",
+		AwsRegion:               awsRegion,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -285,7 +288,7 @@ func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alph
 		AwsCredsSecretIDKey:     *customerAccountCreds.Credentials.AccessKeyId,
 		AwsCredsSecretAccessKey: *customerAccountCreds.Credentials.SecretAccessKey,
 		AwsToken:                *customerAccountCreds.Credentials.SessionToken,
-		AwsRegion:               "us-east-1",
+		AwsRegion:               awsRegion,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -295,11 +298,13 @@ func (r *ReconcileAccount) getSTSClient(log logr.Logger, accountClaim *awsv1alph
 }
 
 func (r *ReconcileAccount) getCCSClient(currentAcct *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) (awsclient.Client, error) {
+	awsRegion := config.GetDefaultRegion()
+
 	// Get credentials
 	ccsAWSClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: accountClaim.Spec.BYOCSecretRef.Name,
 		NameSpace:  accountClaim.Spec.BYOCSecretRef.Namespace,
-		AwsRegion:  "us-east-1",
+		AwsRegion:  awsRegion,
 	})
 	if err != nil {
 		return nil, err

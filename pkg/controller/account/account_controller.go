@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
+	"github.com/openshift/aws-account-operator/config"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/rkt/rkt/tests/testutils/logger"
 	corev1 "k8s.io/api/core/v1"
@@ -29,10 +30,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	"github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	totalaccountwatcher "github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 )
 
@@ -67,8 +66,9 @@ const (
 	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
 	AccountPendingVerification = "PendingVerification"
 
-	adminAccessArn = "arn:aws:iam::aws:policy/AdministratorAccess"
-	iamUserNameUHC = "osdManagedAdmin"
+	standardAdminAccessArnPrefix = "arn:aws:iam"
+	adminAccessArnSuffix         = "::aws:policy/AdministratorAccess"
+	iamUserNameUHC               = "osdManagedAdmin"
 
 	controllerName = "account"
 )
@@ -87,7 +87,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		awsClientBuilder: &awsclient.Builder{},
 	}
 
-	configMap, err := controllerutils.GetOperatorConfigMap(reconciler.Client)
+	configMap, err := utils.GetOperatorConfigMap(reconciler.Client)
 	if err != nil {
 		log.Error(err, "failed retrieving configmap")
 	}
@@ -97,6 +97,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		log.Error(err, "shard-name key not available in configmap")
 	}
 	reconciler.shardName = hiveName
+
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -145,11 +146,18 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		return reconcile.Result{}, err
 	}
 
+	configMap, err := utils.GetOperatorConfigMap(r.Client)
+	if err != nil {
+		log.Error(err, "Failed retrieving configmap")
+		return reconcile.Result{}, err
+	}
+
+	awsRegion := config.GetDefaultRegion()
 	// We expect this secret to exist in the same namespace Account CR's are created
 	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
+		AwsRegion:  awsRegion,
 	})
 	if err != nil {
 		reqLogger.Error(err, "failed building operator AWS client")
@@ -285,7 +293,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			_, stateErr := r.setAccountFailed(
 				reqLogger,
 				currentAcctInstance,
-				v1alpha1.AccountCreationFailed,
+				awsv1alpha1.AccountCreationFailed,
 				"CreationTimeout",
 				errMsg,
 				AccountFailed,
@@ -301,9 +309,12 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			if !currentAcctInstance.HasAwsAccountID() {
 				// before doing anything make sure we are not over the limit if we are just error
 				if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
-					reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached")
-					// We don't expect the limit to change very frequently, so wait a while before requeueing to avoid hot lopping.
-					return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(5) * time.Minute}, nil
+					// fedramp clusters are all CCS, so the account limit is irrelevant there
+					if !config.IsFedramp() {
+						reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached")
+						// We don't expect the limit to change very frequently, so wait a while before requeueing to avoid hot lopping.
+						return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(5) * time.Minute}, nil
+					}
 				}
 
 				if err := r.nonCCSAssignAccountID(reqLogger, currentAcctInstance, awsSetupClient); err != nil {
@@ -321,7 +332,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 
-	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
+	// Get regions from configmap data
 	stringRegions, ok := configMap.Data["regions"]
 	if !ok {
 		err = awsv1alpha1.ErrInvalidConfigMap
@@ -463,7 +474,7 @@ func (r *ReconcileAccount) handleAccountInitializingRegions(reqLogger logr.Logge
 		// In fact, since the Creating condition is guaranteed to already be present, this
 		// is currently not doing anything more than
 		//    currentAcctInstance.Status.State = AccountCreating
-		utils.SetAccountStatus(currentAcctInstance, msg, v1alpha1.AccountCreating, AccountCreating)
+		utils.SetAccountStatus(currentAcctInstance, msg, awsv1alpha1.AccountCreating, AccountCreating)
 		// The status update will trigger another Reconcile, but be explicit. The requests get
 		// collapsed anyway.
 		return reconcile.Result{Requeue: true}, r.statusUpdate(currentAcctInstance)
@@ -643,7 +654,8 @@ func (r *ReconcileAccount) assumeRole(
 
 	// The role ARN made up of the account number and the role which is the default role name
 	// created in child accounts
-	var roleArn = fmt.Sprintf("arn:aws:iam::%s:role/%s", currentAcctInstance.Spec.AwsAccountID, roleToAssume)
+	roleArn := config.GetIAMArn(currentAcctInstance.Spec.AwsAccountID, config.AwsResourceTypeRole, roleToAssume)
+
 	// Use the role session name to uniquely identify a session when the same role
 	// is assumed by different principals or for different reasons.
 	var roleSessionName = "awsAccountOperator"
@@ -688,11 +700,13 @@ func (r *ReconcileAccount) assumeRole(
 			break
 		}
 	}
+
+	awsRegion := config.GetDefaultRegion()
 	awsAssumedRoleClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
 		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
 		AwsToken:                *creds.Credentials.SessionToken,
-		AwsRegion:               "us-east-1",
+		AwsRegion:               awsRegion,
 	})
 	if err != nil {
 		logger.Error(err, "Failed to assume role")
@@ -716,15 +730,16 @@ func (r *ReconcileAccount) assumeRole(
 }
 
 func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) error {
+	awsRegion := config.GetDefaultRegion()
 	// Instantiate a client with a default region to retrieve regions we want to initialize
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
 		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
 		AwsToken:                *creds.Credentials.SessionToken,
-		AwsRegion:               awsv1alpha1.AwsUSEastOneRegion,
+		AwsRegion:               awsRegion,
 	})
 	if err != nil {
-		connErr := fmt.Sprintf("unable to connect to default region %s", awsv1alpha1.AwsUSEastOneRegion)
+		connErr := fmt.Sprintf("unable to connect to default region %s", awsRegion)
 		reqLogger.Error(err, connErr)
 		return err
 	}
@@ -801,7 +816,7 @@ func (r *ReconcileAccount) initializeRegions(reqLogger logr.Logger, currentAcctI
 // - This goroutine dies in some horrible and unpredictable way.
 // In either case we would expect the main reconciler to eventually notice that the Account has
 // been in the InitializingRegions state for too long, and set it to Failed.
-func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec, regionsEnabledInAccount []v1alpha1.AwsRegions) {
+func (r *ReconcileAccount) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec, regionsEnabledInAccount []awsv1alpha1.AwsRegions) {
 
 	// Initialize all supported regions by creating and terminating an instance in each
 	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, regionsEnabledInAccount, creds, regionAMIs)
@@ -954,7 +969,7 @@ func (r *ReconcileAccount) statusUpdate(account *awsv1alpha1.Account) error {
 	return err
 }
 
-func (r *ReconcileAccount) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype v1alpha1.AccountConditionType, reason string, message string, state string) (reconcile.Result, error) {
+func (r *ReconcileAccount) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype awsv1alpha1.AccountConditionType, reason string, message string, state string) (reconcile.Result, error) {
 	reqLogger.Info(message)
 	// Update account status and condition
 	account.Status.Conditions = utils.SetAccountCondition(
@@ -1194,10 +1209,10 @@ func parseTagsFromString(tags string) []awsclient.AWSTag {
 	return parsedTags
 }
 
-func castAWSRegionType(regions []*ec2.Region) []v1alpha1.AwsRegions {
-	var awsRegions []v1alpha1.AwsRegions
+func castAWSRegionType(regions []*ec2.Region) []awsv1alpha1.AwsRegions {
+	var awsRegions []awsv1alpha1.AwsRegions
 	for _, region := range regions {
-		awsRegions = append(awsRegions, v1alpha1.AwsRegions{Name: *region.RegionName})
+		awsRegions = append(awsRegions, awsv1alpha1.AwsRegions{Name: *region.RegionName})
 	}
 	return awsRegions
 }
@@ -1212,6 +1227,8 @@ func (r *ReconcileAccount) handleCreateAdminAccessRole(
 	var creds *sts.AssumeRoleOutput
 	currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
 	roleToAssume := getAssumeRole(currentAcctInstance)
+
+	adminAccessArn := config.GetIAMArn("aws", config.AwsResourceTypePolicy, config.AwsResourceIDAdministratorAccessRole)
 
 	// Build the tags required to create the Admin Access Role
 	tags := awsclient.AWSTags.BuildTags(

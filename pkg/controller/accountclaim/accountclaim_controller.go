@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/openshift/aws-account-operator/config"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
-	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -56,6 +56,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
+
 	return controllerutils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
 
@@ -220,12 +221,14 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 
 	// Set awsAccountClaim.Spec.AwsAccountOU
 	if accountClaim.Spec.AccountOU == "" || accountClaim.Spec.AccountOU == "ROOT" {
+		// Determine if in fedramp env
+		awsRegion := config.GetDefaultRegion()
 
 		// aws client
 		awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsclient.NewAwsClientInput{
 			SecretName: controllerutils.AwsSecretName,
 			NameSpace:  awsv1alpha1.AccountCrNamespace,
-			AwsRegion:  "us-east-1",
+			AwsRegion:  awsRegion,
 		})
 		if err != nil {
 			unexpectedErrorMsg := "OU: Failed to build aws client"
@@ -263,7 +266,7 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 func (r *ReconcileAccountClaim) setSupportRoleARNManagedOpenshift(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
 	if accountClaim.Spec.STSRoleARN == "" {
 		instanceID := account.Labels[awsv1alpha1.IAMUserIDLabel]
-		accountClaim.Spec.SupportRoleARN = fmt.Sprintf(awsv1alpha1.ManagedOpenShiftSupportRoleARN, account.Spec.AwsAccountID, instanceID)
+		accountClaim.Spec.SupportRoleARN = config.GetIAMArn(account.Spec.AwsAccountID, config.AwsResourceTypeRole, fmt.Sprintf("ManagedOpenShift-Support-%s", instanceID))
 		return r.specUpdate(reqLogger, accountClaim)
 	}
 	return nil
@@ -330,7 +333,7 @@ func (r *ReconcileAccountClaim) handleBYOCAccountClaim(reqLogger logr.Logger, ac
 			// Figure the reason for our failure
 			errReason := validateErr.Error()
 			// Update AccountClaim status
-			utils.SetAccountClaimStatus(
+			controllerutils.SetAccountClaimStatus(
 				accountClaim,
 				"Invalid AccountClaim",
 				errReason,
@@ -423,7 +426,7 @@ func (r *ReconcileAccountClaim) createAccountForBYOCClaim(accountClaim *awsv1alp
 	// Create a new account with BYOC flag
 	newAccount := account.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
 	populateBYOCSpec(newAccount, accountClaim)
-	utils.AddFinalizer(newAccount, accountClaimFinalizer)
+	controllerutils.AddFinalizer(newAccount, accountClaimFinalizer)
 
 	// Create the new account
 	err := r.client.Create(context.TODO(), newAccount)

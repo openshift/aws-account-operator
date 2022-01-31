@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
+	"github.com/openshift/aws-account-operator/config"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	corev1 "k8s.io/api/core/v1"
@@ -265,14 +266,13 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 // AttachAdminUserPolicy attaches the AdministratorAccess policy to a target user
 // Takes a logger, an AWS client for the target account, and the target IAM user's username
 func AttachAdminUserPolicy(client awsclient.Client, iamUser *iam.User) (*iam.AttachUserPolicyOutput, error) {
-
 	attachPolicyOutput := &iam.AttachUserPolicyOutput{}
 	var err error
 	for i := 0; i < 100; i++ {
 		time.Sleep(defaultSleepDelay)
 		attachPolicyOutput, err = client.AttachUserPolicy(&iam.AttachUserPolicyInput{
 			UserName:  iamUser.UserName,
-			PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
+			PolicyArn: aws.String(config.GetIAMArn("aws", config.AwsResourceTypePolicy, config.AwsResourceIDAdministratorAccessRole)),
 		})
 		if err == nil {
 			break

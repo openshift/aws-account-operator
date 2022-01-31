@@ -15,6 +15,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 
+	aaoconfig "github.com/openshift/aws-account-operator/config"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
@@ -193,23 +194,38 @@ func main() {
 }
 
 func initOperatorConfigMapVars(kubeClient client.Client) {
+	// Check if config map exists.
+	cm := &corev1.ConfigMap{}
+	err := kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	if err != nil {
+		log.Error(err, "There was an error getting the default configmap.")
+		return
+	}
+
+	// SetIsFedramp determines if operator is running in fedramp mode.
+	err = aaoconfig.SetIsFedramp(cm)
+	if err != nil {
+		log.Error(err, "Failed to set fedramp runtime status")
+		os.Exit(1)
+	}
+
+	// Check if fedramp env
+	if aaoconfig.IsFedramp() {
+		log.Info("Running in fedramp env")
+	}
+
+	awsRegion := aaoconfig.GetDefaultRegion()
+
+	// Get aws client
 	builder := &awsclient.Builder{}
 	awsClient, err := builder.GetClient("", kubeClient, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  "us-east-1",
+		AwsRegion:  awsRegion,
 	})
 
 	if err != nil {
 		log.Error(err, "Failed creating AWS client")
-		return
-	}
-
-	// Check if config map exists.
-	cm := &corev1.ConfigMap{}
-	err = kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
-	if err != nil {
-		log.Error(err, "There was an error getting the default configmap.")
 		return
 	}
 
