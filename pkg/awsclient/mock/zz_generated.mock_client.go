@@ -207,6 +207,96 @@ func (mr *MockClientMockRecorder) DeleteVpcEndpointServiceConfigurations(arg0 in
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVpcEndpointServiceConfigurations", reflect.TypeOf((*MockClient)(nil).DeleteVpcEndpointServiceConfigurations), arg0)
 }
 
+// DescribeVpcs mocks base method
+func (m *MockClient) DescribeVpcs(arg0 *ec2.DescribeVpcsInput) (*ec2.DescribeVpcsOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DescribeVpcs", arg0)
+	ret0, _ := ret[0].(*ec2.DescribeVpcsOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DescribeVpcs indicates an expected call of DescribeVpcs
+func (mr *MockClientMockRecorder) DescribeVpcs(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeVpcs", reflect.TypeOf((*MockClient)(nil).DescribeVpcs), arg0)
+}
+
+// CreateVpc mocks base method
+func (m *MockClient) CreateVpc(arg0 *ec2.CreateVpcInput) (*ec2.CreateVpcOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateVpc", arg0)
+	ret0, _ := ret[0].(*ec2.CreateVpcOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateVpc indicates an expected call of CreateVpc
+func (mr *MockClientMockRecorder) CreateVpc(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVpc", reflect.TypeOf((*MockClient)(nil).CreateVpc), arg0)
+}
+
+// DeleteVpc mocks base method
+func (m *MockClient) DeleteVpc(arg0 *ec2.DeleteVpcInput) (*ec2.DeleteVpcOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteVpc", arg0)
+	ret0, _ := ret[0].(*ec2.DeleteVpcOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteVpc indicates an expected call of DeleteVpc
+func (mr *MockClientMockRecorder) DeleteVpc(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVpc", reflect.TypeOf((*MockClient)(nil).DeleteVpc), arg0)
+}
+
+// DescribeSubnets mocks base method
+func (m *MockClient) DescribeSubnets(arg0 *ec2.DescribeSubnetsInput) (*ec2.DescribeSubnetsOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DescribeSubnets", arg0)
+	ret0, _ := ret[0].(*ec2.DescribeSubnetsOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DescribeSubnets indicates an expected call of DescribeSubnets
+func (mr *MockClientMockRecorder) DescribeSubnets(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeSubnets", reflect.TypeOf((*MockClient)(nil).DescribeSubnets), arg0)
+}
+
+// CreateSubnet mocks base method
+func (m *MockClient) CreateSubnet(arg0 *ec2.CreateSubnetInput) (*ec2.CreateSubnetOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateSubnet", arg0)
+	ret0, _ := ret[0].(*ec2.CreateSubnetOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateSubnet indicates an expected call of CreateSubnet
+func (mr *MockClientMockRecorder) CreateSubnet(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSubnet", reflect.TypeOf((*MockClient)(nil).CreateSubnet), arg0)
+}
+
+// DeleteSubnet mocks base method
+func (m *MockClient) DeleteSubnet(arg0 *ec2.DeleteSubnetInput) (*ec2.DeleteSubnetOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteSubnet", arg0)
+	ret0, _ := ret[0].(*ec2.DeleteSubnetOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteSubnet indicates an expected call of DeleteSubnet
+func (mr *MockClientMockRecorder) DeleteSubnet(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSubnet", reflect.TypeOf((*MockClient)(nil).DeleteSubnet), arg0)
+}
+
 // CreateAccessKey mocks base method
 func (m *MockClient) CreateAccessKey(arg0 *iam.CreateAccessKeyInput) (*iam.CreateAccessKeyOutput, error) {
 	m.ctrl.T.Helper()

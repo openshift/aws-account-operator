@@ -69,6 +69,12 @@ type Client interface {
 	DescribeRegions(input *ec2.DescribeRegionsInput) (*ec2.DescribeRegionsOutput, error)
 	DescribeVpcEndpointServiceConfigurations(input *ec2.DescribeVpcEndpointServiceConfigurationsInput) (*ec2.DescribeVpcEndpointServiceConfigurationsOutput, error)
 	DeleteVpcEndpointServiceConfigurations(*ec2.DeleteVpcEndpointServiceConfigurationsInput) (*ec2.DeleteVpcEndpointServiceConfigurationsOutput, error)
+	DescribeVpcs(*ec2.DescribeVpcsInput) (*ec2.DescribeVpcsOutput, error)
+	CreateVpc(*ec2.CreateVpcInput) (*ec2.CreateVpcOutput, error)
+	DeleteVpc(*ec2.DeleteVpcInput) (*ec2.DeleteVpcOutput, error)
+	DescribeSubnets(*ec2.DescribeSubnetsInput) (*ec2.DescribeSubnetsOutput, error)
+	CreateSubnet(*ec2.CreateSubnetInput) (*ec2.CreateSubnetOutput, error)
+	DeleteSubnet(*ec2.DeleteSubnetInput) (*ec2.DeleteSubnetOutput, error)
 
 	//IAM
 	CreateAccessKey(*iam.CreateAccessKeyInput) (*iam.CreateAccessKeyOutput, error)
@@ -198,6 +204,30 @@ func (c *awsClient) DescribeInstances(input *ec2.DescribeInstancesInput) (*ec2.D
 
 func (c *awsClient) DescribeRegions(input *ec2.DescribeRegionsInput) (*ec2.DescribeRegionsOutput, error) {
 	return c.ec2Client.DescribeRegions(input)
+}
+
+func (c *awsClient) DescribeVpcs(input *ec2.DescribeVpcsInput) (*ec2.DescribeVpcsOutput, error) {
+	return c.ec2Client.DescribeVpcs(input)
+}
+
+func (c *awsClient) CreateVpc(input *ec2.CreateVpcInput) (*ec2.CreateVpcOutput, error) {
+	return c.ec2Client.CreateVpc(input)
+}
+
+func (c *awsClient) DeleteVpc(input *ec2.DeleteVpcInput) (*ec2.DeleteVpcOutput, error) {
+	return c.ec2Client.DeleteVpc(input)
+}
+
+func (c *awsClient) DescribeSubnets(input *ec2.DescribeSubnetsInput) (*ec2.DescribeSubnetsOutput, error) {
+	return c.ec2Client.DescribeSubnets(input)
+}
+
+func (c *awsClient) CreateSubnet(input *ec2.CreateSubnetInput) (*ec2.CreateSubnetOutput, error) {
+	return c.ec2Client.CreateSubnet(input)
+}
+
+func (c *awsClient) DeleteSubnet(input *ec2.DeleteSubnetInput) (*ec2.DeleteSubnetOutput, error) {
+	return c.ec2Client.DeleteSubnet(input)
 }
 
 func (c *awsClient) CreateAccessKey(input *iam.CreateAccessKeyInput) (*iam.CreateAccessKeyOutput, error) {
