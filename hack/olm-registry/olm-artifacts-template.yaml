@@ -94,6 +94,7 @@ objects:
       ap-south-1:ami-0963937a03c01ecd4:t2.micro
       ap-southeast-1:ami-055c55112e25b1f1f:t2.micro
       ap-southeast-2:ami-036b423b657376f5b:t2.micro
+      ap-southeast-3:ami-095c30251fd6a1c5e:t3.micro
       sa-east-1:ami-05c1c16cac05a7c0b:t2.micro
       af-south-1:ami-0f4b49fefef9be45a:t3.micro
       me-south-1:ami-0b41a37a62a4296fc:t3.micro
