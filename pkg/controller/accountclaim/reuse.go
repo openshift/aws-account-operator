@@ -2,9 +2,11 @@ package accountclaim
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/rkt/rkt/tests/testutils/logger"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -36,12 +38,14 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 			return err
 		}
 		// Cleanup BYOC secret
-		err = r.removeBYOCSecretFinalizer(accountClaim)
-		if err != nil {
+		secretErr := r.removeBYOCSecretFinalizer(accountClaim)
+		if secretErr != nil {
 			reqLogger.Error(err, "Failed to remove BYOC iamsecret finalizer")
-			return err
+			return secretErr
 		}
 
+		// Here we are returning nil, instead of a potential err,
+		// as we only want to block if it's non-CCS where we can't cleanup.
 		return nil
 	}
 
@@ -79,7 +83,6 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 	}
 
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.client, awsClientInput)
-
 	if err != nil {
 		connErr := fmt.Sprintf("Unable to create aws client for region %s", clusterAwsRegion)
 		reqLogger.Error(err, connErr)
@@ -90,6 +93,7 @@ func (r *ReconcileAccountClaim) finalizeAccountClaim(reqLogger logr.Logger, acco
 		err := r.client.Delete(context.TODO(), reusedAccount)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete BYOC account from accountclaim cleanup")
+			return err
 		}
 
 		// Cleanup BYOC secret
@@ -185,13 +189,14 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, awsClie
 		go cleanUpFunc(reqLogger, awsClient, awsNotifications, awsErrors) //nolint; cleanUpFunc // Not checking return value of goroutine
 	}
 
+	var err error
 	// Wait for clean up functions to end
 	for i := 0; i < len(cleanUpFunctions); i++ {
 		select {
 		case msg := <-awsNotifications:
 			reqLogger.Info(msg)
 		case errMsg := <-awsErrors:
-			err := errors.New(errMsg)
+			err = errors.New(errMsg)
 			reqLogger.Error(err, errMsg)
 			cleanUpStatusFailed = true
 		}
@@ -199,9 +204,9 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, awsClie
 
 	// Return an error if we saw any errors on the awsErrors channel so we can make the reused account as failed
 	if cleanUpStatusFailed {
-		cleanUpStatusFailedMsg := "Failed to clean up AWS account"
-		err := errors.New(cleanUpStatusFailedMsg)
+		cleanUpStatusFailedMsg := "failed to clean up AWS account"
 		reqLogger.Error(err, cleanUpStatusFailedMsg)
+		return err
 	}
 
 	reqLogger.Info("AWS account cleanup completed")
@@ -238,7 +243,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountSnapshots(reqLogger logr.Logger
 
 		_, err = awsClient.DeleteSnapshot(&deleteSnapshotInput)
 		if err != nil {
-			delError := fmt.Sprintf("Failed deleting EBS snapshot: %s", *snapshot.SnapshotId)
+			delError := errors.Wrap(err, fmt.Sprintf("Failed deleting EBS snapshot: %s", *snapshot.SnapshotId)).Error()
 			awsErrors <- delError
 			return err
 		}
@@ -310,7 +315,8 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logge
 
 		_, err = awsClient.DeleteVolume(&deleteVolumeInput)
 		if err != nil {
-			delError := fmt.Sprintf("Failed deleting EBS volume: %s", *volume.VolumeId)
+			delError := errors.Wrap(err, fmt.Sprintf("Failed deleting EBS volume: %s", *volume.VolumeId)).Error()
+			logger.Error(delError)
 			awsErrors <- delError
 			return err
 		}
@@ -326,7 +332,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 	listBucketsInput := s3.ListBucketsInput{}
 	s3Buckets, err := awsClient.ListBuckets(&listBucketsInput)
 	if err != nil {
-		listError := "Failed listing S3 buckets"
+		listError := errors.Wrap(err, "Failed listing S3 buckets").Error()
 		awsErrors <- listError
 		return err
 	}
@@ -340,7 +346,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 		// delete any content if any
 		err := DeleteBucketContent(awsClient, *bucket.Name)
 		if err != nil {
-			ContentDelErr := fmt.Sprintf("Failed to delete bucket content: %s", *bucket.Name)
+			ContentDelErr := errors.Wrap(err, fmt.Sprintf("Failed to delete bucket content: %s", *bucket.Name)).Error()
 			if aerr, ok := err.(awserr.Error); ok {
 				switch aerr.Code() {
 				case s3.ErrCodeNoSuchBucket:
@@ -353,7 +359,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 		}
 		_, err = awsClient.DeleteBucket(&deleteBucketInput)
 		if err != nil {
-			DelError := fmt.Sprintf("Failed deleting S3 bucket: %s", *bucket.Name)
+			DelError := errors.Wrap(err, fmt.Sprintf("Failed deleting S3 bucket: %s", *bucket.Name)).Error()
 			if aerr, ok := err.(awserr.Error); ok {
 				switch aerr.Code() {
 				case s3.ErrCodeNoSuchBucket:
@@ -381,7 +387,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClie
 		// Get list of hosted zones by page
 		hostedZonesOutput, err := awsClient.ListHostedZones(&route53.ListHostedZonesInput{Marker: nextZoneMarker})
 		if err != nil {
-			listError := "Failed to list Hosted Zones"
+			listError := errors.Wrap(err, "Failed to list Hosted Zones").Error()
 			awsErrors <- listError
 			return err
 		}
@@ -394,7 +400,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClie
 			for {
 				recordSet, listRecordsError := awsClient.ListResourceRecordSets(&route53.ListResourceRecordSetsInput{HostedZoneId: zone.Id, StartRecordName: nextRecordName})
 				if listRecordsError != nil {
-					recordSetListError := fmt.Sprintf("Failed to list Record sets for hosted zone %s", *zone.Name)
+					recordSetListError := errors.Wrap(err, fmt.Sprintf("Failed to list Record sets for hosted zone %s", *zone.Name)).Error()
 					awsErrors <- recordSetListError
 					return listRecordsError
 				}
@@ -415,7 +421,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClie
 				if changeBatch.Changes != nil {
 					_, changeErr := awsClient.ChangeResourceRecordSets(&route53.ChangeResourceRecordSetsInput{HostedZoneId: zone.Id, ChangeBatch: changeBatch})
 					if changeErr != nil {
-						recordDeleteError := fmt.Sprintf("Failed to delete record sets for hosted zone %s", *zone.Name)
+						recordDeleteError := errors.Wrap(err, fmt.Sprintf("Failed to delete record sets for hosted zone %s", *zone.Name)).Error()
 						awsErrors <- recordDeleteError
 						return changeErr
 					}
@@ -431,7 +437,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClie
 
 			_, deleteError := awsClient.DeleteHostedZone(&route53.DeleteHostedZoneInput{Id: zone.Id})
 			if deleteError != nil {
-				zoneDelErr := fmt.Sprintf("Failed to delete hosted zone: %s", *zone.Name)
+				zoneDelErr := errors.Wrap(err, fmt.Sprintf("Failed to delete hosted zone: %s", *zone.Name)).Error()
 				awsErrors <- zoneDelErr
 				return deleteError
 			}

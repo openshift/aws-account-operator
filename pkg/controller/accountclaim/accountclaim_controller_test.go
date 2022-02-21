@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/route53"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/mock/gomock"
 	"github.com/openshift/aws-account-operator/pkg/apis"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -97,45 +101,144 @@ var _ = Describe("AccountClaim", func() {
 			Expect(ac.Spec).To(Equal(accountClaim.Spec))
 		})
 
-		It("should retry on a conflict error", func() {
-			accountClaim.DeletionTimestamp = &metav1.Time{Time: time.Now()}
-			accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), accountClaimFinalizer))
+		Context("AccountClaim is marked for Deletion", func() {
 
-			account := &awsv1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "osd-creds-mgmt-aaabbb",
-					Namespace: "aws-account-operator",
-				},
-				Spec: awsv1alpha1.AccountSpec{
-					LegalEntity: awsv1alpha1.LegalEntity{
-						Name: "LegalCorp. Inc.",
-						ID:   "abcdefg123456",
+			var (
+				objs []runtime.Object
+			)
+
+			BeforeEach(func() {
+				accountClaim.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+				accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), accountClaimFinalizer))
+
+				account := &awsv1alpha1.Account{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "osd-creds-mgmt-aaabbb",
+						Namespace: "aws-account-operator",
 					},
-				},
-			}
+					Spec: awsv1alpha1.AccountSpec{
+						LegalEntity: awsv1alpha1.LegalEntity{
+							Name: "LegalCorp. Inc.",
+							ID:   "abcdefg123456",
+						},
+					},
+				}
 
-			objs := []runtime.Object{accountClaim, account}
-			r.client = &possiblyErroringFakeCtrlRuntimeClient{
-				fake.NewFakeClient(objs...),
-				true,
-			}
+				objs = []runtime.Object{accountClaim, account}
+			})
 
-			// TODO: As written, this is just triggering error paths for each of the cleanup
-			//       funcs, proving that errors in those cleanups don't propagate up to Reconcile.
-			//       Once that's fixed, these will need to be changed to do more realistic things.
-			mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
-			// Use a bogus error, just so we can fail AWS calls.
-			theErr := awserr.NewBatchError("foo", "bar", []error{})
-			mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(nil, theErr)
-			mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(nil, theErr)
-			mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any()).Return(nil, theErr)
-			mockAWSClient.EXPECT().DescribeVolumes(gomock.Any()).Return(nil, theErr)
-			mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(nil, theErr)
+			It("should delete AccountClaim", func() {
+				r.client = fake.NewFakeClient(objs...)
 
-			_, err := r.Reconcile(req)
+				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
+				// Create empty empy aws responses.
+				lhzo := &route53.ListHostedZonesOutput{
+					HostedZones: []*route53.HostedZone{},
+					IsTruncated: aws.Bool(false),
+				}
+				lbo := &s3.ListBucketsOutput{
+					Buckets: []*s3.Bucket{},
+				}
+				dvpcesco := &ec2.DescribeVpcEndpointServiceConfigurationsOutput{
+					ServiceConfigurations: []*ec2.ServiceConfiguration{},
+				}
+				dso := &ec2.DescribeSnapshotsOutput{
+					Snapshots: []*ec2.Snapshot{},
+				}
+				dvo := &ec2.DescribeVolumesOutput{
+					Volumes: []*ec2.Volume{},
+				}
 
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("account CR modified during reset: Conflict"))
+				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(lhzo, nil)
+				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(lbo, nil)
+				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(dvpcesco, nil)
+				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any()).Return(dso, nil)
+				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any()).Return(dvo, nil)
+
+				_, err := r.Reconcile(req)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Ensure we have removed the finalizer.
+				ac := awsv1alpha1.AccountClaim{}
+				err = r.client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ac.Finalizers).To(BeNil())
+
+				// Ensure the non-ccs account has been reset as expected.
+				acc := awsv1alpha1.Account{}
+				err = r.client.Get(context.TODO(), types.NamespacedName{Name: ac.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, &acc)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(acc.Spec.ClaimLink).To(BeEmpty())
+				Expect(acc.Spec.ClaimLinkNamespace).To(BeEmpty())
+				Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
+				Expect(acc.Status.Reused).To(BeTrue())
+			})
+
+			It("should retry on a conflict error", func() {
+				r.client = &possiblyErroringFakeCtrlRuntimeClient{
+					fake.NewFakeClient(objs...),
+					true,
+				}
+
+				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
+				// Create empty empy aws responses.
+				lhzo := &route53.ListHostedZonesOutput{
+					HostedZones: []*route53.HostedZone{},
+					IsTruncated: aws.Bool(false),
+				}
+				lbo := &s3.ListBucketsOutput{
+					Buckets: []*s3.Bucket{},
+				}
+				dvpcesco := &ec2.DescribeVpcEndpointServiceConfigurationsOutput{
+					ServiceConfigurations: []*ec2.ServiceConfiguration{},
+				}
+				dso := &ec2.DescribeSnapshotsOutput{
+					Snapshots: []*ec2.Snapshot{},
+				}
+				dvo := &ec2.DescribeVolumesOutput{
+					Volumes: []*ec2.Volume{},
+				}
+
+				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(lhzo, nil)
+				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(lbo, nil)
+				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(dvpcesco, nil)
+				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any()).Return(dso, nil)
+				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any()).Return(dvo, nil)
+
+				_, err := r.Reconcile(req)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Equal("account CR modified during reset: Conflict"))
+
+				// Ensure we haven't removed the finalizer.
+				ac := awsv1alpha1.AccountClaim{}
+				err = r.client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ac.Finalizers).To(Equal(accountClaim.GetFinalizers()))
+			})
+
+			It("should handle aws cleanup errors", func() {
+				r.client = fake.NewFakeClient(objs...)
+
+				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
+				// Use a bogus error, just so we can fail AWS calls.
+				theErr := awserr.NewBatchError("foo", "bar", []error{})
+				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(nil, theErr)
+				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(nil, theErr)
+				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(nil, theErr)
+				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any()).Return(nil, theErr)
+				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any()).Return(nil, theErr)
+
+				_, err := r.Reconcile(req)
+
+				Expect(err).To(HaveOccurred())
+
+				// Ensure we haven't removed the finalizer.
+				ac := awsv1alpha1.AccountClaim{}
+				err = r.client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ac.Finalizers).To(Equal(accountClaim.GetFinalizers()))
+			})
 		})
 
 		When("Accountclaim is BYOC", func() {
