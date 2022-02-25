@@ -176,6 +176,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, awsClie
 		r.cleanUpAwsAccountSnapshots,
 		r.cleanUpAwsAccountEbsVolumes,
 		r.cleanUpAwsAccountS3,
+		r.cleanUpAwsAccountVpcEndpointServiceConfigurations,
 		r.cleanUpAwsRoute53,
 	}
 
@@ -244,6 +245,49 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountSnapshots(reqLogger logr.Logger
 	}
 
 	successMsg := "Snapshot cleanup finished successfully"
+	awsNotifications <- successMsg
+	return nil
+}
+
+func (r *ReconcileAccountClaim) cleanUpAwsAccountVpcEndpointServiceConfigurations(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
+	describeVpcEndpointServiceConfigurationsInput := ec2.DescribeVpcEndpointServiceConfigurationsInput{}
+	vpcEndpointServiceConfigurations, err := awsClient.DescribeVpcEndpointServiceConfigurations(&describeVpcEndpointServiceConfigurationsInput)
+	if err != nil {
+		descError := "Failed describing VPC endpoint service configurations"
+		awsErrors <- descError
+		return err
+	}
+
+	serviceIds := []*string{}
+
+	for _, config := range vpcEndpointServiceConfigurations.ServiceConfigurations {
+		serviceIds = append(serviceIds, config.ServiceId)
+	}
+
+	successMsg := "VPC endpoint service configuration cleanup finished successfully (nothing to do)"
+	if len(serviceIds) == 0 {
+		awsNotifications <- successMsg
+		return nil
+	}
+
+	deleteVpcEndpointServiceConfigurationsInput := ec2.DeleteVpcEndpointServiceConfigurationsInput{
+		ServiceIds: serviceIds,
+	}
+
+	output, err := awsClient.DeleteVpcEndpointServiceConfigurations(&deleteVpcEndpointServiceConfigurationsInput)
+	if err != nil {
+		unsuccessfulList := ""
+		for i, unsuccessfulEndpoint := range output.Unsuccessful {
+			if i > 0 {
+				unsuccessfulList += ", "
+			}
+			unsuccessfulList += *unsuccessfulEndpoint.ResourceId
+		}
+		delError := fmt.Sprintf("Failed deleting VPC endpoint service configurations: %s", unsuccessfulList)
+		awsErrors <- delError
+		return err
+	}
+
 	awsNotifications <- successMsg
 	return nil
 }
