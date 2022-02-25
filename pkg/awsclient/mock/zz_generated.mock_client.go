@@ -177,6 +177,36 @@ func (mr *MockClientMockRecorder) DescribeRegions(input interface{}) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeRegions", reflect.TypeOf((*MockClient)(nil).DescribeRegions), input)
 }
 
+// DescribeVpcEndpointServiceConfigurations mocks base method
+func (m *MockClient) DescribeVpcEndpointServiceConfigurations(input *ec2.DescribeVpcEndpointServiceConfigurationsInput) (*ec2.DescribeVpcEndpointServiceConfigurationsOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DescribeVpcEndpointServiceConfigurations", input)
+	ret0, _ := ret[0].(*ec2.DescribeVpcEndpointServiceConfigurationsOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DescribeVpcEndpointServiceConfigurations indicates an expected call of DescribeVpcEndpointServiceConfigurations
+func (mr *MockClientMockRecorder) DescribeVpcEndpointServiceConfigurations(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeVpcEndpointServiceConfigurations", reflect.TypeOf((*MockClient)(nil).DescribeVpcEndpointServiceConfigurations), input)
+}
+
+// DeleteVpcEndpointServiceConfigurations mocks base method
+func (m *MockClient) DeleteVpcEndpointServiceConfigurations(arg0 *ec2.DeleteVpcEndpointServiceConfigurationsInput) (*ec2.DeleteVpcEndpointServiceConfigurationsOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteVpcEndpointServiceConfigurations", arg0)
+	ret0, _ := ret[0].(*ec2.DeleteVpcEndpointServiceConfigurationsOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteVpcEndpointServiceConfigurations indicates an expected call of DeleteVpcEndpointServiceConfigurations
+func (mr *MockClientMockRecorder) DeleteVpcEndpointServiceConfigurations(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVpcEndpointServiceConfigurations", reflect.TypeOf((*MockClient)(nil).DeleteVpcEndpointServiceConfigurations), arg0)
+}
+
 // CreateAccessKey mocks base method
 func (m *MockClient) CreateAccessKey(arg0 *iam.CreateAccessKeyInput) (*iam.CreateAccessKeyOutput, error) {
 	m.ctrl.T.Helper()

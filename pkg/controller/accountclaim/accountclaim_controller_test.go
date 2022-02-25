@@ -130,6 +130,7 @@ var _ = Describe("AccountClaim", func() {
 			mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(nil, theErr)
 			mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any()).Return(nil, theErr)
 			mockAWSClient.EXPECT().DescribeVolumes(gomock.Any()).Return(nil, theErr)
+			mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(nil, theErr)
 
 			_, err := r.Reconcile(req)
 
