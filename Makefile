@@ -3,6 +3,7 @@ SHELL := /usr/bin/env bash
 OPERATOR_DOCKERFILE = ./build/Dockerfile
 REUSE_UUID := $(shell uuidgen | awk -F- '{ print tolower($$2) }')
 REUSE_BUCKET_NAME=test-reuse-bucket-${REUSE_UUID}
+OPERATOR_SDK ?= operator-sdk
 
 include hack/scripts/test_envs
 
@@ -284,11 +285,11 @@ predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credential
 
 .PHONY: deploy-local
 deploy-local: ## Deploy Operator locally
-	@FORCE_DEV_MODE=local operator-sdk run --local --namespace=$(OPERATOR_NAMESPACE) --operator-flags "--zap-devel"
+	@FORCE_DEV_MODE=local ${OPERATOR_SDK} run --local --namespace=$(OPERATOR_NAMESPACE) --operator-flags "--zap-devel"
 
 .PHONY: deploy-local-debug
 deploy-local-debug: ## Deploy Operator locally with Delve enabled
-	@FORCE_DEV_MODE=local operator-sdk run --local --namespace=$(OPERATOR_NAMESPACE) --enable-delve
+	@FORCE_DEV_MODE=local ${OPERATOR_SDK} run --local --namespace=$(OPERATOR_NAMESPACE) --enable-delve
 
 .PHONY: deploy-cluster
 deploy-cluster: FORCE_DEV_MODE?=cluster

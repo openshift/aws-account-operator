@@ -2,6 +2,9 @@
 
 command -v aws >/dev/null 2>&1 || { echo >&2 "Script requires aws but it's not installed.  Aborting."; exit 1; }
 
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+cd $DIR
+
 usage() {
     cat <<EOF
     usage: $0 [ OPTION ]
