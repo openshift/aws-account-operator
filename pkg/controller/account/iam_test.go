@@ -19,6 +19,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/controller/testutils"
 	"github.com/stretchr/testify/assert"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -947,4 +948,172 @@ func TestCreateIAMUserSecretName(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateIAMSecret(t *testing.T) {
+
+	username := "AwesomeUser"
+	namespace := "AwesomeNamespace"
+	expectedSecretName := "awesomeuser-secret"
+	expectedAccessKeyID := "expectedAccessKey"
+	iamUser := iam.User{
+		UserName: &username,
+	}
+
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		fmt.Printf("failed adding to scheme in iam_test.go")
+	}
+
+	// User has a valid secret created
+	localObjects := []runtime.Object{
+		CreateSecret(
+			expectedSecretName,
+			namespace,
+			map[string][]byte{
+				"one": []byte("hello"),
+				"two": []byte("world"),
+			},
+		),
+	}
+	namespacedName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      expectedSecretName,
+	}
+	mocks := setupDefaultMocks(t, localObjects)
+
+	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+
+	mockAWSClient.EXPECT().GetUser(&iam.GetUserInput{
+		UserName: aws.String(username),
+	}).Return(&iam.GetUserOutput{
+		User: &iam.User{
+			UserName: &username,
+		},
+	}, nil)
+	mockAWSClient.EXPECT().ListAccessKeys(
+		&iam.ListAccessKeysInput{
+			UserName: &username,
+		},
+	).Return(
+		&iam.ListAccessKeysOutput{
+			AccessKeyMetadata: []*iam.AccessKeyMetadata{
+				{
+					AccessKeyId: &expectedAccessKeyID,
+				},
+			},
+		},
+		nil,
+	)
+	mockAWSClient.EXPECT().DeleteAccessKey(
+		&iam.DeleteAccessKeyInput{
+			AccessKeyId: &expectedAccessKeyID,
+			UserName:    &username,
+		},
+	).Return(
+		&iam.DeleteAccessKeyOutput{},
+		nil,
+	)
+
+	expectedAccessKeyOutput := &iam.CreateAccessKeyOutput{
+		AccessKey: &iam.AccessKey{
+			UserName:        &username,
+			AccessKeyId:     aws.String("NewAccessKeyID"),
+			SecretAccessKey: aws.String("NewSecret"),
+		},
+	}
+	mockAWSClient.EXPECT().CreateAccessKey(
+		&iam.CreateAccessKeyInput{
+			UserName: iamUser.UserName,
+		},
+	).Return(
+		expectedAccessKeyOutput,
+		nil,
+	)
+	mockAWSClient.EXPECT().AttachUserPolicy(&iam.AttachUserPolicyInput{
+		UserName:  &username,
+		PolicyArn: aws.String("adminAccessArn"),
+	}).Return(&iam.AttachUserPolicyOutput{}, nil)
+
+	r := ReconcileAccount{
+		Client: mocks.fakeKubeClient,
+		scheme: scheme.Scheme,
+	}
+
+	nullLogger := testutils.NullLogger{}
+	account := newTestAccountBuilder().acct
+	account.Name = username
+	err = r.updateIAMUserSecret(nullLogger, &account, namespacedName, expectedAccessKeyOutput)
+	assert.Nil(t, err)
+	err = r.ValidateIAMSecret(nullLogger, mockAWSClient, &account, username, namespacedName)
+	assert.Nil(t, err)
+}
+
+func TestIsKubeSecretValid(t *testing.T) {
+
+	//username := "AwesomeUser"
+	namespace := "AwesomeNamespace"
+	expectedSecretName := "awesomeuser-secret"
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		fmt.Printf("failed adding to scheme in iam_test.go")
+	}
+
+	// User has a valid secret created
+	localObjects := []runtime.Object{
+		CreateSecret(
+			expectedSecretName,
+			namespace,
+			map[string][]byte{
+				"one": []byte("hello"),
+				"two": []byte("world"),
+			},
+		),
+	}
+
+	account := v1alpha1.Account{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:     map[string]string{},
+			Finalizers: []string{},
+			CreationTimestamp: metav1.Time{
+				Time: time.Now().Add(-(5 * time.Minute)), // default tests to 5 minute old acct
+			},
+			Namespace: namespace,
+		},
+		Status: v1alpha1.AccountStatus{
+			State:   string(v1alpha1.AccountReady),
+			Claimed: false,
+		},
+		Spec: v1alpha1.AccountSpec{
+			IAMUserSecret: expectedSecretName,
+		},
+	}
+
+	mocks := setupDefaultMocks(t, localObjects)
+
+	mockIBuilder := mock.NewMockIBuilder(mocks.mockCtrl)
+
+	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+
+	r := ReconcileAccount{
+		Client:           mocks.fakeKubeClient,
+		scheme:           scheme.Scheme,
+		awsClientBuilder: mockIBuilder,
+	}
+
+	mockIBuilder.EXPECT().GetClient(controllerName,
+		r.Client,
+		awsclient.NewAwsClientInput{
+			SecretName: account.Spec.IAMUserSecret,
+			NameSpace:  account.Namespace,
+			AwsRegion:  "us-east-1",
+		}).Return(mockAWSClient, nil)
+
+	mockAWSClient.EXPECT().GetCallerIdentity(gomock.Any()).Return(&sts.GetCallerIdentityOutput{}, nil)
+
+	nullLogger := testutils.NullLogger{}
+	val, err := r.IsKubeSecretValid(nullLogger, &account)
+	assert.Equal(t, val, true)
+	assert.Nil(t, err)
 }

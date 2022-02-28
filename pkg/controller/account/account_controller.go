@@ -23,7 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
+
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -104,7 +104,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Create a new controller
-	c, err := controller.New("account-controller", mgr, controller.Options{Reconciler: r})
+	c, err := utils.NewControllerWithMaxReconciles(log, controllerName, mgr, r)
 	if err != nil {
 		return err
 	}
@@ -344,6 +344,11 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 	regionAMIs := processConfigMapRegions(stringRegions)
 
+	awsAssumedRoleClient, creds, err := r.handleCreateAdminAccessRole(reqLogger, currentAcctInstance, awsSetupClient)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
 	// Account init for both BYOC and Non-BYOC
 	if currentAcctInstance.ReadyForInitialization() {
 		reqLogger.Info("initializing account", "awsAccountID", currentAcctInstance.Spec.AwsAccountID)
@@ -392,11 +397,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{Requeue: true}, r.Client.Update(context.TODO(), currentAcctInstance)
 		}
 
-		awsAssumedRoleClient, creds, err := r.handleCreateAdminAccessRole(reqLogger, currentAcctInstance, awsSetupClient)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
 		// Use the same ID applied to the account name for IAM usernames
 		iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
 		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
@@ -428,6 +428,19 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 	}
+
+	if currentAcctInstance.IsReady() {
+
+		// Check that secret is valid and reheal it if not
+		iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
+
+		reqLogger.Info("probing account secret")
+		err := r.ProbeSecret(reqLogger, currentAcctInstance, awsAssumedRoleClient, iamUserUHC, request.Namespace)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
 	return reconcile.Result{}, nil
 }
 

@@ -21,6 +21,11 @@ objects:
     base: ${BASE}
     quota.vcpu: ${VCPU_QUOTA}
     account-limit: ${ACCOUNTLIMIT}
+    MaxConcurrentReconciles.account: "2"
+    MaxConcurrentReconciles.accountclaim: "1"
+    MaxConcurrentReconciles.accountpool: "1"
+    MaxConcurrentReconciles.awsfederatedaccountaccess: "1"
+    MaxConcurrentReconciles.awsfederatedrole: "1"
     regions: |
       us-east-1:ami-000db10762d0c4c05:t2.micro
       us-east-2:ami-094720ddca649952f:t2.micro

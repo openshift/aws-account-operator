@@ -2,8 +2,12 @@ package utils
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 )
@@ -228,5 +232,71 @@ func TestRemove(t *testing.T) {
 		if !reflect.DeepEqual(postRemoveList, table.result) {
 			t.Errorf("Unexpected Result.  Expected %s got %s", table.result, postRemoveList)
 		}
+	}
+}
+
+func TestGetControllerMaxReconcilesFromCM(t *testing.T) {
+	validObjectMeta := metav1.ObjectMeta{
+		Namespace: awsv1alpha1.AccountCrNamespace,
+		Name:      awsv1alpha1.DefaultConfigMap,
+	}
+	tables := []struct {
+		name        string
+		expectedErr error
+		expectedVal int
+		configMap   *corev1.ConfigMap
+	}{
+		{
+			name:        "Tests Key not found",
+			expectedErr: awsv1alpha1.ErrInvalidConfigMap,
+			expectedVal: 0,
+			configMap: &corev1.ConfigMap{
+				ObjectMeta: validObjectMeta,
+				Data:       map[string]string{},
+			},
+		},
+		{
+			name:        "Tests not valid str->int conversion",
+			expectedErr: fmt.Errorf("strconv.Atoi: parsing \"forty-two\": invalid syntax"),
+			expectedVal: 0,
+			configMap: &corev1.ConfigMap{
+				ObjectMeta: validObjectMeta,
+				Data: map[string]string{
+					"MaxConcurrentReconciles.test-controller": "forty-two",
+				},
+			},
+		},
+		{
+			name:        "Tests valid value returned",
+			expectedErr: nil,
+			expectedVal: 3,
+			configMap: &corev1.ConfigMap{
+				ObjectMeta: validObjectMeta,
+				Data: map[string]string{
+					"MaxConcurrentReconciles.test-controller": "3",
+				},
+			},
+		},
+	}
+
+	for _, test := range tables {
+		t.Run(test.name, func(t *testing.T) {
+			// Add fake CM to fakes
+			val, err := getControllerMaxReconcilesFromCM(test.configMap, "test-controller")
+
+			// Check for Errors
+			if test.expectedErr == nil && err != nil {
+				t.Errorf("Expected no error but got %s", err.Error())
+			}
+
+			if test.expectedErr != nil && test.expectedErr.Error() != err.Error() {
+				t.Errorf("Expected %s error but got %s", test.expectedErr.Error(), err.Error())
+			}
+
+			// Check for Value
+			if test.expectedVal != val {
+				t.Errorf("Expected value %d but got %d", test.expectedVal, val)
+			}
+		})
 	}
 }
