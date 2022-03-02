@@ -138,6 +138,16 @@ spec:
         resource:
           - "*"
 
+      # AWS VPC Endpoint Service
+      - effect: Allow
+        action:
+          "ec2:CreateVpcEndpointServiceConfiguration",
+          "ec2:DescribeVpcEndpointServiceConfigurations",
+          "ec2:DeleteVpcEndpointServiceConfigurations",
+          "elasticloadbalancing:DescribeLoadBalancers"
+        resource:
+          - "*"
+
       # AWS Direct Connect
       - effect: Allow
         action:
