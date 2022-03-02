@@ -1158,7 +1158,8 @@ func (r *ReconcileAccount) getManagedTags(log logr.Logger) []awsclient.AWSTag {
 	return parseTagsFromString(managedTags)
 }
 
-// getCustomerTags retrieves a list of customer-provided tags from the linked accountclaim
+// getCustomTags retrieves a list of tags from the linked accountclaim
+// these tags can be tags specified by the customer or set by other pieces of the OSD stack
 func (r *ReconcileAccount) getCustomTags(log logr.Logger, account *awsv1alpha1.Account) []awsclient.AWSTag {
 	tags := []awsclient.AWSTag{}
 
