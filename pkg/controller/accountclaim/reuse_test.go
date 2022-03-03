@@ -1,6 +1,8 @@
 package accountclaim_test
 
 import (
+	"fmt"
+
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/go-logr/logr"
 	"github.com/golang/mock/gomock"
@@ -118,8 +120,10 @@ var _ = Describe("Account Reuse", func() {
 				serviceConfigId1 string
 				serviceConfigId2 string
 				deleteInput      *ec2.DeleteVpcEndpointServiceConfigurationsInput
+				deleteErr        error
 			)
-			BeforeEach(func() {
+
+			JustBeforeEach(func() {
 				serviceConfigId1 = "FakeID"
 				serviceConfigId2 = "FakeID2"
 				describeOutput = ec2.DescribeVpcEndpointServiceConfigurationsOutput{
@@ -132,21 +136,74 @@ var _ = Describe("Account Reuse", func() {
 						},
 					},
 				}
-				deleteOutput = ec2.DeleteVpcEndpointServiceConfigurationsOutput{}
 				mockAwsClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(&describeOutput, nil)
 				mockAwsClient.EXPECT().DeleteVpcEndpointServiceConfigurations(gomock.Any()).Do(func(input *ec2.DeleteVpcEndpointServiceConfigurationsInput) {
 					deleteInput = input
-				}).Return(&deleteOutput, nil)
+				}).Return(&deleteOutput, deleteErr)
 			})
 
-			It("Deletes the VPC Endpoint Service Configuration", func() {
-				notifications, errors, _ := runCleanupFunc(r.CleanUpAwsAccountVpcEndpointServiceConfigurations, mockAwsClient)
+			Context("When all VPC Endpoint Service Configurations can be deleted", func() {
+				BeforeEach(func() {
+					deleteErr = nil
+					deleteOutput = ec2.DeleteVpcEndpointServiceConfigurationsOutput{}
+				})
+				It("Deletes the VPC Endpoint Service Configuration and doesn't return an error", func() {
+					notifications, errors, _ := runCleanupFunc(r.CleanUpAwsAccountVpcEndpointServiceConfigurations, mockAwsClient)
 
-				Expect(len(deleteInput.ServiceIds)).To(Equal(2))
-				Expect(*deleteInput.ServiceIds[0]).To(Equal(serviceConfigId1))
-				Expect(*deleteInput.ServiceIds[1]).To(Equal(serviceConfigId2))
-				Expect(errors).To(Equal(""))
-				Expect(notifications).To(Equal("VPC endpoint service configuration cleanup finished successfully"))
+					Expect(len(deleteInput.ServiceIds)).To(Equal(2))
+					Expect(*deleteInput.ServiceIds[0]).To(Equal(serviceConfigId1))
+					Expect(*deleteInput.ServiceIds[1]).To(Equal(serviceConfigId2))
+					Expect(errors).To(Equal(""))
+					Expect(notifications).To(Equal("VPC endpoint service configuration cleanup finished successfully"))
+				})
+			})
+
+			Context("When the first of the VPC Endpoint Service Configurations can't be deleted", func() {
+				BeforeEach(func() {
+					deleteErr = fmt.Errorf("nop nop nop")
+					deleteOutput = ec2.DeleteVpcEndpointServiceConfigurationsOutput{
+						Unsuccessful: []*ec2.UnsuccessfulItem{
+							{
+								ResourceId: &serviceConfigId1,
+							},
+						},
+					}
+				})
+				It("Deletes the VPC Endpoint Service Configuration and returns the failing Service ID", func() {
+					notifications, errors, _ := runCleanupFunc(r.CleanUpAwsAccountVpcEndpointServiceConfigurations, mockAwsClient)
+
+					Expect(len(deleteInput.ServiceIds)).To(Equal(2))
+					Expect(*deleteInput.ServiceIds[0]).To(Equal(serviceConfigId1))
+					Expect(*deleteInput.ServiceIds[1]).To(Equal(serviceConfigId2))
+					Expect(errors).To(Equal("Failed deleting VPC endpoint service configurations: " + serviceConfigId1))
+					Expect(notifications).To(Equal(""))
+
+				})
+			})
+			Context("When both of the VPC Endpoint Service Configurations can't be deleted", func() {
+				BeforeEach(func() {
+					deleteErr = fmt.Errorf("nop nop nop")
+					deleteOutput = ec2.DeleteVpcEndpointServiceConfigurationsOutput{
+						Unsuccessful: []*ec2.UnsuccessfulItem{
+							{
+								ResourceId: &serviceConfigId1,
+							},
+							{
+								ResourceId: &serviceConfigId2,
+							},
+						},
+					}
+				})
+				It("Deletes the VPC Endpoint Service Configuration and returns the failing Service ID", func() {
+					notifications, errors, _ := runCleanupFunc(r.CleanUpAwsAccountVpcEndpointServiceConfigurations, mockAwsClient)
+
+					Expect(len(deleteInput.ServiceIds)).To(Equal(2))
+					Expect(*deleteInput.ServiceIds[0]).To(Equal(serviceConfigId1))
+					Expect(*deleteInput.ServiceIds[1]).To(Equal(serviceConfigId2))
+					Expect(errors).To(Equal("Failed deleting VPC endpoint service configurations: " + serviceConfigId1 + ", " + serviceConfigId2))
+					Expect(notifications).To(Equal(""))
+
+				})
 			})
 		})
 
