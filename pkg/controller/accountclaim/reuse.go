@@ -176,7 +176,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccount(reqLogger logr.Logger, awsClie
 		r.cleanUpAwsAccountSnapshots,
 		r.cleanUpAwsAccountEbsVolumes,
 		r.cleanUpAwsAccountS3,
-		r.cleanUpAwsAccountVpcEndpointServiceConfigurations,
+		r.CleanUpAwsAccountVpcEndpointServiceConfigurations,
 		r.cleanUpAwsRoute53,
 	}
 
@@ -249,10 +249,10 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountSnapshots(reqLogger logr.Logger
 	return nil
 }
 
-func (r *ReconcileAccountClaim) cleanUpAwsAccountVpcEndpointServiceConfigurations(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
+func (r *ReconcileAccountClaim) CleanUpAwsAccountVpcEndpointServiceConfigurations(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
 	describeVpcEndpointServiceConfigurationsInput := ec2.DescribeVpcEndpointServiceConfigurationsInput{}
 	vpcEndpointServiceConfigurations, err := awsClient.DescribeVpcEndpointServiceConfigurations(&describeVpcEndpointServiceConfigurationsInput)
-	if err != nil {
+	if vpcEndpointServiceConfigurations == nil || err != nil {
 		descError := "Failed describing VPC endpoint service configurations"
 		awsErrors <- descError
 		return err
@@ -264,9 +264,9 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountVpcEndpointServiceConfiguration
 		serviceIds = append(serviceIds, config.ServiceId)
 	}
 
-	successMsg := "VPC endpoint service configuration cleanup finished successfully (nothing to do)"
+	successMsg := "VPC endpoint service configuration cleanup finished successfully"
 	if len(serviceIds) == 0 {
-		awsNotifications <- successMsg
+		awsNotifications <- successMsg + " (nothing to do)"
 		return nil
 	}
 
