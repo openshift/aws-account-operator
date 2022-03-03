@@ -51,13 +51,23 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	reconciler := &ReconcileAccountClaim{
-		client:           controllerutils.NewClientWithMetricsOrDie(log, mgr, controllerName),
-		scheme:           mgr.GetScheme(),
-		awsClientBuilder: &awsclient.Builder{},
-	}
+	reconciler := NewReconcileAccountClaim(
+		controllerutils.NewClientWithMetricsOrDie(log, mgr, controllerName),
+		mgr.GetScheme(),
+		&awsclient.Builder{},
+	)
 
 	return controllerutils.NewReconcilerWithMetrics(reconciler, controllerName)
+}
+
+//go:generate mockgen -destination ./mock/cr-client.go -package mock sigs.k8s.io/controller-runtime/pkg/client Client
+// NewReconcileAccountClaim initializes ReconcileAccountClaim
+func NewReconcileAccountClaim(client client.Client, scheme *runtime.Scheme, awsClientBuilder awsclient.IBuilder) *ReconcileAccountClaim {
+	return &ReconcileAccountClaim{
+		client:           client,
+		scheme:           scheme,
+		awsClientBuilder: awsClientBuilder,
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler

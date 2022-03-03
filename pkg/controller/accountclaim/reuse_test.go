@@ -1,0 +1,165 @@
+package accountclaim_test
+
+import (
+	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/go-logr/logr"
+	"github.com/golang/mock/gomock"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	awsmock "github.com/openshift/aws-account-operator/pkg/awsclient/mock"
+	"github.com/openshift/aws-account-operator/pkg/controller/accountclaim"
+	mock "github.com/openshift/aws-account-operator/pkg/controller/accountclaim/mock"
+	"github.com/openshift/aws-account-operator/pkg/controller/testutils"
+	"k8s.io/client-go/kubernetes/scheme"
+	kclient "sigs.k8s.io/controller-runtime/pkg/client"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+)
+
+type cleanupfunc func(logr.Logger, awsclient.Client, chan string, chan string) error
+
+func runCleanupFunc(functorun cleanupfunc, client awsclient.Client) (string, string, error) {
+
+	notifications, errors := make(chan string), make(chan string)
+
+	msg := ""
+	errMsg := ""
+	go func() {
+		select {
+		case msg = <-notifications:
+
+		case errMsg = <-errors:
+
+		}
+	}()
+	err := functorun(testutils.NullLogger{}, client, notifications, errors)
+
+	return msg, errMsg, err
+}
+
+var _ = Describe("Account Reuse", func() {
+	var (
+		r                *accountclaim.ReconcileAccountClaim
+		ctrl             *gomock.Controller
+		awsClientBuilder *awsmock.Builder
+		mockAwsClient    *awsmock.MockClient
+		kubeClient       kclient.Client
+	)
+
+	BeforeEach(func() {
+		ctrl = gomock.NewController(GinkgoT())
+		awsClientBuilder = &awsmock.Builder{MockController: ctrl}
+		kubeClient = mock.NewMockClient(ctrl)
+
+		// Create the reconciler with a mocking AWS client IBuilder.
+		r = accountclaim.NewReconcileAccountClaim(
+			kubeClient,
+			scheme.Scheme,
+			awsClientBuilder,
+		)
+
+		mockAwsClient = awsmock.NewMockClient(ctrl)
+	})
+
+	AfterEach(func() {
+		ctrl.Finish()
+	})
+
+	Describe("CleanUpAwsAccountVpcEndpointServiceConfigurations", func() {
+		var (
+			describeOutput ec2.DescribeVpcEndpointServiceConfigurationsOutput
+			deleteOutput   ec2.DeleteVpcEndpointServiceConfigurationsOutput
+		)
+		Context("When no VPC Endpoint Service Configuration exists", func() {
+			BeforeEach(func() {
+				mockAwsClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(&describeOutput, nil)
+			})
+
+			It("Does nothing", func() {
+				notifications, errors, _ := runCleanupFunc(r.CleanUpAwsAccountVpcEndpointServiceConfigurations, mockAwsClient)
+				Expect(errors).To(Equal(""))
+				Expect(notifications).To(Equal("VPC endpoint service configuration cleanup finished successfully (nothing to do)"))
+			})
+		})
+
+		Context("When one VPC Endpoint Service Configuration exists", func() {
+			var (
+				serviceConfigId string
+				deleteInput     *ec2.DeleteVpcEndpointServiceConfigurationsInput
+			)
+			BeforeEach(func() {
+				serviceConfigId = "FakeID"
+				describeOutput = ec2.DescribeVpcEndpointServiceConfigurationsOutput{
+					ServiceConfigurations: []*ec2.ServiceConfiguration{
+						{
+							ServiceId: &serviceConfigId,
+						},
+					},
+				}
+				deleteOutput = ec2.DeleteVpcEndpointServiceConfigurationsOutput{}
+				mockAwsClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(&describeOutput, nil)
+				mockAwsClient.EXPECT().DeleteVpcEndpointServiceConfigurations(gomock.Any()).Do(func(input *ec2.DeleteVpcEndpointServiceConfigurationsInput) {
+					deleteInput = input
+				}).Return(&deleteOutput, nil)
+			})
+
+			It("Deletes the VPC Endpoint Service Configuration", func() {
+				notifications, errors, _ := runCleanupFunc(r.CleanUpAwsAccountVpcEndpointServiceConfigurations, mockAwsClient)
+
+				Expect(len(deleteInput.ServiceIds)).To(Equal(1))
+				Expect(*deleteInput.ServiceIds[0]).To(Equal(serviceConfigId))
+				Expect(errors).To(Equal(""))
+				Expect(notifications).To(Equal("VPC endpoint service configuration cleanup finished successfully"))
+			})
+		})
+
+		Context("When two VPC Endpoint Service Configuration exist", func() {
+			var (
+				serviceConfigId1 string
+				serviceConfigId2 string
+				deleteInput      *ec2.DeleteVpcEndpointServiceConfigurationsInput
+			)
+			BeforeEach(func() {
+				serviceConfigId1 = "FakeID"
+				serviceConfigId2 = "FakeID2"
+				describeOutput = ec2.DescribeVpcEndpointServiceConfigurationsOutput{
+					ServiceConfigurations: []*ec2.ServiceConfiguration{
+						{
+							ServiceId: &serviceConfigId1,
+						},
+						{
+							ServiceId: &serviceConfigId2,
+						},
+					},
+				}
+				deleteOutput = ec2.DeleteVpcEndpointServiceConfigurationsOutput{}
+				mockAwsClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(&describeOutput, nil)
+				mockAwsClient.EXPECT().DeleteVpcEndpointServiceConfigurations(gomock.Any()).Do(func(input *ec2.DeleteVpcEndpointServiceConfigurationsInput) {
+					deleteInput = input
+				}).Return(&deleteOutput, nil)
+			})
+
+			It("Deletes the VPC Endpoint Service Configuration", func() {
+				notifications, errors, _ := runCleanupFunc(r.CleanUpAwsAccountVpcEndpointServiceConfigurations, mockAwsClient)
+
+				Expect(len(deleteInput.ServiceIds)).To(Equal(2))
+				Expect(*deleteInput.ServiceIds[0]).To(Equal(serviceConfigId1))
+				Expect(*deleteInput.ServiceIds[1]).To(Equal(serviceConfigId2))
+				Expect(errors).To(Equal(""))
+				Expect(notifications).To(Equal("VPC endpoint service configuration cleanup finished successfully"))
+			})
+		})
+
+		Context("When Describe API call returns nil", func() {
+			BeforeEach(func() {
+				mockAwsClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(nil, nil)
+			})
+
+			It("Returns an error", func() {
+				notifications, errors, _ := runCleanupFunc(r.CleanUpAwsAccountVpcEndpointServiceConfigurations, mockAwsClient)
+				Expect(errors).To(Equal("Failed describing VPC endpoint service configurations"))
+				Expect(notifications).To(Equal(""))
+			})
+		})
+	})
+})
