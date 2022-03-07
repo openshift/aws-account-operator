@@ -2,6 +2,7 @@ package accountclaim_test
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/go-logr/logr"
@@ -22,11 +23,14 @@ type cleanupfunc func(logr.Logger, awsclient.Client, chan string, chan string) e
 
 func runCleanupFunc(functorun cleanupfunc, client awsclient.Client) (string, string, error) {
 
+	wg := sync.WaitGroup{}
 	notifications, errors := make(chan string), make(chan string)
 
 	msg := ""
 	errMsg := ""
 	go func() {
+		defer wg.Done()
+		wg.Add(1)
 		select {
 		case msg = <-notifications:
 
@@ -35,6 +39,7 @@ func runCleanupFunc(functorun cleanupfunc, client awsclient.Client) (string, str
 		}
 	}()
 	err := functorun(testutils.NullLogger{}, client, notifications, errors)
+	wg.Wait()
 
 	return msg, errMsg, err
 }
