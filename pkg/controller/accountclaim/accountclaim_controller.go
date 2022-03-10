@@ -306,14 +306,16 @@ func (r *ReconcileAccountClaim) handleAccountClaimDeletion(reqLogger logr.Logger
 			failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
 			if accountErr != nil {
 				reqLogger.Error(accountErr, "Failed to get claimed account")
-				return err
+				return errors.Wrap(err, "failed to get claimed account")
 			}
 			// Update account status and add "Reuse Failed" condition
 			accountErr = r.resetAccountSpecStatus(reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed")
 			if accountErr != nil {
 				reqLogger.Error(accountErr, "Failed updating account status for failed reuse")
-				return err
+				return errors.Wrap(err, "failed updating account status for failed reuse")
 			}
+
+			return err
 		}
 	}
 
