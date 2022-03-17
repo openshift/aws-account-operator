@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/servicequotas"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
+	"github.com/openshift/aws-account-operator/config"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
@@ -21,8 +22,11 @@ import (
 
 type regionInitializationError struct {
 	ErrorMsg string
-	Region 	 string
+	Region   string
 }
+
+var sampleCIDR = "10.0.0.0/16"
+var sampleVPCID = ""
 
 // InitializeSupportedRegions concurrently calls InitializeRegion to create instances in all supported regions
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
@@ -125,6 +129,30 @@ func (r *ReconcileAccount) InitializeRegion(
 		return nil
 	}
 
+	// If in fedramp, create vpc and set sampleVPCID value
+	if config.IsFedramp() {
+		// Attempt to clean the region from any hanging fedramp resources
+		fedrampCleaned, err := cleanFedrampInitializationResources(reqLogger, awsClient, account.Name, region)
+		if err != nil {
+			fedrampCleanedErr := fmt.Sprintf("Error while attempting to clean fedramp region: %v", err.Error())
+			ec2Errors <- regionInitializationError{ErrorMsg: fedrampCleanedErr, Region: region}
+			return err
+		}
+		if fedrampCleaned {
+			ec2Notifications <- fmt.Sprintf("Region %s was already innitialized", region)
+			return nil
+		}
+
+		vpcID, err := createVpc(reqLogger, awsClient, account, managedTags, customerTags)
+		if err != nil {
+			vpcErr := fmt.Sprintf("Error while attempting to create VPC: %s", vpcID)
+			controllerutils.LogAwsError(reqLogger, vpcErr, nil, err)
+			ec2Errors <- regionInitializationError{ErrorMsg: vpcErr, Region: region}
+			return err
+		}
+		sampleVPCID = vpcID
+	}
+
 	// If the quota is 0, there was an error and we cannot act on it
 	if vCPUQuota != 0 {
 		// Check if a request is necessary
@@ -168,22 +196,313 @@ func (r *ReconcileAccount) InitializeRegion(
 	}
 
 	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, instanceInfo, managedTags, customerTags)
-
 	if err != nil {
 		createErr := fmt.Sprintf("Unable to create instance in region: %s", region)
 		controllerutils.LogAwsError(reqLogger, createErr, nil, err)
 		// Notify Error channel that this region has errored and to move on
 		ec2Errors <- regionInitializationError{ErrorMsg: createErr, Region: region}
-
 		return err
 	}
 
 	successMsg := fmt.Sprintf("EC2 instance created and terminated successfully in region: %s", region)
 
+	// if vpcID exists then make sure we delete it
+	if sampleVPCID != "" {
+		err = deleteFedrampInitializationResources(reqLogger, awsClient, sampleVPCID)
+		if err != nil {
+			deleteResourcesErr := fmt.Sprintf("Unable to delete VPC with ID: %s", sampleVPCID)
+			controllerutils.LogAwsError(reqLogger, deleteResourcesErr, nil, err)
+			ec2Errors <- regionInitializationError{ErrorMsg: deleteResourcesErr, Region: region}
+			return err
+		}
+	}
+
 	// Notify Notifications channel that an instance has successfully been created and terminated and to move on
 	ec2Notifications <- successMsg
 
 	return nil
+}
+
+// createVpc creates a vpc and returns the VpcId
+func createVpc(reqLogger logr.Logger, client awsclient.Client, account *awsv1alpha1.Account, managedTags []awsclient.AWSTag, customTags []awsclient.AWSTag) (string, error) {
+	// Retain vpcID
+	var timeoutVpcID string
+	// Loop until VPC is created or timeout, double wait time until totalWait seconds
+	totalWait := controllerutils.WaitTime * 60
+	currentWait := 1
+	for totalWait > 0 {
+		currentWait = currentWait * 2
+		if currentWait > totalWait {
+			currentWait = totalWait
+		}
+		totalWait -= currentWait
+		time.Sleep(time.Duration(currentWait) * time.Second)
+		tags := awsclient.AWSTags.BuildTags(account, managedTags, customTags).GetEC2Tags()
+		input := &ec2.CreateVpcInput{
+			CidrBlock: aws.String(sampleCIDR),
+			TagSpecifications: []*ec2.TagSpecification{
+				{
+					ResourceType: &awsv1alpha1.VpcResourceType,
+					Tags:         tags,
+				},
+			},
+		}
+		result, vpcErr := client.CreateVpc(input)
+		if vpcErr != nil {
+			if aerr, ok := vpcErr.(awserr.Error); ok {
+				if *result.Vpc.VpcId != "" {
+					timeoutVpcID = *result.Vpc.VpcId
+				}
+				switch aerr.Code() {
+				case "PendingVerification", "OptInRequired":
+					continue
+				default:
+					vpcCreateFailed := fmt.Sprintf("Error while attempting to create VPC: %v", *result.Vpc.VpcId)
+					controllerutils.LogAwsError(reqLogger, vpcCreateFailed, vpcErr, vpcErr)
+					return timeoutVpcID, vpcErr
+				}
+			}
+			return timeoutVpcID, awsv1alpha1.ErrFailedAWSTypecast
+		}
+		// No error found, vpc running, return vpcID
+		return *result.Vpc.VpcId, nil
+	}
+	// Timeout occurred, return vpcID and timeout error
+	return timeoutVpcID, awsv1alpha1.ErrFailedToCreateVpc
+}
+
+// cleanFedrampSubnet removes all subnet in a given vpc
+func cleanFedrampSubnet(reqLogger logr.Logger, client awsclient.Client, vpcIDtoDelete string) error {
+	// Make dry run to certify required authentication
+	_, err := client.DescribeSubnets(&ec2.DescribeSubnetsInput{
+		DryRun: aws.Bool(true),
+	})
+
+	// If we receive AuthFailure, do not attempt to clean resources
+	if aerr, ok := err.(awserr.Error); ok {
+		if aerr.Code() == "AuthFailure" {
+			reqLogger.Error(err, "We do not have the correct authentication to clean or initialize region. Backing out gracefully")
+			return err
+		}
+	}
+
+	// Get a list of all subnet
+	result, err := client.DescribeSubnets(&ec2.DescribeSubnetsInput{
+		Filters: []*ec2.Filter{
+			{
+				Name: aws.String("vpc-id"),
+				Values: []*string{
+					aws.String(vpcIDtoDelete),
+				},
+			},
+			{
+				Name: aws.String("tag-key"),
+				Values: []*string{
+					aws.String(awsv1alpha1.ClusterAccountNameTagKey),
+				},
+			},
+			{
+				Name: aws.String("tag-key"),
+				Values: []*string{
+					aws.String(awsv1alpha1.ClusterNamespaceTagKey),
+				},
+			},
+			{
+				Name: aws.String("tag-key"),
+				Values: []*string{
+					aws.String(awsv1alpha1.ClusterClaimLinkTagKey),
+				},
+			},
+			{
+				Name: aws.String("tag-key"),
+				Values: []*string{
+					aws.String(awsv1alpha1.ClusterClaimLinkNamespaceTagKey),
+				},
+			},
+		},
+	})
+	if err != nil {
+		reqLogger.Error(err, "Error while describing subnets")
+		return err
+	}
+
+	for _, subnet := range result.Subnets {
+		reqLogger.Info("Delete hanging subnet", "subnet", subnet.SubnetId)
+		subnetErr := deleteSubnet(reqLogger, client, *subnet.SubnetId)
+		if subnetErr != nil {
+			subnetErrMsg := fmt.Sprintf("Error while attempting to delete subnet: %s", *subnet.SubnetId)
+			controllerutils.LogAwsError(reqLogger, subnetErrMsg, nil, subnetErr)
+			return awsv1alpha1.ErrFailedToDeleteSubnet
+		}
+	}
+	return nil
+}
+
+// deleteVpc deletes a vpc and returns err
+func deleteFedrampInitializationResources(reqLogger logr.Logger, client awsclient.Client, vpcIDtoDelete string) error {
+	subnetErr := cleanFedrampSubnet(reqLogger, client, vpcIDtoDelete)
+	if subnetErr != nil {
+		subnetErrMsg := fmt.Sprintf("Error while handling subnet deletion in vpc: %s", vpcIDtoDelete)
+		controllerutils.LogAwsError(reqLogger, subnetErrMsg, subnetErr, subnetErr)
+		return subnetErr
+	}
+
+	totalWait := controllerutils.WaitTime * 60
+	currentWait := 1
+	for totalWait > 0 {
+		currentWait = currentWait * 2
+		if currentWait > totalWait {
+			currentWait = totalWait
+		}
+		totalWait -= currentWait
+		time.Sleep(time.Duration(currentWait) * time.Second)
+
+		_, vpcErr := client.DeleteVpc(&ec2.DeleteVpcInput{
+			VpcId: aws.String(vpcIDtoDelete),
+		})
+		if vpcErr != nil {
+			if aerr, ok := vpcErr.(awserr.Error); ok {
+				switch aerr.Code() {
+				case "PendingVerification", "OptInRequired", "DependencyViolation":
+					continue
+				default:
+					vpcErrMsg := fmt.Sprintf("Error while attempting to delete VPC: %s", vpcIDtoDelete)
+					controllerutils.LogAwsError(reqLogger, vpcErrMsg, vpcErr, vpcErr)
+					return vpcErr
+				}
+			}
+			return awsv1alpha1.ErrFailedAWSTypecast
+		}
+		return nil
+	}
+	return awsv1alpha1.ErrFailedToDeleteVpc
+}
+
+// cleanFedrampInitializationResources removes all hanging fedramp resources
+func cleanFedrampInitializationResources(reqLogger logr.Logger, client awsclient.Client, accountName, region string) (bool, error) {
+	cleaned := false
+	// Make dry run to certify required authentication
+	_, err := client.DescribeVpcs(&ec2.DescribeVpcsInput{
+		DryRun: aws.Bool(true),
+	})
+
+	// If we receive AuthFailure, do not attempt to clean resources
+	if aerr, ok := err.(awserr.Error); ok {
+		if aerr.Code() == "AuthFailure" {
+			reqLogger.Error(err, fmt.Sprintf("We do not have the correct authentication to clean or initialize region: %s backing out gracefully", region))
+			return cleaned, err
+		}
+	}
+
+	// Get a list of all VPCs with appropriate tag
+	result, err := client.DescribeVpcs(&ec2.DescribeVpcsInput{
+		MaxResults: aws.Int64(5),
+		Filters: []*ec2.Filter{
+			{
+				Name: aws.String("tag-key"),
+				Values: []*string{
+					aws.String(awsv1alpha1.ClusterAccountNameTagKey),
+				},
+			},
+			{
+				Name: aws.String("tag-key"),
+				Values: []*string{
+					aws.String(awsv1alpha1.ClusterNamespaceTagKey),
+				},
+			},
+			{
+				Name: aws.String("tag-key"),
+				Values: []*string{
+					aws.String(awsv1alpha1.ClusterClaimLinkTagKey),
+				},
+			},
+			{
+				Name: aws.String("tag-key"),
+				Values: []*string{
+					aws.String(awsv1alpha1.ClusterClaimLinkNamespaceTagKey),
+				},
+			},
+		},
+	})
+	if err != nil {
+		reqLogger.Error(err, "Error while describing VPCs")
+		return cleaned, err
+	}
+
+	for _, vpc := range result.Vpcs {
+		cleaned = true
+		reqLogger.Info("Delete hanging resources", "vpc", vpc.VpcId, "account", accountName)
+		err = deleteFedrampInitializationResources(reqLogger, client, *vpc.VpcId)
+		if err != nil {
+			reqLogger.Error(err, "Error while attempting to delete fedramp initialization resources", "vpcID", *vpc.VpcId)
+			return false, err
+		}
+	}
+	return cleaned, nil
+}
+
+// createSubnet takes in a cirdBlock and vpcID and returns the subnetID
+func createSubnet(reqLogger logr.Logger, client awsclient.Client, account *awsv1alpha1.Account, managedTags []awsclient.AWSTag, customTags []awsclient.AWSTag, cirdBlock, vpcID string) (string, error) {
+	tags := awsclient.AWSTags.BuildTags(account, managedTags, customTags).GetEC2Tags()
+	input := &ec2.CreateSubnetInput{
+		CidrBlock: aws.String(cirdBlock),
+		VpcId:     aws.String(vpcID),
+		TagSpecifications: []*ec2.TagSpecification{
+			{
+				ResourceType: &awsv1alpha1.SubnetResourceType,
+				Tags:         tags,
+			},
+		},
+	}
+
+	result, subnetErr := client.CreateSubnet(input)
+	if subnetErr != nil {
+		if aerr, ok := subnetErr.(awserr.Error); ok {
+			switch aerr.Code() {
+			default:
+				subnetCreateFailed := fmt.Sprintf("Error while attempting to create subnet: %v", *result.Subnet.SubnetId)
+				controllerutils.LogAwsError(reqLogger, subnetCreateFailed, subnetErr, subnetErr)
+				return *result.Subnet.SubnetId, subnetErr
+			}
+		}
+		return *result.Subnet.SubnetId, awsv1alpha1.ErrFailedAWSTypecast
+	}
+	return *result.Subnet.SubnetId, nil
+}
+
+// deleteSubnet takes in subnetID and returns err
+func deleteSubnet(reqLogger logr.Logger, client awsclient.Client, subnetToDelete string) error {
+	totalWait := controllerutils.WaitTime * 60
+	currentWait := 1
+	for totalWait > 0 {
+		currentWait = currentWait * 2
+		if currentWait > totalWait {
+			currentWait = totalWait
+		}
+		totalWait -= currentWait
+		time.Sleep(time.Duration(currentWait) * time.Second)
+
+		_, subnetErr := client.DeleteSubnet(&ec2.DeleteSubnetInput{
+			SubnetId: aws.String(subnetToDelete),
+		})
+		if subnetErr != nil {
+			if aerr, ok := subnetErr.(awserr.Error); ok {
+				switch aerr.Code() {
+				case "PendingVerification", "OptInRequired", "DependencyViolation":
+					continue
+				default:
+					subnetDeleteErr := fmt.Sprintf("Error while attempting to delete subnet: %s", subnetToDelete)
+					controllerutils.LogAwsError(reqLogger, subnetDeleteErr, subnetErr, subnetErr)
+					return subnetErr
+				}
+			}
+			return awsv1alpha1.ErrFailedAWSTypecast
+		}
+		// No error found, subnet deleted, return nil
+		return nil
+	}
+	// Timeout occurred, return err
+	return awsv1alpha1.ErrFailedToDeleteSubnet
 }
 
 // BuildAndDestroyEC2Instances runs an ec2 instance and terminates it
@@ -269,7 +588,7 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 		time.Sleep(time.Duration(currentWait) * time.Second)
 		tags := awsclient.AWSTags.BuildTags(account, managedTags, customerTags).GetEC2Tags()
 		// Specify the details of the instance that you want to create.
-		runResult, runErr := client.RunInstances(&ec2.RunInstancesInput{
+		input := &ec2.RunInstancesInput{
 			ImageId:      aws.String(instanceInfo.Ami),
 			InstanceType: aws.String(instanceInfo.InstanceType),
 			MinCount:     aws.Int64(1),
@@ -284,7 +603,18 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 					Tags:         tags,
 				},
 			},
-		})
+		}
+
+		// If fedramp, create subnet and set value for RunInstancesInput
+		if config.IsFedramp() {
+			subnetID, err := createSubnet(reqLogger, client, account, managedTags, customerTags, sampleCIDR, sampleVPCID)
+			if err != nil {
+				subnetErr := fmt.Sprintf("Error while trying to create subnet: %s", subnetID)
+				controllerutils.LogAwsError(reqLogger, subnetErr, nil, err)
+			}
+			input.SubnetId = aws.String(subnetID)
+		}
+		runResult, runErr := client.RunInstances(input)
 
 		// Return on unexpected errors:
 		if runErr != nil {

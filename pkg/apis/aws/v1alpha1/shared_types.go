@@ -74,6 +74,18 @@ var ErrInvalidToken = errors.New("InvalidClientTokenId")
 // ErrAccessDenied indicates an AWS error from an API call
 var ErrAccessDenied = errors.New("AuthorizationError")
 
+// ErrFailedToCreateVpc indicates that there was a failure while trying to create a VPC
+var ErrFailedToCreateVpc = errors.New("FailedToCreateVpc")
+
+// ErrFailedToDeleteVpc indicates that there was a failure while trying to delete a VPC
+var ErrFailedToDeleteVpc = errors.New("FailedToDeleteVpc")
+
+// ErrFailedToCreateSubnet indicates that there was a failure while trying to create subnet
+var ErrFailedToCreateSubnet = errors.New("FailedToCreateSubnet")
+
+// ErrFailedToDeleteSubnet indicates that there was a failure while trying to delete subnet
+var ErrFailedToDeleteSubnet = errors.New("FailedToDeleteSubnet")
+
 // Shared variables
 
 // UIDLabel is the string for the uid label on AWS Federated Account Access CRs
@@ -105,6 +117,12 @@ var InstanceResourceType = "instance"
 
 // VolumeResourceType is the resource type used when building Volume tags
 var VolumeResourceType = "volume"
+
+// VpcResourceType is the resource type used when building Vpc tags
+var VpcResourceType = "vpc"
+
+// SubnetResourceType is the resource type used when building Subnet tags
+var SubnetResourceType = "subnet"
 
 // DefaultConfigMap holds the expected name for the operator's ConfigMap
 var DefaultConfigMap = "aws-account-operator-configmap"
