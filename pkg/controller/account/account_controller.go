@@ -344,11 +344,6 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 	}
 	regionAMIs := processConfigMapRegions(stringRegions)
 
-	awsAssumedRoleClient, creds, err := r.handleCreateAdminAccessRole(reqLogger, currentAcctInstance, awsSetupClient)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
 	// Account init for both BYOC and Non-BYOC
 	if currentAcctInstance.ReadyForInitialization() {
 		reqLogger.Info("initializing account", "awsAccountID", currentAcctInstance.Spec.AwsAccountID)
@@ -397,6 +392,11 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{Requeue: true}, r.Client.Update(context.TODO(), currentAcctInstance)
 		}
 
+		awsAssumedRoleClient, creds, err := r.handleCreateAdminAccessRole(reqLogger, currentAcctInstance, awsSetupClient)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
 		// Use the same ID applied to the account name for IAM usernames
 		iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
 		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
@@ -431,13 +431,27 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 	if currentAcctInstance.IsReady() {
 
+		roleToAssume := getAssumeRole(currentAcctInstance)
+		awsClient, _, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
+		if err != nil {
+			reqLogger.Error(err, "failed building BYOC client from assume_role")
+			// We don't want to error here as erroring will requeue and we will end in an
+			// infinite loop.  So we just log the error and exit.
+			// TODO maybe there's a better way to handle this?
+			return reconcile.Result{}, nil
+		}
+
 		// Check that secret is valid and reheal it if not
 		iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
 
 		reqLogger.Info("probing account secret")
-		err := r.ProbeSecret(reqLogger, currentAcctInstance, awsAssumedRoleClient, iamUserUHC, request.Namespace)
+		err = r.ProbeSecret(reqLogger, currentAcctInstance, awsClient, iamUserUHC, request.Namespace)
 		if err != nil {
-			return reconcile.Result{}, err
+			reqLogger.Error(err, "failed to probe secret")
+			return reconcile.Result{}, nil
+			// We don't want to error here as erroring will requeue and we will end in an
+			// infinite loop.  So we just log the error and exit.
+			// TODO maybe there's a better way to handle this?
 		}
 	}
 
