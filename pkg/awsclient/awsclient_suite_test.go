@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestAccount(t *testing.T) {
+func TestAwsclient(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "awsclient Suite")
 }
