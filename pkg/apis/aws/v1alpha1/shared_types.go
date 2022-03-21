@@ -94,6 +94,10 @@ var ClusterClaimLinkTagKey = "clusterClaimLink"
 // ClusterClaimLinkNamespaceTagKey is the AWS key name for cluster claim namespace
 var ClusterClaimLinkNamespaceTagKey = "clusterClaimLinkNamespace"
 
+// Used to name the EC2 instance we spin up when initializing an AWS region
+var EC2InstanceNameTagKey = "Name"
+var EC2InstanceNameTagValue = "red-hat-region-init"
+
 // IAMUserIDLabel label key for IAM user suffix
 var IAMUserIDLabel = "iamUserId"
 
