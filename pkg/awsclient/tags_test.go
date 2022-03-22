@@ -37,12 +37,12 @@ var _ = Describe("AWS Resource Tag Builder", func() {
 			}
 			customTags = []AWSTag{
 				{
-					Key:   "managedTagKey1",
-					Value: "managedTagValue1",
+					Key:   "customTagKey1",
+					Value: "customTagValue1",
 				},
 				{
-					Key:   "managedTagKey2",
-					Value: "managedTagValue2",
+					Key:   "customTagKey2",
+					Value: "customTagValue2",
 				},
 			}
 			tagBuilder = AWSTags.BuildTags(&account, managedTags, customTags)
