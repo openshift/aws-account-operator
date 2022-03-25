@@ -44,7 +44,7 @@ func (t *AWSAccountOperatorTags) GetEC2Tags() []*ec2.Tag {
 	}
 
 	//make sure the ec2 instance has a descriptive name to avoid customer confusion
-	tags = append(tags, &ec2.Tag{Key: aws.String("Name"), Value: aws.String("red-hat-region-init")})
+	tags = append(tags, &ec2.Tag{Key: aws.String(awsv1alpha1.EC2InstanceNameTagKey), Value: aws.String(awsv1alpha1.EC2InstanceNameTagValue)})
 
 	return tags
 }
