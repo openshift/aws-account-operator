@@ -29,15 +29,15 @@ parameters:
 - name: AWS_MANAGED_TAGS
   required: false
 - name: MAXCONCURRENTRECONCILES_ACCOUNT
-  value: 1
+  value: "1"
 - name: MAXCONCURRENTRECONCILES_ACCOUNTCLAIM
-  value: 1
+  value: "1"
 - name: MAXCONCURRENTRECONCILES_ACCOUNTPOOL
-  value: 1
+  value: "1"
 - name: MAXCONCURRENTRECONCILES_AWSFEDERATEDACCOUNTACCESS
-  value: 1
+  value: "1"
 - name: MAXCONCURRENTRECONCILES_AWSFEDERATEDROLE
-  value: 1
+  value: "1"
 - name: FEDRAMP
   required: false
   value: "false"
