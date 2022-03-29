@@ -15,7 +15,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	kclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
