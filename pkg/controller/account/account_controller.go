@@ -23,7 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
+
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -104,7 +104,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Create a new controller
-	c, err := controller.New("account-controller", mgr, controller.Options{Reconciler: r})
+	c, err := utils.NewControllerWithMaxReconciles(log, controllerName, mgr, r)
 	if err != nil {
 		return err
 	}
@@ -428,6 +428,33 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 			return reconcile.Result{}, err
 		}
 	}
+
+	if currentAcctInstance.IsReady() {
+
+		roleToAssume := getAssumeRole(currentAcctInstance)
+		awsClient, _, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
+		if err != nil {
+			reqLogger.Error(err, "failed building BYOC client from assume_role")
+			// We don't want to error here as erroring will requeue and we will end in an
+			// infinite loop.  So we just log the error and exit.
+			// TODO maybe there's a better way to handle this?
+			return reconcile.Result{}, nil
+		}
+
+		// Check that secret is valid and reheal it if not
+		iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
+
+		reqLogger.Info("probing account secret")
+		err = r.ProbeSecret(reqLogger, currentAcctInstance, awsClient, iamUserUHC, request.Namespace)
+		if err != nil {
+			reqLogger.Error(err, "failed to probe secret")
+			return reconcile.Result{}, nil
+			// We don't want to error here as erroring will requeue and we will end in an
+			// infinite loop.  So we just log the error and exit.
+			// TODO maybe there's a better way to handle this?
+		}
+	}
+
 	return reconcile.Result{}, nil
 }
 

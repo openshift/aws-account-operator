@@ -28,6 +28,16 @@ parameters:
   required: true
 - name: AWS_MANAGED_TAGS
   required: false
+- name: MAXCONCURRENTRECONCILES_ACCOUNT
+  value: 1
+- name: MAXCONCURRENTRECONCILES_ACCOUNTCLAIM
+  value: 1
+- name: MAXCONCURRENTRECONCILES_ACCOUNTPOOL
+  value: 1
+- name: MAXCONCURRENTRECONCILES_AWSFEDERATEDACCOUNTACCESS
+  value: 1
+- name: MAXCONCURRENTRECONCILES_AWSFEDERATEDROLE
+  value: 1
 - name: FEDRAMP
   required: false
   value: "false"
@@ -74,6 +84,11 @@ objects:
     support-jump-role: ${SUPPORT_JUMP_ROLE}
     shard-name: ${SHARD_NAME}
     aws-managed-tags: "${AWS_MANAGED_TAGS}"
+    MaxConcurrentReconciles.account: "${MAXCONCURRENTRECONCILES_ACCOUNT}"
+    MaxConcurrentReconciles.accountclaim: "${MAXCONCURRENTRECONCILES_ACCOUNTCLAIM}"
+    MaxConcurrentReconciles.accountpool: "${MAXCONCURRENTRECONCILES_ACCOUNTPOOL}"
+    MaxConcurrentReconciles.awsfederatedaccountaccess: "${MAXCONCURRENTRECONCILES_AWSFEDERATEDACCOUNTACCESS}"
+    MaxConcurrentReconciles.awsfederatedrole: "${MAXCONCURRENTRECONCILES_AWSFEDERATEDROLE}"
     fedramp: "${FEDRAMP}"
     regions: |
       us-east-1:ami-000db10762d0c4c05:t2.micro

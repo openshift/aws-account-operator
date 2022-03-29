@@ -118,6 +118,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Define a kubeClient for any processes that need to run during operator startup or independent routines to use
+	// We should avoid using this kubeClient except for when necessary and utilize the operator-sdk provided client as much as possible.
+	// The operator-sdk kube client provides a level of caching that we don't get with building our own this way.
+	kubeClient, err := client.New(cfg, client.Options{})
+	if err != nil {
+		log.Error(err, "Failed to create a kubernetes client")
+		os.Exit(1)
+	}
+
+	errors := utils.InitControllerMaxReconciles(kubeClient)
+	if len(errors) > 0 {
+		log.Info("There was at least one error initializing controller max reconcile values.")
+		for _, err := range errors {
+			log.Error(err, "")
+		}
+	}
+
 	log.Info("Registering Components.")
 
 	// Setup Scheme for all resources
@@ -170,13 +187,6 @@ func main() {
 	// to stop work. This channel can also be used to signal routines to complete any cleanup
 	// work
 	stopCh := signals.SetupSignalHandler()
-
-	// Define a kubeClient for any processes that need to run during operator startup or independent routines to use
-	kubeClient, err := client.New(cfg, client.Options{})
-	if err != nil {
-		log.Error(err, "Failed to create a kubernetes client")
-		os.Exit(1)
-	}
 
 	// Initialize our ConfigMap with default values if necessary.
 	initOperatorConfigMapVars(kubeClient)
