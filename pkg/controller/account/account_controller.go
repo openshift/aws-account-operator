@@ -311,7 +311,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 				if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
 					// fedramp clusters are all CCS, so the account limit is irrelevant there
 					if !config.IsFedramp() {
-						reqLogger.Error(awsv1alpha1.ErrAwsAccountLimitExceeded, "AWS Account limit reached")
+						reqLogger.Info("AWS Account limit reached. This does not always indicate a problem, it's a limit we enforce in the configmap to prevent runaway account creation")
 						// We don't expect the limit to change very frequently, so wait a while before requeueing to avoid hot lopping.
 						return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(5) * time.Minute}, nil
 					}
