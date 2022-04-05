@@ -603,6 +603,16 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 					Tags:         tags,
 				},
 			},
+			// We specify block devices mainly to enable EBS encryption
+			BlockDeviceMappings: []*ec2.BlockDeviceMapping{
+				{
+					DeviceName: aws.String("/dev/xvda"),
+					Ebs: &ec2.EbsBlockDevice{
+						DeleteOnTermination: aws.Bool(true),
+						Encrypted:           aws.Bool(true),
+					},
+				},
+			},
 		}
 
 		// If fedramp, create subnet and set value for RunInstancesInput
