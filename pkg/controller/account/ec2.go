@@ -606,8 +606,9 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 			// We specify block devices mainly to enable EBS encryption
 			BlockDeviceMappings: []*ec2.BlockDeviceMapping{
 				{
-					DeviceName: aws.String("/dev/xvda"),
+					DeviceName: aws.String("/dev/sda1"),
 					Ebs: &ec2.EbsBlockDevice{
+						VolumeSize:          aws.Int64(10),
 						DeleteOnTermination: aws.Bool(true),
 						Encrypted:           aws.Bool(true),
 					},
