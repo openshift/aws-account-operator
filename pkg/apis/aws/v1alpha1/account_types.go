@@ -90,6 +90,9 @@ const (
 	AccountPending AccountConditionType = "Pending"
 	// AccountPendingVerification is set when account creation is pending
 	AccountPendingVerification AccountConditionType = "PendingVerification"
+	// FIXME: Have to call this different than "AccountClaimed", as that clashes
+	// with the AccountClaimConditionType
+	AccountIsClaimed AccountConditionType = "Claimed"
 	// AccountReused is set when account is reused
 	AccountReused AccountConditionType = "Reused"
 	// AccountClientError is set when there was an issue getting a client
