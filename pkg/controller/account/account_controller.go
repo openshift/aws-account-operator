@@ -71,6 +71,9 @@ const (
 	iamUserNameUHC               = "osdManagedAdmin"
 
 	controllerName = "account"
+	// probeSecretEnabled
+	// Currently disabled because it significantly increases reconcile time in production
+	probeSecretEnabled = false
 )
 
 // Add creates a new Account Controller and adds it to the Manager. The Manager will set fields on the Controller
@@ -429,7 +432,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 		}
 	}
 
-	if currentAcctInstance.IsReady() {
+	if currentAcctInstance.IsReady() && probeSecretEnabled {
 
 		roleToAssume := getAssumeRole(currentAcctInstance)
 		awsClient, _, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
