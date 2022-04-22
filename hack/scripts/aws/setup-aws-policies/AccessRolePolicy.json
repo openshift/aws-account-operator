@@ -1,0 +1,18 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:TerminateInstances",
+                "ec2:DeleteTags",
+                "ec2:CreateTags",
+                "ec2:DescribeRegions",
+                "ec2:RunInstances",
+                "ec2:DescribeInstanceStatus"
+            ],
+            "Resource": "*"
+        }
+    ]
+}

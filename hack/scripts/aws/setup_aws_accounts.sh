@@ -141,9 +141,12 @@ do
   ((j=2**i))
   echo "Access role Arn not ready yet."
   echo "sleeping $j"
-  sleep $j
+  sleep "$j"
   ((i=i+1))
 done
+
+POLICY_ARN=$(aws iam create-policy --policy-name "minimum-permissions-access-role${ID}" --policy-document "file://${PWD}/setup-aws-policies/AccessRolePolicy.json" | jq -r ".Policy.Arn")
+aws iam attach-role-policy --policy-arn "${POLICY_ARN}" --role-name "AccessRole${ID}"
 
 STS_ROLE_ARN=$(echo "${STS_ROLE_ARN}" | jq -r '.Role.Arn')
 
