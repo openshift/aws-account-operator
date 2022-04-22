@@ -3,7 +3,7 @@
 command -v aws >/dev/null 2>&1 || { echo >&2 "Script requires aws but it's not installed.  Aborting."; exit 1; }
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-cd $DIR
+cd "$DIR" || exit
 
 usage() {
     cat <<EOF
@@ -131,7 +131,7 @@ PREPARED_JSON=$(jq --arg JUMP_ROLE_ARN "${JUMP_ROLE_ARN}" '.Statement[0].Princip
 
 max_retries=5
 i=1
-while ! STS_ROLE_ARN=$(echo "$PREPARED_JSON" | aws iam create-role --role-name AccessRole${ID} --assume-role-policy-document file:///dev/stdin --output json)
+while ! STS_ROLE_ARN=$(echo "$PREPARED_JSON" | aws iam create-role --role-name "AccessRole${ID}" --assume-role-policy-document file:///dev/stdin --output json)
 do
   if [[ $i > $max_retries ]]
   then
