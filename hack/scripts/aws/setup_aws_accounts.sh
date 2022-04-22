@@ -13,6 +13,7 @@ usage() {
     -b      Assigned AWS Account ID 2
     -u      AWS IAM user name
     -n      Append optional ID to AWS resources created (useful if encountering errors)
+    -x      Set debug output for bash
 EOF
 }
 
@@ -24,7 +25,7 @@ if ( ! getopts ":a:b:u:n:" opt); then
 fi
 
 
-while getopts ":a:b:u:n:" opt; do
+while getopts ":a:b:u:n:x:" opt; do
     case $opt in
         a)
             AWS_ACCOUNT_ID_1="$OPTARG"
@@ -37,6 +38,9 @@ while getopts ":a:b:u:n:" opt; do
             ;;
         n)
             ID="$OPTARG"
+            ;;
+        x)
+            set -x
             ;;
         \?)
             echo "Invalid option: -$OPTARG" >&2
