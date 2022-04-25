@@ -149,6 +149,7 @@ objects:
             - "ec2:CreateVpnConnectionRoute"
             - "ec2:CreateVpnGateway"
             - "ec2:CreateVpcEndpointServiceConfiguration"
+            - "ec2:ModifyVpcEndpointServicePermissions"
             - "ec2:DeleteVpcPeeringConnection"
             - "ec2:DeleteVpnConnection"
             - "ec2:DeleteVpnConnectionRoute"
