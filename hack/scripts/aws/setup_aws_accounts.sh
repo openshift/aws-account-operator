@@ -3,7 +3,7 @@
 command -v aws >/dev/null 2>&1 || { echo >&2 "Script requires aws but it's not installed.  Aborting."; exit 1; }
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-cd $DIR
+cd "$DIR" || exit
 
 usage() {
     cat <<EOF
@@ -13,6 +13,7 @@ usage() {
     -b      Assigned AWS Account ID 2
     -u      AWS IAM user name
     -n      Append optional ID to AWS resources created (useful if encountering errors)
+    -x      Set debug output for bash
 EOF
 }
 
@@ -24,7 +25,7 @@ if ( ! getopts ":a:b:u:n:" opt); then
 fi
 
 
-while getopts ":a:b:u:n:" opt; do
+while getopts ":a:b:u:n:x:" opt; do
     case $opt in
         a)
             AWS_ACCOUNT_ID_1="$OPTARG"
@@ -37,6 +38,9 @@ while getopts ":a:b:u:n:" opt; do
             ;;
         n)
             ID="$OPTARG"
+            ;;
+        x)
+            set -x
             ;;
         \?)
             echo "Invalid option: -$OPTARG" >&2
@@ -131,7 +135,7 @@ PREPARED_JSON=$(jq --arg JUMP_ROLE_ARN "${JUMP_ROLE_ARN}" '.Statement[0].Princip
 
 max_retries=5
 i=1
-while ! STS_ROLE_ARN=$(echo "$PREPARED_JSON" | aws iam create-role --role-name AccessRole${ID} --assume-role-policy-document file:///dev/stdin --output json)
+while ! STS_ROLE_ARN=$(echo "$PREPARED_JSON" | aws iam create-role --role-name "AccessRole${ID}" --assume-role-policy-document file:///dev/stdin --output json)
 do
   if [[ $i > $max_retries ]]
   then
@@ -141,9 +145,12 @@ do
   ((j=2**i))
   echo "Access role Arn not ready yet."
   echo "sleeping $j"
-  sleep $j
+  sleep "$j"
   ((i=i+1))
 done
+
+POLICY_ARN=$(aws iam create-policy --policy-name "minimum-permissions-access-role${ID}" --policy-document "file://${PWD}/setup-aws-policies/AccessRolePolicy.json" | jq -r ".Policy.Arn")
+aws iam attach-role-policy --policy-arn "${POLICY_ARN}" --role-name "AccessRole${ID}"
 
 STS_ROLE_ARN=$(echo "${STS_ROLE_ARN}" | jq -r '.Role.Arn')
 
