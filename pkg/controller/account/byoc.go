@@ -35,8 +35,8 @@ func newBYOCAccount(currentAcctInstance *awsv1alpha1.Account) bool {
 func claimBYOCAccount(r *ReconcileAccount, reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) error {
 	if !currentAcctInstance.IsClaimed() {
 		reqLogger.Info("Marking BYOC account claimed")
-		currentAcctInstance.Status.Claimed = true
-		return r.statusUpdate(currentAcctInstance)
+		err := ClaimAccount(r, currentAcctInstance)
+		return err
 	}
 
 	return nil

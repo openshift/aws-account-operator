@@ -1,6 +1,7 @@
 package account
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -15,14 +16,18 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/controller/testutils"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 )
 
 type testAccountBuilder struct {
@@ -1188,11 +1193,39 @@ var _ = Describe("Account Controller", func() {
 		accountName   string
 		accountEmail  string
 		ctrl          *gomock.Controller
+		account       *awsv1alpha1.Account
+		configMap     *v1.ConfigMap
+		r             *ReconcileAccount
+		req           reconcile.Request
 	)
+
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		fmt.Printf("failed adding apis to scheme in account controller test")
+	}
 
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
 		mockAWSClient = mock.NewMockClient(ctrl)
+		configMap = &v1.ConfigMap{
+			TypeMeta: metav1.TypeMeta{},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        awsv1alpha1.DefaultConfigMap,
+				Namespace:   awsv1alpha1.AccountCrNamespace,
+				Labels:      map[string]string{},
+				Annotations: map[string]string{},
+			},
+			Data: map[string]string{
+				"regions": "us-east-1:ami-000db10762d0c4c05:t2.micro",
+			},
+		}
+		r = &ReconcileAccount{
+			scheme: scheme.Scheme,
+			awsClientBuilder: &mock.Builder{
+				MockController: ctrl,
+			},
+			shardName: "hivename",
+		}
 	})
 
 	AfterEach(func() {
@@ -1297,5 +1330,72 @@ var _ = Describe("Account Controller", func() {
 			Expect(createAccountOutput).To(Equal(describeCreateAccountStatusOutput))
 			Expect(err).Should(BeNil())
 		})
+	})
+
+	Context("Testing Reconciliation", func() {
+		It("A ready account being claimed adds a claimed status condition", func() {
+			account = &newTestAccountBuilder().WithState(AccountReady).WithClaimLink("claimedaccount").acct
+
+			r.Client = fake.NewFakeClient([]runtime.Object{account, configMap}...)
+
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: account.Name,
+					Name:      account.Namespace,
+				},
+			}
+
+			_, err := r.Reconcile(req)
+			Expect(err).ToNot(HaveOccurred())
+
+			ac := &awsv1alpha1.Account{}
+			err = r.Client.Get(context.TODO(), types.NamespacedName{Name: account.Name, Namespace: account.Namespace}, ac)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ac.Status.Claimed).To(BeTrue())
+			Expect(len(ac.Status.Conditions)).To(Equal(1))
+			Expect(ac.Status.Conditions).Should(ContainElement(MatchFields(IgnoreExtras, Fields{
+				"Type": Equal(awsv1alpha1.AccountIsClaimed),
+			})))
+		})
+
+		It("A ready BYOC account being claimed adds a claimed status condition", func() {
+			claimName := fmt.Sprintf("%s-%s", accountName, "claim")
+			accountClaim := &awsv1alpha1.AccountClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      claimName,
+					Namespace: awsv1alpha1.AccountCrNamespace,
+				},
+				Spec: awsv1alpha1.AccountClaimSpec{
+					LegalEntity: awsv1alpha1.LegalEntity{
+						Name: "test-legal",
+						ID:   "test-legal-123",
+					},
+					AccountLink: "claimedaccount",
+				},
+			}
+			account = &newTestAccountBuilder().BYOC(true).WithState(AccountReady).WithClaimLink(claimName).acct
+
+			r.Client = fake.NewFakeClient([]runtime.Object{account, accountClaim, configMap}...)
+
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: account.Name,
+					Name:      account.Namespace,
+				},
+			}
+
+			_, err := r.Reconcile(req)
+			Expect(err).ToNot(HaveOccurred())
+
+			ac := &awsv1alpha1.Account{}
+			err = r.Client.Get(context.TODO(), types.NamespacedName{Name: account.Name, Namespace: account.Namespace}, ac)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ac.Status.Claimed).To(BeTrue())
+			Expect(ac.Spec.BYOC).To(BeTrue())
+			Expect(ac.Status.Conditions).Should(ContainElement(MatchFields(IgnoreExtras, Fields{
+				"Type": Equal(awsv1alpha1.AccountIsClaimed),
+			})))
+		})
+
 	})
 })

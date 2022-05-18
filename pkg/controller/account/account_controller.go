@@ -286,8 +286,7 @@ func (r *ReconcileAccount) Reconcile(request reconcile.Request) (reconcile.Resul
 
 		// Update account Status.Claimed to true if the account is ready and the claim link is not empty
 		if currentAcctInstance.IsReadyUnclaimedAndHasClaimLink() {
-			currentAcctInstance.Status.Claimed = true
-			return reconcile.Result{}, r.statusUpdate(currentAcctInstance)
+			return reconcile.Result{}, ClaimAccount(r, currentAcctInstance)
 		}
 
 		// see if in creating for longer than default wait time
@@ -979,6 +978,25 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 	}
 
 	return accountStatus, nil
+}
+
+func ClaimAccount(r *ReconcileAccount, currentAcctInstance *awsv1alpha1.Account) error {
+	currentAcctInstance.Status.Claimed = true
+	msg := fmt.Sprintf("Account %s was claimed: %s (Namespace: %s)",
+		currentAcctInstance.Name,
+		currentAcctInstance.Spec.ClaimLink,
+		currentAcctInstance.Spec.ClaimLinkNamespace)
+	currentAcctInstance.Status.Conditions = utils.SetAccountCondition(
+		currentAcctInstance.Status.Conditions,
+		awsv1alpha1.AccountConditionType(awsv1alpha1.AccountIsClaimed),
+		// Switch the Condition off
+		corev1.ConditionTrue,
+		AccountInitializingRegions,
+		msg,
+		// Make sure the existing condition is updated
+		utils.UpdateConditionAlways,
+		currentAcctInstance.Spec.BYOC)
+	return r.statusUpdate(currentAcctInstance)
 }
 
 func formatAccountEmail(name string) string {
