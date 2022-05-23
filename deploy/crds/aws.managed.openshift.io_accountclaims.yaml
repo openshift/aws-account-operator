@@ -100,6 +100,8 @@ spec:
                 type: object
               customTags:
                 type: string
+              kmsKeyId:
+                type: string
               legalEntity:
                 description: LegalEntity contains Red Hat specific identifiers to
                   the original creator the clusters
