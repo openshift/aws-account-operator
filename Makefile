@@ -1,3 +1,4 @@
+FIPS_ENABLED=true
 SHELL := /usr/bin/env bash
 
 OPERATOR_DOCKERFILE = ./build/Dockerfile
