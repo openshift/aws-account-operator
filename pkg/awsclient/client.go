@@ -49,8 +49,8 @@ import (
 )
 
 const (
-	awsCredsSecretIDKey     = "aws_access_key_id"
-	awsCredsSecretAccessKey = "aws_secret_access_key"
+	awsCredsSecretIDKey     = "aws_access_key_id"     // #nosec G101 -- This is a false positive
+	awsCredsSecretAccessKey = "aws_secret_access_key" // #nosec G101 -- This is a false positive
 )
 
 //go:generate mockgen -source=./client.go -destination=./mock/zz_generated.mock_client.go -package=mock

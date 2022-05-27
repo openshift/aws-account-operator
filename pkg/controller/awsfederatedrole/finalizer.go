@@ -50,11 +50,11 @@ func (r *ReconcileAWSFederatedRole) finalizeFederateRole(reqLogger logr.Logger, 
 		return err
 	}
 
-	for _, item := range awsFederatedAccountAccessList.Items {
-		if isFederatedRoleReferenced(&item, awsFederatedRole) {
-			deleteAccessErr := r.client.Delete(context.TODO(), &item)
+	for i := range awsFederatedAccountAccessList.Items {
+		if isFederatedRoleReferenced(&awsFederatedAccountAccessList.Items[i], awsFederatedRole) {
+			deleteAccessErr := r.client.Delete(context.TODO(), &awsFederatedAccountAccessList.Items[i])
 			if deleteAccessErr != nil {
-				reqLogger.Error(deleteAccessErr, fmt.Sprintf("unable to delete AWS Federated Account Accesses %s\n", item.Name))
+				reqLogger.Error(deleteAccessErr, fmt.Sprintf("unable to delete AWS Federated Account Accesses %s\n", awsFederatedAccountAccessList.Items[i].Name))
 				return deleteAccessErr
 			}
 		}
