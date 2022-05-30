@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Template
+parameters:
+- name: NAME
+- name: NAMESPACE
+- name: KMS_ACCOUNT_ID
+- name: KMS_KEY_ID
+- name: ACCOUNT_CR_NAME
+metadata:
+  name: test-aws-kms-accountclaim-template
+objects:
+- apiVersion: aws.managed.openshift.io/v1alpha1
+  kind: AccountClaim
+  metadata:
+    name: ${NAME}
+    namespace: ${NAMESPACE}
+  spec:
+    accountLink: "${ACCOUNT_CR_NAME}"
+    aws:
+      regions:
+      - name: us-east-1
+    awsCredentialSecret:
+      name: aws
+      namespace: ${NAMESPACE}
+    legalEntity:
+      id: "111111"
+      name: ${NAME}
+    customTags: |
+      test=true
+      my-cluster=yes
+      kms-test=true
+    kmsKeyId: ${KMS_KEY_ID}
