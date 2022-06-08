@@ -34,6 +34,7 @@ func InitControllerMaxReconciles(kubeClient client.Client) []error {
 		"account",
 		"accountclaim",
 		"accountpool",
+		"accountvalidation",
 		"awsfederatedaccountaccess",
 		"awsfederatedrole",
 	}

@@ -6,10 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
@@ -218,4 +221,25 @@ func GetOperatorConfigMap(kubeClient client.Client) (*corev1.ConfigMap, error) {
 		types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace,
 			Name: awsv1alpha1.DefaultConfigMap}, configMap)
 	return configMap, err
+}
+
+func GetEnvironmentBool(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	cast, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return cast
+}
+
+func DoNotRequeue() (reconcile.Result, error) {
+	return reconcile.Result{Requeue: false}, nil
+}
+
+func RequeueWithError(err error) (reconcile.Result, error) {
+	return reconcile.Result{}, err
+}
+
+func RequeueAfter(after time.Duration) (reconcile.Result, error) {
+	return reconcile.Result{Requeue: true, RequeueAfter: after}, nil
 }
