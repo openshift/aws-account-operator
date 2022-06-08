@@ -32,7 +32,7 @@ const (
 
 var (
 	log           = logf.Log.WithName("controller_awsfederatedrole")
-	awsSecretName = "aws-account-operator-credentials"
+	awsSecretName = "aws-account-operator-credentials" //  #nosec G101 -- This is a false positive
 
 	errInvalidManagedPolicy = goerr.New("InvalidManagedPolicy")
 )

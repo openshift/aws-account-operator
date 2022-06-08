@@ -43,7 +43,7 @@ const (
 	SREAssumeRole = "RH-SREP-CCS-Access"
 
 	// AwsSecretName is a constant for the name of the Kubernetes secret that holds the AWS Credentials
-	AwsSecretName = "aws-account-operator-credentials"
+	AwsSecretName = "aws-account-operator-credentials" // #nosec G101 -- This is a false positive
 )
 
 // operatorStartTime is (roughly) the time at which the operator came up.

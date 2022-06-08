@@ -32,8 +32,8 @@ const (
 	// AccountUnclaimed indicates the account has not been claimed in the accountClaim status
 	AccountUnclaimed = "AccountUnclaimed"
 
-	awsCredsAccessKeyID     = "aws_access_key_id"
-	awsCredsSecretAccessKey = "aws_secret_access_key"
+	awsCredsAccessKeyID     = "aws_access_key_id"     // #nosec G101 -- This is a false positive
+	awsCredsSecretAccessKey = "aws_secret_access_key" // #nosec G101 -- This is a false positive
 	accountClaimFinalizer   = "finalizer.aws.managed.openshift.io"
 	byocSecretFinalizer     = accountClaimFinalizer + "/byoc"
 	waitPeriod              = 30
@@ -469,12 +469,11 @@ func getUnclaimedAccount(reqLogger logr.Logger, accountList *awsv1alpha1.Account
 	time.Sleep(1000 * time.Millisecond)
 
 	// Range through accounts and select the first one that doesn't have a claim link
-	for _, account := range accountList.Items {
-
+	for i, account := range accountList.Items {
 		if !account.Status.Claimed && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
 			// Check for a reused account with matching legalEntity
 			if account.Status.Reused {
-				if matchAccountForReuse(&account, accountClaim) {
+				if matchAccountForReuse(&accountList.Items[i], accountClaim) {
 					reusedAccountFound = true
 					reusedAccount = account
 					// if available we break the loop, reused account takes priority
