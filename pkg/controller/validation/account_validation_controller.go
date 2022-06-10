@@ -12,7 +12,6 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -93,9 +92,12 @@ func ParentsTillPredicate(awsId string, client awsclient.Client, p func(s string
 	if len(listParentsOutput.Parents) == 0 {
 		log.Info("Exhausted search looking for root OU - root OU and account OU likely in separate subtrees.", "path", parents)
 		return nil
+	} else if len(listParentsOutput.Parents) > 1 {
+		log.Info("More than 1 parent returned for an ID - unexpected.", "awsId", awsId)
+		return errors.New("More than 1 parents found for Id " + awsId)
 	} else {
 		id := *listParentsOutput.Parents[0].Id
-		parents = append(parents, id)
+		*parents = append(*parents, id)
 		if p(id) {
 			return nil
 		}
@@ -107,12 +109,12 @@ func ParentsTillPredicate(awsId string, client awsclient.Client, p func(s string
 // The predicate indicates if the parent considered the desired root was found.
 func IsAccountInPoolOU(account awsv1alpha1.Account, client awsclient.Client, isPoolOU func(s string) bool) bool {
 	if account.Spec.AwsAccountID == "" {
-		return false, errors.New("AwsAccountID is empty.")
+		return false
 	}
 	parentList := []string{}
 	err := ParentsTillPredicate(account.Spec.AwsAccountID, client, isPoolOU, &parentList)
 	if err != nil {
-		return false, err
+		return false
 	}
 	if len(parentList) == 1 {
 		return true
@@ -120,9 +122,7 @@ func IsAccountInPoolOU(account awsv1alpha1.Account, client awsclient.Client, isP
 	return false
 }
 
-func MoveAccount(account awsv1alpha1.Account, client awsclient.Client, targetOU string, dryRun bool) error {
-	awsAccountId := account.Spec.AwsAccountID
-
+func MoveAccount(awsAccountId string, client awsclient.Client, targetOU string, moveAccount bool) error {
 	listParentsInput := organizations.ListParentsInput{
 		ChildId: aws.String(awsAccountId),
 	}
@@ -132,13 +132,13 @@ func MoveAccount(account awsv1alpha1.Account, client awsclient.Client, targetOU 
 		return err
 	}
 	oldOu := listParentsOutput.Parents[0].Id
-	moveAccountInput := organizations.MoveAccountInput{
-		AccountId:           aws.String(awsAccountId),
-		DestinationParentId: aws.String(targetOU),
-		SourceParentId:      oldOu,
-	}
-	if !dryRun {
+	if moveAccount {
 		log.Info("Moving aws account from old ou to new ou", "aws-account", awsAccountId, "old-ou", *oldOu, "new-ou", targetOU)
+		moveAccountInput := organizations.MoveAccountInput{
+			AccountId:           aws.String(awsAccountId),
+			DestinationParentId: aws.String(targetOU),
+			SourceParentId:      oldOu,
+		}
 		_, err = client.MoveAccount(&moveAccountInput)
 		if err != nil {
 			log.Error(err, "Could not move aws account to new ou", "aws-account", awsAccountId, "ou", targetOU)
@@ -150,8 +150,7 @@ func MoveAccount(account awsv1alpha1.Account, client awsclient.Client, targetOU 
 	return nil
 }
 
-func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, configMap *v1.ConfigMap) error {
-	poolOU := configMap.Data["root"]
+func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string) error {
 	// Perform basic short-circuit checks
 	if account.IsBYOC() {
 		log.Info("Will not validate a CCS account", "account", account)
@@ -176,7 +175,7 @@ func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account 
 		log.Info("Account is already in the root OU.", "account", account)
 	} else {
 		log.Info("Account is not in the root OU - it will be moved.", "account", account)
-		err := MoveAccount(account, awsClient, poolOU, account_move_enabled)
+		err := MoveAccount(account.Spec.AwsAccountID, awsClient, poolOU, account_move_enabled)
 		if err != nil {
 			log.Error(err, "Could not move account", "account", account)
 			return &AccountValidationError{
@@ -224,7 +223,7 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 	}
 
 	// Perform any checks we want
-	err = r.ValidateAccountOU(awsClient, account, cm)
+	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"])
 	if err != nil {
 		// Decide who we will requeue now
 		validationError, ok := err.(*AccountValidationError)
