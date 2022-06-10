@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-AWS_ACCOUNT_ID="${OSD_STAGING_1_AWS_ACCOUNT_ID}"
-AWS_ACCOUNT_PROFILE="osd-staging-1"
+AWS_ACCOUNT_ID="${OSD_STAGING_2_AWS_ACCOUNT_ID}"
+AWS_ACCOUNT_PROFILE="osd-staging-2"
 AWS_REGION="us-east-1"
 
 source hack/scripts/test_envs
@@ -24,6 +24,7 @@ assume_account() {
 accClaim=$(oc get accountclaim "$KMS_CLAIM_NAME" -n "$KMS_NAMESPACE_NAME" -o json)
 
 if [[ $(jq -r '.spec.kmsKeyId | length' <<< "$accClaim") -lt 1 ]]; then
+    echo $(jq -r '.spec.kmsKeyId' <<< "$accClaim")
     echo "KmsKeyID is empty"
     exit 1
 fi
@@ -31,8 +32,8 @@ fi
 accountName=$(jq -r '.spec.accountLink' <<< "$accClaim")
 account=$(oc get account $accountName -n aws-account-operator -o json)
 
-if [[ $(jq -r '.spec.awsAccountID' <<< "$account") != "${OSD_STAGING_1_AWS_ACCOUNT_ID}" ]]; then
-    echo "Must use the OSD_STAGING_1_AWS_ACCOUNT_ID to run this test, otherwise the key is not available."
+if [[ $(jq -r '.spec.awsAccountID' <<< "$account") != "${OSD_STAGING_2_AWS_ACCOUNT_ID}" ]]; then
+    echo "Must use the OSD_STAGING_2_AWS_ACCOUNT_ID to run this test, otherwise the key is not available."
     exit 1
 fi
 

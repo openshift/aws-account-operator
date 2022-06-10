@@ -364,7 +364,19 @@ test-sts: create-sts-accountclaim-namespace create-sts-accountclaim validate-sts
 
 .PHONY: create-kms-key
 create-kms-key:
-	hack/scripts/aws/create_kms_test_key.sh -a "${OSD_STAGING_1_AWS_ACCOUNT_ID}" -r "us-east-1"
+	hack/scripts/aws/create_kms_test_key.sh -a "${OSD_STAGING_2_AWS_ACCOUNT_ID}" -r "us-east-1" -p osd-staging-2
+
+.PHONY: create-kms-ccs-secret
+create-kms-ccs-secret: ## Create CCS (BYOC) Secret
+	# Create CCS Secret
+	./hack/scripts/aws/rotate_iam_access_keys.sh -p osd-staging-2 -u osdCcsAdmin -a ${OSD_STAGING_2_AWS_ACCOUNT_ID} -n ${KMS_NAMESPACE_NAME} -o /dev/stdout | oc apply -f -
+	# Wait for AWS to propagate IAM credentials
+	sleep ${SLEEP_INTERVAL}
+
+.PHONY: delete-kms-ccs-secret
+delete-kms-ccs-secret: # Delete CCS (BYOC) Secret
+	# Delete CCS Secret
+	@oc delete secret byoc -n ${KMS_NAMESPACE_NAME}
 
 .PHONY: create-kms-accountclaim-namespace
 create-kms-accountclaim-namespace:
@@ -376,19 +388,20 @@ delete-kms-accountclaim-namespace:
 
 .PHONY: create-kms-accountclaim
 create-kms-accountclaim:
-	@oc process --local -p NAME=${KMS_CLAIM_NAME} -p NAMESPACE=${KMS_NAMESPACE_NAME} -p ACCOUNT_CR_NAME=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -p KMS_KEY_ID=${KMS_KEY_ID} -f hack/templates/aws.managed.openshift.io_v1alpha1_kms_accountclaim_cr.tmpl | oc apply -f -
-	$(MAKE) create-account
+	@oc process --local -p NAME=${KMS_CLAIM_NAME} -p NAMESPACE=${KMS_NAMESPACE_NAME} -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p KMS_KEY_ID=${KMS_KEY_ID} -f hack/templates/aws.managed.openshift.io_v1alpha1_kms_accountclaim_cr.tmpl | oc apply -f -
+	# Wait for KMS Accountclaim to succeed
+	@while true; do STATUS=$$(oc get accountclaim ${KMS_CLAIM_NAME} -n ${KMS_NAMESPACE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${KMS_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 .PHONY: delete-kms-accountclaim
 delete-kms-accountclaim:
-	@oc process --local -p NAME=${KMS_CLAIM_NAME} -p NAMESPACE=${KMS_NAMESPACE_NAME} -p KMS_ACCOUNT_ID=${OSD_STAGING_1_AWS_ACCOUNT_ID} -f hack/templates/aws.managed.openshift.io_v1alpha1_kms_accountclaim_cr.tmpl | oc delete -f -
+	@oc process --local -p NAME=${KMS_CLAIM_NAME} -p NAMESPACE=${KMS_NAMESPACE_NAME} -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p KMS_KEY_ID=${KMS_KEY_ID} -f hack/templates/aws.managed.openshift.io_v1alpha1_kms_accountclaim_cr.tmpl | oc delete -f -
 
 .PHONY: validate-kms
 validate-kms:
 	test/integration/tests/validate_kms_key.sh
 
 .PHONY: test-kms
-test-kms: create-kms-key create-kms-accountclaim-namespace create-kms-accountclaim validate-kms delete-kms-accountclaim delete-kms-accountclaim-namespace
+test-kms: create-kms-key create-kms-accountclaim-namespace create-kms-ccs-secret create-kms-accountclaim validate-kms delete-kms-accountclaim delete-kms-ccs-secret delete-kms-accountclaim-namespace
 
 ### Fake Account Test Workflow
 # Create fake account claim namespace

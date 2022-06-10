@@ -3,9 +3,8 @@ kind: Template
 parameters:
 - name: NAME
 - name: NAMESPACE
-- name: KMS_ACCOUNT_ID
+- name: CCS_ACCOUNT_ID
 - name: KMS_KEY_ID
-- name: ACCOUNT_CR_NAME
 metadata:
   name: test-aws-kms-accountclaim-template
 objects:
@@ -15,7 +14,7 @@ objects:
     name: ${NAME}
     namespace: ${NAMESPACE}
   spec:
-    accountLink: "${ACCOUNT_CR_NAME}"
+    accountLink: ""
     aws:
       regions:
       - name: us-east-1
@@ -25,6 +24,11 @@ objects:
     legalEntity:
       id: "111111"
       name: ${NAME}
+    byoc: true
+    byocAWSAccountID: ${CCS_ACCOUNT_ID}
+    byocSecretRef:
+      name: byoc
+      namespace: ${NAMESPACE}
     customTags: |
       test=true
       my-cluster=yes
