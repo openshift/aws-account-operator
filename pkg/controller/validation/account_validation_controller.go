@@ -28,12 +28,14 @@ var account_move_enabled = false
 const (
 	controllerName = "accountvalidation"
 	moveWaitTime   = 5 * time.Minute
+	ownerKey       = "owner"
 )
 
 type ValidateAccount struct {
 	Client           client.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
+	shardName        string
 }
 
 type ValidationError int64
@@ -76,6 +78,17 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
+
+	configMap, err := utils.GetOperatorConfigMap(reconciler.Client)
+	if err != nil {
+		log.Error(err, "failed retrieving configmap")
+	}
+
+	hiveName, ok := configMap.Data["shard-name"]
+	if !ok {
+		log.Error(err, "shard-name key not available in configmap")
+	}
+	reconciler.shardName = hiveName
 
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
@@ -148,6 +161,34 @@ func MoveAccount(awsAccountId string, client awsclient.Client, targetOU string, 
 		log.Info("Not moving aws account from old ou to new ou (dry run)", "aws-account", awsAccountId, "old-ou", *oldOu, "new-ou", targetOU)
 	}
 	return nil
+}
+
+func (r *ValidateAccount) ValidateAccountTags(client awsclient.Client, account awsv1alpha1.Account) error {
+	listTagsForResourceInput := &organizations.ListTagsForResourceInput{
+		ResourceId: aws.String(account.Spec.AwsAccountID),
+	}
+
+	resp, err := client.ListTagsForResource(listTagsForResourceInput)
+	if err != nil {
+		return err
+	}
+
+	for _, tag := range resp.Tags {
+		if ownerKey == *tag.Key {
+			if r.shardName != *tag.Value {
+				return &AccountValidationError{
+					Type: InvalidAccount,
+					Err:  errors.New("Account is not tagged with the correct owner"),
+				}
+			} else {
+				return nil
+			}
+		}
+	}
+	return &AccountValidationError{
+		Type: InvalidAccount,
+		Err:  errors.New("Account is not tagged with an owner"),
+	}
 }
 
 func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string) error {
@@ -237,5 +278,12 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 		}
 	}
 
+	err = r.ValidateAccountTags(awsClient, account)
+	if err != nil {
+		_, ok := err.(*AccountValidationError)
+		if ok {
+			return utils.DoNotRequeue()
+		}
+	}
 	return utils.DoNotRequeue()
 }
