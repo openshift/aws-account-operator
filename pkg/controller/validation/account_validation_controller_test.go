@@ -218,6 +218,97 @@ func TestMoveAccount(t *testing.T) {
 	}
 }
 
+func TestValidateAccount_ValidateAccountTags(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	makeClient := func(output *organizations.ListTagsForResourceOutput, err error) awsclient.Client {
+		mockClient := mock.NewMockClient(ctrl)
+		mockClient.EXPECT().ListTagsForResource(gomock.Any()).Return(output, err)
+		return mockClient
+	}
+
+	type args struct {
+		client    awsclient.Client
+		accountId *string
+		shardName string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "Correct Tag",
+			args: args{
+				client: makeClient(&organizations.ListTagsForResourceOutput{
+					Tags: []*organizations.Tag{
+						{
+							Key:   aws.String("owner"),
+							Value: aws.String("shard1"),
+						},
+					},
+				}, nil),
+				accountId: aws.String("1234"),
+				shardName: "shard1",
+			},
+			wantErr: false,
+		},
+		{
+			name: "No owner tag",
+			args: args{
+				client: makeClient(&organizations.ListTagsForResourceOutput{
+					Tags: []*organizations.Tag{},
+				}, &AccountValidationError{
+					Type: MissingTag,
+					Err:  errors.New("Account is not tagged with an owner"),
+				}),
+				accountId: aws.String("1234"),
+				shardName: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "Incorrect owner tag",
+			args: args{
+				client: makeClient(&organizations.ListTagsForResourceOutput{
+					Tags: []*organizations.Tag{
+						{
+							Key:   aws.String("owner"),
+							Value: aws.String("shard1"),
+						},
+					},
+				}, &AccountValidationError{
+					Type: IncorrectOwnerTag,
+					Err:  errors.New("Account is not tagged with the correct owner"),
+				}),
+				accountId: aws.String("1234"),
+				shardName: "shard2",
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidateAccountTags(tt.args.client, tt.args.accountId, tt.args.shardName, false); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateAccountTags() error = %v, wantErr %v", err, tt.wantErr)
+			} else {
+				if tt.wantErr {
+					err, ok := err.(*AccountValidationError)
+					if !ok {
+						t.Errorf("ValidateAccountTags() error, expected error of type AccountValidationError but was %v", err.Type)
+					}
+					if err.Type == MissingTag && err.Err.Error() != "Account is not tagged with an owner" {
+						t.Errorf("ValidateAccountTags() error, did not get correct error message")
+					}
+					if err.Type == IncorrectOwnerTag && err.Err.Error() != "Account is not tagged with the correct owner" {
+						t.Errorf("ValidateAccountTags() error, did not get correct error message")
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestValidateAccount_Reconcile(t *testing.T) {
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {

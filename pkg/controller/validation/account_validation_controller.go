@@ -23,7 +23,8 @@ import (
 
 var log = logf.Log.WithName("controller_accountvalidation")
 
-var account_move_enabled = false
+var accountMoveEnabled = false
+var accountTagEnabled = false
 
 const (
 	controllerName = "accountvalidation"
@@ -43,6 +44,8 @@ type ValidationError int64
 const (
 	InvalidAccount ValidationError = iota
 	AccountMoveFailed
+	MissingTag
+	IncorrectOwnerTag
 )
 
 type AccountValidationError struct {
@@ -163,9 +166,10 @@ func MoveAccount(awsAccountId string, client awsclient.Client, targetOU string, 
 	return nil
 }
 
-func (r *ValidateAccount) ValidateAccountTags(client awsclient.Client, account awsv1alpha1.Account) error {
+// ValidateAccountTags avulaj: accountTagEnabled can be used in the future if we decide we want to fix this issue as we come across it during validation
+func ValidateAccountTags(client awsclient.Client, accountId *string, shardName string, accountTagEnabled bool) error {
 	listTagsForResourceInput := &organizations.ListTagsForResourceInput{
-		ResourceId: aws.String(account.Spec.AwsAccountID),
+		ResourceId: accountId,
 	}
 
 	resp, err := client.ListTagsForResource(listTagsForResourceInput)
@@ -175,9 +179,9 @@ func (r *ValidateAccount) ValidateAccountTags(client awsclient.Client, account a
 
 	for _, tag := range resp.Tags {
 		if ownerKey == *tag.Key {
-			if r.shardName != *tag.Value {
+			if shardName != *tag.Value {
 				return &AccountValidationError{
-					Type: InvalidAccount,
+					Type: IncorrectOwnerTag,
 					Err:  errors.New("Account is not tagged with the correct owner"),
 				}
 			} else {
@@ -186,7 +190,7 @@ func (r *ValidateAccount) ValidateAccountTags(client awsclient.Client, account a
 		}
 	}
 	return &AccountValidationError{
-		Type: InvalidAccount,
+		Type: MissingTag,
 		Err:  errors.New("Account is not tagged with an owner"),
 	}
 }
@@ -216,7 +220,7 @@ func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account 
 		log.Info("Account is already in the root OU.", "account", account)
 	} else {
 		log.Info("Account is not in the root OU - it will be moved.", "account", account)
-		err := MoveAccount(account.Spec.AwsAccountID, awsClient, poolOU, account_move_enabled)
+		err := MoveAccount(account.Spec.AwsAccountID, awsClient, poolOU, accountMoveEnabled)
 		if err != nil {
 			log.Error(err, "Could not move account", "account", account)
 			return &AccountValidationError{
@@ -249,9 +253,17 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 	if err != nil {
 		log.Info("Could not retrieve feature flag 'feature.validation_move_account' - account moving is disabled")
 	} else {
-		account_move_enabled = enabled
+		accountMoveEnabled = enabled
 	}
-	log.Info("Is moving accounts enabled?", "enabled", account_move_enabled)
+	log.Info("Is moving accounts enabled?", "enabled", accountMoveEnabled)
+
+	enabled, err = strconv.ParseBool(cm.Data["feature.validation_tag_account"])
+	if err != nil {
+		log.Info("Could not retrieve feature flag 'feature.validation_tag_account' - account tagging is disabled")
+	} else {
+		accountTagEnabled = enabled
+	}
+	log.Info("Is tagging accounts enabled?", "enabled", accountTagEnabled)
 
 	awsClientInput := awsclient.NewAwsClientInput{
 		AwsRegion:  config.GetDefaultRegion(),
@@ -278,10 +290,10 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 		}
 	}
 
-	err = r.ValidateAccountTags(awsClient, account)
+	err = ValidateAccountTags(awsClient, aws.String(account.Spec.AwsAccountID), r.shardName, accountTagEnabled)
 	if err != nil {
-		_, ok := err.(*AccountValidationError)
-		if ok {
+		validationError, ok := err.(*AccountValidationError)
+		if ok && (validationError.Type == MissingTag || validationError.Type == IncorrectOwnerTag) {
 			return utils.DoNotRequeue()
 		}
 	}

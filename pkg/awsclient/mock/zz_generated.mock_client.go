@@ -806,6 +806,21 @@ func (mr *MockClientMockRecorder) ListParents(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListParents", reflect.TypeOf((*MockClient)(nil).ListParents), arg0)
 }
 
+// ListTagsForResource mocks base method
+func (m *MockClient) ListTagsForResource(input *organizations.ListTagsForResourceInput) (*organizations.ListTagsForResourceOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListTagsForResource", input)
+	ret0, _ := ret[0].(*organizations.ListTagsForResourceOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListTagsForResource indicates an expected call of ListTagsForResource
+func (mr *MockClientMockRecorder) ListTagsForResource(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTagsForResource", reflect.TypeOf((*MockClient)(nil).ListTagsForResource), input)
+}
+
 // AssumeRole mocks base method
 func (m *MockClient) AssumeRole(arg0 *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error) {
 	m.ctrl.T.Helper()
