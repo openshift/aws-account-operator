@@ -472,3 +472,7 @@ clean-operator: ## Clean Operator
 	oc delete accounts --all -n ${NAMESPACE}
 	oc delete awsfederatedaccountaccess --all -n ${NAMESPACE}
 	oc delete awsfederatedrole --all -n ${NAMESPACE}
+
+.PHONY: integration-test
+integration-test: ## Triggers integration test bash script
+	hack/scripts/integration-test.sh
