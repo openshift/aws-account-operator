@@ -20,8 +20,6 @@ while true
 do STATUS=$(oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE} -o json | jq -r '.status.state');
     if [ "$STATUS" == "Ready" ]; then
         break
-    elif [ "$STATUS" == "InitializingRegions" ]; then
-        break
     elif [ "$STATUS" == "Failed" ]; then
         echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"
         exit 1
