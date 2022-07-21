@@ -472,3 +472,7 @@ clean-operator: ## Clean Operator
 	oc delete accounts --all -n ${NAMESPACE}
 	oc delete awsfederatedaccountaccess --all -n ${NAMESPACE}
 	oc delete awsfederatedrole --all -n ${NAMESPACE}
+
+.PHONY: prow-ci-deploy
+prow-ci-deploy: ## Triggers prow-ci build and deploy operator bash script
+	hack/scripts/prow-ci-operator-deploy.sh
