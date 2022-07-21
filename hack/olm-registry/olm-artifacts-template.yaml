@@ -115,6 +115,7 @@ objects:
       me-south-1:ami-0b41a37a62a4296fc:t3.micro
       us-gov-west-1:ami-2c74214d:t2.micro
       us-gov-east-1:ami-9e10f0ef:t2.micro
+    feature.validation_move_account: "false"
 
 - apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AccountPool

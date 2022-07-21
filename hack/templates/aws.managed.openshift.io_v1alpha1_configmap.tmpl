@@ -22,6 +22,7 @@ objects:
     quota.vcpu: ${VCPU_QUOTA}
     account-limit: ${ACCOUNTLIMIT}
     MaxConcurrentReconciles.account: "2"
+    MaxConcurrentReconciles.accountvalidation: "2"
     MaxConcurrentReconciles.accountclaim: "1"
     MaxConcurrentReconciles.accountpool: "1"
     MaxConcurrentReconciles.awsfederatedaccountaccess: "1"
@@ -53,3 +54,4 @@ objects:
       us-gov-east-1:ami-9e10f0ef:t2.micro
     sts-jump-role: ${STS_JUMP_ARN}
     support-jump-role: ${SUPPORT_JUMP_ROLE}
+    feature.validation_move_account: "false"
