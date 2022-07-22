@@ -112,6 +112,7 @@ type Client interface {
 	ListOrganizationalUnitsForParent(*organizations.ListOrganizationalUnitsForParentInput) (*organizations.ListOrganizationalUnitsForParentOutput, error)
 	ListChildren(*organizations.ListChildrenInput) (*organizations.ListChildrenOutput, error)
 	TagResource(*organizations.TagResourceInput) (*organizations.TagResourceOutput, error)
+	UntagResource(input *organizations.UntagResourceInput) (*organizations.UntagResourceOutput, error)
 	ListParents(*organizations.ListParentsInput) (*organizations.ListParentsOutput, error)
 	ListTagsForResource(input *organizations.ListTagsForResourceInput) (*organizations.ListTagsForResourceOutput, error)
 
@@ -361,6 +362,10 @@ func (c *awsClient) ListChildren(input *organizations.ListChildrenInput) (*organ
 
 func (c *awsClient) TagResource(input *organizations.TagResourceInput) (*organizations.TagResourceOutput, error) {
 	return c.orgClient.TagResource(input)
+}
+
+func (c *awsClient) UntagResource(input *organizations.UntagResourceInput) (*organizations.UntagResourceOutput, error) {
+	return c.orgClient.UntagResource(input)
 }
 
 func (c *awsClient) ListParents(input *organizations.ListParentsInput) (*organizations.ListParentsOutput, error) {

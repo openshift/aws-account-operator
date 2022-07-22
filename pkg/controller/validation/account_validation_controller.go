@@ -3,6 +3,7 @@ package validation
 import (
 	"context"
 	"errors"
+	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"strconv"
 	"time"
 
@@ -36,7 +37,6 @@ type ValidateAccount struct {
 	Client           client.Client
 	scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
-	shardName        string
 }
 
 type ValidationError int64
@@ -46,6 +46,7 @@ const (
 	AccountMoveFailed
 	MissingTag
 	IncorrectOwnerTag
+	AccountTagFailed
 )
 
 type AccountValidationError struct {
@@ -81,17 +82,6 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
 	}
-
-	configMap, err := utils.GetOperatorConfigMap(reconciler.Client)
-	if err != nil {
-		log.Error(err, "failed retrieving configmap")
-	}
-
-	hiveName, ok := configMap.Data["shard-name"]
-	if !ok {
-		log.Error(err, "shard-name key not available in configmap")
-	}
-	reconciler.shardName = hiveName
 
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
 }
@@ -166,7 +156,16 @@ func MoveAccount(awsAccountId string, client awsclient.Client, targetOU string, 
 	return nil
 }
 
-// ValidateAccountTags avulaj: accountTagEnabled can be used in the future if we decide we want to fix this issue as we come across it during validation
+func untagAccountOwner(client awsclient.Client, accountId string) error {
+	inputTags := &organizations.UntagResourceInput{
+		ResourceId: aws.String(accountId),
+		TagKeys:    []*string{aws.String("owner")},
+	}
+
+	_, err := client.UntagResource(inputTags)
+	return err
+}
+
 func ValidateAccountTags(client awsclient.Client, accountId *string, shardName string, accountTagEnabled bool) error {
 	listTagsForResourceInput := &organizations.ListTagsForResourceInput{
 		ResourceId: accountId,
@@ -180,18 +179,53 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 	for _, tag := range resp.Tags {
 		if ownerKey == *tag.Key {
 			if shardName != *tag.Value {
-				return &AccountValidationError{
-					Type: IncorrectOwnerTag,
-					Err:  errors.New("Account is not tagged with the correct owner"),
+				if accountTagEnabled {
+					err := untagAccountOwner(client, *accountId)
+					if err != nil {
+						log.Error(err, "Unable to remove incorrect owner tag from aws account.", "AWSAccountId", accountId)
+						return &AccountValidationError{
+							Type: AccountTagFailed,
+							Err:  err,
+						}
+					}
+
+					err = account.TagAccount(client, *accountId, shardName)
+					if err != nil {
+						log.Error(err, "Unable to tag aws account.", "AWSAccountID", accountId)
+						return &AccountValidationError{
+							Type: AccountTagFailed,
+							Err:  err,
+						}
+					}
+
+					return nil
+				} else {
+					return &AccountValidationError{
+						Type: IncorrectOwnerTag,
+						Err:  errors.New("Account is not tagged with the correct owner"),
+					}
 				}
 			} else {
 				return nil
 			}
 		}
 	}
-	return &AccountValidationError{
-		Type: MissingTag,
-		Err:  errors.New("Account is not tagged with an owner"),
+
+	if accountTagEnabled {
+		err := account.TagAccount(client, *accountId, shardName)
+		if err != nil {
+			log.Error(err, "Unable to tag aws account.", "AWSAccountID", accountId)
+			return &AccountValidationError{
+				Type: AccountTagFailed,
+				Err:  err,
+			}
+		}
+		return nil
+	} else {
+		return &AccountValidationError{
+			Type: MissingTag,
+			Err:  errors.New("Account is not tagged with an owner"),
+		}
 	}
 }
 
@@ -290,11 +324,20 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 		}
 	}
 
-	err = ValidateAccountTags(awsClient, aws.String(account.Spec.AwsAccountID), r.shardName, accountTagEnabled)
-	if err != nil {
-		validationError, ok := err.(*AccountValidationError)
-		if ok && (validationError.Type == MissingTag || validationError.Type == IncorrectOwnerTag) {
-			return utils.DoNotRequeue()
+	shardName, ok := cm.Data["shard-name"]
+	if !ok {
+		log.Error(err, "shard-name key not available in configmap")
+	}
+
+	if shardName == "" {
+		log.Info("Cluster configuration is missing a shardName value.  Skipping validation for this tag.")
+	} else {
+		err = ValidateAccountTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled)
+		if err != nil {
+			validationError, ok := err.(*AccountValidationError)
+			if ok && (validationError.Type == MissingTag || validationError.Type == IncorrectOwnerTag) {
+				log.Error(validationError, validationError.Err.Error())
+			}
 		}
 	}
 	return utils.DoNotRequeue()

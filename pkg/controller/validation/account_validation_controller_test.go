@@ -221,16 +221,20 @@ func TestMoveAccount(t *testing.T) {
 func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
-	makeClient := func(output *organizations.ListTagsForResourceOutput, err error) awsclient.Client {
+	makeClient := func(output *organizations.ListTagsForResourceOutput, err error, tagErr error, untagErr error) awsclient.Client {
 		mockClient := mock.NewMockClient(ctrl)
 		mockClient.EXPECT().ListTagsForResource(gomock.Any()).Return(output, err)
+		// AlexVulaj: The `Times` values here don't seem to be honored, but I can't really figure out why.
+		mockClient.EXPECT().TagResource(gomock.Any()).Return(nil, tagErr).Times(1)
+		mockClient.EXPECT().UntagResource(gomock.Any()).Return(nil, untagErr).Times(1)
 		return mockClient
 	}
 
 	type args struct {
-		client    awsclient.Client
-		accountId *string
-		shardName string
+		client            awsclient.Client
+		accountId         *string
+		shardName         string
+		accountTagEnabled bool
 	}
 	tests := []struct {
 		name    string
@@ -247,28 +251,30 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 							Value: aws.String("shard1"),
 						},
 					},
-				}, nil),
-				accountId: aws.String("1234"),
-				shardName: "shard1",
+				}, nil, nil, nil),
+				accountId:         aws.String("1234"),
+				shardName:         "shard1",
+				accountTagEnabled: false,
 			},
 			wantErr: false,
 		},
 		{
-			name: "No owner tag",
+			name: "No owner tag - don't tag account",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
 					Tags: []*organizations.Tag{},
 				}, &AccountValidationError{
 					Type: MissingTag,
 					Err:  errors.New("Account is not tagged with an owner"),
-				}),
-				accountId: aws.String("1234"),
-				shardName: "",
+				}, nil, nil),
+				accountId:         aws.String("1234"),
+				shardName:         "",
+				accountTagEnabled: false,
 			},
 			wantErr: true,
 		},
 		{
-			name: "Incorrect owner tag",
+			name: "Incorrect owner tag - don't tag account",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
 					Tags: []*organizations.Tag{
@@ -280,16 +286,92 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 				}, &AccountValidationError{
 					Type: IncorrectOwnerTag,
 					Err:  errors.New("Account is not tagged with the correct owner"),
-				}),
-				accountId: aws.String("1234"),
-				shardName: "shard2",
+				}, nil, nil),
+				accountId:         aws.String("1234"),
+				shardName:         "shard2",
+				accountTagEnabled: false,
+			},
+			wantErr: true,
+		},
+		{
+			name: "No owner tag - tag account successfully",
+			args: args{
+				client: makeClient(&organizations.ListTagsForResourceOutput{
+					Tags: []*organizations.Tag{},
+				}, nil, nil, nil),
+				accountId:         aws.String("1234"),
+				shardName:         "shard1",
+				accountTagEnabled: true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "No owner tag - tag account unsuccessfully",
+			args: args{
+				client: makeClient(&organizations.ListTagsForResourceOutput{
+					Tags: []*organizations.Tag{},
+				}, nil, errors.New("failed"), nil),
+				accountId:         aws.String("1234"),
+				shardName:         "shard1",
+				accountTagEnabled: true,
+			},
+			wantErr: true,
+		},
+		{
+			name: "Incorrect owner tag - tag account successfully",
+			args: args{
+				client: makeClient(&organizations.ListTagsForResourceOutput{
+					Tags: []*organizations.Tag{
+						{
+							Key:   aws.String("owner"),
+							Value: aws.String("shard1"),
+						},
+					},
+				}, nil, nil, nil),
+				accountId:         aws.String("1234"),
+				shardName:         "shard2",
+				accountTagEnabled: true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Incorrect owner tag - untag account unsuccessfully",
+			args: args{
+				client: makeClient(&organizations.ListTagsForResourceOutput{
+					Tags: []*organizations.Tag{
+						{
+							Key:   aws.String("owner"),
+							Value: aws.String("shard1"),
+						},
+					},
+				}, nil, nil, errors.New("failed")),
+				accountId:         aws.String("1234"),
+				shardName:         "shard2",
+				accountTagEnabled: true,
+			},
+			wantErr: true,
+		},
+		{
+			name: "Incorrect owner tag - tag account unsuccessfully",
+			args: args{
+				client: makeClient(&organizations.ListTagsForResourceOutput{
+					Tags: []*organizations.Tag{
+						{
+							Key:   aws.String("owner"),
+							Value: aws.String("shard1"),
+						},
+					},
+				}, nil, errors.New("failed"), nil),
+				accountId:         aws.String("1234"),
+				shardName:         "shard2",
+				accountTagEnabled: true,
 			},
 			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := ValidateAccountTags(tt.args.client, tt.args.accountId, tt.args.shardName, false); (err != nil) != tt.wantErr {
+			if err := ValidateAccountTags(tt.args.client, tt.args.accountId, tt.args.shardName, tt.args.accountTagEnabled); (err != nil) != tt.wantErr {
 				t.Errorf("ValidateAccountTags() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
 				if tt.wantErr {
@@ -301,6 +383,9 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 						t.Errorf("ValidateAccountTags() error, did not get correct error message")
 					}
 					if err.Type == IncorrectOwnerTag && err.Err.Error() != "Account is not tagged with the correct owner" {
+						t.Errorf("ValidateAccountTags() error, did not get correct error message")
+					}
+					if err.Type == AccountTagFailed && err.Err.Error() != "failed" {
 						t.Errorf("ValidateAccountTags() error, did not get correct error message")
 					}
 				}

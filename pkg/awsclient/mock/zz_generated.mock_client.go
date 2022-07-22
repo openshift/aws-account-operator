@@ -791,6 +791,21 @@ func (mr *MockClientMockRecorder) TagResource(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TagResource", reflect.TypeOf((*MockClient)(nil).TagResource), arg0)
 }
 
+// UntagResource mocks base method
+func (m *MockClient) UntagResource(input *organizations.UntagResourceInput) (*organizations.UntagResourceOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UntagResource", input)
+	ret0, _ := ret[0].(*organizations.UntagResourceOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UntagResource indicates an expected call of UntagResource
+func (mr *MockClientMockRecorder) UntagResource(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UntagResource", reflect.TypeOf((*MockClient)(nil).UntagResource), input)
+}
+
 // ListParents mocks base method
 func (m *MockClient) ListParents(arg0 *organizations.ListParentsInput) (*organizations.ListParentsOutput, error) {
 	m.ctrl.T.Helper()

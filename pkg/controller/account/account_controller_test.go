@@ -771,8 +771,7 @@ func TestTagAccount(t *testing.T) {
 	)
 
 	r := &ReconcileAccount{shardName: "hivename"}
-	nullLogger := testutils.NullLogger{}
-	err := r.tagAccount(nullLogger, mockAWSClient, accountID)
+	err := TagAccount(mockAWSClient, accountID, r.shardName)
 	if err != nil {
 		t.Errorf("failed to tag account")
 	}
