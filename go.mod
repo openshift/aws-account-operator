@@ -31,6 +31,7 @@ replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
 replace bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 
 require (
+	github.com/google/go-cmp v0.5.5
 	github.com/onsi/ginkgo/v2 v2.1.3
 	github.com/openshift/aws-account-operator/pkg/apis v0.0.0-00010101000000-000000000000
 	sigs.k8s.io/controller-runtime v0.4.0
