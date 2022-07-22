@@ -326,7 +326,7 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 
 	shardName, ok := cm.Data["shard-name"]
 	if !ok {
-		log.Error(err, "shard-name key not available in configmap")
+		log.Info("Could not retrieve configuration map value 'shard-name' - account tagging is disabled")
 	}
 
 	if shardName == "" {
