@@ -327,16 +327,16 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 	shardName, ok := cm.Data["shard-name"]
 	if !ok {
 		log.Info("Could not retrieve configuration map value 'shard-name' - account tagging is disabled")
-	}
-
-	if shardName == "" {
-		log.Info("Cluster configuration is missing a shardName value.  Skipping validation for this tag.")
 	} else {
-		err = ValidateAccountTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled)
-		if err != nil {
-			validationError, ok := err.(*AccountValidationError)
-			if ok && (validationError.Type == MissingTag || validationError.Type == IncorrectOwnerTag) {
-				log.Error(validationError, validationError.Err.Error())
+		if shardName == "" {
+			log.Info("Cluster configuration is missing a shardName value.  Skipping validation for this tag.")
+		} else {
+			err = ValidateAccountTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled)
+			if err != nil {
+				validationError, ok := err.(*AccountValidationError)
+				if ok && (validationError.Type == MissingTag || validationError.Type == IncorrectOwnerTag) {
+					log.Error(validationError, validationError.Err.Error())
+				}
 			}
 		}
 	}
