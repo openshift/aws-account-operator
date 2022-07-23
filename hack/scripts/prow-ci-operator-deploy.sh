@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -o pipefail
+set -eo pipefail
 
 export IMAGE_NAME=aws-account-operator
 export BUILD_CONFIG=aws-account-operator
@@ -95,7 +95,7 @@ function getEnvVariables {
     fi
 
     if [[ -z $OSD_STAGING_1_AWS_ACCOUNT_ID ]]; then
-        exit
+        return 1
     fi
 }
 
@@ -133,7 +133,7 @@ function verifyBuildSuccess {
         echo "the logs for the failed job are:"
 
         $OC_WITH_NAMESPACE logs $latestJobName-build
-        exit
+        return 1
     fi
 }
 
@@ -161,7 +161,7 @@ function waitForDeployment {
   done
   if [[ $i -ge 60 ]]; then
     echo -e "\nWaited for operator deployment to complete for 60s\n"
-    exit
+    return 1
   fi
 }
 
