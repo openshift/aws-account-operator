@@ -174,7 +174,7 @@ function consoleOperatorLogs {
 	fi
 	operatorPodName=$($getOperatorPodCommand -ojsonpath='{.items[0].metadata.name}')
 	echo -e "\nstatus of the operator pod\n"
-	$OC_WITH_NAMESPACE get po "$operatorPodName" -ojsonpath='{.status}' | jq
+	$OC_WITH_NAMESPACE get po "$operatorPodName" -ojsonpath='{.status}'
 	echo -e "\npod logs\n"
 	$OC_WITH_NAMESPACE logs $operatorPodName
 }
