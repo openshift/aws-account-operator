@@ -90,6 +90,8 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		awsClientBuilder: &awsclient.Builder{},
 	}
 
+	// AlexVulaj: We're seeing errors here on startup during local testing, we may need to move this to later in the startup process
+	// ERROR   controller_account      failed retrieving configmap     {"error": "the cache is not started, can not read objects"}
 	configMap, err := utils.GetOperatorConfigMap(reconciler.Client)
 	if err != nil {
 		log.Error(err, "failed retrieving configmap")
@@ -646,7 +648,7 @@ func (r *ReconcileAccount) nonCCSAssignAccountID(reqLogger logr.Logger, currentA
 	currentAcctInstance.Spec.AwsAccountID = awsAccountID
 
 	// tag account with hive shard name
-	err = r.tagAccount(reqLogger, awsSetupClient, awsAccountID)
+	err = TagAccount(awsSetupClient, awsAccountID, r.shardName)
 	if err != nil {
 		reqLogger.Info("Unable to tag aws account.", "account", currentAcctInstance.Name, "AWSAccountID", awsAccountID, "Error", error.Error(err))
 	}
@@ -654,14 +656,13 @@ func (r *ReconcileAccount) nonCCSAssignAccountID(reqLogger logr.Logger, currentA
 	return r.accountSpecUpdate(reqLogger, currentAcctInstance)
 }
 
-func (r *ReconcileAccount) tagAccount(reqLogger logr.Logger, awsSetupClient awsclient.Client, awsAccountID string) error {
-
+func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName string) error {
 	inputTag := &organizations.TagResourceInput{
 		ResourceId: aws.String(awsAccountID),
 		Tags: []*organizations.Tag{
 			{
 				Key:   aws.String("owner"),
-				Value: aws.String(r.shardName),
+				Value: aws.String(shardName),
 			},
 		},
 	}

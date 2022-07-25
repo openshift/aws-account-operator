@@ -3,6 +3,7 @@ package validation
 import (
 	"context"
 	"errors"
+	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"strconv"
 	"time"
 
@@ -23,11 +24,13 @@ import (
 
 var log = logf.Log.WithName("controller_accountvalidation")
 
-var account_move_enabled = false
+var accountMoveEnabled = false
+var accountTagEnabled = false
 
 const (
 	controllerName = "accountvalidation"
 	moveWaitTime   = 5 * time.Minute
+	ownerKey       = "owner"
 )
 
 type ValidateAccount struct {
@@ -41,6 +44,9 @@ type ValidationError int64
 const (
 	InvalidAccount ValidationError = iota
 	AccountMoveFailed
+	MissingTag
+	IncorrectOwnerTag
+	AccountTagFailed
 )
 
 type AccountValidationError struct {
@@ -150,6 +156,79 @@ func MoveAccount(awsAccountId string, client awsclient.Client, targetOU string, 
 	return nil
 }
 
+func untagAccountOwner(client awsclient.Client, accountId string) error {
+	inputTags := &organizations.UntagResourceInput{
+		ResourceId: aws.String(accountId),
+		TagKeys:    []*string{aws.String("owner")},
+	}
+
+	_, err := client.UntagResource(inputTags)
+	return err
+}
+
+func ValidateAccountTags(client awsclient.Client, accountId *string, shardName string, accountTagEnabled bool) error {
+	listTagsForResourceInput := &organizations.ListTagsForResourceInput{
+		ResourceId: accountId,
+	}
+
+	resp, err := client.ListTagsForResource(listTagsForResourceInput)
+	if err != nil {
+		return err
+	}
+
+	for _, tag := range resp.Tags {
+		if ownerKey == *tag.Key {
+			if shardName != *tag.Value {
+				if accountTagEnabled {
+					err := untagAccountOwner(client, *accountId)
+					if err != nil {
+						log.Error(err, "Unable to remove incorrect owner tag from aws account.", "AWSAccountId", accountId)
+						return &AccountValidationError{
+							Type: AccountTagFailed,
+							Err:  err,
+						}
+					}
+
+					err = account.TagAccount(client, *accountId, shardName)
+					if err != nil {
+						log.Error(err, "Unable to tag aws account.", "AWSAccountID", accountId)
+						return &AccountValidationError{
+							Type: AccountTagFailed,
+							Err:  err,
+						}
+					}
+
+					return nil
+				} else {
+					return &AccountValidationError{
+						Type: IncorrectOwnerTag,
+						Err:  errors.New("Account is not tagged with the correct owner"),
+					}
+				}
+			} else {
+				return nil
+			}
+		}
+	}
+
+	if accountTagEnabled {
+		err := account.TagAccount(client, *accountId, shardName)
+		if err != nil {
+			log.Error(err, "Unable to tag aws account.", "AWSAccountID", accountId)
+			return &AccountValidationError{
+				Type: AccountTagFailed,
+				Err:  err,
+			}
+		}
+		return nil
+	} else {
+		return &AccountValidationError{
+			Type: MissingTag,
+			Err:  errors.New("Account is not tagged with an owner"),
+		}
+	}
+}
+
 func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string) error {
 	// Perform basic short-circuit checks
 	if account.IsBYOC() {
@@ -175,7 +254,7 @@ func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account 
 		log.Info("Account is already in the root OU.", "account", account)
 	} else {
 		log.Info("Account is not in the root OU - it will be moved.", "account", account)
-		err := MoveAccount(account.Spec.AwsAccountID, awsClient, poolOU, account_move_enabled)
+		err := MoveAccount(account.Spec.AwsAccountID, awsClient, poolOU, accountMoveEnabled)
 		if err != nil {
 			log.Error(err, "Could not move account", "account", account)
 			return &AccountValidationError{
@@ -208,9 +287,17 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 	if err != nil {
 		log.Info("Could not retrieve feature flag 'feature.validation_move_account' - account moving is disabled")
 	} else {
-		account_move_enabled = enabled
+		accountMoveEnabled = enabled
 	}
-	log.Info("Is moving accounts enabled?", "enabled", account_move_enabled)
+	log.Info("Is moving accounts enabled?", "enabled", accountMoveEnabled)
+
+	enabled, err = strconv.ParseBool(cm.Data["feature.validation_tag_account"])
+	if err != nil {
+		log.Info("Could not retrieve feature flag 'feature.validation_tag_account' - account tagging is disabled")
+	} else {
+		accountTagEnabled = enabled
+	}
+	log.Info("Is tagging accounts enabled?", "enabled", accountTagEnabled)
 
 	awsClientInput := awsclient.NewAwsClientInput{
 		AwsRegion:  config.GetDefaultRegion(),
@@ -237,5 +324,21 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 		}
 	}
 
+	shardName, ok := cm.Data["shard-name"]
+	if !ok {
+		log.Info("Could not retrieve configuration map value 'shard-name' - account tagging is disabled")
+	} else {
+		if shardName == "" {
+			log.Info("Cluster configuration is missing a shardName value.  Skipping validation for this tag.")
+		} else {
+			err = ValidateAccountTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled)
+			if err != nil {
+				validationError, ok := err.(*AccountValidationError)
+				if ok && (validationError.Type == MissingTag || validationError.Type == IncorrectOwnerTag) {
+					log.Error(validationError, validationError.Err.Error())
+				}
+			}
+		}
+	}
 	return utils.DoNotRequeue()
 }

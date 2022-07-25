@@ -286,7 +286,7 @@ predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credential
 
 .PHONY: deploy-local
 deploy-local: ## Deploy Operator locally
-	@FORCE_DEV_MODE=local ${OPERATOR_SDK} run --local --namespace=$(OPERATOR_NAMESPACE) --operator-flags "--zap-devel"
+	@FORCE_DEV_MODE=local ${OPERATOR_SDK} run --local --watch-namespace=$(OPERATOR_NAMESPACE) --operator-flags "--zap-devel"
 
 .PHONY: deploy-local-debug
 deploy-local-debug: ## Deploy Operator locally with Delve enabled

@@ -109,7 +109,7 @@ assume_aws_role "${AWS_ACCOUNT_ID_1}" osd-staging-1
 ASSUME_ROLE_POLICY_ARN=$(aws iam create-policy --policy-name STSAssumeRolePolicy"${ID}" --policy-document file://./setup-aws-policies/AssumeRolePolicy.json --output json | jq -r '.Policy.Arn')
 
 ### Create the Jump Role
-TRUST_ARN_FORMAT="arn:aws:iam::277304166082:user/${USERNAME}"
+TRUST_ARN_FORMAT="arn:aws:iam::277304166082:user/${AWS_USERNAME}"
 # Here we're updating the ARN value set in the json file with the appropriate value
 PREPARED_JSON=$(jq --arg TRUST_ARN_FORMAT "$TRUST_ARN_FORMAT" '.Statement[0].Principal.AWS |= $TRUST_ARN_FORMAT' setup-aws-policies/JumpRoleTrustRelationship.json)
 # Create the Role and save its ARN, we'll use it later.

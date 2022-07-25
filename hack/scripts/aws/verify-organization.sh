@@ -34,7 +34,7 @@ verify_account_in_org() {
         echo -e "${YELLOW}The account is not under the root organization and will not work for STS integration tests."
         echo -e "You can move the account with the following command: ${CLEAR}"
         last_index=$(($NUM_ELEMENTS - 1))
-        echo "aws --profile $AWS_PROFILE organizations move-account --account-id $ACCOUNT_ID --source-parent-id ${PARENTS[$last_index]} --destination-parent-id ${PARENTS[0]}"
+        echo "aws --profile $AWS_PROFILE organizations move-account --account-id $ACCOUNT_ID --source-parent-id  ${PARENTS[0]} --destination-parent-id ${PARENTS[$last_index]}"
     else
         echo -e "${GREEN}The account is under the root organization and ready to be used for testing.${CLEAR}"
     fi
