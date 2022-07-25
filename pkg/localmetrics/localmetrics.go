@@ -55,6 +55,8 @@ type MetricsCollector struct {
 	ccsAccountReadyDuration         prometheus.Histogram
 	accountClaimReadyDuration       prometheus.Histogram
 	ccsAccountClaimReadyDuration    prometheus.Histogram
+	accountClaimPendingDuration     prometheus.Histogram
+	ccsAccountClaimPendingDuration  prometheus.Histogram
 	accountReuseCleanupDuration     prometheus.Histogram
 	accountReuseCleanupFailureCount prometheus.Counter
 	reconcileDuration               *prometheus.HistogramVec
@@ -144,7 +146,18 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			ConstLabels: prometheus.Labels{"name": operatorName},
 			Buckets:     []float64{5, 10, 20, 30, 60, 120, 240, 300, 480, 600},
 		}),
-
+		accountClaimPendingDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:        "aws_account_operator_account_claim_pending_duration_seconds",
+			Help:        "The duration for account claim cr in pending mode",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+			Buckets:     []float64{60, 120, 240, 300, 600},
+		}),
+		ccsAccountClaimPendingDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:        "aws_account_operator_account_claim_ccs_pending_duration_seconds",
+			Help:        "The duration for ccs account claim cr in pending mode",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+			Buckets:     []float64{60, 120, 240, 300, 600},
+		}),
 		accountReuseCleanupDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:        "aws_account_operator_account_reuse_cleanup_duration_seconds",
 			Help:        "The duration for account reuse cleanup",
@@ -193,6 +206,8 @@ func (c *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	c.ccsAccountReadyDuration.Describe(ch)
 	c.accountClaimReadyDuration.Describe(ch)
 	c.ccsAccountClaimReadyDuration.Describe(ch)
+	c.accountClaimPendingDuration.Describe(ch)
+	c.ccsAccountClaimPendingDuration.Describe(ch)
 	c.accountReuseCleanupDuration.Describe(ch)
 	c.accountReuseCleanupFailureCount.Describe(ch)
 	c.reconcileDuration.Describe(ch)
@@ -215,6 +230,8 @@ func (c *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.ccsAccountReadyDuration.Collect(ch)
 	c.accountClaimReadyDuration.Collect(ch)
 	c.ccsAccountClaimReadyDuration.Collect(ch)
+	c.accountClaimPendingDuration.Collect(ch)
+	c.ccsAccountClaimPendingDuration.Collect(ch)
 	c.accountReuseCleanupDuration.Collect(ch)
 	c.accountReuseCleanupFailureCount.Collect(ch)
 	c.reconcileDuration.Collect(ch)
@@ -314,6 +331,15 @@ func (c *MetricsCollector) SetAccountClaimReadyDuration(ccs bool, duration float
 		c.ccsAccountClaimReadyDuration.Observe(duration)
 	} else {
 		c.accountClaimReadyDuration.Observe(duration)
+	}
+}
+
+// SetAccountClaimPendingDuration sets the metric describing the time an accountClaim spends into the Pending state
+func (c *MetricsCollector) SetAccountClaimPendingDuration(ccs bool, duration float64) {
+	if ccs {
+		c.ccsAccountClaimPendingDuration.Observe(duration)
+	} else {
+		c.accountClaimPendingDuration.Observe(duration)
 	}
 }
 

@@ -128,9 +128,9 @@ PREPARED_JSON=$(jq --arg JUMP_ROLE_ARN "${JUMP_ROLE_ARN}" '.Statement[0].Princip
 
 # Here we need to add a backoff retry as we may encounter the following error from aws:
 ## An error occurred (MalformedPolicyDocument) when calling the CreateRole operation: Invalid principal in policy: "AWS":"arn:aws:iam::190496588311:role/JumpRole"
-# AWS is running checks to ensure that the principal exists. Because of IAM's eventual consistency model, 
-# even though the first command to create the Jump Role works and returns an ARN, it takes time to fully 
-# propagate through AWS systems. Therefore this command to create the Access Role can fail a few times 
+# AWS is running checks to ensure that the principal exists. Because of IAM's eventual consistency model,
+# even though the first command to create the Jump Role works and returns an ARN, it takes time to fully
+# propagate through AWS systems. Therefore this command to create the Access Role can fail a few times
 # before the Role ARN returns as "valid".
 
 max_retries=5

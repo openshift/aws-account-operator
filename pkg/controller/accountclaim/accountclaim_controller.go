@@ -11,6 +11,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -152,6 +153,14 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, r.handleAccountClaimDeletion(reqLogger, accountClaim)
 	}
 
+	isCCS := accountClaim.Spec.BYOCAWSAccountID != ""
+
+	if accountClaim.Status.State == awsv1alpha1.ClaimStatusPending {
+		now := metav1.Now()
+		pendingDuration := now.Sub(accountClaim.GetObjectMeta().GetCreationTimestamp().Time)
+		localmetrics.Collector.SetAccountClaimPendingDuration(isCCS, pendingDuration.Seconds())
+	}
+
 	if accountClaim.Spec.BYOC {
 		return r.handleBYOCAccountClaim(reqLogger, accountClaim)
 	}
@@ -174,8 +183,9 @@ func (r *ReconcileAccountClaim) Reconcile(request reconcile.Request) (reconcile.
 			AccountClaimed,
 			message,
 			controllerutils.UpdateConditionNever,
-			accountClaim.Spec.BYOCAWSAccountID != "",
+			isCCS,
 		)
+
 		// Update the Spec on AccountClaim
 		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 	}
