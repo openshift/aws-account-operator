@@ -143,7 +143,7 @@ function deployOperator {
 
 function waitForDeployment {
     echo -e "\nWaiting for operator deployment to finish\n"
-    $OC_WITH_NAMESPACE wait --for=condition=available --timeout=5s deployment $OPERATOR_DEPLOYMENT || (echo -e '\nERROR - Waited for operator deployment to complete for 60s\n' && return 1)
+    $OC_WITH_NAMESPACE wait --for=condition=available --timeout=60s deployment $OPERATOR_DEPLOYMENT || (echo -e '\nERROR - Waited for operator deployment to complete for 60s\n' && return 1)
     echo -e "\nDeployment Completed\n"
     ## Remove Sleep later
     sleep 20
