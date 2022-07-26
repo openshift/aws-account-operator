@@ -5,7 +5,6 @@ set -eo pipefail
 export IMAGE_NAME=aws-account-operator
 export BUILD_CONFIG=aws-account-operator
 export OPERATOR_DEPLOYMENT=aws-account-operator
-## Remove Below Line
 OC="oc"
 OC_WITH_NAMESPACE="$OC -n $NAMESPACE"
 
@@ -76,27 +75,27 @@ function cleanupPre {
 }
 
 function getEnvVariables {
-    if [[ -z $USE_ENVRC ]];
-        then
-            export FAKE_KEY_VALUE=$(cat /tmp/secret/aao-aws-creds/FAKE_KEY_VALUE)
-            export FORCE_DEV_MODE=cluster
-            export OSD_STAGING_1_AWS_ACCOUNT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_AWS_ACCOUNT_ID)
-            export OSD_STAGING_2_AWS_ACCOUNT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_2_AWS_ACCOUNT_ID)
-            export STS_ROLE_ARN=$(cat /tmp/secret/aao-aws-creds/STS_ROLE_ARN)
-            export STS_JUMP_ARN=$(cat /tmp/secret/aao-aws-creds/STS_JUMP_ARN)
-            export OSD_STAGING_1_OU_ROOT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_OU_ROOT_ID)
-            export OSD_STAGING_1_OU_BASE_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_OU_BASE_ID)
-            export SUPPORT_JUMP_ROLE=$(cat /tmp/secret/aao-aws-creds/SUPPORT_JUMP_ROLE)
-            export STS_JUMP_ROLE=$(cat /tmp/secret/aao-aws-creds/STS_JUMP_ROLE)
-            export OPERATOR_ACCESS_KEY_ID=$(cat /tmp/secret/aao-aws-creds/OPERATOR_ACCESS_KEY_ID)
-            export OPERATOR_SECRET_ACCESS_KEY=$(cat /tmp/secret/aao-aws-creds/OPERATOR_SECRET_ACCESS_KEY)
-        else
-            source .envrc
+    if [[ -z $USE_ENVRC ]]; then
+        ## Prow CI uses existing secrets:- https://docs.ci.openshift.org/docs/how-tos/adding-a-new-secret-to-ci/
+        export FORCE_DEV_MODE=cluster
+        export OSD_STAGING_1_AWS_ACCOUNT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_AWS_ACCOUNT_ID)
+        export OSD_STAGING_2_AWS_ACCOUNT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_2_AWS_ACCOUNT_ID)
+        export STS_ROLE_ARN=$(cat /tmp/secret/aao-aws-creds/STS_ROLE_ARN)
+        export STS_JUMP_ARN=$(cat /tmp/secret/aao-aws-creds/STS_JUMP_ARN)
+        export OSD_STAGING_1_OU_ROOT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_OU_ROOT_ID)
+        export OSD_STAGING_1_OU_BASE_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_OU_BASE_ID)
+        export SUPPORT_JUMP_ROLE=$(cat /tmp/secret/aao-aws-creds/SUPPORT_JUMP_ROLE)
+        export STS_JUMP_ROLE=$(cat /tmp/secret/aao-aws-creds/STS_JUMP_ROLE)
+        export OPERATOR_ACCESS_KEY_ID=$(cat /tmp/secret/aao-aws-creds/OPERATOR_ACCESS_KEY_ID)
+        export OPERATOR_SECRET_ACCESS_KEY=$(cat /tmp/secret/aao-aws-creds/OPERATOR_SECRET_ACCESS_KEY)
+        return
     fi
-
-    if [[ -z $OSD_STAGING_1_AWS_ACCOUNT_ID ]]; then
+    
+    if [ ! -f ".envrc" ]; then
+        echo "ERROR - .envrc does not exist"
         return 1
     fi
+    source .envrc
 }
 
 function preDeploy {
@@ -129,7 +128,7 @@ function verifyBuildSuccess {
     latestJobName="$BUILD_CONFIG"-$($OC_WITH_NAMESPACE get buildconfig "$BUILD_CONFIG" -ojsonpath='{.status.lastVersion}') 
     phase=$($OC_WITH_NAMESPACE get build "$latestJobName" -ojsonpath='{.status.phase}')
     if [[ $phase != "Complete" ]]; then
-        echo "build was not completed fully, the state was $phase but expected to be 'Complete'"
+        echo "ERROR - build was not completed fully, the state was $phase but expected to be 'Complete'"
         echo "the logs for the failed job are:"
 
         $OC_WITH_NAMESPACE logs $latestJobName-build
@@ -138,31 +137,16 @@ function verifyBuildSuccess {
 }
 
 function deployOperator {
-  echo -e "\nDEPLOYING OPERATOR\n"
-
-  make prow-ci-deploy-image OPERATOR_IMAGE_URI=$BUILD_CONFIG
+    echo -e "\nDEPLOYING OPERATOR\n"
+    make prow-ci-deploy-image OPERATOR_IMAGE_URI=$BUILD_CONFIG
 }
 
 function waitForDeployment {
-  echo -e "\nWaiting for operator deployment to finish\n"
-  for i in $(seq 1 60); do
-    BASE_REPLICAS=$($OC_WITH_NAMESPACE get deployment $OPERATOR_DEPLOYMENT -o=jsonpath='{.status.readyReplicas}:{.status.unavailableReplicas}')
-    REPLICAS=$(echo "$BASE_REPLICAS" | cut -d':' -f1)
-    UN_REPLICAS=$(echo "$BASE_REPLICAS" | cut -d':' -f2)
-    if [[ $REPLICAS -lt 1 ]] || [[ $UN_REPLICAS -ge 1 ]] ; then
-      echo -n .
-      sleep 1s
-    else
-      echo -e "\nDeployment Completed\n"
-      ## Remove Sleep later
-      sleep 20
-      return 0
-    fi
-  done
-  if [[ $i -ge 60 ]]; then
-    echo -e "\nWaited for operator deployment to complete for 60s\n"
-    return 1
-  fi
+    echo -e "\nWaiting for operator deployment to finish\n"
+    $OC_WITH_NAMESPACE wait --for=condition=available --timeout=5s deployment $OPERATOR_DEPLOYMENT || (echo -e '\nERROR - Waited for operator deployment to complete for 60s\n' && return 1)
+    echo -e "\nDeployment Completed\n"
+    ## Remove Sleep later
+    sleep 20
 }
 
 function consoleOperatorLogs {
