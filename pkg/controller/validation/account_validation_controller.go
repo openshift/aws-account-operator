@@ -229,7 +229,7 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 	}
 }
 
-func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string) error {
+func ValidateAccountOrigin(account awsv1alpha1.Account) error {
 	// Perform basic short-circuit checks
 	if account.IsBYOC() {
 		log.Info("Will not validate a CCS account", "account", account)
@@ -238,14 +238,17 @@ func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account 
 			Err:  errors.New("Account is a CCS account"),
 		}
 	}
-	if account.IsOwnedByAccountPool() {
-		log.Info("Will not validate account owned by account pool", account)
+	if !account.IsOwnedByAccountPool() {
+		log.Info("Will not validate account not owned by account pool", account)
 		return &AccountValidationError{
 			Type: InvalidAccount,
-			Err:  errors.New("Account is in an account pool"),
+			Err:  errors.New("Account is not in an account pool"),
 		}
 	}
+	return nil
+}
 
+func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string) error {
 	// Perform all checks on the account we want.
 	inPool := IsAccountInPoolOU(account, awsClient, func(s string) bool {
 		return s == poolOU
@@ -310,18 +313,24 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 	}
 
 	// Perform any checks we want
+	err = ValidateAccountOrigin(account)
+	if err != nil {
+		// Decide who we will requeue now
+		validationError, ok := err.(*AccountValidationError)
+		if ok && validationError.Type == InvalidAccount {
+			return utils.DoNotRequeue()
+		}
+		return utils.RequeueWithError(err)
+	}
+
 	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"])
 	if err != nil {
 		// Decide who we will requeue now
 		validationError, ok := err.(*AccountValidationError)
-		if ok {
-			if validationError.Type == InvalidAccount {
-				return utils.DoNotRequeue()
-			}
-			if validationError.Type == AccountMoveFailed {
-				return utils.RequeueAfter(moveWaitTime)
-			}
+		if ok && validationError.Type == AccountMoveFailed {
+			return utils.RequeueAfter(moveWaitTime)
 		}
+		return utils.RequeueWithError(err)
 	}
 
 	shardName, ok := cm.Data["shard-name"]
@@ -337,6 +346,7 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 				if ok && (validationError.Type == MissingTag || validationError.Type == IncorrectOwnerTag) {
 					log.Error(validationError, validationError.Err.Error())
 				}
+				return utils.RequeueWithError(err)
 			}
 		}
 	}
