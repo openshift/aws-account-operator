@@ -450,7 +450,7 @@ func TestValidateAccount_Reconcile(t *testing.T) {
 				},
 			},
 		}, want: reconcile.Result{Requeue: false}, wantErr: false},
-		{name: "Will not attempt to reconcile a account pool account.", fields: fields{
+		{name: "Will not attempt to reconcile a non-account pool account.", fields: fields{
 			Client: fake.NewFakeClient([]runtime.Object{
 				&awsv1alpha1.Account{
 					TypeMeta: v1.TypeMeta{
@@ -460,11 +460,6 @@ func TestValidateAccount_Reconcile(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{
 						Name:      "test",
 						Namespace: "default",
-						OwnerReferences: []v1.OwnerReference{
-							{
-								Kind: "AccountPool",
-							},
-						},
 					},
 				},
 				&corev1.ConfigMap{
