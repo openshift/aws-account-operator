@@ -239,10 +239,17 @@ func ValidateAccountOrigin(account awsv1alpha1.Account) error {
 		}
 	}
 	if !account.IsOwnedByAccountPool() {
-		log.Info("Will not validate account not owned by account pool", account)
+		log.Info("Will not validate account not owned by account pool", "account", account)
 		return &AccountValidationError{
 			Type: InvalidAccount,
 			Err:  errors.New("Account is not in an account pool"),
+		}
+	}
+	if !account.IsReady() {
+		log.Info("Will not validate account not in a ready state", "account", account)
+		return &AccountValidationError{
+			Type: InvalidAccount,
+			Err:  errors.New("Account is not in a ready state"),
 		}
 	}
 	return nil
