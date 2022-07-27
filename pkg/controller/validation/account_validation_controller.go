@@ -47,6 +47,7 @@ const (
 	MissingTag
 	IncorrectOwnerTag
 	AccountTagFailed
+	MissingAWSAccount
 )
 
 type AccountValidationError struct {
@@ -248,6 +249,16 @@ func ValidateAccountOrigin(account awsv1alpha1.Account) error {
 	return nil
 }
 
+func ValidateAwsAccountId(account awsv1alpha1.Account) error {
+	if account.Spec.AwsAccountID == "" {
+		return &AccountValidationError{
+			Type: MissingAWSAccount,
+			Err:  errors.New("Account has not associated AWS account"),
+		}
+	}
+	return nil
+}
+
 func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string) error {
 	// Perform all checks on the account we want.
 	inPool := IsAccountInPoolOU(account, awsClient, func(s string) bool {
@@ -318,6 +329,15 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 		// Decide who we will requeue now
 		validationError, ok := err.(*AccountValidationError)
 		if ok && validationError.Type == InvalidAccount {
+			return utils.DoNotRequeue()
+		}
+		return utils.RequeueWithError(err)
+	}
+
+	err = ValidateAwsAccountId(account)
+	if err != nil {
+		validationError, ok := err.(*AccountValidationError)
+		if ok && validationError.Type == MissingAWSAccount {
 			return utils.DoNotRequeue()
 		}
 		return utils.RequeueWithError(err)
