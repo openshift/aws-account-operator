@@ -474,14 +474,17 @@ clean-operator: ## Clean Operator
 	oc delete awsfederatedrole --all -n ${NAMESPACE}
 
 .PHONY: prow-ci-predeploy
-prow-ci-predeploy: python-venv predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map
-
-.PHONY: prow-ci-deploy-image
-prow-ci-deploy-image: FORCE_DEV_MODE?=cluster
-prow-ci-deploy-image: ## Deploy operator image
+prow-ci-predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map
 	@ls deploy/*.yaml | grep -v operator.yaml | xargs -L1 oc apply -f
-	@hack/scripts/edit_operator_yaml_for_dev.py $(OPERATOR_IMAGE_URI) "$(FORCE_DEV_MODE)" | oc apply -n ${NAMESPACE} -f -
 
 .PHONY: prow-ci-deploy
 prow-ci-deploy: ## Triggers prow-ci build and deploy operator bash script
 	hack/scripts/prow-ci-operator-deploy.sh
+
+.PHONY: cluster-ci-entrypoint
+cluster-ci-entrypoint: ## Triggers prow-ci build and deploy operator bash script
+	hack/scripts/prow-ci-operator-deploy.sh --use-envrc --skip-cleanup --is-staging -n $(OPERATOR_NAMESPACE)
+
+.PHONY: local-ci-entrypoint
+local-ci-entrypoint: ## Triggers prow-ci build and deploy operator bash script
+	hack/scripts/prow-ci-operator-deploy.sh --use-envrc --skip-cleanup --is-local -n $(OPERATOR_NAMESPACE)

@@ -18,11 +18,12 @@ function usage {
     -n|--namespace  Sets the namespace to use
     --is-local      Uses settings and makefile targets for local deployment
     --is-staging    Uses settings and makefile targets for staging deployment
+    --skip-cleanup  Skips the cleanup if provided
 EOF
 }
 
 function parseArgs {
-    PARSED_ARGUMENTS=$(getopt -o 'n:' --long 'namespace:,use-envrc,is-local,is-staging' -- "$@")
+    PARSED_ARGUMENTS=$(getopt -o 'n:' --long 'namespace:,use-envrc,is-local,is-staging,skip-cleanup' -- "$@")
     eval set -- "$PARSED_ARGUMENTS"
 
     while :
@@ -36,6 +37,9 @@ function parseArgs {
                 ;;
             --is-staging)
                 IS_STAGING=1; shift
+                ;;
+            --skip-cleanup)
+                SKIP_CLEANUP=1; shift
                 ;;
             -n|--namespace)
                 NAMESPACE="$2";	shift 2
@@ -56,6 +60,13 @@ function parseArgs {
     echo "NAMESPACE=${NAMESPACE}"
     echo "IS_LOCAL=${IS_LOCAL}"
     echo "IS_STAGING=${IS_STAGING}"
+    echo "SKIP_CLEANUP=${SKIP_CLEANUP}"
+}
+
+function removeDockerfileSoftLink {
+    if [ -f "Dockerfile" ]; then
+        rm Dockerfile
+    fi
 }
 
 function cleanup {
@@ -68,6 +79,7 @@ function cleanup {
 	fi
 
     $OC delete namespace $NAMESPACE || true
+    removeDockerfileSoftLink
 }
 
 function cleanupPre {
@@ -101,14 +113,15 @@ function getEnvVariables {
 function preDeploy {
     echo -e "\nDEPLOY CRDs, Secret, Config Map\n"
     $OC adm new-project "$NAMESPACE" || true
-    if [ -z $IS_LOCAL -a -z $IS_STAGING ];
+    if [ -z $IS_LOCAL ];
         then
             make prow-ci-predeploy
-            return
+            if [ ! -z $IS_STAGING ]; then
+                make validate-deployment
+            fi
         else
             make predeploy
     fi
-    source .venv/bin/activate
 }
 
 function createDockerfileSoftLink {
@@ -136,9 +149,47 @@ function verifyBuildSuccess {
     fi
 }
 
+function configureKustomization {
+    cat <<EOF >./deploy/kustomization.yaml
+resources:
+- operator.yaml
+images:
+- name: quay.io/app-sre/aws-account-operator:latest
+  newName: $BUILD_CONFIG
+patches:
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: aws-account-operator
+  path: modify_operator.yaml
+EOF
+
+    cat <<EOF >./deploy/modify_operator.yaml
+- op: add
+  path: /spec/template/spec/containers/0/env/0
+  value:
+    name: FORCE_DEV_MODE
+    value: $FORCE_DEV_MODE
+EOF
+}
+
+function cleanKustomization {
+    if [ -f "./deploy/kustomization.yaml" ]; then
+        rm ./deploy/kustomization.yaml
+    fi
+    if [ -f "./deploy/modify_operator.yaml" ]; then
+        rm ./deploy/modify_operator.yaml
+    fi
+}
+
 function deployOperator {
     echo -e "\nDEPLOYING OPERATOR\n"
-    make prow-ci-deploy-image OPERATOR_IMAGE_URI=$BUILD_CONFIG
+    $OC_WITH_NAMESPACE delete deployment $OPERATOR_DEPLOYMENT || true
+    cleanKustomization
+    configureKustomization
+    $OC apply -k ./deploy
+    cleanKustomization
 }
 
 function waitForDeployment {
@@ -154,7 +205,7 @@ function consoleOperatorLogs {
     if [[ $($getOperatorPodCommand --no-headers | wc -l) == 0 ]];
         then
             echo -e "\nno operator pods found\n"
-            return
+            return 0
 	fi
 	operatorPodName=$($getOperatorPodCommand -ojsonpath='{.items[0].metadata.name}')
 	echo -e "\nstatus of the operator pod\n"
@@ -170,20 +221,28 @@ function cleanupPost {
 
 parseArgs $@
 
-trap cleanupPost EXIT
-
-cleanupPre
+if [ -z $SKIP_CLEANUP ];
+    then
+        cleanupPre
+        trap cleanupPost EXIT
+    else
+        trap "consoleOperatorLogs; removeDockerfileSoftLink" EXIT
+fi
 
 getEnvVariables
 
 preDeploy
 
-createDockerfileSoftLink
-
-buildOperatorImage
-
-verifyBuildSuccess
-
-deployOperator
-
-waitForDeployment
+if [ -z $IS_LOCAL ];
+    then
+        createDockerfileSoftLink
+        buildOperatorImage
+        verifyBuildSuccess
+        deployOperator
+        waitForDeployment
+    else
+        make deploy-local &
+        localOperator=$!
+        sleep 20
+        kill $localOperator
+fi
