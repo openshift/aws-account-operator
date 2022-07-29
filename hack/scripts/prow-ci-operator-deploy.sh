@@ -199,6 +199,16 @@ function waitForDeployment {
     sleep 20
 }
 
+function installJq {
+    curl -sfL https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 --output /tmp/jq
+    chmod a+x ./tmp/jq
+    PATH=$PATH:/tmp/jq
+}
+
+function installProwCIDependencies {
+    installJq
+}
+
 function consoleOperatorLogs {
     getOperatorPodCommand="$OC_WITH_NAMESPACE get po -lname=aws-account-operator"
     if [[ $($getOperatorPodCommand --no-headers | wc -l) == 0 ]];
@@ -240,6 +250,9 @@ if [ -z $IS_LOCAL ];
         verifyBuildSuccess
         deployOperator
         waitForDeployment
+        if [ -z $IS_STAGING ]; then
+            installProwCIDependencies
+        fi
         make ci-int-tests
     else
         make deploy-local &
