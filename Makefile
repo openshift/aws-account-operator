@@ -488,3 +488,6 @@ cluster-ci-entrypoint: ## Triggers prow-ci build and deploy operator bash script
 .PHONY: local-ci-entrypoint
 local-ci-entrypoint: ## Triggers prow-ci build and deploy operator bash script
 	hack/scripts/prow-ci-operator-deploy.sh --use-envrc --skip-cleanup --is-local -n $(OPERATOR_NAMESPACE)
+
+.PHONY: ci-int-tests
+ci-int-tests: test-account-creation

@@ -6,7 +6,6 @@ export IMAGE_NAME=aws-account-operator
 export BUILD_CONFIG=aws-account-operator
 export OPERATOR_DEPLOYMENT=aws-account-operator
 OC="oc"
-OC_WITH_NAMESPACE="$OC -n $NAMESPACE"
 
 function usage {
     cat <<EOF
@@ -220,6 +219,7 @@ function cleanupPost {
 }
 
 parseArgs $@
+OC_WITH_NAMESPACE="$OC -n $NAMESPACE"
 
 if [ -z $SKIP_CLEANUP ];
     then
@@ -240,9 +240,10 @@ if [ -z $IS_LOCAL ];
         verifyBuildSuccess
         deployOperator
         waitForDeployment
+        make ci-int-tests
     else
         make deploy-local &
         localOperator=$!
-        sleep 20
+        make ci-int-tests
         kill $localOperator
 fi
