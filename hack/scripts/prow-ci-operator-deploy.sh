@@ -156,7 +156,7 @@ resources:
 images:
 - name: quay.io/app-sre/aws-account-operator:latest
   newName: $BUILD_CONFIG
-patches:
+patchesJson6902:
 - target:
     group: apps
     version: v1
