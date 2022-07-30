@@ -201,7 +201,7 @@ function waitForDeployment {
 
 function installJq {
     curl -sfL https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 --output /tmp/jq
-    chmod a+x ./tmp/jq
+    chmod a+x /tmp/jq
     PATH=$PATH:/tmp/jq
 }
 
