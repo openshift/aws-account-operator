@@ -208,6 +208,20 @@ function installAWS {
     curl -sfL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" --output /tmp/awscliv2.zip
     unzip /tmp/awscliv2.zip
     ./aws/install --install-dir /tmp/aws-cli -b /tmp
+    cat <<EOF >/tmp/credentials
+[osd-staging-1]
+aws_access_key_id = $OPERATOR_ACCESS_KEY_ID
+aws_secret_access_key = $OPERATOR_SECRET_ACCESS_KEY
+
+[osd-staging-2]
+aws_access_key_id = $OPERATOR_ACCESS_KEY_ID
+aws_secret_access_key = $OPERATOR_SECRET_ACCESS_KEY
+
+[default]
+aws_access_key_id = $OPERATOR_ACCESS_KEY_ID
+aws_secret_access_key = $OPERATOR_SECRET_ACCESS_KEY
+EOF
+    export AWS_SHARED_CREDENTIALS_FILE=/tmp/credentials
 }
 
 function installProwCIDependencies {
