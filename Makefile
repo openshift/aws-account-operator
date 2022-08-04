@@ -478,16 +478,20 @@ prow-ci-predeploy: predeploy-aws-account-operator deploy-aws-account-operator-cr
 	@ls deploy/*.yaml | grep -v operator.yaml | xargs -L1 oc apply -f
 
 .PHONY: prow-ci-deploy
-prow-ci-deploy: ## Triggers prow-ci build and deploy operator bash script
-	hack/scripts/prow-ci-operator-deploy.sh
-
-.PHONY: cluster-ci-entrypoint
-cluster-ci-entrypoint: ## Triggers prow-ci build and deploy operator bash script
-	hack/scripts/prow-ci-operator-deploy.sh --use-envrc --skip-cleanup --is-staging -n $(OPERATOR_NAMESPACE)
+prow-ci-deploy: ## Triggers integration test bootstrap bash script for prow ci
+	hack/scripts/integration-test-bootstrap.sh -p prow
 
 .PHONY: local-ci-entrypoint
-local-ci-entrypoint: ## Triggers prow-ci build and deploy operator bash script
-	hack/scripts/prow-ci-operator-deploy.sh --use-envrc --skip-cleanup --is-local -n $(OPERATOR_NAMESPACE)
+local-ci-entrypoint: ## Triggers integration test bootstrap bash script for local cluster
+	hack/scripts/integration-test-bootstrap.sh -p local --skip-cleanup -n $(OPERATOR_NAMESPACE)
+
+.PHONY: prow-ci-entrypoint
+prow-ci-entrypoint: ## Triggers integration test bootstrap bash script for prow ci
+	hack/scripts/integration-test-bootstrap.sh -p prow
+
+.PHONY: stage-ci-entrypoint
+stage-ci-entrypoint: ## Triggers integration test bootstrap bash script for staging cluster
+	hack/scripts/integration-test-bootstrap.sh -p stage --skip-cleanup -n $(OPERATOR_NAMESPACE)
 
 .PHONY: ci-int-tests
 ci-int-tests: test-account-creation
