@@ -218,6 +218,122 @@ func TestMoveAccount(t *testing.T) {
 	}
 }
 
+func TestValidateAccountOrigin(t *testing.T) {
+	type args struct {
+		account awsv1alpha1.Account
+	}
+	tests := []struct {
+		name        string
+		args        args
+		wantErr     bool
+		expectedErr string
+	}{
+		{
+			name: "Account is BYOC",
+			args: args{
+				account: awsv1alpha1.Account{
+					ObjectMeta: v1.ObjectMeta{
+						OwnerReferences: []v1.OwnerReference{
+							{
+								Kind: "AccountPool",
+							},
+						},
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						BYOC: true,
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State: string(awsv1alpha1.AccountReady),
+					},
+				},
+			},
+			wantErr:     true,
+			expectedErr: "Account is a CCS account",
+		},
+		{
+			name: "Account not owned by account pool",
+			args: args{
+				account: awsv1alpha1.Account{
+					ObjectMeta: v1.ObjectMeta{
+						OwnerReferences: nil,
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						BYOC: false,
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State: string(awsv1alpha1.AccountReady),
+					},
+				},
+			},
+			wantErr:     true,
+			expectedErr: "Account is not in an account pool",
+		},
+		{
+			name: "Account is not in ready state",
+			args: args{
+				account: awsv1alpha1.Account{
+					ObjectMeta: v1.ObjectMeta{
+						OwnerReferences: []v1.OwnerReference{
+							{
+								Kind: "AccountPool",
+							},
+						},
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						BYOC: false,
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State: string(awsv1alpha1.AccountCreating),
+					},
+				},
+			},
+			wantErr:     true,
+			expectedErr: "Account is not in a ready state",
+		},
+		{
+			name: "Valid account origin",
+			args: args{
+				account: awsv1alpha1.Account{
+					ObjectMeta: v1.ObjectMeta{
+						OwnerReferences: []v1.OwnerReference{
+							{
+								Kind: "AccountPool",
+							},
+						},
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						BYOC: false,
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State: string(awsv1alpha1.AccountReady),
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidateAccountOrigin(tt.args.account); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateAccountOrigin() error = %v, wantErr %v", err, tt.wantErr)
+			} else {
+				if tt.wantErr {
+					err, ok := err.(*AccountValidationError)
+					if !ok {
+						t.Errorf("ValidateAccountOrigin() error, expected AccountValidationError")
+					}
+					if err.Type != InvalidAccount {
+						t.Errorf("ValidateAccountOrigin() error, expected error of type InvalidAccount but was %v", err.Type)
+					}
+					if err.Err.Error() != tt.expectedErr {
+						t.Errorf("ValidateAccountOrigin() error, did not get correct error message")
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 	ctrl := gomock.NewController(t)
 

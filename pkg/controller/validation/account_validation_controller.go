@@ -232,17 +232,24 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 func ValidateAccountOrigin(account awsv1alpha1.Account) error {
 	// Perform basic short-circuit checks
 	if account.IsBYOC() {
-		log.Info("Will not validate a CCS account", "account", account)
+		log.Info("Will not validate a CCS account")
 		return &AccountValidationError{
 			Type: InvalidAccount,
 			Err:  errors.New("Account is a CCS account"),
 		}
 	}
 	if !account.IsOwnedByAccountPool() {
-		log.Info("Will not validate account not owned by account pool", account)
+		log.Info("Will not validate account not owned by account pool")
 		return &AccountValidationError{
 			Type: InvalidAccount,
 			Err:  errors.New("Account is not in an account pool"),
+		}
+	}
+	if !account.IsReady() {
+		log.Info("Will not validate account not in a ready state")
+		return &AccountValidationError{
+			Type: InvalidAccount,
+			Err:  errors.New("Account is not in a ready state"),
 		}
 	}
 	return nil
@@ -254,12 +261,12 @@ func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account 
 		return s == poolOU
 	})
 	if inPool {
-		log.Info("Account is already in the root OU.", "account", account)
+		log.Info("Account is already in the root OU.")
 	} else {
-		log.Info("Account is not in the root OU - it will be moved.", "account", account)
+		log.Info("Account is not in the root OU - it will be moved.")
 		err := MoveAccount(account.Spec.AwsAccountID, awsClient, poolOU, accountMoveEnabled)
 		if err != nil {
-			log.Error(err, "Could not move account", "account", account)
+			log.Error(err, "Could not move account")
 			return &AccountValidationError{
 				Type: AccountMoveFailed,
 				Err:  err,
