@@ -281,7 +281,24 @@ function profileStage {
     waitForDeployment
 }
 
+## filterPRRunByTitle is a temporary blocker for prow CI PR runs
+## PRs containing text - "RUN-INT-TESTS" will only be allowed to execute for Prow Profile flow
+function filterPRRunByTitle {
+    if [ $PROFILE = "prow" ]; then
+        installJq
+        PATH=$PATH:/tmp
+        echo $JOB_SPEC
+        PULL_TITLE=$(echo ${JOB_SPEC} | jq -r '.refs.pulls[0].title')
+        if echo $PULL_TITLE | grep -iqF "run-int-tests"; then
+            return 0
+        fi
+        echo -e "\nSkipping integration tests for PR with title $PULL_TITLE\n"
+        exit
+    fi
+}
+
 parseArgs $@
+filterPRRunByTitle
 OC_WITH_NAMESPACE="$OC -n $NAMESPACE"
 cleanupPre
 trap cleanupPost EXIT
