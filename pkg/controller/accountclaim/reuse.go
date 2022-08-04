@@ -2,10 +2,10 @@ package accountclaim
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/rkt/rkt/tests/testutils/logger"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -243,7 +243,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountSnapshots(reqLogger logr.Logger
 
 		_, err = awsClient.DeleteSnapshot(&deleteSnapshotInput)
 		if err != nil {
-			delError := errors.Wrap(err, fmt.Sprintf("Failed deleting EBS snapshot: %s", *snapshot.SnapshotId)).Error()
+			delError := fmt.Errorf("failed deleting EBS snapshot: %s: %w", *snapshot.SnapshotId, err).Error()
 			awsErrors <- delError
 			return err
 		}
@@ -315,7 +315,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logge
 
 		_, err = awsClient.DeleteVolume(&deleteVolumeInput)
 		if err != nil {
-			delError := errors.Wrap(err, fmt.Sprintf("Failed deleting EBS volume: %s", *volume.VolumeId)).Error()
+			delError := fmt.Errorf("failed deleting EBS volume: %s: %w", *volume.VolumeId, err).Error()
 			logger.Error(delError)
 			awsErrors <- delError
 			return err
@@ -332,7 +332,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 	listBucketsInput := s3.ListBucketsInput{}
 	s3Buckets, err := awsClient.ListBuckets(&listBucketsInput)
 	if err != nil {
-		listError := errors.Wrap(err, "Failed listing S3 buckets").Error()
+		listError := fmt.Errorf("failed listing S3 buckets: %w", err).Error()
 		awsErrors <- listError
 		return err
 	}
@@ -346,7 +346,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 		// delete any content if any
 		err := DeleteBucketContent(awsClient, *bucket.Name)
 		if err != nil {
-			ContentDelErr := errors.Wrap(err, fmt.Sprintf("Failed to delete bucket content: %s", *bucket.Name)).Error()
+			ContentDelErr := fmt.Errorf("failed to delete bucket content: %s: %w", *bucket.Name, err).Error()
 			if aerr, ok := err.(awserr.Error); ok {
 				switch aerr.Code() {
 				case s3.ErrCodeNoSuchBucket:
@@ -359,7 +359,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsAccountS3(reqLogger logr.Logger, awsCl
 		}
 		_, err = awsClient.DeleteBucket(&deleteBucketInput)
 		if err != nil {
-			DelError := errors.Wrap(err, fmt.Sprintf("Failed deleting S3 bucket: %s", *bucket.Name)).Error()
+			DelError := fmt.Errorf("failed deleting S3 bucket: %s: %w", *bucket.Name, err).Error()
 			if aerr, ok := err.(awserr.Error); ok {
 				switch aerr.Code() {
 				case s3.ErrCodeNoSuchBucket:
@@ -387,7 +387,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClie
 		// Get list of hosted zones by page
 		hostedZonesOutput, err := awsClient.ListHostedZones(&route53.ListHostedZonesInput{Marker: nextZoneMarker})
 		if err != nil {
-			listError := errors.Wrap(err, "Failed to list Hosted Zones").Error()
+			listError := fmt.Errorf("failed to list Hosted Zones: %w", err).Error()
 			awsErrors <- listError
 			return err
 		}
@@ -400,7 +400,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClie
 			for {
 				recordSet, listRecordsError := awsClient.ListResourceRecordSets(&route53.ListResourceRecordSetsInput{HostedZoneId: zone.Id, StartRecordName: nextRecordName})
 				if listRecordsError != nil {
-					recordSetListError := errors.Wrap(err, fmt.Sprintf("Failed to list Record sets for hosted zone %s", *zone.Name)).Error()
+					recordSetListError := fmt.Errorf("failed to list Record sets for hosted zone %s: %w", *zone.Name, err).Error()
 					awsErrors <- recordSetListError
 					return listRecordsError
 				}
@@ -421,7 +421,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClie
 				if changeBatch.Changes != nil {
 					_, changeErr := awsClient.ChangeResourceRecordSets(&route53.ChangeResourceRecordSetsInput{HostedZoneId: zone.Id, ChangeBatch: changeBatch})
 					if changeErr != nil {
-						recordDeleteError := errors.Wrap(err, fmt.Sprintf("Failed to delete record sets for hosted zone %s", *zone.Name)).Error()
+						recordDeleteError := fmt.Errorf("failed to delete record sets for hosted zone %s: %w", *zone.Name, err).Error()
 						awsErrors <- recordDeleteError
 						return changeErr
 					}
@@ -437,7 +437,7 @@ func (r *ReconcileAccountClaim) cleanUpAwsRoute53(reqLogger logr.Logger, awsClie
 
 			_, deleteError := awsClient.DeleteHostedZone(&route53.DeleteHostedZoneInput{Id: zone.Id})
 			if deleteError != nil {
-				zoneDelErr := errors.Wrap(err, fmt.Sprintf("Failed to delete hosted zone: %s", *zone.Name)).Error()
+				zoneDelErr := fmt.Errorf("failed to delete hosted zone: %s: %w", *zone.Name, err).Error()
 				awsErrors <- zoneDelErr
 				return deleteError
 			}
