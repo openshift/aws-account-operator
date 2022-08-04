@@ -479,7 +479,7 @@ prow-ci-predeploy: predeploy-aws-account-operator deploy-aws-account-operator-cr
 
 .PHONY: prow-ci-deploy
 prow-ci-deploy: ## Triggers integration test bootstrap bash script for prow ci
-	hack/scripts/integration-test-bootstrap.sh -p prow
+	@echo "Prow Step Working"
 
 .PHONY: local-ci-entrypoint
 local-ci-entrypoint: ## Triggers integration test bootstrap bash script for local cluster
