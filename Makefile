@@ -473,6 +473,25 @@ clean-operator: ## Clean Operator
 	oc delete awsfederatedaccountaccess --all -n ${NAMESPACE}
 	oc delete awsfederatedrole --all -n ${NAMESPACE}
 
+.PHONY: prow-ci-predeploy
+prow-ci-predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map
+	@ls deploy/*.yaml | grep -v operator.yaml | xargs -L1 oc apply -f
+
 .PHONY: prow-ci-deploy
-prow-ci-deploy: ## Triggers prow-ci build and deploy operator bash script
-	hack/scripts/prow-ci-operator-deploy.sh
+prow-ci-deploy: ## Triggers integration test bootstrap bash script for prow ci
+	@echo "Prow Step Working"
+
+.PHONY: local-ci-entrypoint
+local-ci-entrypoint: ## Triggers integration test bootstrap bash script for local cluster
+	hack/scripts/integration-test-bootstrap.sh -p local --skip-cleanup -n $(OPERATOR_NAMESPACE)
+
+.PHONY: prow-ci-entrypoint
+prow-ci-entrypoint: ## Triggers integration test bootstrap bash script for prow ci
+	hack/scripts/integration-test-bootstrap.sh -p prow
+
+.PHONY: stage-ci-entrypoint
+stage-ci-entrypoint: ## Triggers integration test bootstrap bash script for staging cluster
+	hack/scripts/integration-test-bootstrap.sh -p stage --skip-cleanup -n $(OPERATOR_NAMESPACE)
+
+.PHONY: ci-int-tests
+ci-int-tests: test-account-creation
