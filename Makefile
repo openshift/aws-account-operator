@@ -477,10 +477,6 @@ clean-operator: ## Clean Operator
 prow-ci-predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map
 	@ls deploy/*.yaml | grep -v operator.yaml | xargs -L1 oc apply -f
 
-.PHONY: prow-ci-deploy
-prow-ci-deploy: ## Triggers integration test bootstrap bash script for prow ci
-	@echo "Prow Step Working"
-
 .PHONY: local-ci-entrypoint
 local-ci-entrypoint: ## Triggers integration test bootstrap bash script for local cluster
 	hack/scripts/integration-test-bootstrap.sh -p local --skip-cleanup -n $(OPERATOR_NAMESPACE)
