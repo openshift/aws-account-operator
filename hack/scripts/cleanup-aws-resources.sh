@@ -54,8 +54,6 @@ function deleteVPCs {
     fi
 }
 
-echo -e "\nSTARTING AWS RESOURCES CLEANUP FOR CI\n"
-
 ## Currently the int tests only interact with us-east-1 region (specified in the AccountClaim CRs the tests create)
 ## for now we only clean up this region, but a more thorough implementation should probably check all regions or
 ## better yet just use the Account Shredder (https://github.com/openshift/aws-account-shredder) or whatever replaces it.
@@ -71,5 +69,3 @@ terminateEC2Instances
 waitForInstancesTermination
 getVPCs
 deleteVPCs
-
-echo -e "\nAWS RESOURCES CLEANUP COMPLETED\n"

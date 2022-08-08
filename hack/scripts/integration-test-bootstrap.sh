@@ -149,7 +149,10 @@ function cleanupPre {
 function cleanupPost {
     consoleOperatorLogs
     cleanup
+    echo -e "\nSTARTING AWS RESOURCES CLEANUP FOR CI\n"
     make ci-aws-resources-cleanup
+    echo -e "\nAWS RESOURCES CLEANUP COMPLETED\n"
+
 }
 
 function createDockerfileSoftLink {
