@@ -495,3 +495,8 @@ stage-ci-entrypoint: ## Triggers integration test bootstrap bash script for stag
 
 .PHONY: ci-int-tests
 ci-int-tests: test-account-creation
+
+.PHONY: ci-aws-resources-cleanup
+ci-aws-resources-cleanup: 
+	hack/scripts/cleanup-aws-resources.sh "$(STS_ROLE_ARN)" "$(OSD_STAGING_1_AWS_ACCOUNT_ID)"
+	hack/scripts/cleanup-aws-resources.sh "$(STS_JUMP_ARN)" "$(OSD_STAGING_2_AWS_ACCOUNT_ID)"
