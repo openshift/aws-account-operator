@@ -149,6 +149,10 @@ function cleanupPre {
 function cleanupPost {
     consoleOperatorLogs
     cleanup
+    echo -e "\nSTARTING AWS RESOURCES CLEANUP FOR CI\n"
+    make ci-aws-resources-cleanup
+    echo -e "\nAWS RESOURCES CLEANUP COMPLETED\n"
+
 }
 
 function createDockerfileSoftLink {
@@ -223,7 +227,7 @@ function installJq {
 
 function installAWS {
     curl -sfL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" --output /tmp/awscliv2.zip
-    unzip /tmp/awscliv2.zip
+    unzip -qq /tmp/awscliv2.zip
     ./aws/install --install-dir /tmp/aws-cli -b /tmp
     cat <<EOF >/tmp/credentials
 [osd-staging-1]
