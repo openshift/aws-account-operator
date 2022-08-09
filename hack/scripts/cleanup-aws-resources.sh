@@ -7,7 +7,6 @@ function generateRoleCreds {
     ROLE_ARN=$1
     AWS_ACCOUNT_ID=$2
 
-    # TODO: remove profile
     echo "Assuming role $ROLE_ARN for account $AWS_ACCOUNT_ID"
     roleCreds=$(aws sts assume-role --role-arn ${ROLE_ARN} --role-session-name "ProwCIResourceCleanup" --output json )
     export AWS_ACCESS_KEY_ID=$(jq -r '.Credentials.AccessKeyId' <<< $roleCreds)
@@ -15,33 +14,22 @@ function generateRoleCreds {
     export AWS_SESSION_TOKEN=$(jq -r '.Credentials.SessionToken' <<< $roleCreds)
 }
 
-function getEC2Instances {
-    instanceIds=$(aws ec2 describe-instances --region $REGION --filters "Name=owner-id,Values=$AWS_ACCOUNT_ID" --filters 'Name=instance-state-name,Values=running,pending' | jq -r '.Reservations[].Instances | map(.InstanceId) | join(",")')
-}
-
 function terminateEC2Instances {
+    instanceIds=$(aws ec2 describe-instances --region $REGION --filters "Name=owner-id,Values=$AWS_ACCOUNT_ID" --filters 'Name=instance-state-name,Values=running,pending' | jq -r '.Reservations[].Instances | map(.InstanceId) | join(",")')
     if [ $instanceIds ];
         then
             echo "Cleaning up ec2 instances for $AWS_ACCOUNT_ID: $instanceIds"
             aws ec2 terminate-instances --region $REGION --instance-ids $instanceIds || (exitCode=$? && echo "ERROR during instances termination" && return $exitCode)
+            echo "Waiting for instances to terminate."
+            aws ec2 wait instance-terminated --region $REGION --instance-ids $instanceIds || (echo "ec2 instances termination check failed for $AWS_ACCOUNT_ID" && return 1)
+            echo "All ec2 instances terminated successfully for $AWS_ACCOUNT_ID"
         else
             echo "No running ec2 instances to cleanup for account $AWS_ACCOUNT_ID"
     fi
 }
 
-function waitForInstancesTermination {
-    if [ $instanceIds ]; then
-        echo "Waiting for instances to terminate."
-        aws ec2 wait instance-terminated --region $REGION --instance-ids $instanceIds || (echo "ec2 instances termination check failed for $AWS_ACCOUNT_ID" && return 1)
-        echo "All ec2 instances terminated successfully for $AWS_ACCOUNT_ID"
-    fi
-}
-
-function getVPCs {
-    vpcIds=$(aws ec2 describe-vpcs --region $REGION --filters "Name=owner-id,Values=$AWS_ACCOUNT_ID" --filters "Name=is-default,Values=false" | jq -r '.Vpcs[].VpcId')
-}
-
 function deleteVPCs {
+    vpcIds=$(aws ec2 describe-vpcs --region $REGION --filters "Name=owner-id,Values=$AWS_ACCOUNT_ID" --filters "Name=is-default,Values=false" | jq -r '.Vpcs[].VpcId')
     if [ $vpcIds ];
         then
             for vpcId in $vpcIds
@@ -64,8 +52,5 @@ export AWS_ACCESS_KEY_ID=$OPERATOR_ACCESS_KEY_ID
 export AWS_SECRET_ACCESS_KEY=$OPERATOR_SECRET_ACCESS_KEY
 
 generateRoleCreds $1 $2
-getEC2Instances
 terminateEC2Instances
-waitForInstancesTermination
-getVPCs
 deleteVPCs
