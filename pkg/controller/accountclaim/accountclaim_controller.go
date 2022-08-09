@@ -12,7 +12,6 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
-	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -309,20 +308,20 @@ func (r *ReconcileAccountClaim) handleAccountClaimDeletion(reqLogger logr.Logger
 			// First we want to see if this was an update race condition where the credentials rotator will update the CR while the finalizer is trying to run.  If that's the case, we want to requeue and retry, before outright failing the account.
 			if k8serr.IsConflict(err) {
 				reqLogger.Info("Account CR Modified during CR reset.")
-				return errors.Wrap(err, "account CR modified during reset")
+				return fmt.Errorf("account CR modified during reset: %w", err)
 			}
 
 			// Get account claimed by deleted accountclaim
 			failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
 			if accountErr != nil {
 				reqLogger.Error(accountErr, "Failed to get claimed account")
-				return errors.Wrap(err, "failed to get claimed account")
+				return fmt.Errorf("failed to get claimed account: %w", err)
 			}
 			// Update account status and add "Reuse Failed" condition
 			accountErr = r.resetAccountSpecStatus(reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed")
 			if accountErr != nil {
 				reqLogger.Error(accountErr, "Failed updating account status for failed reuse")
-				return errors.Wrap(err, "failed updating account status for failed reuse")
+				return fmt.Errorf("failed updating account status for failed reuse: %w", err)
 			}
 
 			return err

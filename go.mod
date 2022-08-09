@@ -2,19 +2,19 @@ module github.com/openshift/aws-account-operator
 
 go 1.16
 
-replace github.com/openshift/aws-account-operator/pkg/apis => ./pkg/apis
-
 require (
 	github.com/avast/retry-go v2.6.1+incompatible
 	github.com/aws/aws-sdk-go v1.34.14
 	github.com/go-logr/logr v0.1.0
 	github.com/golang/mock v1.3.1
+	github.com/google/go-cmp v0.5.5
 	github.com/onsi/ginkgo v1.16.4
+	github.com/onsi/ginkgo/v2 v2.1.3
 	github.com/onsi/gomega v1.17.0
 	github.com/openshift/api v3.9.1-0.20190924102528-32369d4db2ad+incompatible
+	github.com/openshift/aws-account-operator/pkg/apis v0.0.0-00010101000000-000000000000
 	github.com/openshift/operator-custom-metrics v0.4.1
 	github.com/operator-framework/operator-sdk v0.16.0
-	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.2.1
 	github.com/rkt/rkt v1.30.0
 	github.com/spf13/pflag v1.0.5
@@ -23,19 +23,15 @@ require (
 	k8s.io/api v0.15.7
 	k8s.io/apimachinery v0.15.7
 	k8s.io/client-go v12.0.0+incompatible
+	sigs.k8s.io/controller-runtime v0.4.0
 )
+
+replace github.com/openshift/aws-account-operator/pkg/apis => ./pkg/apis
 
 replace gopkg.in/fsnotify.v1 v1.4.9 => github.com/fsnotify/fsnotify v1.4.9
 
 // Fixes missing bitbucket dependency; replaces with same fork k8s uses
 replace bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
-
-require (
-	github.com/google/go-cmp v0.5.5
-	github.com/onsi/ginkgo/v2 v2.1.3
-	github.com/openshift/aws-account-operator/pkg/apis v0.0.0-00010101000000-000000000000
-	sigs.k8s.io/controller-runtime v0.4.0
-)
 
 // Pinned to kubernetes-1.16.2
 replace (
