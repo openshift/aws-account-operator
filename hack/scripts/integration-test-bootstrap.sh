@@ -142,10 +142,6 @@ function cleanup {
     if [ $LOCAL_LOG_FILE -a -f $LOCAL_LOG_FILE ]; then
         rm $LOCAL_LOG_FILE
     fi
-    if [ $clusterUserName ]; then
-        $OC --as backplane-cluster-admin adm policy remove-cluster-role-from-user cluster-admin $clusterUserName
-    fi
-
     if [ -z $SKIP_CLEANUP ]; then
         if [[ $($OC get namespace $NAMESPACE --no-headers | wc -l) == 0 ]];
             then
@@ -166,6 +162,9 @@ function cleanupPre {
 ## cleanupPost runs at end as a trap process for all types of exits.
 function cleanupPost {
     consoleOperatorLogs
+    if [ $clusterUserName ]; then
+        $OC --as backplane-cluster-admin adm policy remove-cluster-role-from-user cluster-admin $clusterUserName
+    fi
     cleanup
     echo -e "\nSTARTING AWS RESOURCES CLEANUP FOR CI\n"
     make ci-aws-resources-cleanup
