@@ -297,6 +297,9 @@ function profileProw {
 
 function profileStage {
     clusterUserName=$($OC whoami)
+    ## OSD Staging cluster require cluster-admin roles for accessing & applying some manifests like CRDs etc.
+    ## So, cluster-admin role is added to the user for the script's lifetime.
+    ## The role is removed as the part of mandatory cleanup.
     $OC --as backplane-cluster-admin adm policy add-cluster-role-to-user cluster-admin $clusterUserName
     export FORCE_DEV_MODE=cluster
     sourceEnvrcConfig
