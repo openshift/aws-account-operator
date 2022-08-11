@@ -52,7 +52,9 @@ function parseArgs {
                 ;;
         esac
     done
-
+    if [ -z $NAMESPACE ]; then
+        NAMESPACE=aws-account-operator
+    fi
     echo "PROFILE=${PROFILE}"
     echo "NAMESPACE=${NAMESPACE}"
     echo "SKIP_CLEANUP=${SKIP_CLEANUP}"
@@ -78,6 +80,19 @@ function sourceFromMountedKvStoreConfig {
     export STS_JUMP_ROLE=$(cat /tmp/secret/aao-aws-creds/STS_JUMP_ROLE)
     export OPERATOR_ACCESS_KEY_ID=$(cat /tmp/secret/aao-aws-creds/OPERATOR_ACCESS_KEY_ID)
     export OPERATOR_SECRET_ACCESS_KEY=$(cat /tmp/secret/aao-aws-creds/OPERATOR_SECRET_ACCESS_KEY)
+}
+
+function sanityCheck {
+    if [ -z OPERATOR_ACCESS_KEY_ID -o -z OPERATOR_SECRET_ACCESS_KEY ]; then
+        echo "ERROR: AWS credential variable OPERATOR_ACCESS_KEY_ID or OPERATOR_SECRET_ACCESS_KEY is missing."
+        return 1
+    fi
+    REPO_ROOT=$(git rev-parse --show-toplevel)
+    CURRENT_DIR=$(pwd)
+    if [ "$REPO_ROOT" != "$CURRENT_DIR" ]; then
+        echo "ERROR: Please execute the script from repository root folder."
+        return 1
+    fi
 }
 
 function consoleOperatorLogs {
@@ -122,12 +137,11 @@ function cleanup {
     cleanKustomization
     $OC_WITH_NAMESPACE delete deployment $OPERATOR_DEPLOYMENT || true
     if [ $localOperatorPID ]; then
-        kill $localOperatorPID
+        kill $localOperatorPID || true
     fi
     if [ $LOCAL_LOG_FILE -a -f $LOCAL_LOG_FILE ]; then
         rm $LOCAL_LOG_FILE
     fi
-
     if [ -z $SKIP_CLEANUP ]; then
         if [[ $($OC get namespace $NAMESPACE --no-headers | wc -l) == 0 ]];
             then
@@ -148,6 +162,9 @@ function cleanupPre {
 ## cleanupPost runs at end as a trap process for all types of exits.
 function cleanupPost {
     consoleOperatorLogs
+    if [ $clusterUserName ]; then
+        $OC --as backplane-cluster-admin adm policy remove-cluster-role-from-user cluster-admin $clusterUserName
+    fi
     cleanup
     echo -e "\nSTARTING AWS RESOURCES CLEANUP FOR CI\n"
     make ci-aws-resources-cleanup
@@ -255,15 +272,20 @@ function profileLocal {
     export LOCAL_LOG_FILE="localOperator.log"
     export FORCE_DEV_MODE=local
     sourceEnvrcConfig
+    sanityCheck
+    cleanupPre
+    trap cleanupPost EXIT
     $OC adm new-project "$NAMESPACE" || true
     make predeploy
-    make deploy-local > $LOCAL_LOG_FILE 2>&1 &
+    make deploy-local OPERATOR_NAMESPACE=$NAMESPACE > $LOCAL_LOG_FILE 2>&1 &
     localOperatorPID=$!
 }
 
 function profileProw {
     export FORCE_DEV_MODE=cluster
     sourceFromMountedKvStoreConfig
+    cleanupPre
+    trap cleanupPost EXIT
     $OC adm new-project "$NAMESPACE" || true
     make prow-ci-predeploy
     buildOperatorImage
@@ -274,8 +296,16 @@ function profileProw {
 }
 
 function profileStage {
+    clusterUserName=$($OC whoami)
+    ## OSD Staging cluster require cluster-admin roles for accessing & applying some manifests like CRDs etc.
+    ## So, cluster-admin role is added to the user for the script's lifetime.
+    ## The role is removed as the part of mandatory cleanup.
+    $OC --as backplane-cluster-admin adm policy add-cluster-role-to-user cluster-admin $clusterUserName
     export FORCE_DEV_MODE=cluster
     sourceEnvrcConfig
+    sanityCheck
+    cleanupPre
+    trap cleanupPost EXIT
     $OC adm new-project "$NAMESPACE" || true
     make prow-ci-predeploy
     make validate-deployment
