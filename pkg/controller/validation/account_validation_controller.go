@@ -3,6 +3,7 @@ package validation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/openshift/aws-account-operator/pkg/controller/account"
 	"strconv"
 	"time"
@@ -202,7 +203,7 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 				} else {
 					return &AccountValidationError{
 						Type: IncorrectOwnerTag,
-						Err:  errors.New("Account is not tagged with the correct owner"),
+						Err:  fmt.Errorf("Account is not tagged with the correct owner, has %s; want %s", *tag.Value, shardName),
 					}
 				}
 			} else {
