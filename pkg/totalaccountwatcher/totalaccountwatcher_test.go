@@ -9,10 +9,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/golang/mock/gomock"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	mockAWS "github.com/openshift/aws-account-operator/pkg/awsclient/mock"
-	"github.com/openshift/aws-account-operator/pkg/controller/testutils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
+	"github.com/openshift/aws-account-operator/pkg/testutils"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -199,7 +199,7 @@ func TestAccountLimitsReached(t *testing.T) {
 				}
 				objs := []runtime.Object{configMap}
 				mocks := setupDefaultMocks(t, objs)
-				nullLogger := testutils.NullLogger{}
+				nullLogger := testutils.NewTestLogger().Logger()
 				taw := newTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
 
 				result, _ := taw.accountLimitReached(nullLogger, test.testCount)
@@ -366,7 +366,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				objs := []runtime.Object{&test.configMap}
 				mocks := setupDefaultMocks(t, objs)
 				test.setupAWSMock(mocks.mockAWSClient.EXPECT())
-				nullLogger := testutils.NullLogger{}
+				nullLogger := testutils.NewTestLogger().Logger()
 				defer mocks.mockCtrl.Finish()
 
 				TotalAccountWatcher = newTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)

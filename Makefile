@@ -8,13 +8,6 @@ OPERATOR_SDK ?= operator-sdk
 
 include hack/scripts/test_envs
 
-# Boilerplate
-include boilerplate/generated-includes.mk
-
-.PHONY: boilerplate-update
-boilerplate-update:
-	@boilerplate/update
-
 # Extend Makefile after here
 
 .PHONY: help
@@ -496,3 +489,4 @@ ci-int-tests: test-account-creation
 ci-aws-resources-cleanup: 
 	hack/scripts/cleanup-aws-resources.sh "$(STS_ROLE_ARN)" "$(OSD_STAGING_1_AWS_ACCOUNT_ID)"
 	hack/scripts/cleanup-aws-resources.sh "$(STS_JUMP_ARN)" "$(OSD_STAGING_2_AWS_ACCOUNT_ID)"
+

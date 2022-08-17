@@ -3,7 +3,7 @@ package config
 import (
 	"testing"
 
-	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 )
 
 func TestGetDefaultRegion(t *testing.T) {
