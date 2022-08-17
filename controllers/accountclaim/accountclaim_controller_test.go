@@ -16,6 +16,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/test/fixtures"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -51,8 +52,9 @@ var _ = Describe("AccountClaim", func() {
 		}
 		accountClaim = &awsv1alpha1.AccountClaim{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: namespace,
+				Name:              name,
+				Namespace:         namespace,
+				CreationTimestamp: metav1.Time{},
 			},
 			Spec: awsv1alpha1.AccountClaimSpec{
 				LegalEntity: awsv1alpha1.LegalEntity{
@@ -90,7 +92,7 @@ var _ = Describe("AccountClaim", func() {
 		It("should reconcile correctly", func() {
 			// Objects to track in the fake client.
 			objs := []runtime.Object{accountClaim}
-			r.Client = fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
 
 			_, err := r.Reconcile(context.TODO(), req)
 
@@ -128,7 +130,7 @@ var _ = Describe("AccountClaim", func() {
 			})
 
 			It("should delete AccountClaim", func() {
-				r.Client = fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
+				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
 
 				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
 				// Create empty empy aws responses.
@@ -155,14 +157,17 @@ var _ = Describe("AccountClaim", func() {
 				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any()).Return(dso, nil)
 				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any()).Return(dvo, nil)
 
-				_, err := r.Reconcile(context.TODO(), req)
-				Expect(err).ToNot(HaveOccurred())
-
-				// Ensure we have removed the finalizer.
+				// Confirm that the accountclaim exists from the client's perspective
 				ac := awsv1alpha1.AccountClaim{}
 				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(ac.Finalizers).To(BeNil())
+
+				_, err := r.Reconcile(context.TODO(), req)
+				Expect(err).ToNot(HaveOccurred())
+
+				// With the finalizer removed, the AccountClaim should have been deleted
+				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				Expect(k8serr.IsNotFound(err)).To(BeTrue())
 
 				// Ensure the non-ccs account has been reset as expected.
 				acc := awsv1alpha1.Account{}
@@ -176,7 +181,7 @@ var _ = Describe("AccountClaim", func() {
 
 			It("should retry on a conflict error", func() {
 				r.Client = &possiblyErroringFakeCtrlRuntimeClient{
-					fake.NewClientBuilder().WithRuntimeObjects(objs...).Build(),
+					fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build(),
 					true,
 				}
 
@@ -218,7 +223,7 @@ var _ = Describe("AccountClaim", func() {
 			})
 
 			It("should handle aws cleanup errors", func() {
-				r.Client = fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
+				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
 
 				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
 				// Use a bogus error, just so we can fail AWS calls.
@@ -253,7 +258,7 @@ var _ = Describe("AccountClaim", func() {
 				// fail validation if BYOC is not associated with an account
 				accountClaim.Spec.BYOCAWSAccountID = ""
 
-				r.Client = fake.NewClientBuilder().WithRuntimeObjects(accountClaim).Build()
+				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(accountClaim).Build()
 
 				_, err := r.Reconcile(context.TODO(), req)
 
@@ -273,7 +278,7 @@ var _ = Describe("AccountClaim", func() {
 				accountClaim.Spec.AwsCredentialSecret = dummySecretRef
 				accountClaim.Spec.BYOCAWSAccountID = "123456"
 
-				r.Client = fake.NewClientBuilder().WithRuntimeObjects(accountClaim).Build()
+				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(accountClaim).Build()
 
 				_, err := r.Reconcile(context.TODO(), req)
 				Expect(err).NotTo(HaveOccurred())

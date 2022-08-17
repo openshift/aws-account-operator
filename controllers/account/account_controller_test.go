@@ -41,9 +41,15 @@ type mocks struct {
 	mockAWSClient  *mock.MockClient
 }
 
+const (
+	testAccountName      = "testaccount"
+	testAccountNamespace = "testnamespace"
+	testAccountEmail     = "test@example.com"
+)
+
 func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
 	mocks := &mocks{
-		fakeKubeClient: fake.NewFakeClient(localObjects...),
+		fakeKubeClient: fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(localObjects...).Build(),
 		mockCtrl:       gomock.NewController(t),
 	}
 
@@ -61,6 +67,8 @@ func newTestAccountBuilder() *testAccountBuilder {
 		acct: awsv1alpha1.Account{
 			TypeMeta: metav1.TypeMeta{},
 			ObjectMeta: metav1.ObjectMeta{
+				Name:       testAccountName,
+				Namespace:  testAccountNamespace,
 				Labels:     map[string]string{},
 				Finalizers: []string{},
 				CreationTimestamp: metav1.Time{
@@ -163,6 +171,12 @@ func (t *testAccountBuilder) RotateConsoleCredentials(rotate bool) *testAccountB
 // Add a claimLink
 func (t *testAccountBuilder) WithClaimLink(link string) *testAccountBuilder {
 	t.acct.Spec.ClaimLink = link
+	return t
+}
+
+// Add a claimLink namespace
+func (t *testAccountBuilder) WithClaimLinkNamespace(ns string) *testAccountBuilder {
+	t.acct.Spec.ClaimLinkNamespace = ns
 	return t
 }
 
@@ -1206,6 +1220,8 @@ var _ = Describe("Account Controller", func() {
 
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
+		accountName = testAccountName
+		accountEmail = testAccountEmail
 		nullLogger = testutils.NewTestLogger().Logger()
 		mockAWSClient = mock.NewMockClient(ctrl)
 		configMap = &v1.ConfigMap{
@@ -1337,12 +1353,11 @@ var _ = Describe("Account Controller", func() {
 		It("A ready account being claimed adds a claimed status condition", func() {
 			account = &newTestAccountBuilder().WithState(AccountReady).WithClaimLink("claimedaccount").acct
 
-			r.Client = fake.NewFakeClient([]runtime.Object{account, configMap}...)
-
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
 			req = reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Namespace: account.Name,
-					Name:      account.Namespace,
+					Namespace: account.Namespace,
+					Name:      account.Name,
 				},
 			}
 
@@ -1374,14 +1389,15 @@ var _ = Describe("Account Controller", func() {
 					AccountLink: "claimedaccount",
 				},
 			}
-			account = &newTestAccountBuilder().BYOC(true).WithState(AccountReady).WithClaimLink(claimName).acct
+			account = &newTestAccountBuilder().BYOC(true).WithState(AccountReady).WithClaimLink(claimName).
+				WithClaimLinkNamespace(awsv1alpha1.AccountCrNamespace).acct
 
-			r.Client = fake.NewFakeClient([]runtime.Object{account, accountClaim, configMap}...)
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, accountClaim, configMap}...).Build()
 
 			req = reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Namespace: account.Name,
-					Name:      account.Namespace,
+					Namespace: account.Namespace,
+					Name:      account.Name,
 				},
 			}
 

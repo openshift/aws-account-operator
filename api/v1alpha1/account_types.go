@@ -54,6 +54,7 @@ type AccountStatus struct {
 }
 
 // AccountCondition contains details for the current condition of a AWS account
+// +k8s:openapi-gen=true
 type AccountCondition struct {
 	// Type is the type of the condition.
 	// +optional

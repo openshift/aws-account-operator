@@ -1,3 +1,5 @@
+include boilerplate/generated-includes.mk
+
 FIPS_ENABLED=true
 SHELL := /usr/bin/env bash
 
@@ -490,3 +492,7 @@ ci-aws-resources-cleanup:
 	hack/scripts/cleanup-aws-resources.sh "$(STS_ROLE_ARN)" "$(OSD_STAGING_1_AWS_ACCOUNT_ID)"
 	hack/scripts/cleanup-aws-resources.sh "$(STS_JUMP_ARN)" "$(OSD_STAGING_2_AWS_ACCOUNT_ID)"
 
+
+.PHONY: boilerplate-update
+boilerplate-update:
+	@boilerplate/update

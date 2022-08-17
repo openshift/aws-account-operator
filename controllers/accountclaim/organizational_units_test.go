@@ -34,8 +34,13 @@ var _ = Describe("Organizational Unit", func() {
 		myID          = "MyID"
 		parentID      = "parentID"
 		awsAccountID  = "12345"
-		accountClaim  = awsv1alpha1.AccountClaim{}
-		account       = awsv1alpha1.Account{
+		accountClaim  = awsv1alpha1.AccountClaim{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      "test-account-name",
+				Namespace: "test-namespace",
+			},
+		}
+		account = awsv1alpha1.Account{
 			Spec: awsv1alpha1.AccountSpec{
 				AwsAccountID: awsAccountID,
 			},
