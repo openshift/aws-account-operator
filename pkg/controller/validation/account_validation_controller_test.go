@@ -549,7 +549,8 @@ func TestValidateAccount_Reconcile(t *testing.T) {
 						Namespace: "default",
 					},
 					Spec: awsv1alpha1.AccountSpec{
-						BYOC: true,
+						AwsAccountID: "123456",
+						BYOC:         true,
 					},
 				}, &corev1.ConfigMap{
 					ObjectMeta: v1.ObjectMeta{
@@ -567,6 +568,37 @@ func TestValidateAccount_Reconcile(t *testing.T) {
 			},
 		}, want: reconcile.Result{Requeue: false}, wantErr: false},
 		{name: "Will not attempt to reconcile a non-account pool account.", fields: fields{
+			Client: fake.NewFakeClient([]runtime.Object{
+				&awsv1alpha1.Account{
+					TypeMeta: v1.TypeMeta{
+						Kind:       "Account",
+						APIVersion: "v1alpha1",
+					},
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "test",
+						Namespace: "default",
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						AwsAccountID: "123456",
+					},
+				},
+				&corev1.ConfigMap{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      awsv1alpha1.DefaultConfigMap,
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+				}}...),
+			scheme:           scheme.Scheme,
+			awsClientBuilder: newBuilder(ctrl),
+		}, args: args{
+			request: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: "default",
+					Name:      "test",
+				},
+			},
+		}, want: reconcile.Result{Requeue: false}, wantErr: false},
+		{name: "Will not attempt to reconcile a account without an AwsAccountID.", fields: fields{
 			Client: fake.NewFakeClient([]runtime.Object{
 				&awsv1alpha1.Account{
 					TypeMeta: v1.TypeMeta{
@@ -609,6 +641,54 @@ func TestValidateAccount_Reconcile(t *testing.T) {
 			}
 			if !cmp.Equal(got, tt.want) {
 				t.Errorf("ValidateAccount.Reconcile() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateAwsAccountId(t *testing.T) {
+	type args struct {
+		account awsv1alpha1.Account
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "Throws an error if no AwsAccountId is found",
+			args: args{
+				account: awsv1alpha1.Account{
+					TypeMeta: v1.TypeMeta{
+						Kind:       "Account",
+						APIVersion: "v1alpha1",
+					},
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "test",
+						Namespace: "default",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "Returns nil when an AwsAccountId is present",
+			args: args{
+				account: awsv1alpha1.Account{
+					TypeMeta:   v1.TypeMeta{Kind: "Account", APIVersion: "v1alpha1"},
+					ObjectMeta: v1.ObjectMeta{Name: "test", Namespace: "default"},
+					Spec: awsv1alpha1.AccountSpec{
+						AwsAccountID: "123456",
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidateAwsAccountId(tt.args.account); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateAwsAccountAssociated() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
