@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-logr/logr"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -338,55 +339,55 @@ func TestInitializeNewCCSAccount(t *testing.T) {
 		errExpected    bool
 		expectedResult error
 	}{
-		//{
-		//	name: "Could not find AccountClaim",
-		//	acct: &awsv1alpha1.Account{
-		//		Status: awsv1alpha1.AccountStatus{
-		//			Claimed: true,
-		//		},
-		//	},
-		//	localObjects:   []runtime.Object{},
-		//	errExpected:    true,
-		//	expectedResult: &k8serr.StatusError{},
-		//},
-		//
-		//{
-		//	name: "claimBYOCAccount returned error",
-		//	acct: &awsv1alpha1.Account{
-		//		ObjectMeta: metav1.ObjectMeta{
-		//			Name:      "AccName",
-		//			Namespace: awsv1alpha1.AccountCrNamespace,
-		//		},
-		//		Spec: awsv1alpha1.AccountSpec{
-		//			BYOC: true,
-		//		},
-		//		Status: awsv1alpha1.AccountStatus{
-		//			Claimed: false,
-		//		},
-		//	},
-		//	localObjects: []runtime.Object{
-		//		&awsv1alpha1.AccountClaim{
-		//			ObjectMeta: metav1.ObjectMeta{
-		//				Name:      "testAccountClaim",
-		//				Namespace: awsv1alpha1.AccountCrNamespace,
-		//			},
-		//			Spec: awsv1alpha1.AccountClaimSpec{
-		//				BYOC:             true,
-		//				BYOCAWSAccountID: "1234",
-		//				BYOCSecretRef: awsv1alpha1.SecretRef{
-		//					Name:      "SecretName",
-		//					Namespace: "SecretNamespace",
-		//				},
-		//				AwsCredentialSecret: awsv1alpha1.SecretRef{
-		//					Name:      "SecretName",
-		//					Namespace: "SecretNamespace",
-		//				},
-		//			},
-		//		},
-		//	},
-		//	errExpected:    true,
-		//	expectedResult: &k8serr.StatusError{},
-		//},
+		{
+			name: "Could not find AccountClaim",
+			acct: &awsv1alpha1.Account{
+				Status: awsv1alpha1.AccountStatus{
+					Claimed: true,
+				},
+			},
+			localObjects:   []runtime.Object{},
+			errExpected:    true,
+			expectedResult: &k8serr.StatusError{},
+		},
+
+		{
+			name: "claimBYOCAccount returned error",
+			acct: &awsv1alpha1.Account{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "AccName",
+					Namespace: awsv1alpha1.AccountCrNamespace,
+				},
+				Spec: awsv1alpha1.AccountSpec{
+					BYOC: true,
+				},
+				Status: awsv1alpha1.AccountStatus{
+					Claimed: false,
+				},
+			},
+			localObjects: []runtime.Object{
+				&awsv1alpha1.AccountClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "testAccountClaim",
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+					Spec: awsv1alpha1.AccountClaimSpec{
+						BYOC:             true,
+						BYOCAWSAccountID: "1234",
+						BYOCSecretRef: awsv1alpha1.SecretRef{
+							Name:      "SecretName",
+							Namespace: "SecretNamespace",
+						},
+						AwsCredentialSecret: awsv1alpha1.SecretRef{
+							Name:      "SecretName",
+							Namespace: "SecretNamespace",
+						},
+					},
+				},
+			},
+			errExpected:    true,
+			expectedResult: &k8serr.StatusError{},
+		},
 		{
 			name: "CCSAccount initialized successfully",
 			acct: &awsv1alpha1.Account{

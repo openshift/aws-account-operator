@@ -42,9 +42,9 @@ type mocks struct {
 }
 
 const (
-	testAccountName      = "testaccount"
-	testAccountNamespace = "testnamespace"
-	testAccountEmail     = "test@example.com"
+	TestAccountName      = "testaccount"
+	TestAccountNamespace = "testnamespace"
+	TestAccountEmail     = "test@example.com"
 )
 
 func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
@@ -67,8 +67,8 @@ func newTestAccountBuilder() *testAccountBuilder {
 		acct: awsv1alpha1.Account{
 			TypeMeta: metav1.TypeMeta{},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:       testAccountName,
-				Namespace:  testAccountNamespace,
+				Name:       TestAccountName,
+				Namespace:  TestAccountNamespace,
 				Labels:     map[string]string{},
 				Finalizers: []string{},
 				CreationTimestamp: metav1.Time{
@@ -1220,8 +1220,8 @@ var _ = Describe("Account Controller", func() {
 
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
-		accountName = testAccountName
-		accountEmail = testAccountEmail
+		accountName = TestAccountName
+		accountEmail = TestAccountEmail
 		nullLogger = testutils.NewTestLogger().Logger()
 		mockAWSClient = mock.NewMockClient(ctrl)
 		configMap = &v1.ConfigMap{

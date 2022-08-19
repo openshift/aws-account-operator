@@ -41,7 +41,7 @@ func TestIAMCreateSecret(t *testing.T) {
 
 	secret := CreateSecret(
 		"test",
-		"namespace",
+		TestAccountNamespace,
 		map[string][]byte{
 			"one": []byte("hello"),
 			"two": []byte("world"),
@@ -649,26 +649,6 @@ func TestCleanIAMRoles(t *testing.T) {
 	)
 
 	expectedPolicyArn := "ExpectedPolicyArn"
-	mockAWSClient.EXPECT().ListAttachedUserPolicies(
-		&iam.ListAttachedUserPoliciesInput{UserName: &expectedUsername},
-	).Return(
-		&iam.ListAttachedUserPoliciesOutput{
-			AttachedPolicies: []*iam.AttachedPolicy{
-				{
-					PolicyArn:  &expectedPolicyArn,
-					PolicyName: aws.String("ExpectedPolicyName"),
-				},
-			},
-		},
-		nil,
-	)
-	mockAWSClient.EXPECT().DetachRolePolicy(
-		&iam.DetachUserPolicyInput{
-			UserName:  &expectedUsername,
-			PolicyArn: &expectedPolicyArn,
-		},
-	).Return(nil, nil)
-
 	mockAWSClient.EXPECT().ListAttachedRolePolicies(
 		&iam.ListAttachedRolePoliciesInput{
 			RoleName: expectedRoleName,
@@ -834,12 +814,6 @@ func TestDetachRolePolicies(t *testing.T) {
 		},
 	).Return(nil, nil)
 
-	mockAWSClient.EXPECT().DeleteRole(
-		&iam.DeleteRoleInput{
-			RoleName: expectedRoleName,
-		},
-	).Return(nil, nil)
-
 	err := detachRolePolicies(mockAWSClient, *expectedRoleName)
 	assert.Nil(t, err)
 }
@@ -871,8 +845,8 @@ func TestCreateIAMUserSecret(t *testing.T) {
 	}
 	acct := newTestAccountBuilder().acct
 	namespacedName := types.NamespacedName{
-		Namespace: "namespace",
-		Name:      "test",
+		Namespace: TestAccountNamespace,
+		Name:      TestAccountName,
 	}
 
 	err = r.createIAMUserSecret(nullLogger, &acct, namespacedName, &createAccessKeyOutput)
@@ -952,8 +926,8 @@ func TestCreateIAMUserSecretName(t *testing.T) {
 
 func TestValidateIAMSecret(t *testing.T) {
 
-	username := "AwesomeUser"
-	namespace := "AwesomeNamespace"
+	username := TestAccountName
+	namespace := TestAccountNamespace
 	expectedSecretName := "awesomeuser-secret"
 	expectedAccessKeyID := "expectedAccessKey"
 	iamUser := iam.User{
@@ -1030,10 +1004,6 @@ func TestValidateIAMSecret(t *testing.T) {
 		expectedAccessKeyOutput,
 		nil,
 	)
-	mockAWSClient.EXPECT().AttachUserPolicy(&iam.AttachUserPolicyInput{
-		UserName:  &username,
-		PolicyArn: aws.String("adminAccessArn"),
-	}).Return(&iam.AttachUserPolicyOutput{}, nil)
 
 	r := AccountReconciler{
 		Client: mocks.fakeKubeClient,

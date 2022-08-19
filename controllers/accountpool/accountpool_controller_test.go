@@ -41,7 +41,7 @@ func (s *mockTAW) GetLimit() int {
 // setupDefaultMocks is an easy way to setup all of the default mocks
 func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
 	mocks := &mocks{
-		fakeKubeClient: fake.NewFakeClient(localObjects...),
+		fakeKubeClient: fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(localObjects...).Build(),
 		mockCtrl:       gomock.NewController(t),
 	}
 
@@ -121,6 +121,10 @@ func TestReconcileAccountPool(t *testing.T) {
 				createAccountMock("account2", "Ready", unclaimed),
 			},
 			expectedAccountPool: awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
 				Spec: awsv1alpha1.AccountPoolSpec{
 					PoolSize: 1,
 				},
@@ -152,6 +156,10 @@ func TestReconcileAccountPool(t *testing.T) {
 				},
 			},
 			expectedAccountPool: awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
 				Spec: awsv1alpha1.AccountPoolSpec{
 					PoolSize: 1,
 				},
@@ -183,6 +191,10 @@ func TestReconcileAccountPool(t *testing.T) {
 				createAccountMock("account5", "Ready", claimed),
 			},
 			expectedAccountPool: awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
 				Spec: awsv1alpha1.AccountPoolSpec{
 					PoolSize: 1,
 				},

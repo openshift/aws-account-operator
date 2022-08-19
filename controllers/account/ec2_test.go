@@ -32,11 +32,11 @@ func newTestRunInstanceInputBuilder() *testRunInstanceInputBuilder {
 	commonTags := []*ec2.Tag{
 		{
 			Key:   aws.String("clusterAccountName"),
-			Value: aws.String(""),
+			Value: aws.String(TestAccountName),
 		},
 		{
 			Key:   aws.String("clusterNamespace"),
-			Value: aws.String(""),
+			Value: aws.String(TestAccountNamespace),
 		},
 		{
 			Key:   aws.String("clusterClaimLink"),
@@ -385,7 +385,12 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 				shardName:        "test",
 			}, args{
 				reqLogger: testutils.NewTestLogger(),
-				account:   &awsv1alpha1.Account{},
+				account: &awsv1alpha1.Account{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      TestAccountName,
+						Namespace: TestAccountNamespace,
+					},
+				},
 				regions: []awsv1alpha1.AwsRegions{
 					{
 						Name: "us-east-1",
@@ -412,7 +417,7 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 				shardName:        tt.fields.shardName,
 			}
 			r.InitializeSupportedRegions(tt.args.reqLogger.Logger(), tt.args.account, tt.args.regions, tt.args.creds, tt.args.regionAMIs)
-			assert.Contains(t, tt.args.reqLogger.Entries(), "Could not retrieve account claim for account. [account ]")
+			assert.Contains(t, tt.args.reqLogger.Messages(), "Could not retrieve account claim for account.")
 		})
 	}
 }
@@ -443,11 +448,11 @@ func TestCreateVpc(t *testing.T) {
 						Tags: []*ec2.Tag{
 							{
 								Key:   aws.String("clusterAccountName"),
-								Value: aws.String(""),
+								Value: aws.String(TestAccountName),
 							},
 							{
 								Key:   aws.String("clusterNamespace"),
-								Value: aws.String(""),
+								Value: aws.String(TestAccountNamespace),
 							},
 							{
 								Key:   aws.String("clusterClaimLink"),

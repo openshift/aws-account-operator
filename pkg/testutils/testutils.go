@@ -24,6 +24,7 @@ type LogEntry struct {
 // entries logged via the logger.
 type TestLogger interface {
 	Entries() []LogEntry
+	Messages() []string
 	Logger() logr.Logger
 }
 
@@ -53,6 +54,15 @@ func (t *testLogger) Logger() logr.Logger {
 // Entries returns the previously logged log entries.
 func (t *testLogger) Entries() []LogEntry {
 	return *t.entries
+}
+
+// Messages returns just the previously logged log messages.
+func (t *testLogger) Messages() []string {
+	r := make([]string, len(*t.entries))
+	for i, entry := range *t.entries {
+		r[i] = entry.Message
+	}
+	return r
 }
 
 // Init configures the logr.LogSink implementation.
