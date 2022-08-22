@@ -38,6 +38,7 @@ import (
 	"github.com/openshift/aws-account-operator/controllers/accountpool"
 	"github.com/openshift/aws-account-operator/controllers/awsfederatedaccountaccess"
 	"github.com/openshift/aws-account-operator/controllers/awsfederatedrole"
+	"github.com/openshift/aws-account-operator/controllers/validation"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
@@ -163,6 +164,13 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Account")
+		os.Exit(1)
+	}
+	if err = (&validation.AccountValidationReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AccountValidation")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

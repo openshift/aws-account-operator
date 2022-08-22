@@ -24,6 +24,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -189,7 +190,15 @@ func shouldUpdateAccountPoolStatus(currentAccountPool *awsv1alpha1.AccountPool, 
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AccountPoolReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	maxReconciles, err := utils.GetControllerMaxReconciles(controllerName)
+	if err != nil {
+		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&awsv1alpha1.AccountPool{}).
-		Complete(r)
+		Owns(&awsv1alpha1.Account{}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: maxReconciles,
+		}).Complete(r)
 }

@@ -13,21 +13,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-var controllerMaxReconciles map[string]int = map[string]int{}
-
-func NewControllerWithMaxReconciles(log logr.Logger, controllerName string, mgr manager.Manager, r reconcile.Reconciler) (controller.Controller, error) {
-	maxConcurrentReconciles, err := getControllerMaxReconciles(controllerName)
-	if err != nil {
-		fmt.Printf("%+v", controllerMaxReconciles)
-		log.Error(err, "")
-	}
-	return controller.New(fmt.Sprintf("%s-controller", controllerName), mgr, controller.Options{Reconciler: r, MaxConcurrentReconciles: maxConcurrentReconciles})
-}
+var ControllerMaxReconciles map[string]int = map[string]int{}
 
 func InitControllerMaxReconciles(kubeClient client.Client) []error {
 	controllers := []string{
@@ -51,7 +40,7 @@ func InitControllerMaxReconciles(kubeClient client.Client) []error {
 			controllerErrors = append(controllerErrors, fmt.Errorf("Error getting Max Reconciles for %s controller", controller))
 			continue
 		}
-		controllerMaxReconciles[controller] = val
+		ControllerMaxReconciles[controller] = val
 	}
 
 	return controllerErrors
@@ -66,12 +55,12 @@ func getControllerMaxReconcilesFromCM(cm *corev1.ConfigMap, controllerName strin
 	return 0, awsv1alpha1.ErrInvalidConfigMap
 }
 
-// getControllerMaxReconciles gets the default configMap and then gets the amount of concurrent reconciles to run from it
-func getControllerMaxReconciles(controllerName string) (int, error) {
-	if _, ok := controllerMaxReconciles[controllerName]; !ok {
+// GetControllerMaxReconciles gets the default configMap and then gets the amount of concurrent reconciles to run from it
+func GetControllerMaxReconciles(controllerName string) (int, error) {
+	if _, ok := ControllerMaxReconciles[controllerName]; !ok {
 		return 1, fmt.Errorf("Controller %s not present in config data", controllerName)
 	}
-	return controllerMaxReconciles[controllerName], nil
+	return ControllerMaxReconciles[controllerName], nil
 }
 
 // NewClientWithMetricsOrDie creates a new controller-runtime client with a wrapper which increments

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -759,7 +760,14 @@ func getPolicyNameWithUID(awsCustomPolicyname string, crPolicyName string, uidLa
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AWSFederatedAccountAccessReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	maxReconciles, err := controllerutils.GetControllerMaxReconciles(controllerName)
+	if err != nil {
+		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&awsv1alpha1.AWSFederatedAccountAccess{}).
-		Complete(r)
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: maxReconciles,
+		}).Complete(r)
 }

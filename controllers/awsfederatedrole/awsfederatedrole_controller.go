@@ -10,6 +10,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -294,7 +295,14 @@ func policyInSlice(policy string, policyList []string) bool {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AWSFederatedRoleReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	maxReconciles, err := utils.GetControllerMaxReconciles(controllerName)
+	if err != nil {
+		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&awsv1alpha1.AWSFederatedRole{}).
-		Complete(r)
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: maxReconciles,
+		}).Complete(r)
 }

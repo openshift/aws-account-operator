@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"strconv"
 	"time"
 
@@ -33,9 +34,9 @@ const (
 	ownerKey       = "owner"
 )
 
-type ValidateAccount struct {
+type AccountValidationReconciler struct {
 	Client           client.Client
-	scheme           *runtime.Scheme
+	Scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
 }
 
@@ -52,6 +53,14 @@ const (
 type AccountValidationError struct {
 	Type ValidationError
 	Err  error
+}
+
+func NewAccountValidationReconciler(client client.Client, scheme *runtime.Scheme, awsClientBuilder awsclient.IBuilder) *AccountValidationReconciler {
+	return &AccountValidationReconciler{
+		Client:           client,
+		Scheme:           scheme,
+		awsClientBuilder: awsClientBuilder,
+	}
 }
 
 func (ave *AccountValidationError) Error() string {
@@ -227,7 +236,7 @@ func ValidateAccountOrigin(account awsv1alpha1.Account) error {
 	return nil
 }
 
-func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string) error {
+func (r *AccountValidationReconciler) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string) error {
 	// Perform all checks on the account we want.
 	inPool := IsAccountInPoolOU(account, awsClient, func(s string) bool {
 		return s == poolOU
@@ -248,7 +257,7 @@ func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account 
 	return nil
 }
 
-func (r *ValidateAccount) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
+func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Setup: retrieve account and awsClient
@@ -330,4 +339,19 @@ func (r *ValidateAccount) Reconcile(ctx context.Context, request ctrl.Request) (
 		}
 	}
 	return utils.DoNotRequeue()
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *AccountValidationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	maxReconciles, err := utils.GetControllerMaxReconciles(controllerName)
+	if err != nil {
+		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
+	}
+
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&awsv1alpha1.Account{}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: maxReconciles,
+		}).Complete(r)
 }

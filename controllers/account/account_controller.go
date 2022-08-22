@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"strconv"
 	"strings"
 	"time"
@@ -414,13 +415,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	return reconcile.Result{}, nil
-}
-
-// SetupWithManager sets up the controller with the Manager.
-func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&awsv1alpha1.Account{}).
-		Complete(r)
 }
 
 func (r *AccountReconciler) handleAccountInitializingRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) (reconcile.Result, error) {
@@ -1321,4 +1315,31 @@ func (r *AccountReconciler) handleCreateAdminAccessRole(
 	}
 
 	return awsAssumedRoleClient, creds, err
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	maxReconciles, err := utils.GetControllerMaxReconciles(controllerName)
+	if err != nil {
+		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
+	}
+
+	// AlexVulaj: We're seeing errors here on startup during local testing, we may need to move this to later in the startup process
+	// ERROR   controller_account      failed retrieving configmap     {"error": "the cache is not started, can not read objects"}
+	configMap, err := utils.GetOperatorConfigMap(r.Client)
+	if err != nil {
+		log.Error(err, "failed retrieving configmap")
+	}
+
+	hiveName, ok := configMap.Data["shard-name"]
+	if !ok {
+		log.Error(err, "shard-name key not available in configmap")
+	}
+	r.shardName = hiveName
+
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&awsv1alpha1.Account{}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: maxReconciles,
+		}).Complete(r)
 }

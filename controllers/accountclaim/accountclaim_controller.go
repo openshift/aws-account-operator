@@ -13,6 +13,7 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"time"
 
@@ -236,13 +237,6 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	}
 
 	return reconcile.Result{}, nil
-}
-
-// SetupWithManager sets up the controller with the Manager.
-func (r *AccountClaimReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&awsv1alpha1.AccountClaim{}).
-		Complete(r)
 }
 
 func (r *AccountClaimReconciler) setSupportRoleARNManagedOpenshift(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
@@ -613,4 +607,19 @@ func populateBYOCSpec(account *awsv1alpha1.Account, accountClaim *awsv1alpha1.Ac
 	account.Spec.ClaimLinkNamespace = accountClaim.ObjectMeta.Namespace
 	account.Spec.LegalEntity = accountClaim.Spec.LegalEntity
 	account.Spec.ManualSTSMode = accountClaim.Spec.ManualSTSMode
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *AccountClaimReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	maxReconciles, err := controllerutils.GetControllerMaxReconciles(controllerName)
+	if err != nil {
+		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
+	}
+
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&awsv1alpha1.AccountClaim{}).
+		Owns(&awsv1alpha1.Account{}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: maxReconciles,
+		}).Complete(r)
 }
