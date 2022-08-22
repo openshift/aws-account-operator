@@ -81,7 +81,7 @@ var _ = Describe("Organizational Unit", func() {
 			localObjects := []runtime.Object{&cm}
 			r = AccountClaimReconciler{
 				Scheme: scheme.Scheme,
-				Client: fake.NewFakeClient(localObjects...),
+				Client: fake.NewClientBuilder().WithRuntimeObjects(localObjects...).Build(),
 			}
 
 			err := MoveAccountToOU(&r, nullLogger, mockAWSClient, &accountClaim, &account)
@@ -136,7 +136,7 @@ var _ = Describe("Organizational Unit", func() {
 			localObjects := []runtime.Object{&accountClaim, &cm}
 			r = AccountClaimReconciler{
 				Scheme: scheme.Scheme,
-				Client: fake.NewFakeClient(localObjects...),
+				Client: fake.NewClientBuilder().WithRuntimeObjects(localObjects...).Build(),
 			}
 
 			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any()).Return(
@@ -187,7 +187,7 @@ var _ = Describe("Organizational Unit", func() {
 			localObjects := []runtime.Object{&accountClaim, &cm}
 			r = AccountClaimReconciler{
 				Scheme: scheme.Scheme,
-				Client: fake.NewFakeClient(localObjects...),
+				Client: fake.NewClientBuilder().WithRuntimeObjects(localObjects...).Build(),
 			}
 
 			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any()).Return(

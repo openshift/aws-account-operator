@@ -379,7 +379,7 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 	}{
 		{"Log failure to retrieve KMS Key from claim.",
 			fields{
-				Client:           fake.NewFakeClient(),
+				Client:           fake.NewClientBuilder().Build(),
 				scheme:           scheme.Scheme,
 				awsClientBuilder: mockAWSBuilder,
 				shardName:        "test",

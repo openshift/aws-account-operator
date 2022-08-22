@@ -117,7 +117,7 @@ var _ = Describe("AccountClaim", func() {
 				BeforeEach(func() {
 					// Objects to track in the fake client.
 					objs := []runtime.Object{}
-					r.Client = fake.NewFakeClient(objs...)
+					r.Client = fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, true)
 				})
 
@@ -140,7 +140,7 @@ var _ = Describe("AccountClaim", func() {
 				It("should add finalizer correctly", func() {
 					// Objects to track in the fake client.
 					objs := []runtime.Object{accountClaim}
-					r.Client = fake.NewFakeClient(objs...)
+					r.Client = fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
 
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					err := r.addFinalizer(nullLogger, accountClaim)
@@ -153,7 +153,7 @@ var _ = Describe("AccountClaim", func() {
 					objs := []runtime.Object{accountClaim}
 					// Add the finalizer here to ensure we are able to remove it.
 					accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), accountClaimFinalizer))
-					r.Client = fake.NewFakeClient(objs...)
+					r.Client = fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
 
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 1, false)
 					err := r.removeFinalizer(nullLogger, accountClaim, accountClaimFinalizer)
@@ -183,7 +183,7 @@ var _ = Describe("AccountClaim", func() {
 						},
 					}
 					objs := []runtime.Object{accountClaim, byocSecret}
-					r.Client = fake.NewFakeClient(objs...)
+					r.Client = fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
 
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					helperValidateSecretFinalizer(&r.Client, namespacedName, 0, false)
@@ -203,7 +203,7 @@ var _ = Describe("AccountClaim", func() {
 					}
 					utils.AddFinalizer(byocSecret, byocSecretFinalizer)
 					objs := []runtime.Object{accountClaim, byocSecret}
-					r.Client = fake.NewFakeClient(objs...)
+					r.Client = fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
 
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					helperValidateSecretFinalizer(&r.Client, namespacedName, 1, false)
@@ -218,7 +218,7 @@ var _ = Describe("AccountClaim", func() {
 				It("should not find byoc secret", func() {
 					// Objects to track in the fake client.
 					objs := []runtime.Object{accountClaim}
-					r.Client = fake.NewFakeClient(objs...)
+					r.Client = fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
 
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					helperValidateSecretFinalizer(&r.Client, namespacedName, 0, true)
@@ -231,7 +231,7 @@ var _ = Describe("AccountClaim", func() {
 				It("should not remove byoc secret finalizer as secret doesn't exist", func() {
 					// Objects to track in the fake client.
 					objs := []runtime.Object{accountClaim}
-					r.Client = fake.NewFakeClient(objs...)
+					r.Client = fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
 
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					helperValidateSecretFinalizer(&r.Client, namespacedName, 0, true)
