@@ -616,10 +616,11 @@ func (r *AccountClaimReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
 	}
 
+	rwm := controllerutils.NewReconcilerWithMetrics(r, controllerName)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&awsv1alpha1.AccountClaim{}).
 		Owns(&awsv1alpha1.Account{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxReconciles,
-		}).Complete(r)
+		}).Complete(rwm)
 }

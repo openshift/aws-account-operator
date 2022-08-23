@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -1337,9 +1337,10 @@ func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	r.shardName = hiveName
 
+	rwm := utils.NewReconcilerWithMetrics(r, controllerName)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&awsv1alpha1.Account{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxReconciles,
-		}).Complete(r)
+		}).Complete(rwm)
 }

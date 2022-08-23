@@ -19,21 +19,21 @@ package accountpool
 import (
 	"context"
 	"fmt"
+
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/controllers/account"
 	"github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 	"github.com/openshift/aws-account-operator/pkg/utils"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	"k8s.io/apimachinery/pkg/runtime"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-
-	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 )
 
 const (
@@ -195,10 +195,11 @@ func (r *AccountPoolReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
 	}
 
+	rwm := utils.NewReconcilerWithMetrics(r, controllerName)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&awsv1alpha1.AccountPool{}).
 		Owns(&awsv1alpha1.Account{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxReconciles,
-		}).Complete(r)
+		}).Complete(rwm)
 }

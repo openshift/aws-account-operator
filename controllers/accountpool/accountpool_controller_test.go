@@ -1,14 +1,14 @@
 package accountpool
 
 import (
+	"context"
 	"fmt"
 	"reflect"
+	"testing"
 
 	"github.com/golang/mock/gomock"
-	awsaccountapis "github.com/openshift/aws-account-operator/api"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
-	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/stretchr/testify/assert"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -17,8 +17,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"context"
-	"testing"
+	awsaccountapis "github.com/openshift/aws-account-operator/api"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 )
 
 type mocks struct {

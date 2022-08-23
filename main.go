@@ -131,13 +131,6 @@ func main() {
 		}
 	}
 
-	if err = (&awsfederatedaccountaccess.AWSFederatedAccountAccessReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "AWSFederatedAccountAccess")
-		os.Exit(1)
-	}
 	if err = (&accountclaim.AccountClaimReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -150,6 +143,13 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AWSFederatedRole")
+		os.Exit(1)
+	}
+	if err = (&awsfederatedaccountaccess.AWSFederatedAccountAccessReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AWSFederatedAccountAccess")
 		os.Exit(1)
 	}
 	if err = (&accountpool.AccountPoolReconciler{
@@ -173,6 +173,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "AccountValidation")
 		os.Exit(1)
 	}
+
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

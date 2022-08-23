@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"strconv"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
@@ -349,9 +349,10 @@ func (r *AccountValidationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
 	}
 
+	rwm := utils.NewReconcilerWithMetrics(r, controllerName)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&awsv1alpha1.Account{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxReconciles,
-		}).Complete(r)
+		}).Complete(rwm)
 }

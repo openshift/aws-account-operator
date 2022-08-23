@@ -4,21 +4,22 @@ import (
 	"context"
 	goerr "errors"
 	"fmt"
+
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/openshift/aws-account-operator/config"
-	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"github.com/openshift/aws-account-operator/pkg/utils"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
+	"github.com/openshift/aws-account-operator/config"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	"github.com/openshift/aws-account-operator/pkg/utils"
 )
 
 const (
@@ -300,9 +301,10 @@ func (r *AWSFederatedRoleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
 	}
 
+	rwm := utils.NewReconcilerWithMetrics(r, controllerName)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&awsv1alpha1.AWSFederatedRole{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxReconciles,
-		}).Complete(r)
+		}).Complete(rwm)
 }

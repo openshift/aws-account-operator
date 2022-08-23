@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -20,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -765,9 +765,10 @@ func (r *AWSFederatedAccountAccessReconciler) SetupWithManager(mgr ctrl.Manager)
 		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
 	}
 
+	rwm := controllerutils.NewReconcilerWithMetrics(r, controllerName)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&awsv1alpha1.AWSFederatedAccountAccess{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxReconciles,
-		}).Complete(r)
+		}).Complete(rwm)
 }
