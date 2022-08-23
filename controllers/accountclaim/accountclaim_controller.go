@@ -507,7 +507,8 @@ func (r *AccountClaimReconciler) checkIAMSecretExists(name string, namespace str
 	secret := corev1.Secret{}
 	secretObjectKey := client.ObjectKey{Name: name, Namespace: namespace}
 	err := r.Client.Get(context.TODO(), secretObjectKey, &secret)
-	if err != nil { //nolint; gosimple // Ignores false-positive S1008 gosimple notice
+	//nolint:gosimple // Ignores false-positive S1008 gosimple notice
+	if err != nil {
 		return false
 	}
 	return true
@@ -611,6 +612,7 @@ func populateBYOCSpec(account *awsv1alpha1.Account, accountClaim *awsv1alpha1.Ac
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AccountClaimReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.awsClientBuilder = &awsclient.Builder{}
 	maxReconciles, err := controllerutils.GetControllerMaxReconciles(controllerName)
 	if err != nil {
 		log.Error(err, "missing max reconciles for controller", "controller", controllerName)

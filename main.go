@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -15,7 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -43,6 +45,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 	"github.com/openshift/aws-account-operator/pkg/utils"
+	"github.com/openshift/aws-account-operator/version"
 	"github.com/openshift/operator-custom-metrics/pkg/metrics"
 	//+kubebuilder:scaffold:imports
 )
@@ -54,7 +57,7 @@ var (
 
 	totalWatcherInterval = time.Duration(5) * time.Minute
 
-	scheme   = runtime.NewScheme()
+	scheme   = apiruntime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
 )
 
@@ -63,6 +66,13 @@ func init() {
 	utilruntime.Must(awsv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(routev1.Install(scheme))
 	//+kubebuilder:scaffold:scheme
+}
+
+func printVersion() {
+	setupLog.Info(fmt.Sprintf("Operator Version: %s", version.Version))
+	setupLog.Info(fmt.Sprintf("Operator-sdk Version: %v", version.SDKVersion))
+	setupLog.Info(fmt.Sprintf("Go Version: %s", runtime.Version()))
+	setupLog.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
 }
 
 func main() {
@@ -74,13 +84,19 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+
 	opts := zap.Options{
-		Development: true,
+		Development: false,
 	}
+	if utils.DetectDevMode == utils.DevModeLocal {
+		zap.UseDevMode(true)
+	}
+
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	printVersion()
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -98,7 +114,7 @@ func main() {
 	// Become the leader before proceeding
 	// This doesn't work locally, so only perform it when running on-cluster
 	if utils.DetectDevMode != utils.DevModeLocal {
-		err = leader.Become(context.TODO(), "splunk-forwarder-operator-lock")
+		err = leader.Become(context.TODO(), "aws-account-operator-lock")
 		if err != nil {
 			setupLog.Error(err, "Unable to become leader")
 			os.Exit(1)
@@ -226,7 +242,7 @@ func main() {
 	go totalaccountwatcher.TotalAccountWatcher.Start(setupLog, stopCh, kubeClient, totalWatcherInterval)
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(stopCh); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

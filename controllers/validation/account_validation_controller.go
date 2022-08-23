@@ -363,7 +363,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AccountValidationReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
+	r.awsClientBuilder = &awsclient.Builder{}
 	maxReconciles, err := utils.GetControllerMaxReconciles(controllerName)
 	if err != nil {
 		log.Error(err, "missing max reconciles for controller", "controller", controllerName)

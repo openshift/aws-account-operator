@@ -7,11 +7,13 @@ require (
 	github.com/aws/aws-sdk-go v1.34.14
 	github.com/go-logr/logr v1.2.0
 	github.com/golang/mock v1.5.0
+	github.com/google/go-cmp v0.5.6
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/ginkgo/v2 v2.1.3
 	github.com/onsi/gomega v1.18.1
 	github.com/openshift/api v0.0.0-20220414050251-a83e6f8f1d50
-	github.com/openshift/operator-custom-metrics v0.5.0
+	github.com/openshift/aws-account-operator/api v0.0.0-00010101000000-000000000000
+	github.com/openshift/operator-custom-metrics v0.5.1-0.20220802235640-dc76a1f15ee8
 	github.com/operator-framework/operator-lib v0.11.0
 	github.com/prometheus/client_golang v1.12.1
 	github.com/rkt/rkt v1.30.0
@@ -20,9 +22,10 @@ require (
 	k8s.io/api v0.24.0
 	k8s.io/apimachinery v0.24.0
 	k8s.io/client-go v0.24.0
-	k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42
 	sigs.k8s.io/controller-runtime v0.12.1
 )
+
+replace github.com/openshift/aws-account-operator/api => ./api
 
 require (
 	cloud.google.com/go v0.81.0 // indirect
@@ -49,7 +52,6 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
-	github.com/google/go-cmp v0.5.6 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/google/uuid v1.1.2 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
@@ -88,6 +90,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.24.0 // indirect
 	k8s.io/component-base v0.24.0 // indirect
 	k8s.io/klog/v2 v2.60.1 // indirect
+	k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42 // indirect
 	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9 // indirect
 	sigs.k8s.io/json v0.0.0-20211208200746-9f7c6b3444d2 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect

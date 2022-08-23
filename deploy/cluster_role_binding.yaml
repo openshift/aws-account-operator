@@ -1,0 +1,13 @@
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: aws-account-operator
+subjects:
+- kind: ServiceAccount
+  name: aws-account-operator
+  # Replace this with the namespace the operator is deployed in.
+  namespace: aws-account-operator
+roleRef:
+  kind: ClusterRole
+  name: aws-account-operator
+  apiGroup: rbac.authorization.k8s.io

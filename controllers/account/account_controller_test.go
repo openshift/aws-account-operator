@@ -3,7 +3,6 @@ package account
 import (
 	"context"
 	"fmt"
-	"github.com/go-logr/logr"
 	"testing"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/organizations"
+	"github.com/go-logr/logr"
 	"github.com/golang/mock/gomock"
 	apis "github.com/openshift/aws-account-operator/api"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"

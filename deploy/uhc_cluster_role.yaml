@@ -1,0 +1,38 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: aws-account-operator-client
+rules:
+- apiGroups:
+  - "aws.managed.openshift.io"
+  resources:
+  - accountclaims
+  - awsfederatedaccountaccesses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - "aws.managed.openshift.io"
+  resources:
+  - awsfederatedroles
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - create
+  - update

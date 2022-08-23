@@ -186,7 +186,8 @@ func (r *AccountClaimReconciler) cleanUpAwsAccount(reqLogger logr.Logger, awsCli
 
 	// Call the clean up functions in parallel
 	for _, cleanUpFunc := range cleanUpFunctions {
-		go cleanUpFunc(reqLogger, awsClient, awsNotifications, awsErrors) //nolint; cleanUpFunc // Not checking return value of goroutine
+		//nolint:errcheck // Not checking return value of goroutine
+		go cleanUpFunc(reqLogger, awsClient, awsNotifications, awsErrors)
 	}
 
 	var err error

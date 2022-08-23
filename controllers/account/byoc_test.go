@@ -3,13 +3,12 @@ package account
 import (
 	"errors"
 	"fmt"
-	"github.com/go-logr/logr"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/go-logr/logr"
 	"github.com/golang/mock/gomock"
 	apis "github.com/openshift/aws-account-operator/api"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
@@ -17,6 +16,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
