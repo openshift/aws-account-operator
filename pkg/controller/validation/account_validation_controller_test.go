@@ -118,7 +118,7 @@ func TestParentsTillPredicate(t *testing.T) {
 	}
 }
 
-func TestIsAccountInRootOU(t *testing.T) {
+func TestIsAccountInCorrectOU(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	// Simulate a root organization
 	type args struct {
@@ -157,9 +157,9 @@ func TestIsAccountInRootOU(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := IsAccountInPoolOU(tt.args.account, tt.args.client, tt.args.isRootOU)
+			got := IsAccountInCorrectOU(tt.args.account, tt.args.client, tt.args.isRootOU)
 			if got != tt.expected {
-				t.Errorf("IsAccountInRootOU() = %v, expected %v", got, tt.expected)
+				t.Errorf("IsAccountInCorrectOU() = %v, expected %v", got, tt.expected)
 			}
 		})
 	}

@@ -115,7 +115,7 @@ func ParentsTillPredicate(awsId string, client awsclient.Client, p func(s string
 
 // Verify if the account is already in the root OU
 // The predicate indicates if the parent considered the desired root was found.
-func IsAccountInPoolOU(account awsv1alpha1.Account, client awsclient.Client, isPoolOU func(s string) bool) bool {
+func IsAccountInCorrectOU(account awsv1alpha1.Account, client awsclient.Client, isPoolOU func(s string) bool) bool {
 	if account.Spec.AwsAccountID == "" {
 		return false
 	}
@@ -267,15 +267,21 @@ func ValidateAwsAccountId(account awsv1alpha1.Account) error {
 	return nil
 }
 
-func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string) error {
+func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string, claimedAccountOU string) error {
 	// Perform all checks on the account we want.
-	inPool := IsAccountInPoolOU(account, awsClient, func(s string) bool {
-		return s == poolOU
+	correctOU := poolOU
+
+	if account.IsClaimed() {
+		correctOU = claimedAccountOU
+	}
+
+	inCorrectOU := IsAccountInCorrectOU(account, awsClient, func(s string) bool {
+		return s == correctOU
 	})
-	if inPool {
-		log.Info("Account is already in the root OU.")
+	if inCorrectOU {
+		log.Info("Account is already in the correct OU.")
 	} else {
-		log.Info("Account is not in the root OU - it will be moved.")
+		log.Info("Account is not in the correct OU - it will be moved.")
 		err := MoveAccount(account.Spec.AwsAccountID, awsClient, poolOU, accountMoveEnabled)
 		if err != nil {
 			log.Error(err, "Could not move account")
@@ -351,7 +357,7 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 		return utils.RequeueWithError(err)
 	}
 
-	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"])
+	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"], cm.Data["base"])
 	if err != nil {
 		// Decide who we will requeue now
 		validationError, ok := err.(*AccountValidationError)
