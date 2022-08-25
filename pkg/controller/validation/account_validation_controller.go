@@ -267,10 +267,10 @@ func ValidateAwsAccountId(account awsv1alpha1.Account) error {
 }
 
 func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string, claimedAccountOU string) error {
-	// Perform all checks on the account we want.
+	// Default OU should be the aao-managed-accounts OU.
+	// If the account has been claimed ever, we want to use the legal entity ID OU
 	correctOU := poolOU
-
-	if account.IsClaimed() {
+	if account.HasBeenClaimedAtLeastOnce() {
 		claimedOU, err := accountclaim.CreateOrFindOU(log, awsClient, account.Spec.LegalEntity.ID, claimedAccountOU)
 		if err != nil {
 			return err
