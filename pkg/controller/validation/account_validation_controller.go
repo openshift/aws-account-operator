@@ -13,6 +13,7 @@ import (
 	"github.com/openshift/aws-account-operator/config"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	"github.com/openshift/aws-account-operator/pkg/controller/accountclaim"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -202,10 +203,8 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 
 					return nil
 				} else {
-					return &AccountValidationError{
-						Type: IncorrectOwnerTag,
-						Err:  fmt.Errorf("Account is not tagged with the correct owner, has %s; want %s", *tag.Value, shardName),
-					}
+					log.Info(fmt.Sprintf("Account is not tagged with the correct owner, has %s; want %s", *tag.Value, shardName))
+					return nil
 				}
 			} else {
 				return nil
@@ -272,7 +271,12 @@ func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account 
 	correctOU := poolOU
 
 	if account.IsClaimed() {
-		correctOU = claimedAccountOU
+		claimedOU, err := accountclaim.CreateOrFindOU(log, awsClient, account.Spec.LegalEntity.ID, claimedAccountOU)
+		if err != nil {
+			return err
+		}
+
+		correctOU = claimedOU
 	}
 
 	inCorrectOU := IsAccountInCorrectOU(account, awsClient, func(s string) bool {
@@ -282,7 +286,7 @@ func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account 
 		log.Info("Account is already in the correct OU.")
 	} else {
 		log.Info("Account is not in the correct OU - it will be moved.")
-		err := MoveAccount(account.Spec.AwsAccountID, awsClient, poolOU, accountMoveEnabled)
+		err := MoveAccount(account.Spec.AwsAccountID, awsClient, correctOU, accountMoveEnabled)
 		if err != nil {
 			log.Error(err, "Could not move account")
 			return &AccountValidationError{
