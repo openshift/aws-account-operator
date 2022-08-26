@@ -266,7 +266,7 @@ func ValidateAwsAccountId(account awsv1alpha1.Account) error {
 	return nil
 }
 
-func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string, claimedAccountOU string) error {
+func ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string, claimedAccountOU string) error {
 	// Default OU should be the aao-managed-accounts OU.
 	// If the account has been claimed ever, we want to use the legal entity ID OU
 	correctOU := poolOU
@@ -361,7 +361,7 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 		return utils.RequeueWithError(err)
 	}
 
-	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"], cm.Data["base"])
+	err = ValidateAccountOU(awsClient, account, cm.Data["root"], cm.Data["base"])
 	if err != nil {
 		// Decide who we will requeue now
 		validationError, ok := err.(*AccountValidationError)
