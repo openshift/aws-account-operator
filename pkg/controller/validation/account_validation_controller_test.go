@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/golang/mock/gomock"
 	"github.com/google/go-cmp/cmp"
@@ -66,6 +67,20 @@ func multipleOrganisation(ctrl *gomock.Controller) *mock.MockClient {
 	return mockClient
 }
 
+func designatedOrganization(ctrl *gomock.Controller, ouID string) *mock.MockClient {
+	mockClient := mock.NewMockClient(ctrl)
+	mockClient.EXPECT().ListParents(&organizations.ListParentsInput{
+		ChildId: aws.String("111111"),
+	}).Return(&organizations.ListParentsOutput{
+		Parents: []*organizations.Parent{
+			{
+				Id:   aws.String(ouID),
+				Type: aws.String(""),
+			}},
+	}, nil)
+	return mockClient
+}
+
 func alwaysTrue(s string) bool {
 	return true
 }
@@ -118,7 +133,7 @@ func TestParentsTillPredicate(t *testing.T) {
 	}
 }
 
-func TestIsAccountInRootOU(t *testing.T) {
+func TestIsAccountInCorrectOU(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	// Simulate a root organization
 	type args struct {
@@ -157,9 +172,9 @@ func TestIsAccountInRootOU(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := IsAccountInPoolOU(tt.args.account, tt.args.client, tt.args.isRootOU)
+			got := IsAccountInCorrectOU(tt.args.account, tt.args.client, tt.args.isRootOU)
 			if got != tt.expected {
-				t.Errorf("IsAccountInRootOU() = %v, expected %v", got, tt.expected)
+				t.Errorf("IsAccountInCorrectOU() = %v, expected %v", got, tt.expected)
 			}
 		})
 	}
@@ -213,6 +228,89 @@ func TestMoveAccount(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := MoveAccount(tt.args.account, tt.args.client, tt.args.targetOU, tt.args.moveAccount); (err != nil) != tt.wantErr {
 				t.Errorf("MoveAccount() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateAccountOU(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	testPoolOUID := "ou-abcd-efghijk"
+	testBaseOUID := "ou-lmno-qrstuvwxyz"
+	testLegalEntityOUID := "ou-aabb-ccddeeff"
+
+	legalEntity := awsv1alpha1.LegalEntity{
+		ID:   "abcdefg",
+		Name: "Test Entity ID",
+	}
+
+	notHandledError := fmt.Errorf("Some random error")
+	tests := []struct {
+		name      string
+		awsClient awsclient.Client
+		account   awsv1alpha1.Account
+		wantErr   error
+	}{
+		{
+			name:      "Account that has never been claimed and is in pool OU should return no errors",
+			awsClient: designatedOrganization(ctrl, testPoolOUID),
+			account: awsv1alpha1.Account{
+				Spec: awsv1alpha1.AccountSpec{
+					AwsAccountID: "111111",
+				},
+			},
+			wantErr: nil,
+		}, {
+			name: "Account that has been claimed before and is in legalEntity OU should return no error",
+			awsClient: func(client *mock.MockClient) *mock.MockClient {
+				client.EXPECT().CreateOrganizationalUnit(&organizations.CreateOrganizationalUnitInput{
+					ParentId: aws.String(testBaseOUID),
+					Name:     aws.String(legalEntity.ID),
+				}).Return(nil, awserr.New("DuplicateOrganizationalUnitException", "", nil))
+				client.EXPECT().ListOrganizationalUnitsForParent(&organizations.ListOrganizationalUnitsForParentInput{
+					ParentId: aws.String(testBaseOUID),
+				}).Return(&organizations.ListOrganizationalUnitsForParentOutput{
+					OrganizationalUnits: []*organizations.OrganizationalUnit{
+						{
+							Name: aws.String(legalEntity.ID),
+							Id:   aws.String(testLegalEntityOUID),
+						},
+					},
+				}, nil)
+				return client
+			}(designatedOrganization(ctrl, testLegalEntityOUID)),
+			account: awsv1alpha1.Account{
+				Spec: awsv1alpha1.AccountSpec{
+					AwsAccountID: "111111",
+					LegalEntity:  legalEntity,
+				},
+			},
+			wantErr: nil,
+		}, {
+			name: "Account that has been claimed before and has unknown error happen when checking the OU should return the error",
+			awsClient: func(client *mock.MockClient) *mock.MockClient {
+				client.EXPECT().CreateOrganizationalUnit(&organizations.CreateOrganizationalUnitInput{
+					ParentId: aws.String(testBaseOUID),
+					Name:     aws.String(legalEntity.ID),
+				}).Return(nil, notHandledError)
+				return client
+			}(designatedOrganization(ctrl, testLegalEntityOUID)),
+			account: awsv1alpha1.Account{
+				Spec: awsv1alpha1.AccountSpec{
+					AwsAccountID: "111111",
+					LegalEntity:  legalEntity,
+				},
+			},
+			wantErr: notHandledError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateAccountOU(tt.awsClient, tt.account, testPoolOUID, testBaseOUID)
+			if err != tt.wantErr {
+				t.Errorf("Error validating account OU. Got: %v, want %v", err, tt.wantErr)
 			}
 		})
 	}
