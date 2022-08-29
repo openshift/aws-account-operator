@@ -13,7 +13,6 @@ import (
 	"github.com/openshift/aws-account-operator/config"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"github.com/openshift/aws-account-operator/pkg/controller/accountclaim"
 	"github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -116,7 +115,7 @@ func ParentsTillPredicate(awsId string, client awsclient.Client, p func(s string
 
 // Verify if the account is already in the root OU
 // The predicate indicates if the parent considered the desired root was found.
-func IsAccountInCorrectOU(account awsv1alpha1.Account, client awsclient.Client, isPoolOU func(s string) bool) bool {
+func IsAccountInPoolOU(account awsv1alpha1.Account, client awsclient.Client, isPoolOU func(s string) bool) bool {
 	if account.Spec.AwsAccountID == "" {
 		return false
 	}
@@ -203,8 +202,10 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 
 					return nil
 				} else {
-					log.Info(fmt.Sprintf("Account is not tagged with the correct owner, has %s; want %s", *tag.Value, shardName))
-					return nil
+					return &AccountValidationError{
+						Type: IncorrectOwnerTag,
+						Err:  fmt.Errorf("Account is not tagged with the correct owner, has %s; want %s", *tag.Value, shardName),
+					}
 				}
 			} else {
 				return nil
@@ -266,27 +267,16 @@ func ValidateAwsAccountId(account awsv1alpha1.Account) error {
 	return nil
 }
 
-func ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string, claimedAccountOU string) error {
-	// Default OU should be the aao-managed-accounts OU.
-	// If the account has been claimed ever, we want to use the legal entity ID OU
-	correctOU := poolOU
-	if account.HasBeenClaimedAtLeastOnce() {
-		claimedOU, err := accountclaim.CreateOrFindOU(log, awsClient, account.Spec.LegalEntity.ID, claimedAccountOU)
-		if err != nil {
-			return err
-		}
-
-		correctOU = claimedOU
-	}
-
-	inCorrectOU := IsAccountInCorrectOU(account, awsClient, func(s string) bool {
-		return s == correctOU
+func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string) error {
+	// Perform all checks on the account we want.
+	inPool := IsAccountInPoolOU(account, awsClient, func(s string) bool {
+		return s == poolOU
 	})
-	if inCorrectOU {
-		log.Info("Account is already in the correct OU.")
+	if inPool {
+		log.Info("Account is already in the root OU.")
 	} else {
-		log.Info("Account is not in the correct OU - it will be moved.")
-		err := MoveAccount(account.Spec.AwsAccountID, awsClient, correctOU, accountMoveEnabled)
+		log.Info("Account is not in the root OU - it will be moved.")
+		err := MoveAccount(account.Spec.AwsAccountID, awsClient, poolOU, accountMoveEnabled)
 		if err != nil {
 			log.Error(err, "Could not move account")
 			return &AccountValidationError{
@@ -361,7 +351,7 @@ func (r *ValidateAccount) Reconcile(request reconcile.Request) (reconcile.Result
 		return utils.RequeueWithError(err)
 	}
 
-	err = ValidateAccountOU(awsClient, account, cm.Data["root"], cm.Data["base"])
+	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"])
 	if err != nil {
 		// Decide who we will requeue now
 		validationError, ok := err.(*AccountValidationError)
