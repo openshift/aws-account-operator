@@ -87,6 +87,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		Client:           utils.NewClientWithMetricsOrDie(log, mgr, controllerName),
 		scheme:           mgr.GetScheme(),
 		awsClientBuilder: &awsclient.Builder{},
+		OUNameIDMap:      map[string]string{},
 	}
 
 	return utils.NewReconcilerWithMetrics(reconciler, controllerName)
