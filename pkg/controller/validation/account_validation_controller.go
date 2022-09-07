@@ -284,7 +284,10 @@ func (r *ValidateAccount) ValidateAccountOU(awsClient awsclient.Client, account 
 				ouNeedsCreating = true
 			} else {
 				log.Info("Unexpected error attempting to get OU ID for Legal Entity", "legal_entity", account.Spec.LegalEntity.ID)
-				return fmt.Errorf("Unexpected error attempting to get OU ID for %s", account.Spec.LegalEntity.ID)
+				return &AccountValidationError{
+					Type: OULookupFailed,
+					Err:  errors.New("unexpected error attempting to get OU ID for legal entity"),
+				}
 			}
 		}
 

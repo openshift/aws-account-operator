@@ -251,6 +251,7 @@ func TestValidateAccountOU(t *testing.T) {
 		awsClient awsclient.Client
 		account   awsv1alpha1.Account
 		wantErr   error
+		ouMap     map[string]string
 	}{
 		{
 			name:      "Account that has never been claimed and is in pool OU should return no errors",
@@ -261,6 +262,7 @@ func TestValidateAccountOU(t *testing.T) {
 				},
 			},
 			wantErr: nil,
+			ouMap:   map[string]string{},
 		}, {
 			name: "Account that has been claimed before and is in legalEntity OU should return no error",
 			awsClient: func(client *mock.MockClient) *mock.MockClient {
@@ -287,13 +289,10 @@ func TestValidateAccountOU(t *testing.T) {
 				},
 			},
 			wantErr: nil,
+			ouMap:   map[string]string{},
 		}, {
-			name: "Account that has been claimed before and has unknown error happen when checking the OU should return the error",
+			name: "Account has been claimed before and is in OU Map",
 			awsClient: func(client *mock.MockClient) *mock.MockClient {
-				client.EXPECT().CreateOrganizationalUnit(&organizations.CreateOrganizationalUnitInput{
-					ParentId: aws.String(testBaseOUID),
-					Name:     aws.String(legalEntity.ID),
-				}).Return(nil, notHandledError)
 				return client
 			}(designatedOrganization(ctrl, testLegalEntityOUID)),
 			account: awsv1alpha1.Account{
@@ -302,14 +301,40 @@ func TestValidateAccountOU(t *testing.T) {
 					LegalEntity:  legalEntity,
 				},
 			},
-			wantErr: notHandledError,
+			wantErr: nil,
+			ouMap:   map[string]string{legalEntity.ID: testLegalEntityOUID},
+		}, {
+			name: "When encountering an error listing parents when getting OU ID from name it should return the error",
+			awsClient: func() *mock.MockClient {
+				mockClient := mock.NewMockClient(ctrl)
+				mockClient.EXPECT().ListOrganizationalUnitsForParent(&organizations.ListOrganizationalUnitsForParentInput{
+					ParentId: aws.String(testBaseOUID),
+				}).Return(&organizations.ListOrganizationalUnitsForParentOutput{}, notHandledError)
+				return mockClient
+			}(),
+			account: awsv1alpha1.Account{
+				Spec: awsv1alpha1.AccountSpec{
+					AwsAccountID: "111111",
+					LegalEntity:  legalEntity,
+				},
+			},
+			wantErr: fmt.Errorf("unexpected error attempting to get OU ID for legal entity"),
+			ouMap:   map[string]string{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateAccountOU(tt.awsClient, tt.account, testPoolOUID, testBaseOUID)
+			r := &ValidateAccount{}
+			r.OUNameIDMap = tt.ouMap
+			err := r.ValidateAccountOU(tt.awsClient, tt.account, testPoolOUID, testBaseOUID)
 			if err != tt.wantErr {
+				var ave *AccountValidationError
+				if errors.As(err, &ave) {
+					if ave.Err.Error() == tt.wantErr.Error() {
+						return
+					}
+				}
 				t.Errorf("Error validating account OU. Got: %v, want %v", err, tt.wantErr)
 			}
 		})
