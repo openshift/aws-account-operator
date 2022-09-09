@@ -4,21 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/organizations"
-
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
 	"github.com/openshift/aws-account-operator/controllers/account"
+	"github.com/openshift/aws-account-operator/controllers/accountclaim"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/utils"
 )
@@ -38,6 +39,7 @@ type AccountValidationReconciler struct {
 	Client           client.Client
 	Scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
+	OUNameIDMap      map[string]string
 }
 
 type ValidationError int64
@@ -49,6 +51,7 @@ const (
 	IncorrectOwnerTag
 	AccountTagFailed
 	MissingAWSAccount
+	OULookupFailed
 )
 
 type AccountValidationError struct {
@@ -95,7 +98,7 @@ func ParentsTillPredicate(awsId string, client awsclient.Client, p func(s string
 
 // Verify if the account is already in the root OU
 // The predicate indicates if the parent considered the desired root was found.
-func IsAccountInPoolOU(account awsv1alpha1.Account, client awsclient.Client, isPoolOU func(s string) bool) bool {
+func IsAccountInCorrectOU(account awsv1alpha1.Account, client awsclient.Client, isPoolOU func(s string) bool) bool {
 	if account.Spec.AwsAccountID == "" {
 		return false
 	}
@@ -182,10 +185,8 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 
 					return nil
 				} else {
-					return &AccountValidationError{
-						Type: IncorrectOwnerTag,
-						Err:  fmt.Errorf("Account is not tagged with the correct owner, has %s; want %s", *tag.Value, shardName),
-					}
+					log.Info(fmt.Sprintf("Account is not tagged with the correct owner, has %s; want %s", *tag.Value, shardName))
+					return nil
 				}
 			} else {
 				return nil
@@ -247,16 +248,58 @@ func ValidateAwsAccountId(account awsv1alpha1.Account) error {
 	return nil
 }
 
-func (r *AccountValidationReconciler) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string) error {
-	// Perform all checks on the account we want.
-	inPool := IsAccountInPoolOU(account, awsClient, func(s string) bool {
-		return s == poolOU
+func (r *AccountValidationReconciler) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string, baseOU string) error {
+	// Default OU should be the aao-managed-accounts OU.
+	// If the account has been claimed ever, we want to use the legal entity ID OU
+	correctOU := poolOU
+
+	ouNeedsCreating := false
+	if account.HasBeenClaimedAtLeastOnce() {
+		claimedOU, err := r.GetOUIDFromName(awsClient, baseOU, account.Spec.LegalEntity.ID)
+		if err != nil {
+			if errors.Is(err, awsv1alpha1.ErrNonexistentOU) {
+				log.Info("OU doesn't exist. Will need to create it.", "OU Name", account.Spec.LegalEntity.ID)
+				ouNeedsCreating = true
+			} else {
+				log.Info("Unexpected error attempting to get OU ID for Legal Entity", "legal_entity", account.Spec.LegalEntity.ID)
+				return &AccountValidationError{
+					Type: OULookupFailed,
+					Err:  errors.New("unexpected error attempting to get OU ID for legal entity"),
+				}
+			}
+		}
+
+		correctOU = claimedOU
+	}
+
+	if ouNeedsCreating {
+		if accountMoveEnabled {
+			createdOU, err := accountclaim.CreateOrFindOU(log, awsClient, account.Spec.LegalEntity.ID, baseOU)
+			if err != nil {
+				return err
+			}
+			correctOU = createdOU
+		} else {
+			log.Info("Would attempt to create the OU here, but AccountMoving is disabled.")
+		}
+	}
+
+	if correctOU == "" {
+		log.Info("Error attempting to get correct OU. Got empty string.")
+		return &AccountValidationError{
+			Type: OULookupFailed,
+			Err:  fmt.Errorf("Empty String when attempting to get correct OU"),
+		}
+	}
+
+	inCorrectOU := IsAccountInCorrectOU(account, awsClient, func(s string) bool {
+		return s == correctOU
 	})
-	if inPool {
-		log.Info("Account is already in the root OU.")
+	if inCorrectOU {
+		log.Info("Account is already in the correct OU.")
 	} else {
-		log.Info("Account is not in the root OU - it will be moved.")
-		err := MoveAccount(account.Spec.AwsAccountID, awsClient, poolOU, accountMoveEnabled)
+		log.Info("Account is not in the correct OU - it will be moved.")
+		err := MoveAccount(account.Spec.AwsAccountID, awsClient, correctOU, accountMoveEnabled)
 		if err != nil {
 			log.Error(err, "Could not move account")
 			return &AccountValidationError{
@@ -266,6 +309,45 @@ func (r *AccountValidationReconciler) ValidateAccountOU(awsClient awsclient.Clie
 		}
 	}
 	return nil
+}
+
+func (r *AccountValidationReconciler) GetOUIDFromName(client awsclient.Client, parentid string, ouName string) (string, error) {
+	// Check in-memory storage first
+	if ouID, ok := r.OUNameIDMap[ouName]; ok {
+		return ouID, nil
+	}
+
+	// Loop through all OUs in the parent until we find the ID of the OU with the given name
+	ouID := ""
+	listOrgUnitsForParentID := organizations.ListOrganizationalUnitsForParentInput{
+		ParentId: &parentid,
+	}
+	for ouID == "" {
+		// Get a list with a fraction of the OUs in this parent starting from NextToken
+		listOut, err := client.ListOrganizationalUnitsForParent(&listOrgUnitsForParentID)
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				unexpectedErrorMsg := fmt.Sprintf("FindOUFromParentID: Unexpected AWS Error when attempting to find OU ID from Parent: %s", aerr.Code())
+				log.Info(unexpectedErrorMsg)
+			}
+			return "", err
+		}
+		for _, element := range listOut.OrganizationalUnits {
+			if *element.Name == ouName {
+				// We've found the OU, so let's map this to the in-memory store
+				r.OUNameIDMap[ouName] = *element.Id
+				// and return it
+				return *element.Id, nil
+			}
+		}
+		// If the OU is not found we should update the input for the next list call
+		if listOut.NextToken != nil {
+			listOrgUnitsForParentID.NextToken = listOut.NextToken
+			continue
+		}
+		return "", awsv1alpha1.ErrNonexistentOU
+	}
+	return ouID, nil
 }
 
 func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
@@ -331,7 +413,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		return utils.RequeueWithError(err)
 	}
 
-	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"])
+	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"], cm.Data["base"])
 	if err != nil {
 		// Decide who we will requeue now
 		validationError, ok := err.(*AccountValidationError)
