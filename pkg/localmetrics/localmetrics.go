@@ -20,7 +20,7 @@ import (
 	neturl "net/url"
 	"strings"
 
-	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/prometheus/client_golang/prometheus"

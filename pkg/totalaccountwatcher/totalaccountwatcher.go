@@ -10,11 +10,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/go-logr/logr"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	controllerutils "github.com/openshift/aws-account-operator/pkg/controller/utils"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
+	controllerutils "github.com/openshift/aws-account-operator/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -89,7 +89,7 @@ func newTotalAccountWatcher(
 
 // TotalAccountWatcher will trigger AwsLimitUpdate every `scanInternal` and only stop if the operator is killed or a
 // message is sent on the stopCh
-func (s *AccountWatcher) Start(log logr.Logger, stopCh <-chan struct{}, client client.Client, watchInterval time.Duration) {
+func (s *AccountWatcher) Start(log logr.Logger, stopCh context.Context, client client.Client, watchInterval time.Duration) {
 	log.Info("Starting the totalAccountWatcher")
 	s = initialize(client, watchInterval)
 	for {
@@ -99,7 +99,7 @@ func (s *AccountWatcher) Start(log logr.Logger, stopCh <-chan struct{}, client c
 			if err != nil {
 				log.Error(err, "totalAccountWatcher not started, awsLimit won't be updated")
 			}
-		case <-stopCh:
+		case <-stopCh.Done():
 			log.Info("Stopping the totalAccountWatcher")
 			break
 		}

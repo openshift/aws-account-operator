@@ -8,8 +8,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/go-logr/logr"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/pkg/apis/aws/v1alpha1"
-	"github.com/openshift/aws-account-operator/pkg/controller/utils"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/utils"
 )
 
 // ListIAMUserTags returns a list of the tags assigned to an IAM user in AWS
