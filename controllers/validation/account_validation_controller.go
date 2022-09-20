@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"strconv"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -357,7 +358,11 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	var account awsv1alpha1.Account
 	err := r.Client.Get(context.TODO(), request.NamespacedName, &account)
 	if err != nil {
-		log.Error(err, "Could not retrieve account to validate", "account-request", request.NamespacedName)
+		log.Info("Account does not exist", "account-request", request.NamespacedName, "error", err)
+		return utils.DoNotRequeue()
+	}
+	if account.DeletionTimestamp != nil {
+		log.Info("Account is being deleted - not running any validations", "account", account.Name)
 		return utils.DoNotRequeue()
 	}
 

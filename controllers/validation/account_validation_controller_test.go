@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/organizations"
@@ -732,6 +733,40 @@ func TestValidateAccount_Reconcile(t *testing.T) {
 				}}...).Build(),
 			scheme:           scheme.Scheme,
 			awsClientBuilder: newBuilder(ctrl),
+		}, args: args{
+			request: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: "default",
+					Name:      "test",
+				},
+			},
+		}, want: reconcile.Result{Requeue: false}, wantErr: false},
+		{name: "Will not attempt to reconcile a account thas is being deleted.", fields: fields{
+			Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
+				&awsv1alpha1.Account{
+					TypeMeta: v1.TypeMeta{
+						Kind:       "Account",
+						APIVersion: "v1alpha1",
+					},
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "test",
+						Namespace: "default",
+						DeletionTimestamp: &v1.Time{
+							Time: time.Now(),
+						},
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						AwsAccountID: "123456",
+					},
+				},
+				&corev1.ConfigMap{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      awsv1alpha1.DefaultConfigMap,
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+				}}...).Build(),
+			scheme:           scheme.Scheme,
+			awsClientBuilder: nil,
 		}, args: args{
 			request: reconcile.Request{
 				NamespacedName: types.NamespacedName{
