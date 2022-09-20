@@ -251,11 +251,12 @@ func ValidateAwsAccountId(account awsv1alpha1.Account) error {
 
 func (r *AccountValidationReconciler) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string, baseOU string) error {
 	// Default OU should be the aao-managed-accounts OU.
-	// If the account has been claimed ever, we want to use the legal entity ID OU
 	correctOU := poolOU
 
 	ouNeedsCreating := false
-	if account.HasBeenClaimedAtLeastOnce() {
+
+	// If the legal entity is not empty, it should go into the legalEntity's OU
+	if account.Spec.LegalEntity.ID != "" {
 		claimedOU, err := r.GetOUIDFromName(awsClient, baseOU, account.Spec.LegalEntity.ID)
 		if err != nil {
 			if errors.Is(err, awsv1alpha1.ErrNonexistentOU) {
