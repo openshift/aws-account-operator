@@ -353,11 +353,6 @@ func TestValidateAccountOrigin(t *testing.T) {
 			args: args{
 				account: awsv1alpha1.Account{
 					ObjectMeta: v1.ObjectMeta{
-						OwnerReferences: []v1.OwnerReference{
-							{
-								Kind: "AccountPool",
-							},
-						},
 						Name:      "testaccount",
 						Namespace: "testnamespace",
 					},
@@ -373,35 +368,10 @@ func TestValidateAccountOrigin(t *testing.T) {
 			expectedErr: "Account is a CCS account",
 		},
 		{
-			name: "Account not owned by account pool",
-			args: args{
-				account: awsv1alpha1.Account{
-					ObjectMeta: v1.ObjectMeta{
-						OwnerReferences: nil,
-						Name:            "testaccount",
-						Namespace:       "testnamespace",
-					},
-					Spec: awsv1alpha1.AccountSpec{
-						BYOC: false,
-					},
-					Status: awsv1alpha1.AccountStatus{
-						State: string(awsv1alpha1.AccountReady),
-					},
-				},
-			},
-			wantErr:     true,
-			expectedErr: "Account is not in an account pool",
-		},
-		{
 			name: "Account is not in ready state",
 			args: args{
 				account: awsv1alpha1.Account{
 					ObjectMeta: v1.ObjectMeta{
-						OwnerReferences: []v1.OwnerReference{
-							{
-								Kind: "AccountPool",
-							},
-						},
 						Name:      "testaccount",
 						Namespace: "testnamespace",
 					},
@@ -421,11 +391,6 @@ func TestValidateAccountOrigin(t *testing.T) {
 			args: args{
 				account: awsv1alpha1.Account{
 					ObjectMeta: v1.ObjectMeta{
-						OwnerReferences: []v1.OwnerReference{
-							{
-								Kind: "AccountPool",
-							},
-						},
 						Name:      "testaccount",
 						Namespace: "testnamespace",
 					},
