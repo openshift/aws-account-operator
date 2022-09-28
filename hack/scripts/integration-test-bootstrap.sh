@@ -135,7 +135,7 @@ function cleanup {
     echo -e "\nPERFORMING CLEANUP\n"
     removeDockerfileSoftLink
     cleanKustomization
-    $OC_WITH_NAMESPACE delete deployment $OPERATOR_DEPLOYMENT || true
+    $OC_WITH_NAMESPACE delete deployment $OPERATOR_DEPLOYMENT 2>/dev/null || true
     if [ $localOperatorPID ]; then
         kill $localOperatorPID || true
     fi
@@ -143,13 +143,13 @@ function cleanup {
         rm $LOCAL_LOG_FILE
     fi
     if [ -z $SKIP_CLEANUP ]; then
-        if [[ $($OC get namespace $NAMESPACE --no-headers | wc -l) == 0 ]];
+        if [[ $($OC get namespace $NAMESPACE --no-headers 2>/dev/null | wc -l) == 0 ]];
             then
                 echo -e "\nNo $NAMESPACE namespace found.\n"
                 return
         fi
 
-        $OC delete namespace $NAMESPACE || true
+        $OC delete namespace $NAMESPACE --ignore-not-found=true || true
     fi
     echo -e "\nCLEANUP COMPLETED\n"
 }
@@ -274,8 +274,7 @@ function profileLocal {
     sourceEnvrcConfig
     sanityCheck
     cleanupPre
-    trap cleanupPost EXIT
-    $OC adm new-project "$NAMESPACE" || true
+    $OC adm new-project "$NAMESPACE" 2>/dev/null || true
     make predeploy
     make deploy-local OPERATOR_NAMESPACE=$NAMESPACE > $LOCAL_LOG_FILE 2>&1 &
     localOperatorPID=$!
@@ -285,8 +284,7 @@ function profileProw {
     export FORCE_DEV_MODE=cluster
     sourceFromMountedKvStoreConfig
     cleanupPre
-    trap cleanupPost EXIT
-    $OC adm new-project "$NAMESPACE" || true
+    $OC adm new-project "$NAMESPACE" 2>/dev/null || true
     make prow-ci-predeploy
     buildOperatorImage
     verifyBuildSuccess
@@ -305,8 +303,7 @@ function profileStage {
     sourceEnvrcConfig
     sanityCheck
     cleanupPre
-    trap cleanupPost EXIT
-    $OC adm new-project "$NAMESPACE" || true
+    $OC adm new-project "$NAMESPACE" 2>/dev/null || true
     make prow-ci-predeploy
     make validate-deployment
     buildOperatorImage
@@ -317,7 +314,6 @@ function profileStage {
 
 parseArgs $@
 OC_WITH_NAMESPACE="$OC -n $NAMESPACE"
-cleanupPre
 trap cleanupPost EXIT
 case $PROFILE in
     local)
