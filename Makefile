@@ -38,6 +38,10 @@ ifndef AWS_IAM_ARN
 	@if [[ -z "$(AWS_IAM_ARN)" ]]; then echo "AWS_IAM_ARN unset and could not be calculated!"; exit 1; fi
 endif
 
+.PHONY: move-osd-staging-1-account-to-root-ou
+move-osd-staging-1-account-to-root-ou: 
+	hack/scripts/aws/verify-organization.sh ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1 --move
+
 .PHONY: check-ou-mapping-configmap-env
 check-ou-mapping-configmap-env: ## Check if OU mapping ConfigMap Env vars are set
 ifndef OSD_STAGING_1_OU_ROOT_ID
@@ -84,12 +88,10 @@ delete-accountclaim-namespace: ## Delete account claim namespace
 	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc delete -f -
 
 .PHONY: create-accountclaim
-create-accountclaim: ## Create AccountClaim
-	$(MAKE) create-account
-	# Create accountclaim
-	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws.managed.openshift.io_v1alpha1_accountclaim_cr.tmpl | oc apply -f -
-	# Wait for accountclaim to become ready
-	@while true; do STATUS=$$(oc get accountclaim ${ACCOUNT_CLAIM_NAME} -n ${ACCOUNT_CLAIM_NAMESPACE} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${ACCOUNT_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
+create-accountclaim: check-aws-account-id-env ## Create accountclaim
+	# Create Account
+	test/integration/api/create_account.sh
+	test/integration/api/create_accountclaim.sh
 
 .PHONY: delete-accountclaim
 delete-accountclaim: ## Delete AccountClaim
@@ -256,8 +258,9 @@ validate-reuse:
 	@IS_READY=$$(oc get account -n aws-account-operator ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -o json | jq -r '.status.state'); if [ "$$IS_READY" != "Ready" ]; then echo "Reused Account is not Ready"; exit 1; fi;
 	@IS_REUSED=$$(oc get account -n aws-account-operator ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -o json | jq -r '.status.reused'); if [ "$$IS_REUSED" != true ]; then echo "Account is not Reused"; exit 1; fi;
 
+# Note: this test requires AWS Account OSD_STAGING_1_AWS_ACCOUNT_ID to be in the root ou or you will get ChildNotFoundInOU errors from AAO
 .PHONY: test-reuse
-test-reuse: check-aws-account-id-env create-accountclaim-namespace create-accountclaim create-s3-bucket delete-accountclaim delete-accountclaim-namespace validate-reuse list-s3-bucket
+test-reuse: check-aws-account-id-env move-osd-staging-1-account-to-root-ou create-accountclaim-namespace create-accountclaim create-s3-bucket delete-accountclaim delete-accountclaim-namespace validate-reuse list-s3-bucket
 	$(MAKE) delete-account ## Test reuse
 
 .PHONY: test-secrets
@@ -489,8 +492,11 @@ prow-ci-entrypoint: ## Triggers integration test bootstrap bash script for prow 
 stage-ci-entrypoint: ## Triggers integration test bootstrap bash script for staging cluster
 	hack/scripts/integration-test-bootstrap.sh -p stage --skip-cleanup -n $(OPERATOR_NAMESPACE)
 
+
+# working:
+#   test-account-creation
 .PHONY: ci-int-tests
-ci-int-tests: test-account-creation
+ci-int-tests: test-reuse
 
 .PHONY: ci-aws-resources-cleanup
 ci-aws-resources-cleanup: 
