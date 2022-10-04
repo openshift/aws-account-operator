@@ -2,10 +2,19 @@
 
 set -eo pipefail
 
+source hack/scripts/test_envs
+
 export IMAGE_NAME=aws-account-operator
 export BUILD_CONFIG=aws-account-operator
 export OPERATOR_DEPLOYMENT=aws-account-operator
 OC="oc"
+
+declare -A testResults
+declare -A GENERAL_EXIT_CODE_MESSAGES
+GENERAL_EXIT_CODE_MESSAGES[$EXIT_PASS]="PASS"
+GENERAL_EXIT_CODE_MESSAGES[$EXIT_RETRY]="Some conditions not met, but can be retried"
+GENERAL_EXIT_CODE_MESSAGES[$EXIT_FAIL_UNEXPECTED_ERROR]="Unexpected error"
+GENERAL_EXIT_CODE_MESSAGES[$EXIT_TIMEOUT]="Timeout waiting for condition to be met"
 
 function usage {
     cat <<EOF
@@ -132,12 +141,11 @@ function cleanKustomization {
 ## Cleanup performs mandatory cleanup of Dockerfile Softlink, kustomization files & existing operator deployments or processes.
 ## If $SKIP_CLEANUP is not provided, existing aws-account-operator namespace is also cleaned up.
 function cleanup {
-    echo -e "\nPERFORMING CLEANUP\n"
     removeDockerfileSoftLink
     cleanKustomization
     $OC_WITH_NAMESPACE delete deployment $OPERATOR_DEPLOYMENT 2>/dev/null || true
     if [ $localOperatorPID ]; then
-        kill $localOperatorPID || true
+        kill $localOperatorPID 2>/dev/null || true
     fi
     if [ $LOCAL_LOG_FILE -a -f $LOCAL_LOG_FILE ]; then
         rm $LOCAL_LOG_FILE
@@ -151,16 +159,21 @@ function cleanup {
 
         $OC delete namespace $NAMESPACE --ignore-not-found=true || true
     fi
-    echo -e "\nCLEANUP COMPLETED\n"
 }
 
 ## cleanupPre runs at start.
 function cleanupPre {
+    echo -e "\n========================================================================"
+    echo "= Before All Test Cleanup"
+    echo "========================================================================"
     cleanup
 }
 
 ## cleanupPost runs at end as a trap process for all types of exits.
 function cleanupPost {
+    echo -e "\n========================================================================"
+    echo "= After All Test Cleanup"
+    echo "========================================================================"
     consoleOperatorLogs
     if [ $clusterUserName ]; then
         $OC --as backplane-cluster-admin adm policy remove-cluster-role-from-user cluster-admin $clusterUserName
@@ -269,52 +282,210 @@ function installProwCIDependencies {
 }
 
 function profileLocal {
+    echo -e "\n========================================================================"
+    echo "= Int Testing Bootstrap Profile - Local Cluster"
+    echo "========================================================================"
+    echo "Configuring local build environment"
     export LOCAL_LOG_FILE="localOperator.log"
     export FORCE_DEV_MODE=local
     sourceEnvrcConfig
     sanityCheck
+
+    echo "Configuring deployment cluster"
     cleanupPre
     $OC adm new-project "$NAMESPACE" 2>/dev/null || true
     make predeploy
-    make deploy-local OPERATOR_NAMESPACE=$NAMESPACE > $LOCAL_LOG_FILE 2>&1 &
-    localOperatorPID=$!
+
+    # start local operator if not already running
+    # not sure if theres a better way to detect this, but operator-sdk processes look 
+    # like this when I was testing locally: 
+    #   > ps aux | grep go-build
+    #      mstratto 3313211  0.2  0.1 2590492 117236 pts/7  Sl+  10:59   0:08 /tmp/go-build3762679696/b001/exe/main --zap-devel
+    ps aux | grep "[g]o-build"
+    if [ $? -ne 0 ]; then
+        echo "Building and deploying operator image"
+        make deploy-local OPERATOR_NAMESPACE=$NAMESPACE > $LOCAL_LOG_FILE 2>&1 &
+        $localOperatorPID=$!
+    fi
 }
 
 function profileProw {
+    echo -e "\n========================================================================"
+    echo "= Int Testing Bootstrap Profile - Prow"
+    echo "========================================================================"
+    echo "Configuring local build environment"
     export FORCE_DEV_MODE=cluster
     sourceFromMountedKvStoreConfig
+    installProwCIDependencies
+
+    echo "Configuring depoloyment cluster"
     cleanupPre
     $OC adm new-project "$NAMESPACE" 2>/dev/null || true
     make prow-ci-predeploy
+
+    echo "Building and deploying operator image"
     buildOperatorImage
     verifyBuildSuccess
     deployOperator
     waitForDeployment
-    installProwCIDependencies
 }
 
 function profileStage {
+    echo -e "\n========================================================================"
+    echo "= Int Testing Bootstrap Profile - Stage Cluster"
+    echo "========================================================================"
+    
+    echo "Configuring local build environment"
+    export FORCE_DEV_MODE=cluster
+    sourceEnvrcConfig
+    sanityCheck
+    
+    echo "Configuring depoloyment cluster"
     clusterUserName=$($OC whoami)
     ## OSD Staging cluster require cluster-admin roles for accessing & applying some manifests like CRDs etc.
     ## So, cluster-admin role is added to the user for the script's lifetime.
     ## The role is removed as the part of mandatory cleanup.
     $OC --as backplane-cluster-admin adm policy add-cluster-role-to-user cluster-admin $clusterUserName
-    export FORCE_DEV_MODE=cluster
-    sourceEnvrcConfig
-    sanityCheck
     cleanupPre
     $OC adm new-project "$NAMESPACE" 2>/dev/null || true
     make prow-ci-predeploy
     make validate-deployment
+
+    echo "Building and deploying operator image"
     buildOperatorImage
     verifyBuildSuccess
     deployOperator
     waitForDeployment
 }
 
+function execWithTimeout {
+    local testScript=$1
+    local phase=$2
+    local timeout=10
+
+    echo "========================================================================"
+    echo "= Test: $testScript"
+    echo "= Phase: $phase"
+    echo "========================================================================"
+
+    while true; do
+        timeout=$((timeout-1))
+        echo "$testScript $phase (timeout in: $timeout seconds)"
+
+        /bin/bash $testScript $phase
+        local exitCode=$?
+
+        if [ $exitCode -eq 0 ] || [ $exitCode -ne $EXIT_RETRY ]; then
+            return $exitCode
+        elif [ $timeout -le 0 ]; then
+            echo "ERROR - $testScript $phase timed out"
+            return $EXIT_TIMEOUT
+        else
+            echo "RETRYING $testScript $phase in 1 second"
+            sleep 1
+        fi
+    done
+}
+
+function explainExitCode {
+    local script=$1
+    local phase=$2
+    local exitCode=$3
+    message="UNKNOWN"
+
+    if [ -z $exitCode ]; then
+        message="No test results found"
+    elif [ $exitCode -ne 0 ]; then
+        message=$(/bin/bash $script explain $phase exitCode)
+        if [ -z "$message" ]; then
+            # check the general exit code messages
+            message=${GENERAL_EXIT_CODE_MESSAGES[$exitCode]}
+            if [ -z "$message" ]; then
+                message="UNKNOWN"
+            fi
+        fi
+    else
+        message="PASS"
+    fi
+    echo $message
+}
+
+
+function runTest {
+    local testScript=$1
+    overall="PASS"
+
+    
+    execWithTimeout $testScript "setup"
+    setupExitCode=$?
+    setupExitMessage=$(explainExitCode $testScript "setup" $setupExitCode)
+
+    if [ $setupExitCode -eq $EXIT_PASS ]; then
+        execWithTimeout $testScript "test"
+        testExitCode=$?
+        testExitMessage=$(explainExitCode $testScript "test" $testExitCode)
+        if [ $testExitCode -eq $EXIT_PASS ]; then
+            overall="PASS"
+        else
+            overall="FAIL"
+        fi
+    else
+        echo "Test setup failed, skipping test run."
+        testExitCode=$EXIT_SKIP
+        testExitMessage='Skipped (Setup Failed)'
+        overall="SKIP"
+    fi
+
+    execWithTimeout $testScript "cleanup"
+    cleanupExitCode=$?
+    cleanupExitMessage=$(explainExitCode $testScript "cleanup" $cleanupExitCode)
+
+    testResults[$testScript]=$(cat <<EOF
+{
+    "overall": "$overall",
+    "setupExitCode": $setupExitCode,
+    "setupExitMessage": "$setupExitMessage",
+    "testExitCode": $testExitCode,
+    "testExitMessage": "$testExitMessage",
+    "cleanupExitCode": $cleanupExitCode,
+    "cleanupExitMessage": "$cleanupExitMessage"
+}
+EOF
+)
+    echo -e "\nTest $testScript completed with overall result: $overall"
+    echo "${testResults[$testScript]}"
+}
+
+function printTestResults {
+    allPassed=1
+    for t in "${!testResults[@]}"; do
+        resultJson=${testResults[$t]}
+        testExitCode=$(echo $resultJson | jq -r .testExitCode)
+        overall=$(echo $resultJson | jq -r .overall)
+        setupExitMessage=$(echo $resultJson | jq -r .setupExitMessage)
+        testExitMessage=$(echo $resultJson | jq -r .testExitMessage)
+        cleanupExitMessage=$(echo $resultJson | jq -r .cleanupExitMessage)
+
+        if [ $testExitCode -ne 0 ]; then
+            allPassed=0
+        fi
+
+        echo "[$overall] $t"
+        echo "$resultJson"
+    done
+
+    if [[ $allPassed -eq 1 ]]; then
+        echo -e "\nOverall Test Result: PASSED - All tests passed\n"
+        exit 0
+    else
+        echo -e "\nOverall Test Result: FAILED - There are skipped tests and/or test failures, please investigate.\n"
+        exit 1
+    fi
+}
+
 parseArgs $@
 OC_WITH_NAMESPACE="$OC -n $NAMESPACE"
-trap cleanupPost EXIT
+#trap cleanupPost EXIT
 case $PROFILE in
     local)
         profileLocal
@@ -331,7 +502,15 @@ case $PROFILE in
         ;;
 esac
 
-echo -e "\nSTART INTEGRATION TESTS\n"
-make ci-int-tests
+echo -e "\n========================================================================"
+echo "= START INTEGRATION TESTS"
+echo "========================================================================"
+set +e
+runTest test/integration/tests/test_nonccs_account_creation.sh
+set -e
 
-echo -e "\nINTEGRATION TESTS SUCCESSFULLY COMPLETED\n"
+echo -e "\n========================================================================"
+echo "= INTEGRATION TEST RESULTS"
+echo "========================================================================"
+printTestResults
+
