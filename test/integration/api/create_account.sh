@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Load Environment vars
-source hack/scripts/test_envs
+source test/integration/test_envs
 
 ACCOUNT_CR_EXISTS=$(oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE})
 ACCOUNT_CR_EXISTS=$?
