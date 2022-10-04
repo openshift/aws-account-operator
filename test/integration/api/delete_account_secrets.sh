@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Load Environment vars
-source hack/scripts/test_envs 
+source test/integration/test_envs
 
 if [ -z "$OSD_STAGING_1_ACCOUNT_CR_NAME_OSD" ]; then
     "OSD_STAGING_1_ACCOUNT_CR_NAME_OSD not set"

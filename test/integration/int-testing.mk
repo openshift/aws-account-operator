@@ -1,7 +1,7 @@
 REUSE_UUID := $(shell uuidgen | awk -F- '{ print tolower($$2) }')
 REUSE_BUCKET_NAME=test-reuse-bucket-${REUSE_UUID}
 
-include hack/scripts/test_envs
+include test/integration/test_envs
 
 .PHONY: prow-ci-predeploy
 prow-ci-predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map
@@ -9,15 +9,15 @@ prow-ci-predeploy: predeploy-aws-account-operator deploy-aws-account-operator-cr
 
 .PHONY: local-ci-entrypoint
 local-ci-entrypoint: ## Triggers integration test bootstrap bash script for local cluster
-	hack/scripts/integration-test-bootstrap.sh -p local --skip-cleanup -n $(OPERATOR_NAMESPACE)
+	test/integration/integration-test-bootstrap.sh -p local --skip-cleanup -n $(OPERATOR_NAMESPACE)
 
 .PHONY: prow-ci-entrypoint
 prow-ci-entrypoint: ## Triggers integration test bootstrap bash script for prow ci
-	hack/scripts/integration-test-bootstrap.sh -p prow
+	test/integration/integration-test-bootstrap.sh -p prow
 
 .PHONY: stage-ci-entrypoint
 stage-ci-entrypoint: ## Triggers integration test bootstrap bash script for staging cluster
-	hack/scripts/integration-test-bootstrap.sh -p stage --skip-cleanup -n $(OPERATOR_NAMESPACE)
+	test/integration/integration-test-bootstrap.sh -p stage --skip-cleanup -n $(OPERATOR_NAMESPACE)
 
 .PHONY: ci-aws-resources-cleanup
 ci-aws-resources-cleanup: 

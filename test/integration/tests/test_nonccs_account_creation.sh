@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Load Environment vars
-source hack/scripts/test_envs
+source test/integration/test_envs
 
 EXIT_TEST_FAIL_NO_ACCOUNT_CR=2
 EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED=3
@@ -15,19 +15,7 @@ exitCodeMessages[$EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED]="Test Account CR h
 exitCodeMessages[$EXIT_TEST_FAIL_NO_ACCOUNT_SECRET]="Test Account CR is ready, but no secret found. Check AAO logs for more details."
 exitCodeMessages[$EXIT_TEST_FAIL_SECRET_INVALID_KEYS]="Test Account secret contains invalid keys. Check AAO logs for more details."
 exitCodeMessages[$EXIT_TEST_FAIL_SECRET_INVALID_CREDS]="Test Account secret credentials are invalid. Check AAO logs for more details."
-#
-# The before test phase is used to do setup needed by the test before it runs.
-# For example creating CRs which the operator you are testing acts on.
-#
-# If setup was successful, or encounters failures that dont matter, your implementation 
-# should return a 0 exit code so the test phase will
-#
-# input: None
-# return: 
-#   -1 - setup is waiting for some condition to be met before proceeding
-#    0 - setup succeeded and the test should proceed
-#    1 - setup failed in a unrecoverable way and the test should not proceed
-#
+
 function setupTestPhase {
     oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE} 2>/dev/null
     ACCOUNT_CR_EXISTS=$?
@@ -88,7 +76,7 @@ function testPhase {
     fi
 }
 
-function explainCode {
+function explainExitCode {
     local phase=$1
     local exitCode=$2
     local message=${exitCodeMessages[$exitCode]}
@@ -167,7 +155,7 @@ case $PHASE in
         testPhase
         ;;
     explain)
-        explainCode $PHASE $2
+        explainExitCode $PHASE $2
         ;;
     *)
         echo "Unknown test phase: '$PHASE'"

@@ -4,7 +4,7 @@ AWS_ACCOUNT_ID="${OSD_STAGING_2_AWS_ACCOUNT_ID}"
 AWS_ACCOUNT_PROFILE="osd-staging-2"
 AWS_REGION="us-east-1"
 
-source hack/scripts/test_envs
+source test/integration/test_envs
 
 assume_account() {
     echo "Logging in to $AWS_ACCOUNT_ID"

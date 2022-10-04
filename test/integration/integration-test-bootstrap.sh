@@ -2,7 +2,7 @@
 
 set -eo pipefail
 
-source hack/scripts/test_envs
+source test/integration/test_envs
 
 export IMAGE_NAME=aws-account-operator
 export BUILD_CONFIG=aws-account-operator
@@ -361,7 +361,7 @@ function profileStage {
 function execWithTimeout {
     local testScript=$1
     local phase=$2
-    local timeout=10
+    local timeout=$INT_TEST_PHASE_TIMEOUT #from test_envs
 
     echo "========================================================================"
     echo "= Test: $testScript"

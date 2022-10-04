@@ -9,7 +9,7 @@
 # Load Environment vars
 # Some int testing constants such as EXIT_RETRY/EXIT_PASS are defined in this file
 # as well as constants used by various tests such as namespaces or account numbers
-source hack/scripts/test_envs
+source test/integration/test_envs
 
 
 # TODO: define custom exit codes for different failure scenarios 

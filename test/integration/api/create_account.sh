@@ -20,8 +20,7 @@ oc process -p AWS_ACCOUNT_ID=${OSD_STAGING_1_AWS_ACCOUNT_ID} -p ACCOUNT_CR_NAME=
 # Wait for account to become ready
 echo "Waiting for account to become ready, this may take 5+ minutes."
 i=0
-t=0
-timeout=600
+timeout=$INT_TEST_ACCOUNT_READY_TIMEOUT
 
 while true
 do STATUS=$(oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE} -o json | jq -r '.status.state');
@@ -30,12 +29,12 @@ do STATUS=$(oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE} 
     elif [ "$STATUS" == "Failed" ]; then
         echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"
         exit 1
-    elif [ "$t" -gt "$timeout" ]; then
+    elif [ $timeout -le 0 ]; then
         echo "Timed out waiting for account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} to become ready"
         exit 1
     fi
     i=$(( (i+1) %4 ))
-    t=$((t+1))
-    printf "\r${spin:$i:1}"
+    timeout=$((timeout-1))
+    printf "\r${spin:$i:1} (timeout in: $timeout seconds)"
     sleep 1
 done
