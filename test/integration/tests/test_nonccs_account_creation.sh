@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Load Environment vars
 source test/integration/test_envs
@@ -17,51 +17,45 @@ exitCodeMessages[$EXIT_TEST_FAIL_SECRET_INVALID_KEYS]="Test Account secret conta
 exitCodeMessages[$EXIT_TEST_FAIL_SECRET_INVALID_CREDS]="Test Account secret credentials are invalid. Check AAO logs for more details."
 
 function setupTestPhase {
-    oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE} 2>/dev/null
+    oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null
     ACCOUNT_CR_EXISTS=$?
 
     if [ $ACCOUNT_CR_EXISTS -ne 0 ]; then
-        echo "Creating Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" 
-        oc process -p AWS_ACCOUNT_ID=${OSD_STAGING_1_AWS_ACCOUNT_ID} -p ACCOUNT_CR_NAME=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws.managed.openshift.io_v1alpha1_account.tmpl | oc apply -f -
-        if [ $? -ne 0 ]; then
+        echo "Creating Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
+        if ! oc process -p AWS_ACCOUNT_ID="${OSD_STAGING_1_AWS_ACCOUNT_ID}" -p ACCOUNT_CR_NAME="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -p NAMESPACE="${NAMESPACE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_account.tmpl | oc apply -f -; then
             echo "Failed to create account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-            exit $EXIT_FAIL_UNEXPECTED_ERROR
+            exit "$EXIT_FAIL_UNEXPECTED_ERROR"
         fi
     fi
 
     echo "Account CR ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} created, test can proceed."
-    exit $EXIT_PASS
+    exit "$EXIT_PASS"
 }
 
 function cleanupTestPhase {
-    oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE} 2>/dev/null
+    if ! oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
+        oc patch account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" -p '{"metadata":{"finalizers":null}}' --type=merge
+        oc process -p AWS_ACCOUNT_ID="${OSD_STAGING_1_AWS_ACCOUNT_ID}" -p ACCOUNT_CR_NAME="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -p NAMESPACE="${NAMESPACE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_account.tmpl | oc delete --now --ignore-not-found -f -
 
-    if [ $? -eq 0 ]; then
-        oc patch account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE} -p '{"metadata":{"finalizers":null}}' --type=merge
-        oc process -p AWS_ACCOUNT_ID=${OSD_STAGING_1_AWS_ACCOUNT_ID} -p ACCOUNT_CR_NAME=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -p NAMESPACE=${NAMESPACE} -f hack/templates/aws.managed.openshift.io_v1alpha1_account.tmpl | oc delete --now --ignore-not-found -f -
-    
-        oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE} 2>/dev/null
-        if [ $? -eq 0 ]; then
+        if ! oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
             echo "Failed to delete account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-            exit $EXIT_FAIL_UNEXPECTED_ERROR
+            exit "$EXIT_FAIL_UNEXPECTED_ERROR"
         fi
     fi
 
-    exit $EXIT_PASS
+    exit "$EXIT_PASS"
 }
 
 function testPhase {
-    oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE} 2>/dev/null
-
-    if [ $? -ne 0 ]; then
+    oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null
+    if ! oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
         echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} doesnt seem to exist."
         exit $EXIT_TEST_FAIL_NO_ACCOUNT_CR
     fi
 
-    STATUS=$(oc get account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -n ${NAMESPACE} -o json | jq -r '.status.state');
-    if [ $? -ne 0 ]; then
+    if ! STATUS=$(oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" -o json | jq -r '.status.state'); then
         echo "Failed to get status of account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-        exit $EXIT_FAIL_UNEXPECTED_ERROR
+        exit "$EXIT_FAIL_UNEXPECTED_ERROR"
     fi
 
     if [ "$STATUS" == "Ready" ]; then
@@ -72,38 +66,35 @@ function testPhase {
         exit $EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED
     else
         echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} status is ${STATUS}, waiting for it to become ready or fail."
-        exit $EXIT_RETRY
+        exit "$EXIT_RETRY"
     fi
 }
 
 function explainExitCode {
-    local phase=$1
-    local exitCode=$2
+    local exitCode=$1
     local message=${exitCodeMessages[$exitCode]}
-    echo $message
+    echo "$message"
 }
 
 function verifyAccountSecrets {
 
     TEST_ACCOUNT_CR_NAME=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}
     TEST_NAMESPACE=${NAMESPACE}
-    EXIT_STATUS=$EXIT_PASS
+
+    SECRET_KEYS="aws_access_key_id aws_secret_access_key aws_user_name"
 
     # Define Expected Secrets and their keys
     # FORMAT: expectedPosftix:VARIABLE_WITH_KEYS
     EXPECTED_SECRETS=(
-    "secret:SECRET_KEYS"
+    "secret:$SECRET_KEYS"
     )
-
-    SECRET_KEYS="aws_access_key_id aws_secret_access_key aws_user_name"
 
     for secret_map in "${EXPECTED_SECRETS[@]}"; do
         secret=${secret_map%%:*}
         expected_keys=${secret_map#*:}
-        test_secret="$(oc get secret $TEST_ACCOUNT_CR_NAME-$secret -n $TEST_NAMESPACE -o json | jq '.data')"
     
-        if [ $? -ne 0 ]; then
-            exit $EXIT_FAIL_UNEXPECTED_ERROR
+        if ! test_secret="$(oc get secret "$TEST_ACCOUNT_CR_NAME"-"$secret" -n "$TEST_NAMESPACE" -o json | jq '.data')"; then
+            exit "$EXIT_FAIL_UNEXPECTED_ERROR"
         elif [ "$test_secret" == "" ]; then
             exit $EXIT_TEST_FAIL_NO_ACCOUNT_SECRET
         fi
@@ -119,14 +110,17 @@ function verifyAccountSecrets {
             fi
 
             # Prepare variables for validity check
-            if [ $key == "aws_access_key_id" ]; then
-                export AWS_ACCESS_KEY_ID=$(echo -n $val | base64 -d)
+            if [ "$key" == "aws_access_key_id" ]; then
+                AWS_ACCESS_KEY_ID=$(echo -n "$val" | base64 -d)
+                export AWS_ACCESS_KEY_ID
             fi
-            if [ $key == "aws_secret_access_key" ]; then
-                export AWS_SECRET_ACCESS_KEY=$(echo -n $val | base64 -d)
+            if [ "$key" == "aws_secret_access_key" ]; then
+                AWS_SECRET_ACCESS_KEY=$(echo -n "$val" | base64 -d)
+                export AWS_SECRET_ACCESS_KEY
             fi
-            if [ $key == "aws_session_token" ]; then
-                export AWS_SESSION_TOKEN=$(echo -n $val | base64 -d)
+            if [ "$key" == "aws_session_token" ]; then
+                AWS_SESSION_TOKEN=$(echo -n "$val" | base64 -d)
+                export AWS_SESSION_TOKEN
             fi
         done
 
@@ -139,7 +133,7 @@ function verifyAccountSecrets {
         fi
     done
 
-    exit $EXIT_PASS
+    exit "$EXIT_PASS"
 }
 
 PHASE=$1
@@ -155,7 +149,7 @@ case $PHASE in
         testPhase
         ;;
     explain)
-        explainExitCode $PHASE $2
+        explainExitCode "$2"
         ;;
     *)
         echo "Unknown test phase: '$PHASE'"

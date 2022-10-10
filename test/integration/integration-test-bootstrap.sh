@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -eo pipefail
 
@@ -193,7 +193,7 @@ function buildOperatorImage {
     echo -e "\nSTARTING BUILD IMAGE\n"
     createDockerfileSoftLink
     $OC_WITH_NAMESPACE new-build --binary --strategy=docker --build-arg=FIPS_ENABLED=false  --name $BUILD_CONFIG || true
-    $OC_WITH_NAMESPACE start-build $BUILD_CONFIG --from-dir . -F
+    $OC_WITH_NAMESPACE start-build $BUILD_CONFIG --from-dir . -F --exclude='(^|/)((\.git)|(\.venv)|(\.idea))(/|$)'
     $OC_WITH_NAMESPACE set image-lookup $BUILD_CONFIG
     removeDockerfileSoftLink
 }
@@ -372,7 +372,7 @@ function execWithTimeout {
         timeout=$((timeout-1))
         echo "$testScript $phase (timeout in: $timeout seconds)"
 
-        /bin/bash $testScript $phase
+        /usr/bin/env bash $testScript $phase
         local exitCode=$?
 
         if [ $exitCode -eq 0 ] || [ $exitCode -ne $EXIT_RETRY ]; then
@@ -389,14 +389,13 @@ function execWithTimeout {
 
 function explainExitCode {
     local script=$1
-    local phase=$2
-    local exitCode=$3
+    local exitCode=$2
     message="UNKNOWN"
 
     if [ -z $exitCode ]; then
         message="No test results found"
     elif [ $exitCode -ne 0 ]; then
-        message=$(/bin/bash $script explain $phase exitCode)
+        message=$(/usr/bin/env bash $script explain $exitCode)
         if [ -z "$message" ]; then
             # check the general exit code messages
             message=${GENERAL_EXIT_CODE_MESSAGES[$exitCode]}
@@ -418,12 +417,12 @@ function runTest {
     
     execWithTimeout $testScript "setup"
     setupExitCode=$?
-    setupExitMessage=$(explainExitCode $testScript "setup" $setupExitCode)
+    setupExitMessage=$(explainExitCode $testScript $setupExitCode)
 
     if [ $setupExitCode -eq $EXIT_PASS ]; then
         execWithTimeout $testScript "test"
         testExitCode=$?
-        testExitMessage=$(explainExitCode $testScript "test" $testExitCode)
+        testExitMessage=$(explainExitCode $testScript $testExitCode)
         if [ $testExitCode -eq $EXIT_PASS ]; then
             overall="PASS"
         else
@@ -438,7 +437,7 @@ function runTest {
 
     execWithTimeout $testScript "cleanup"
     cleanupExitCode=$?
-    cleanupExitMessage=$(explainExitCode $testScript "cleanup" $cleanupExitCode)
+    cleanupExitMessage=$(explainExitCode $testScript $cleanupExitCode)
 
     testResults[$testScript]=$(cat <<EOF
 {
@@ -483,7 +482,7 @@ function printTestResults {
     fi
 }
 
-parseArgs $@
+parseArgs "$@"
 OC_WITH_NAMESPACE="$OC -n $NAMESPACE"
 #trap cleanupPost EXIT
 case $PROFILE in
@@ -506,7 +505,8 @@ echo -e "\n=====================================================================
 echo "= START INTEGRATION TESTS"
 echo "========================================================================"
 set +e
-runTest test/integration/tests/test_nonccs_account_creation.sh
+#runTest test/integration/tests/test_nonccs_account_creation.sh
+runTest test/integration/tests/test_nonccs_account_reuse.sh
 set -e
 
 echo -e "\n========================================================================"

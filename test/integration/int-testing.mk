@@ -31,7 +31,7 @@ ci-aws-resources-cleanup:
 ci-int-tests: test-reuse
 
 .PHONY: test-integration
-test-integration: test-account-creation test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts test-fake-accountclaim test-kms ## Runs all integration tests
+test-integration: test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts test-fake-accountclaim test-kms ## Runs all integration tests
 
 #############################################################################################
 # Tests

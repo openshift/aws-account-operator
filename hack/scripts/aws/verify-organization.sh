@@ -13,7 +13,7 @@ if [ $# -lt 1 ]; then
 fi
 
 function parseArgs {
-    PARSED_ARGUMENTS=$(getopt -o 'm,p:' --long 'move,profile:' -- "$@")
+    PARSED_ARGUMENTS=$(/opt/homebrew/Cellar/gnu-getopt/2.38.1/bin/getopt -o 'm,p:' --long 'move,profile:' -- "$@")
     eval set -- "$PARSED_ARGUMENTS"
 
     while :
