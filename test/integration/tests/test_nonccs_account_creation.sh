@@ -33,7 +33,7 @@ function setupTestPhase {
 }
 
 function cleanupTestPhase {
-    if ! oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
+    if oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
         oc patch account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" -p '{"metadata":{"finalizers":null}}' --type=merge
         oc process -p AWS_ACCOUNT_ID="${OSD_STAGING_1_AWS_ACCOUNT_ID}" -p ACCOUNT_CR_NAME="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -p NAMESPACE="${NAMESPACE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_account.tmpl | oc delete --now --ignore-not-found -f -
 
@@ -77,10 +77,10 @@ function explainExitCode {
 }
 
 function verifyAccountSecrets {
-    TEST_ACCOUNT_CR_NAME=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}
+    TEST_ACCOUNT_CR_NAME=${IAM_USER_SECRET}
     TEST_NAMESPACE=${NAMESPACE}
 
-    if ! test_secret="$(oc get secret "$TEST_ACCOUNT_CR_NAME"-secret -n "$TEST_NAMESPACE" -o json | jq '.data')"; then
+    if ! test_secret="$(oc get secret "$TEST_ACCOUNT_CR_NAME" -n "$TEST_NAMESPACE" -o json | jq '.data')"; then
         exit "$EXIT_FAIL_UNEXPECTED_ERROR"
     elif [ "$test_secret" == "" ]; then
         exit $EXIT_TEST_FAIL_NO_ACCOUNT_SECRET
@@ -112,7 +112,7 @@ function verifyAccountSecrets {
     # if the aws access key id is set, we should check the credential too.
     if [ -n "$AWS_ACCESS_KEY_ID" ]; then
         if ! aws sts get-caller-identity > /dev/null 2>&1; then
-            echo "Credentials for $TEST_ACCOUNT_CR_NAME-secret are invalid."
+            echo "Credentials for $TEST_ACCOUNT_CR_NAME are invalid."
             exit $EXIT_TEST_FAIL_SECRET_INVALID_CREDS
         fi
     fi
