@@ -77,61 +77,45 @@ function explainExitCode {
 }
 
 function verifyAccountSecrets {
-
     TEST_ACCOUNT_CR_NAME=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}
     TEST_NAMESPACE=${NAMESPACE}
 
-    SECRET_KEYS="aws_access_key_id aws_secret_access_key aws_user_name"
+    if ! test_secret="$(oc get secret "$TEST_ACCOUNT_CR_NAME"-secret -n "$TEST_NAMESPACE" -o json | jq '.data')"; then
+        exit "$EXIT_FAIL_UNEXPECTED_ERROR"
+    elif [ "$test_secret" == "" ]; then
+        exit $EXIT_TEST_FAIL_NO_ACCOUNT_SECRET
+    fi
 
-    # Define Expected Secrets and their keys
-    # FORMAT: expectedPosftix:VARIABLE_WITH_KEYS
-    EXPECTED_SECRETS=(
-    "secret:$SECRET_KEYS"
-    )
+    unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
 
-    for secret_map in "${EXPECTED_SECRETS[@]}"; do
-        secret=${secret_map%%:*}
-        expected_keys=${secret_map#*:}
-    
-        if ! test_secret="$(oc get secret "$TEST_ACCOUNT_CR_NAME"-"$secret" -n "$TEST_NAMESPACE" -o json | jq '.data')"; then
-            exit "$EXIT_FAIL_UNEXPECTED_ERROR"
-        elif [ "$test_secret" == "" ]; then
-            exit $EXIT_TEST_FAIL_NO_ACCOUNT_SECRET
+    AWS_ACCESS_KEY_ID=$(echo "$test_secret" | jq -r ".aws_access_key_id" | base64 -d)
+    export AWS_ACCESS_KEY_ID
+    if [ -z "$AWS_ACCESS_KEY_ID" ]; then
+      echo "AWS Access Key not found in secret"
+      exit $EXIT_TEST_FAIL_SECRET_INVALID_KEYS
+    fi
+
+    AWS_SECRET_ACCESS_KEY=$(echo "$test_secret" | jq -r ".aws_secret_access_key" | base64 -d)
+    export AWS_SECRET_ACCESS_KEY
+    if [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+      echo "AWS Secret Access Key not found in secret"
+      exit $EXIT_TEST_FAIL_SECRET_INVALID_KEYS
+    fi
+
+    AWS_USER_NAME=$(echo "$test_secret" | jq -r ".aws_user_name" | base64 -d)
+    export AWS_USER_NAME
+    if [ -z "$AWS_USER_NAME" ]; then
+      echo "AWS User Name not found in secret"
+      exit $EXIT_TEST_FAIL_SECRET_INVALID_KEYS
+    fi
+
+    # if the aws access key id is set, we should check the credential too.
+    if [ -n "$AWS_ACCESS_KEY_ID" ]; then
+        if ! aws sts get-caller-identity > /dev/null 2>&1; then
+            echo "Credentials for $TEST_ACCOUNT_CR_NAME-secret are invalid."
+            exit $EXIT_TEST_FAIL_SECRET_INVALID_CREDS
         fi
-
-        unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-
-        # Lookup the expected keys
-        for key in ${!expected_keys}; do
-            val=$(jq -r ".$key" <<< "$test_secret")
-            if [ "$val" == "null" ]; then
-                echo "key: '$key' not found in $TEST_ACCOUNT_CR_NAME-$secret"
-                exit $EXIT_TEST_FAIL_SECRET_INVALID_KEYS
-            fi
-
-            # Prepare variables for validity check
-            if [ "$key" == "aws_access_key_id" ]; then
-                AWS_ACCESS_KEY_ID=$(echo -n "$val" | base64 -d)
-                export AWS_ACCESS_KEY_ID
-            fi
-            if [ "$key" == "aws_secret_access_key" ]; then
-                AWS_SECRET_ACCESS_KEY=$(echo -n "$val" | base64 -d)
-                export AWS_SECRET_ACCESS_KEY
-            fi
-            if [ "$key" == "aws_session_token" ]; then
-                AWS_SESSION_TOKEN=$(echo -n "$val" | base64 -d)
-                export AWS_SESSION_TOKEN
-            fi
-        done
-
-        # if the aws access key id is set, we should check the credential too.
-        if [ -n "$AWS_ACCESS_KEY_ID" ]; then
-            if ! aws sts get-caller-identity > /dev/null 2>&1; then
-                echo "Credentials for $TEST_ACCOUNT_CR_NAME-$secret are invalid."
-                exit $EXIT_TEST_FAIL_SECRET_INVALID_CREDS
-            fi
-        fi
-    done
+    fi
 
     exit "$EXIT_PASS"
 }

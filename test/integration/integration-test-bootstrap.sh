@@ -143,7 +143,6 @@ function cleanKustomization {
 function cleanup {
     removeDockerfileSoftLink
     cleanKustomization
-    $OC_WITH_NAMESPACE delete deployment $OPERATOR_DEPLOYMENT 2>/dev/null || true
     if [ $localOperatorPID ]; then
         kill $localOperatorPID 2>/dev/null || true
     fi
@@ -151,6 +150,7 @@ function cleanup {
         rm $LOCAL_LOG_FILE
     fi
     if [ -z $SKIP_CLEANUP ]; then
+        $OC_WITH_NAMESPACE delete deployment $OPERATOR_DEPLOYMENT 2>/dev/null || true
         if [[ $($OC get namespace $NAMESPACE --no-headers 2>/dev/null | wc -l) == 0 ]];
             then
                 echo -e "\nNo $NAMESPACE namespace found.\n"
@@ -351,11 +351,19 @@ function profileStage {
     make prow-ci-predeploy
     make validate-deployment
 
-    echo "Building and deploying operator image"
-    buildOperatorImage
-    verifyBuildSuccess
-    deployOperator
-    waitForDeployment
+    echo -e "Checking for existing AAO deployment."
+    aaoDeployment=$($OC_WITH_NAMESPACE get deployment $OPERATOR_DEPLOYMENT -o json --ignore-not-found=true | jq '.status.conditions[] | select( .type == "Available" and .status == "True" )')
+
+    if [ -z "$aaoDeployment" ]; then
+        echo "Deployment not found.  Building and deploying operator image."
+        buildOperatorImage
+        verifyBuildSuccess
+        deployOperator
+        waitForDeployment
+        echo -e "Deployment Completed."
+    else
+        echo "Deployment found."
+    fi
 }
 
 function execWithTimeout {
