@@ -52,12 +52,12 @@ function setupTestPhase {
     fi
 
     if [ "$STATUS" == "Ready" ]; then
-        echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} is ready."
+        echo "AccountClaim ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} is ready."
     elif [ "$STATUS" == "Failed" ]; then
-        echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"
+        echo "AccountClaim ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"
         exit $EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED
     else
-        echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} status is ${STATUS}, waiting for it to become ready or fail."
+        echo "AccountClaim ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} status is ${STATUS}, waiting for it to become ready or fail."
         exit "$EXIT_RETRY"
     fi
 
@@ -65,6 +65,8 @@ function setupTestPhase {
 }
 
 function cleanupTestPhase {
+    oc delete namespace "${ACCOUNT_CLAIM_NAMESPACE}"
+
     if oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
         oc patch account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" -p '{"metadata":{"finalizers":null}}' --type=merge
         oc process -p AWS_ACCOUNT_ID="${OSD_STAGING_1_AWS_ACCOUNT_ID}" -p ACCOUNT_CR_NAME="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -p NAMESPACE="${NAMESPACE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_account.tmpl | oc delete --now --ignore-not-found -f -
@@ -76,15 +78,6 @@ function cleanupTestPhase {
             echo "Successfully cleaned up account"
         fi
     fi
-
-    OU=$(aws organizations list-parents --child-id "${OSD_STAGING_1_AWS_ACCOUNT_ID}" --profile osd-staging-1 | jq -r ".Parents[0].Id")
-
-    if ! aws organizations delete-organizational-unit --organizational-unit-id "$OU" --profile osd-staging-1; then
-        echo "Failed to delete test OU"
-        exit "$EXIT_FAIL_UNEXPECTED_ERROR"
-    fi
-
-    echo "Successfully deleted the account and test OU"
 
     exit "$EXIT_PASS"
 }

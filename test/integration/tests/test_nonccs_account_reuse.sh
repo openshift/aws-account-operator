@@ -58,12 +58,12 @@ function setupTestPhase {
     fi
 
     if [ "$STATUS" == "Ready" ]; then
-        echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} is ready."
+        echo "AccountClaim ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} is ready."
     elif [ "$STATUS" == "Failed" ]; then
-        echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"
+        echo "AccountClaim ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"
         exit $EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED
     else
-        echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} status is ${STATUS}, waiting for it to become ready or fail."
+        echo "AccountClaim ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} status is ${STATUS}, waiting for it to become ready or fail."
         exit "$EXIT_RETRY"
     fi
 
