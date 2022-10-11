@@ -2,9 +2,11 @@
 
 source test/integration/test_envs
 
-EXIT_TEST_FAILED_MOVE_ACCOUNT_ROOT=2
+EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED=2
+EXIT_TEST_FAILED_MOVE_ACCOUNT_ROOT=3
 
 declare -A exitCodeMessages
+exitCodeMessages[$EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED]="Test Account CR has a status of failed. Check AAO logs for more details."
 exitCodeMessages[$EXIT_TEST_FAILED_MOVE_ACCOUNT_ROOT]="Failed to move account out of root. Check AAO logs for more details."
 
 function setupTestPhase {
@@ -30,7 +32,7 @@ function setupTestPhase {
         echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} is ready."
     elif [ "$STATUS" == "Failed" ]; then
         echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"
-        exit "$EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED"
+        exit $EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED
     else
         echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} status is ${STATUS}, waiting for it to become ready or fail."
         exit "$EXIT_RETRY"
@@ -53,7 +55,7 @@ function setupTestPhase {
         echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} is ready."
     elif [ "$STATUS" == "Failed" ]; then
         echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"
-        exit "$EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED"
+        exit $EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED
     else
         echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} status is ${STATUS}, waiting for it to become ready or fail."
         exit "$EXIT_RETRY"
@@ -63,18 +65,19 @@ function setupTestPhase {
 }
 
 function cleanupTestPhase {
-    OU=$(aws organizations list-parents --child-id "${OSD_STAGING_1_AWS_ACCOUNT_ID}" --profile osd-staging-1 | jq -r ".Parents[0].Id")
-
     if oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
-        echo "Found account, removing it now."
         oc patch account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" -p '{"metadata":{"finalizers":null}}' --type=merge
         oc process -p AWS_ACCOUNT_ID="${OSD_STAGING_1_AWS_ACCOUNT_ID}" -p ACCOUNT_CR_NAME="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -p NAMESPACE="${NAMESPACE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_account.tmpl | oc delete --now --ignore-not-found -f -
 
-        if ! oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
+        if oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
             echo "Failed to delete account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
             exit "$EXIT_FAIL_UNEXPECTED_ERROR"
+        else
+            echo "Successfully cleaned up account"
         fi
     fi
+
+    OU=$(aws organizations list-parents --child-id "${OSD_STAGING_1_AWS_ACCOUNT_ID}" --profile osd-staging-1 | jq -r ".Parents[0].Id")
 
     if ! aws organizations delete-organizational-unit --organizational-unit-id "$OU" --profile osd-staging-1; then
         echo "Failed to delete test OU"
