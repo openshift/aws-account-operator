@@ -513,8 +513,9 @@ echo -e "\n=====================================================================
 echo "= START INTEGRATION TESTS"
 echo "========================================================================"
 set +e
-runTest test/integration/tests/test_nonccs_account_creation.sh
-runTest test/integration/tests/test_nonccs_account_reuse.sh
+#runTest test/integration/tests/test_nonccs_account_creation.sh
+#runTest test/integration/tests/test_nonccs_account_reuse.sh
+runTest test/integration/tests/test_aws_ou_logic.sh
 set -e
 
 echo -e "\n========================================================================"

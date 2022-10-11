@@ -37,41 +37,10 @@ test-integration: test-ccs test-reuse test-awsfederatedaccountaccess test-awsfed
 # Tests
 #############################################################################################
 
-.PHONY: test-account-creation
-test-account-creation:  ## Test Account creation
-	test/integration/tests/test_nonccs_account_creation.sh
-
 .PHONY: test-ccs
 test-ccs: create-ccs-secret create-ccs-accountclaim ## Test CCS
 	test/integration/tests/validate_ccs_accountclaim.sh
 	$(MAKE) delete-ccs
-
-# Note: this test requires AWS Account OSD_STAGING_1_AWS_ACCOUNT_ID to be in the root ou or you will get ChildNotFoundInOU errors from AAO
-.PHONY: test-reuse
-test-reuse: check-aws-account-id-env
-	# move OSD Staging 1 account to root ou to avoid ChildNotFoundInOU errors
-	hack/scripts/aws/verify-organization.sh ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1 --move
-	$(MAKE) create-accountclaim
-
-	# Create S3 Bucket
-	@export AWS_ACCESS_KEY_ID=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); \
-	export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); \
-	aws s3api create-bucket --bucket ${REUSE_BUCKET_NAME} --region=us-east-1
-
-	$(MAKE) delete-accountclaim 
-	
-	# Delete reuse namespace
-	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc delete -f -
-
-	# Validate re-use
-	@IS_READY=$$(oc get account -n aws-account-operator ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -o json | jq -r '.status.state'); if [ "$$IS_READY" != "Ready" ]; then echo "Reused Account is not Ready"; exit 1; fi;
-	@IS_REUSED=$$(oc get account -n aws-account-operator ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} -o json | jq -r '.status.reused'); if [ "$$IS_REUSED" != true ]; then echo "Account is not Reused"; exit 1; fi;
-
-	# List S3 bucket
-	BUCKETS=$(shell export AWS_ACCESS_KEY_ID=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_access_key_id' | base64 -d); export AWS_SECRET_ACCESS_KEY=$(shell oc get secret ${IAM_USER_SECRET} -n ${NAMESPACE} -o json | jq -r '.data.aws_secret_access_key' | base64 -d); aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'); \
-	if [ $$BUCKETS == 0 ]; then echo "Reuse successfully complete"; else echo "Reuse failed"; exit 1; fi
-
-	$(MAKE) delete-account ## Test reuse 
 
 .PHONY: test-awsfederatedrole
 test-awsfederatedrole: check-aws-account-id-env ## Test Federated Access Roles
