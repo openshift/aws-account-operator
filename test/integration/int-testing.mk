@@ -78,15 +78,6 @@ test-awsfederatedaccountaccess: check-aws-account-id-env create-awsfederatedrole
 	@oc delete -f test/deploy/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml
 	$(MAKE) delete-account
 
-.PHONY: test-aws-ou-logic
-test-aws-ou-logic: check-ou-mapping-configmap-env ## Test AWS OU logic
-	# Check that account was moved correctly
-	@sleep 2; TYPE=$$(aws organizations list-parents --child-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1 | jq -r ".Parents[0].Type"); if [ "$$TYPE" == "ORGANIZATIONAL_UNIT" ]; then echo "Account move successfully"; exit 0; elif [ "$$TYPE" == "ROOT" ]; then echo "Failed to move account out of root"; exit 1; fi;
-	@aws organizations list-parents --child-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1
-	# Move account back into Root and delete test OU
-	@ROOT_ID=$$(aws organizations list-roots --profile osd-staging-1 | jq -r ".Roots[0].Id"); OU=$$(aws organizations list-parents --child-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --profile osd-staging-1 | jq -r ".Parents[0].Id"); aws organizations move-account --account-id ${OSD_STAGING_1_AWS_ACCOUNT_ID} --source-parent-id "$$OU" --destination-parent-id "$$ROOT_ID" --profile osd-staging-1; aws organizations delete-organizational-unit --organizational-unit-id "$$OU" --profile osd-staging-1;
-	@echo "Successfully moved account back and deleted the test OU"
-
 .PHONY: test-sts
 test-sts: create-sts-accountclaim ## Runs a full integration test for STS workflow
 	test/integration/tests/validate_sts_accountclaim.sh

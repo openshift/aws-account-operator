@@ -83,10 +83,9 @@ function cleanupTestPhase {
 }
 
 function testPhase {
-    PARENTS=$(aws organizations list-parents --child-id "${OSD_STAGING_1_AWS_ACCOUNT_ID}" --profile osd-staging-1 | jq -r ".Parents | length")
-
-    if ((PARENTS > 1)); then
-        echo "Account move successful"
+    TYPE=$(aws organizations list-parents --child-id "${OSD_STAGING_1_AWS_ACCOUNT_ID}" --profile osd-staging-1 | jq -r ".Parents[0].Type")
+    if [ "$TYPE" == "ORGANIZATIONAL_UNIT" ]; then
+        echo "Account move successfully"
         exit "$EXIT_PASS"
     else
         echo "Failed to move account out of root"
