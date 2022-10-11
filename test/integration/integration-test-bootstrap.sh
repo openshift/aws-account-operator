@@ -3,6 +3,7 @@
 set -eo pipefail
 
 source test/integration/test_envs
+source test/integration/integration-test-lib.sh
 
 export IMAGE_NAME=aws-account-operator
 export BUILD_CONFIG=aws-account-operator
@@ -10,11 +11,6 @@ export OPERATOR_DEPLOYMENT=aws-account-operator
 OC="oc"
 
 declare -A testResults
-declare -A GENERAL_EXIT_CODE_MESSAGES
-GENERAL_EXIT_CODE_MESSAGES[$EXIT_PASS]="PASS"
-GENERAL_EXIT_CODE_MESSAGES[$EXIT_RETRY]="Some conditions not met, but can be retried"
-GENERAL_EXIT_CODE_MESSAGES[$EXIT_FAIL_UNEXPECTED_ERROR]="Unexpected error"
-GENERAL_EXIT_CODE_MESSAGES[$EXIT_TIMEOUT]="Timeout waiting for condition to be met"
 
 function usage {
     cat <<EOF
@@ -366,35 +362,6 @@ function profileStage {
     fi
 }
 
-function execWithTimeout {
-    local testScript=$1
-    local phase=$2
-    local timeout=$INT_TEST_PHASE_TIMEOUT #from test_envs
-
-    echo "========================================================================"
-    echo "= Test: $testScript"
-    echo "= Phase: $phase"
-    echo "========================================================================"
-
-    while true; do
-        timeout=$((timeout-1))
-        echo "$testScript $phase (timeout in: $timeout seconds)"
-
-        /usr/bin/env bash $testScript $phase
-        local exitCode=$?
-
-        if [ $exitCode -eq 0 ] || [ $exitCode -ne $EXIT_RETRY ]; then
-            return $exitCode
-        elif [ $timeout -le 0 ]; then
-            echo "ERROR - $testScript $phase timed out"
-            return $EXIT_TIMEOUT
-        else
-            echo "RETRYING $testScript $phase in 1 second"
-            sleep 1
-        fi
-    done
-}
-
 function explainExitCode {
     local script=$1
     local exitCode=$2
@@ -422,13 +389,20 @@ function runTest {
     local testScript=$1
     overall="PASS"
 
-    
-    execWithTimeout $testScript "setup"
+    echo "========================================================================"
+    echo "= Test: $testScript"
+    echo "= Phase: setup"
+    echo "========================================================================"
+    /usr/bin/env bash $testScript "setup"
     setupExitCode=$?
     setupExitMessage=$(explainExitCode $testScript $setupExitCode)
 
+    echo "========================================================================"
+    echo "= Test: $testScript"
+    echo "= Phase: test"
+    echo "========================================================================"
     if [ $setupExitCode -eq $EXIT_PASS ]; then
-        execWithTimeout $testScript "test"
+        /usr/bin/env bash $testScript "test"
         testExitCode=$?
         testExitMessage=$(explainExitCode $testScript $testExitCode)
         if [ $testExitCode -eq $EXIT_PASS ]; then
@@ -443,7 +417,11 @@ function runTest {
         overall="SKIP"
     fi
 
-    execWithTimeout $testScript "cleanup"
+    echo "========================================================================"
+    echo "= Test: $testScript"
+    echo "= Phase: cleanup"
+    echo "========================================================================"
+    /usr/bin/env bash $testScript "cleanup"
     cleanupExitCode=$?
     cleanupExitMessage=$(explainExitCode $testScript $cleanupExitCode)
 

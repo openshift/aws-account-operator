@@ -1,85 +1,63 @@
 #!/usr/bin/env bash
 
 source test/integration/test_envs
+source test/integration/integration-test-lib.sh
 
-EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED=2
-EXIT_TEST_FAILED_MOVE_ACCOUNT_ROOT=3
+EXIT_TEST_FAILED_MOVE_ACCOUNT_ROOT=1
 
 declare -A exitCodeMessages
-exitCodeMessages[$EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED]="Test Account CR has a status of failed. Check AAO logs for more details."
 exitCodeMessages[$EXIT_TEST_FAILED_MOVE_ACCOUNT_ROOT]="Failed to move account out of root. Check AAO logs for more details."
 
+
 function setupTestPhase {
+    local awsAccountId="${OSD_STAGING_1_AWS_ACCOUNT_ID}"
+    local accountCrName="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
+    local accountCrNamespace="${NAMESPACE}"
+    local accountClaimCrName="${ACCOUNT_CLAIM_NAME}"
+    local accountClaimCrNamespace="${ACCOUNT_CLAIM_NAME}"
+    local timeoutSeconds="${STATUS_CHANGE_TIMEOUT}"
+
     # move OSD Staging 1 account to root ou to avoid ChildNotFoundInOU errors
-    hack/scripts/aws/verify-organization.sh "${OSD_STAGING_1_AWS_ACCOUNT_ID}" --profile osd-staging-1 --move
+    hack/scripts/aws/verify-organization.sh "${awsAccountId}" --profile osd-staging-1 --move
 
-    oc process --local -p NAME="${ACCOUNT_CLAIM_NAMESPACE}" -f hack/templates/namespace.tmpl | oc apply -f -
+    createAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" || exit "$?"
+    waitForAccountCRReadyOrFailed "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeoutSeconds}" || exit "$?"
 
-    if ! oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
-        echo "Creating Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-        if ! oc process -p AWS_ACCOUNT_ID="${OSD_STAGING_1_AWS_ACCOUNT_ID}" -p ACCOUNT_CR_NAME="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -p NAMESPACE="${NAMESPACE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_account.tmpl | oc apply -f -; then
-            echo "Failed to create account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-            exit "$EXIT_FAIL_UNEXPECTED_ERROR"
-        fi
-    fi
-
-    if ! STATUS=$(oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" -o json | jq -r '.status.state'); then
-        echo "Failed to get status of account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-        exit "$EXIT_FAIL_UNEXPECTED_ERROR"
-    fi
-
-    if [ "$STATUS" == "Ready" ]; then
-        echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} is ready."
-    elif [ "$STATUS" == "Failed" ]; then
-        echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"
-        exit $EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED
-    else
-        echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} status is ${STATUS}, waiting for it to become ready or fail."
-        exit "$EXIT_RETRY"
-    fi
-
-    if ! oc get accountclaim "${ACCOUNT_CLAIM_NAME}" -n "${ACCOUNT_CLAIM_NAMESPACE}" 2>/dev/null; then
-        echo "Creating Account Claim ${ACCOUNT_CLAIM_NAME}"
-        if ! oc process --local -p NAME="${ACCOUNT_CLAIM_NAME}" -p NAMESPACE="${ACCOUNT_CLAIM_NAMESPACE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountclaim_cr.tmpl | oc apply -f -; then
-            echo "Failed to create account claim ${ACCOUNT_CLAIM_NAME}"
-            exit "$EXIT_FAIL_UNEXPECTED_ERROR"
-        fi
-    fi
-
-    if ! STATUS=$(oc get accountclaim "${ACCOUNT_CLAIM_NAME}" -n "${ACCOUNT_CLAIM_NAMESPACE}" -o json | jq -r '.status.state'); then
-        echo "Failed to get status of account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-        exit "$EXIT_FAIL_UNEXPECTED_ERROR"
-    fi
-
-    if [ "$STATUS" == "Ready" ]; then
-        echo "AccountClaim ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} is ready."
-    elif [ "$STATUS" == "Failed" ]; then
-        echo "AccountClaim ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"
-        exit $EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED
-    else
-        echo "AccountClaim ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} status is ${STATUS}, waiting for it to become ready or fail."
-        exit "$EXIT_RETRY"
-    fi
+    createNamespace "${accountClaimCrNamespace}" || exit "$?"
+    createAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" || exit "$?"
+    waitForAccountClaimCRReadyOrFailed "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeoutSeconds}" || exit "$?"
 
     exit "$EXIT_PASS"
 }
 
 function cleanupTestPhase {
-    oc delete namespace "${ACCOUNT_CLAIM_NAMESPACE}"
+    local awsAccountId="${OSD_STAGING_1_AWS_ACCOUNT_ID}"
+    local accountCrName="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
+    local accountCrNamespace="${NAMESPACE}"
+    local accountClaimCrName="${ACCOUNT_CLAIM_NAME}"
+    local accountClaimCrNamespace="${ACCOUNT_CLAIM_NAME}"
+    local timeoutSeconds="${STATUS_CHANGE_TIMEOUT}"
 
-    if oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
-        oc patch account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" -p '{"metadata":{"finalizers":null}}' --type=merge
-        oc process -p AWS_ACCOUNT_ID="${OSD_STAGING_1_AWS_ACCOUNT_ID}" -p ACCOUNT_CR_NAME="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -p NAMESPACE="${NAMESPACE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_account.tmpl | oc delete --now --ignore-not-found -f -
+    local cleanupExitCode="${EXIT_PASS}"
 
-        if oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
-            echo "Failed to delete account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-            exit "$EXIT_FAIL_UNEXPECTED_ERROR"
-        else
-            echo "Successfully cleaned up account"
-        fi
+    if ! deleteAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeoutSeconds}"; then
+        echo "Failed to delete AccountClaim CR"
+        cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
     fi
 
-    exit "$EXIT_PASS"
+    if ! deleteNamespace "${accountClaimCrNamespace}" "${timeoutSeconds}"; then
+        echo "Failed to delete AccountClaim namespace"
+        cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
+    fi
+
+    #note: dont delete the accountCrNamespace because AAO is running there, but we should cleanup the Account CR
+    if ! deleteAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeoutSeconds}"; then
+        echo "Failed to delete Account CR"
+        cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
+    fi
+
+
+    exit "$cleanupExitCode"
 }
 
 function testPhase {
