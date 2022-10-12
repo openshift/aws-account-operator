@@ -234,13 +234,14 @@ function waitForAccountClaimCRReadyOrFailed {
     local crYaml=$(generateAccountClaimCRYaml "${accountClaimCrName}" "${accountClaimCrNamespace}")
     
     echo "Waiting for AccountClaim CR to become ready (timeout: ${timeout})"
-    if ! ocWaitForResourceCondition "${crYaml}" "${timeout}" "condition=Ready"; then
+    # for some reason condition=Ready doesn't work here, will look into it later
+    if ! ocWaitForResourceCondition "${crYaml}" "${timeout}" "jsonpath={.status.state}=Ready"; then
         if status=$(ocGetResourceAsJson "${crYaml}" | jq -r '.items[0].status.state'); then
             if [ "${status}" == "Failed" ]; then
                 echo "AccountClaim CR has a status of failed. Check AAO logs for more details."
                 return $EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED
             else
-                echo "Unexpected Account CR status: ${status}"
+                echo "Unexpected AccountClaim CR status: ${status}"
                 return $EXIT_TEST_FAIL_ACCOUNT_CLAIM_UNEXPECTED_STATUS
             fi
         else
