@@ -13,7 +13,6 @@
 #  reused for all the tests
 
 # Load Environment vars
-source test/integration/test_envs
 source test/integration/integration-test-lib.sh
 
 EXIT_TEST_FAIL_NO_ACCOUNT_SECRET=1

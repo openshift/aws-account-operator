@@ -5,86 +5,63 @@
 # 1. Copy this file to a new file in in the tests directory
 # 2. Implement the setupTestPhase, afterTestPhase, testPhase and explainExitCode functions stubbed out below
 # 3. Update integration-test-bootstrap.sh to call the new test
+#
+# Test Description:
+#   TODO
+#
 
-# Load Environment vars
-# Some int testing constants such as EXIT_RETRY/EXIT_PASS are defined in this file
-# as well as constants used by various tests such as namespaces or account numbers
-source test/integration/test_envs
+# Test lib contains constants used for testing and helper functions
+# such as createAccountCR or waitForAccountCRReadyOrFailed
+source test/integration/integration-test-lib.sh
 
 
 # TODO: define custom exit codes for different failure scenarios 
 # and user friendly messages to associate with them
-# EXIT_TEST_FAILED_VALIDATION=2
+# EXIT_TEST_FAILED_VALIDATION=1
 declare -A exitCodeMessages
-exitCodeMessages[$EXIT_TEST_FAILED_VALIDATION]="Test failed validation"
+EXIT_TEST_FAILED_EXAMPLE_EXIT_CODE=1
+exitCodeMessages[$EXIT_TEST_FAILED_EXAMPLE_EXIT_CODE]="This is an example test failure message"
 
 #
 # The before test phase is used to do setup needed by the test before it runs.
-# For example creating CRs which the operator you are testing acts on. This function may
-# be called multiple times by the test framework so it should be idempotent.
+# For example creating CRs which the operator you are testing acts on.
+#
+# If you need to wait for some condition to be met before proceeding it is up to 
+# you to implement that polling logic, good examples of how to do that with 
+# timeouts can be found in the integration-test-lib.sh file. 
 #
 # If this step was successful, or encounters failures that dont matter, your implementation
-# should return a $EXIT_PASS (0) exit code so the next phase will be executed.
-# 
-# If you need to wait on some condition to be met before proceeding, return $EXIT_RETRY (1) and 
-# the test framework will wait for some interval before calling this function again (eventually a 
-# timeout will occur and the test will be marked as failed). 
-# 
-# If the step failed in a unrecoverable way and the test should not proceed, return any other exit code.
+# should return a $EXIT_PASS (0) exit code so the next phase will be executed.If the step 
+# failed in a unrecoverable way and the test should not proceed, return any other exit code.
 #
 # input: 
 #   None
 # return: 
 #   $EXIT_PASS          - the function succeeded and the test should proceed to the next phase (test/testPhase)
-#   $EXIT_RETRY         - the function is waiting for some condition to be met before proceeding
 #   any other exit code - the function failed and the test should not proceed 
 #       (note, the cleanup/afterTestPhase phase will still be executed)
 function setupTestPhase {
-
-    #check some condition such as oc get account ...
-    # integration-test-bootstrap.sh will recall this function until it stops 
-    # returning $EXIT_RETRY, an error occurs or a timeout is met
-    WAITING_FOR_CONDITION=0 
-    if [ $WAITING_FOR_CONDITION -eq 1 ]; then
-        echo "Waiting for condition to be met before proceeding"
-        exit "$EXIT_RETRY"
-    fi
-
     exit "$EXIT_PASS"
 }
 
 #
 # The after test phase is used to do cleanup after the test has run. For example 
-# deleting CRs created by setupTestPhase. This function may be called multiple
-# times by the test framework so it should be idempotent. It will also always be called 
-# whether the previous phases were successful or not.
+# deleting CRs created by setupTestPhase. 
+#
+# If you need to wait for some condition to be met before proceeding it is up to 
+# you to implement that polling logic, good examples of how to do that with 
+# timeouts can be found in the integration-test-lib.sh file. 
 #
 # If this step was successful, or encounters failures that dont matter, your implementation
-# should return a $EXIT_PASS (0) exit code so the next phase will be executed. 
-# 
-# If you need to wait on some condition to be met before proceeding, return $EXIT_RETRY (1) and 
-# the test framework will wait for some interval before calling this function again (eventually a 
-# timeout will occur and the test will be marked as failed). 
-# 
-# If the step failed in a unrecoverable way and the test should not proceed, return any other exit code.
+# should return a $EXIT_PASS (0) exit code so the next phase will be executed. If the step 
+# failed in a unrecoverable way and the test should not proceed, return any other exit code.
 #
 # input: 
 #   None
 # return: 
 #   $EXIT_PASS          - the function succeeded and the test should proceed to the next phase (none)
-#   $EXIT_RETRY         - the function is waiting for some condition to be met before proceeding
 #   any other exit code - the function failed and the test should not proceed
 function cleanupTestPhase {
-
-    #check some condition such as oc get account ...
-    # integration-test-bootstrap.sh will recall this function until it stops 
-    # returning $EXIT_RETRY, an error occurs or a timeout is met
-    WAITING_FOR_CONDITION=0 
-    if [ $WAITING_FOR_CONDITION -eq 1 ]; then
-        echo "Waiting for condition to be met before proceeding"
-        exit "$EXIT_RETRY"
-    fi
-
     exit "$EXIT_PASS"
 }
 
@@ -92,36 +69,23 @@ function cleanupTestPhase {
 # The test phase is used to actually exercise and validate the functionality being tested.
 # Since operators are automatically reacting to CRs (presumably in the setupTestPhase)
 # this function should generally be dedicated to validating the expected outcome after the operator
-# has done its work. This function may be called multiple times by the test framework so 
-# it should be idempotent.
+# has done its work.
+#
+# If you need to wait for some condition to be met before proceeding it is up to 
+# you to implement that polling logic, good examples of how to do that with 
+# timeouts can be found in the integration-test-lib.sh file. 
 #
 # If this step was successful, or encounters failures that dont matter, your implementation
-# should return a $EXIT_PASS (0) exit code so the next phase will be executed. 
-# 
-# If you need to wait on some condition to be met before proceeding, return $EXIT_RETRY (1) and 
-# the test framework will wait for some interval before calling this function again (eventually a 
-# timeout will occur and the test will be marked as failed). 
-# 
-# If the step failed in a unrecoverable way and the test should not proceed, return any other exit code.
+# should return a $EXIT_PASS (0) exit code so the next phase will be executed. If the step 
+# failed in a unrecoverable way and the test should not proceed, return any other exit code.
 #
 # input: 
 #   None
 # return: 
 #   $EXIT_PASS          - the function succeeded and the test should proceed to the next phase (test/testPhase)
-#   $EXIT_RETRY         - the function is waiting for some condition to be met before proceeding
 #   any other exit code - the function failed and the test should not proceed 
 #       (note, the cleanup/afterTestPhase phase will still be executed)
 function testPhase {
-    
-    #check some condition such as oc get account ...
-    # integration-test-bootstrap.sh will recall this function until it stops 
-    # returning $EXIT_RETRY, an error occurs or a timeout is met
-    WAITING_FOR_CONDITION=0 
-    if [ $WAITING_FOR_CONDITION -eq 1 ]; then
-        echo "Waiting for condition to be met before proceeding"
-        exit "$EXIT_RETRY"
-    fi
-
     exit "$EXIT_PASS"
 }
 

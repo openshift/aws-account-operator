@@ -13,7 +13,6 @@
 #
 #   So, this test validates that the AWS account is moved from the root OU to the base OU.
 
-source test/integration/test_envs
 source test/integration/integration-test-lib.sh
 
 EXIT_TEST_FAILED_MOVE_ACCOUNT_ROOT=1

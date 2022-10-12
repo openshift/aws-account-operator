@@ -8,7 +8,6 @@
 #   This test verifies that the account is cleaned up properly and then put back into the pool for
 #   reuse.
 
-source test/integration/test_envs
 source test/integration/integration-test-lib.sh
 
 EXIT_TEST_FAIL_REUSED_ACCOUNT_NOT_READY=1

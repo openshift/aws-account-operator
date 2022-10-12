@@ -1,5 +1,6 @@
-# Int Testing Framework Constants
-STATUS_CHANGE_TIMEOUT=300
+#!/usr/bin/env bash
+
+source test/integration/test_envs
 
 ACCOUNT_READY_TIMEOUT="3m"
 ACCOUNT_CLAIM_READY_TIMEOUT="1m"
