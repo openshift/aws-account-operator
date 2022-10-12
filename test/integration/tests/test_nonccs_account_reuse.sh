@@ -1,71 +1,51 @@
 #!/usr/bin/env bash
 
-source test/integration/test_envs
+# Test Description:
+#   When an AccountClaim is deleted, the AAO performs some AWS side work to clean up the account
+#   before putting it back into the pool for reuse (e.g. deleting s3 buckets that may contain customer
+#   data).
+#
+#   This test verifies that the account is cleaned up properly and then put back into the pool for
+#   reuse.
 
-EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED=2
-EXIT_TEST_FAIL_REUSED_ACCOUNT_NOT_READY=3
-EXIT_TEST_FAIL_ACCOUNT_NOT_REUSED=4
-EXIT_TEST_FAIL_SECRET_INVALID_CREDS=5
-EXIT_TEST_FAIL_S3_BUCKET_CREATION=6
+source test/integration/test_envs
+source test/integration/integration-test-lib.sh
+
+EXIT_TEST_FAIL_REUSED_ACCOUNT_NOT_READY=1
+EXIT_TEST_FAIL_ACCOUNT_NOT_REUSED=2
+EXIT_TEST_FAIL_SECRET_INVALID_CREDS=3
+EXIT_TEST_FAIL_S3_BUCKET_CREATION=4
+EXIT_TEST_FAIL_S3_BUCKET_STILL_EXISTS=5
 
 declare -A exitCodeMessages
-exitCodeMessages[$EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED]="Test Account CR has a status of failed. Check AAO logs for more details."
 exitCodeMessages[$EXIT_TEST_FAIL_REUSED_ACCOUNT_NOT_READY]="Test Account CR is not in a ready state. Check AAO logs for more details."
 exitCodeMessages[$EXIT_TEST_FAIL_ACCOUNT_NOT_REUSED]="Test Account CR was not reused. Check AAO logs for more details."
 exitCodeMessages[$EXIT_TEST_FAIL_SECRET_INVALID_CREDS]="Test Account secret credentials are invalid. Check AAO logs for more details."
 exitCodeMessages[$EXIT_TEST_FAIL_S3_BUCKET_CREATION]="Failed to create AWS S3 bucket. Check logs for more details."
+exitCodeMessages[$EXIT_TEST_FAIL_S3_BUCKET_STILL_EXISTS]="AWS S3 bucket still exists after AccountClaim CR deletion. Check AAO logs for more details."
+
+# isolate global env variable use to prevent them spreading too deep into the tests
+awsAccountId="${OSD_STAGING_1_AWS_ACCOUNT_ID}"
+accountCrName="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
+accountCrNamespace="${NAMESPACE}"
+accountClaimCrName="${ACCOUNT_CLAIM_NAME}"
+accountClaimCrNamespace="${ACCOUNT_CLAIM_NAMESPACE}"
+timeout="5m"
 
 function setupTestPhase {
     # move OSD Staging 1 account to root ou to avoid ChildNotFoundInOU errors
-    hack/scripts/aws/verify-organization.sh "${OSD_STAGING_1_AWS_ACCOUNT_ID}" --profile osd-staging-1 --move
+    echo "Ensuring AWS Account ${awsAccountId} is in the root OU"
+    hack/scripts/aws/verify-organization.sh "${awsAccountId}" --profile osd-staging-1 --move
 
-    oc process --local -p NAME="${ACCOUNT_CLAIM_NAMESPACE}" -f hack/templates/namespace.tmpl | oc apply -f -
+    createAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" || exit "$?"
+    timeout="${ACCOUNT_READY_TIMEOUT}"
+    waitForAccountCRReadyOrFailed "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeout}" || exit "$?"
 
-    if ! oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
-        echo "Creating Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-        if ! oc process -p AWS_ACCOUNT_ID="${OSD_STAGING_1_AWS_ACCOUNT_ID}" -p ACCOUNT_CR_NAME="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -p NAMESPACE="${NAMESPACE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_account.tmpl | oc apply -f -; then
-            echo "Failed to create account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-            exit "$EXIT_FAIL_UNEXPECTED_ERROR"
-        fi
-    fi
-
-    if ! STATUS=$(oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" -o json | jq -r '.status.state'); then
-        echo "Failed to get status of account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-        exit "$EXIT_FAIL_UNEXPECTED_ERROR"
-    fi
-
-    if [ "$STATUS" == "Ready" ]; then
-        echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} is ready."
-    elif [ "$STATUS" == "Failed" ]; then
-        echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"
-        exit $EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED
-    else
-        echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} status is ${STATUS}, waiting for it to become ready or fail."
-        exit "$EXIT_RETRY"
-    fi
-
-    if ! oc get accountclaim "${ACCOUNT_CLAIM_NAME}" -n "${ACCOUNT_CLAIM_NAMESPACE}" 2>/dev/null; then
-        echo "Creating Account Claim ${ACCOUNT_CLAIM_NAME}"
-        if ! oc process --local -p NAME="${ACCOUNT_CLAIM_NAME}" -p NAMESPACE="${ACCOUNT_CLAIM_NAMESPACE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountclaim_cr.tmpl | oc apply -f -; then
-            echo "Failed to create account claim ${ACCOUNT_CLAIM_NAME}"
-            exit "$EXIT_FAIL_UNEXPECTED_ERROR"
-        fi
-    fi
-
-    if ! STATUS=$(oc get accountclaim "${ACCOUNT_CLAIM_NAME}" -n "${ACCOUNT_CLAIM_NAMESPACE}" -o json | jq -r '.status.state'); then
-        echo "Failed to get status of account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-        exit "$EXIT_FAIL_UNEXPECTED_ERROR"
-    fi
-
-    if [ "$STATUS" == "Ready" ]; then
-        echo "AccountClaim ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} is ready."
-    elif [ "$STATUS" == "Failed" ]; then
-        echo "AccountClaim ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} failed to create"
-        exit $EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED
-    else
-        echo "AccountClaim ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} status is ${STATUS}, waiting for it to become ready or fail."
-        exit "$EXIT_RETRY"
-    fi
+    # AccountClaims live in the cluster's namespace, not the AAO namespace
+    createNamespace "${accountClaimCrNamespace}" || exit "$?"
+    createAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" || exit "$?"
+    timeout="${ACCOUNT_CLAIM_READY_TIMEOUT}"
+    waitForAccountClaimCRReadyOrFailed "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}" || exit "$?"
 
     # Create S3 Bucket
     AWS_ACCESS_KEY_ID=$(oc get secret "${IAM_USER_SECRET}" -n "${NAMESPACE}" -o json | jq -r '.data.aws_access_key_id' | base64 -d)
@@ -79,45 +59,57 @@ function setupTestPhase {
         exit $EXIT_TEST_FAIL_SECRET_INVALID_CREDS
     fi
 
-    REUSE_UUID="$(uuidgen | awk -F- '{ print tolower($$2) }')"
-    REUSE_BUCKET_NAME="test-reuse-bucket-${REUSE_UUID}"
+    REUSE_UUID=$(uuidgen)
+
+    # make uuid lowercase for S3 bucket name requirements
+    REUSE_BUCKET_NAME="test-reuse-bucket-${REUSE_UUID,,}" 
 
     if ! aws s3api create-bucket --bucket "${REUSE_BUCKET_NAME}" --region=us-east-1; then
         echo "Failed to create s3 bucket ${REUSE_BUCKET_NAME}."
         exit $EXIT_TEST_FAIL_S3_BUCKET_CREATION
     fi
 
-    oc process --local -p NAME="${ACCOUNT_CLAIM_NAME}" -p NAMESPACE="${ACCOUNT_CLAIM_NAMESPACE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountclaim_cr.tmpl | oc delete --now --ignore-not-found -f -
-
-    # Delete reuse namespace
-    oc process --local -p NAME="${ACCOUNT_CLAIM_NAMESPACE}" -f hack/templates/namespace.tmpl | oc delete -f -
-}
-
-function cleanupTestPhase {
-    if oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
-        oc patch account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" -p '{"metadata":{"finalizers":null}}' --type=merge
-        oc process -p AWS_ACCOUNT_ID="${OSD_STAGING_1_AWS_ACCOUNT_ID}" -p ACCOUNT_CR_NAME="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -p NAMESPACE="${NAMESPACE}" -f hack/templates/aws.managed.openshift.io_v1alpha1_account.tmpl | oc delete --now --ignore-not-found -f -
-
-        if oc get account "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -n "${NAMESPACE}" 2>/dev/null; then
-            echo "Failed to delete account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-            exit "$EXIT_FAIL_UNEXPECTED_ERROR"
-        else
-            echo "Successfully cleaned up account"
-        fi
-    fi
+    timeout="${RESOURCE_DELETE_TIMEOUT}"
+    deleteAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}" || exit "$?"
+    deleteNamespace "${accountClaimCrNamespace}" "${timeout}" || exit "$?"
 
     exit "$EXIT_PASS"
 }
 
+function cleanupTestPhase {
+    local cleanupExitCode="${EXIT_PASS}"
+    local removeFinalizers=true
+    timeout="${RESOURCE_DELETE_TIMEOUT}"
+
+    if ! deleteAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}" $removeFinalizers; then
+        echo "Failed to delete AccountClaim CR"
+        cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
+    fi
+
+    if ! deleteNamespace "${accountClaimCrNamespace}" "${timeout}" $removeFinalizers; then
+        echo "Failed to delete AccountClaim namespace"
+        cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
+    fi
+
+    #note: dont delete the accountCrNamespace because AAO is running there, but we should cleanup the Account CR
+    if ! deleteAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeout}" $removeFinalizers; then
+        echo "Failed to delete Account CR"
+        cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
+    fi
+
+
+    exit "$cleanupExitCode"
+}
+
 function testPhase {
     # Validate re-use
-    IS_READY=$(oc get account -n aws-account-operator "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -o json | jq -r '.status.state')
+    IS_READY=$(getAccountCRAsJson "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" | jq -r '.status.state')
     if [ "$IS_READY" != "Ready" ]; then
         echo "Reused Account is not Ready"
         exit $EXIT_TEST_FAIL_REUSED_ACCOUNT_NOT_READY
     fi
 
-    IS_REUSED=$(oc get account -n aws-account-operator "${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" -o json | jq -r '.status.reused')
+    IS_REUSED=$(getAccountCRAsJson "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" | jq -r '.status.reused')
     if [ "$IS_REUSED" != true ]; then
         echo "Account is not Reused"
         exit $EXIT_TEST_FAIL_ACCOUNT_NOT_REUSED
@@ -136,10 +128,10 @@ function testPhase {
         echo "Reuse successfully complete"
     else
         echo "Reuse failed"
-        exit 1
+        exit $EXIT_TEST_FAIL_S3_BUCKET_STILL_EXISTS
     fi
 
-    exit 0
+    exit "$EXIT_PASS"
 }
 
 function explainExitCode {

@@ -389,7 +389,7 @@ function runTest {
     local testScript=$1
     overall="PASS"
 
-    echo "========================================================================"
+    echo -e "\n========================================================================"
     echo "= Test: $testScript"
     echo "= Phase: setup"
     echo "========================================================================"
@@ -397,7 +397,7 @@ function runTest {
     setupExitCode=$?
     setupExitMessage=$(explainExitCode $testScript $setupExitCode)
 
-    echo "========================================================================"
+    echo -e "\n========================================================================"
     echo "= Test: $testScript"
     echo "= Phase: test"
     echo "========================================================================"
@@ -417,7 +417,7 @@ function runTest {
         overall="SKIP"
     fi
 
-    echo "========================================================================"
+    echo -e "\n========================================================================"
     echo "= Test: $testScript"
     echo "= Phase: cleanup"
     echo "========================================================================"
@@ -437,7 +437,11 @@ function runTest {
 }
 EOF
 )
-    echo -e "\nTest $testScript completed with overall result: $overall"
+    echo -e "\n========================================================================"
+    echo "= Test: $testScript"
+    echo "= Phase: results"
+    echo "========================================================================"
+    echo "Test $testScript completed with overall result: $overall"
     echo "${testResults[$testScript]}"
 }
 
@@ -491,8 +495,8 @@ echo -e "\n=====================================================================
 echo "= START INTEGRATION TESTS"
 echo "========================================================================"
 set +e
-#runTest test/integration/tests/test_nonccs_account_creation.sh
-#runTest test/integration/tests/test_nonccs_account_reuse.sh
+runTest test/integration/tests/test_nonccs_account_creation.sh
+runTest test/integration/tests/test_nonccs_account_reuse.sh
 runTest test/integration/tests/test_aws_ou_logic.sh
 set -e
 

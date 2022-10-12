@@ -1,5 +1,11 @@
 # Int Testing Framework Constants
 STATUS_CHANGE_TIMEOUT=300
+
+ACCOUNT_READY_TIMEOUT="3m"
+ACCOUNT_CLAIM_READY_TIMEOUT="1m"
+RESOURCE_DELETE_TIMEOUT="30s"
+
+
 EXIT_PASS=0
 EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED=95
 EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED=96
@@ -17,8 +23,8 @@ GENERAL_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED]="A
 
 function ocCreateResourceIfNotExists {
     local crYaml=$1
-    echo -e "CREATE RESOURCE:\n${crYaml}"
-    if ! echo "${crYaml}" | oc get -f - 2>/dev/null; then
+    echo -e "\nCREATE RESOURCE:\n${crYaml}"
+    if ! echo "${crYaml}" | oc get -f - &>/dev/null; then
         if ! echo "${crYaml}" | oc apply -f -; then
             echo "Failed to create cluster resource"
             return $EXIT_FAIL_UNEXPECTED_ERROR
@@ -29,19 +35,25 @@ function ocCreateResourceIfNotExists {
     return 0
 }
 
+
+# timeout uses oc's timeout syntax (e.g. 30s, 1m, 2h) 
 function ocDeleteResourceIfExists {
     local crYaml=$1
-    local timeoutSeconds=$2
-    echo -e "DELETE RESOURCE:\n${crYaml}"
+    local timeout=$2
+    local removeFinalizers=${3:-false}
+    echo -e "\nDELETE RESOURCE:\n${crYaml}"
 
-    if echo "${crYaml}" | oc get -f - 2>/dev/null; then
-        if ! echo "${crYaml}" | oc delete --now --ignore-not-found --timeout="${timeoutSeconds}s" -f -; then
+    if echo "${crYaml}" | oc get -f - &>/dev/null; then
+        if $removeFinalizers; then
+            echo "${crYaml}" | oc patch -p '{"metadata":{"finalizers":null}}' --type=merge -f -
+        fi
+        if ! echo "${crYaml}" | oc delete --now --ignore-not-found --timeout="${timeout}" -f -; then
             echo "Failed to delete cluster resource"
             return $EXIT_FAIL_UNEXPECTED_ERROR
         fi
     fi
 
-    if echo "${crYaml}" | oc get -f - 2>/dev/null; then
+    if echo "${crYaml}" | oc get -f - &>/dev/null; then
         echo "Cluster resource still exists after delete attempt." 
         return "$EXIT_FAIL_UNEXPECTED_ERROR"
     else
@@ -50,14 +62,38 @@ function ocDeleteResourceIfExists {
     fi
 }
 
+# see `oc wait --help` for details on the --for flag
+# timeout uses oc's timeout syntax (e.g. 30s, 1m, 2h) 
 function ocWaitForResourceCondition {
     local crYaml=$1
-    local timeoutSeconds=$2
+    local timeout=$2
     local forCondition=$3
-    echo "${crYaml}" | oc wait --for="${forCondition}" --timeout="${timeoutSeconds}s" -f -
-    return $? 
+
+    # oc wait doesnt seem to like when the resource doesnt exist at all
+    # or when the resource exists but has no "status" set which can happen
+    # if wait is executed before AAO has started processing the CR
+    if echo "${crYaml}" | oc get -f - &>/dev/null; then
+        sleep 2 # simple fix for missing status race condition    
+        echo "${crYaml}" | oc wait --for="${forCondition}" --timeout="${timeout}" -f -
+        return $?
+    else
+        echo "Cluster resource does not exist. Cannot wait for condition."
+        return $EXIT_FAIL_UNEXPECTED_ERROR
+    fi    
 }
 
+# Note: fetching resources this way returns results wrapped in a list:
+# {
+#    "apiVersion": "v1",
+#    "kind": "List",
+#    "items": [
+#        {
+#            "apiVersion": "aws.managed.openshift.io/v1alpha1",
+#            "kind": "Account",
+#            ...
+#        } 
+#    ]
+# }
 function ocGetResourceAsJson {
     local crYaml=$1
     echo "${crYaml}" | oc get -f - -o json
@@ -78,13 +114,21 @@ function createNamespace {
 
 function deleteNamespace {
     local namespace=$1
-    local timeoutSeconds=$2
+    local timeout=$2
+    local removeFinalizers=${3:-false}
     local crYaml=$(getNamespaceYaml "${namespace}")
-    ocDeleteResourceIfExists "${crYaml}" "${timeoutSeconds}"
+    ocDeleteResourceIfExists "${crYaml}" "${timeout}"
+    deleteSuccess=$?
+    if [ $deleteSuccess -ne 0 ] && [ "$removeFinalizers" = true ]; then
+        echo "Failed to delete resource, retrying with finalizers removed."
+        ocDeleteResourceIfExists "${crYaml}" "${timeout}" true
+        deleteSuccess=$?
+    fi
+    return $deleteSuccess
     return $?
 }
 
-function getAccountCRYaml {
+function generateAccountCRYaml {
     local awsAccountId=$1
     local accountCrName=$2
     local accountCrNamespace=$3
@@ -96,7 +140,7 @@ function createAccountCR {
     local awsAccountId=$1
     local accountCrName=$2
     local accountCrNamespace=$3
-    local crYaml=$(getAccountCRYaml "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}")
+    local crYaml=$(generateAccountCRYaml "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}")
     ocCreateResourceIfNotExists "${crYaml}"
     return $?
 }
@@ -105,13 +149,20 @@ function deleteAccountCR {
     local awsAccountId=$1
     local accountCrName=$2
     local accountCrNamespace=$3
-    local timeoutSeconds=$4
-    local crYaml=$(getAccountCRYaml "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}")
-    ocDeleteResourceIfExists "${crYaml}" "${timeoutSeconds}"
-    return $?
+    local timeout=$4
+    local removeFinalizers=${5:-false}
+    local crYaml=$(generateAccountCRYaml "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}")
+    ocDeleteResourceIfExists "${crYaml}" "${timeout}"
+    deleteSuccess=$?
+    if [ $deleteSuccess -ne 0 ] && [ "$removeFinalizers" = true ]; then
+        echo "Failed to delete resource, retrying with finalizers removed."
+        ocDeleteResourceIfExists "${crYaml}" "${timeout}" true
+        deleteSuccess=$?
+    fi
+    return $deleteSuccess
 }
 
-function getAccountClaimCRYaml {
+function generateAccountClaimCRYaml {
     local accountClaimCrName=$1
     local accountClaimCrNamespace=$2
     local template='hack/templates/aws.managed.openshift.io_v1alpha1_accountclaim_cr.tmpl'
@@ -121,7 +172,7 @@ function getAccountClaimCRYaml {
 function createAccountClaimCR {
     local accountClaimCrName=$1
     local accountClaimCrNamespace=$2
-    local crYaml=$(getAccountClaimCRYaml "${accountClaimCrName}" "${accountClaimCrNamespace}")
+    local crYaml=$(generateAccountClaimCRYaml "${accountClaimCrName}" "${accountClaimCrNamespace}")
     ocCreateResourceIfNotExists "${crYaml}"
     return $?
 }
@@ -129,21 +180,37 @@ function createAccountClaimCR {
 function deleteAccountClaimCR {
     local accountClaimCrName=$1
     local accountClaimCrNamespace=$2
-    local timeoutSeconds=$3
-    local crYaml=$(getAccountClaimCRYaml "${accountClaimCrName}" "${accountClaimCrNamespace}")
-    ocDeleteResourceIfExists "${crYaml}" "${timeoutSeconds}"
+    local timeout=$3
+    local removeFinalizers=${4:-false}
+    local crYaml=$(generateAccountClaimCRYaml "${accountClaimCrName}" "${accountClaimCrNamespace}")
+    ocDeleteResourceIfExists "${crYaml}" "${timeout}"
+    deleteSuccess=$?
+    if [ $deleteSuccess -ne 0 ] && [ "$removeFinalizers" = true ]; then
+        echo "Failed to delete resource, retrying with finalizers removed."
+        ocDeleteResourceIfExists "${crYaml}" "${timeout}" true
+        deleteSuccess=$?
+    fi
+    return $deleteSuccess
+}
+
+function getAccountCRAsJson {
+    local awsAccountId=$1
+    local accountCrName=$2
+    local accountCrNamespace=$3
+    local crYaml=$(generateAccountCRYaml "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}")
+    ocGetResourceAsJson "${crYaml}" | jq -r '.items[0]'
 }
 
 function waitForAccountCRReadyOrFailed {
     local awsAccountId=$1
     local accountCrName=$2
     local accountCrNamespace=$3
-    local timeoutSeconds=$4
-    local crYaml=$(getAccountCRYaml "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}")
+    local timeout=$4
+    local crYaml=$(generateAccountCRYaml "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}")
     
-    echo "Waiting for Account CR to become ready"
-    if ! ocWaitForResourceCondition "${crYaml}" "${timeoutSeconds}" "jsonpath='{.status.state}'=Ready"; then
-        if status=$(ocGetResourceAsJson "${crYaml}" | jq -r '.status.state'); then
+    echo -e "\nWaiting for Account CR to become ready (timeout: ${timeout})"
+    if ! ocWaitForResourceCondition "${crYaml}" "${timeout}" "jsonpath={.status.state}=Ready"; then
+        if status=$(ocGetResourceAsJson "${crYaml}" | jq -r '.items[0].status.state'); then
             if [ "${status}" == "Failed" ]; then
                 echo "Account CR has a status of failed. Check AAO logs for more details."
                 return $EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED
@@ -159,12 +226,12 @@ function waitForAccountCRReadyOrFailed {
 function waitForAccountClaimCRReadyOrFailed {
     local accountClaimCrName=$1
     local accountClaimCrNamespace=$2
-    local timeoutSeconds=$3
-    local crYaml=$(getAccountClaimCRYaml "${accountClaimCrName}" "${accountClaimCrNamespace}")
+    local timeout=$3
+    local crYaml=$(generateAccountClaimCRYaml "${accountClaimCrName}" "${accountClaimCrNamespace}")
     
-    echo "Waiting for AccountClaim CR to become ready"
-    if ! ocWaitForResourceCondition "${crYaml}" "${timeoutSeconds}" "jsonpath='{.status.state}'=Ready"; then
-        if status=$(ocGetResourceAsJson "${crYaml}" | jq -r '.status.state'); then
+    echo "Waiting for AccountClaim CR to become ready (timeout: ${timeout})"
+    if ! ocWaitForResourceCondition "${crYaml}" "${timeout}" "jsonpath={.status.state}=Ready"; then
+        if status=$(ocGetResourceAsJson "${crYaml}" | jq -r '.items[0].status.state'); then
             if [ "${status}" == "Failed" ]; then
                 echo "AccountClaim CR has a status of failed. Check AAO logs for more details."
                 return $EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED

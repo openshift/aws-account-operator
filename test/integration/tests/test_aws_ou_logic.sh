@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
 
+# Test Description:
+#   When an AccountClaim is created, AAO finds an available Account CR in the account pool to satisfy
+#   the claim. AAO then moves the AWS Account from the root OU ($OSD_STAGING_1_OU_ROOT_ID) to an OU
+#   under the base OU ($OSD_STAGING_1_OU_BASE_ID) based on the legal entity that owns the cluster.
+#   
+#   In otherwords the AWS OU structure for an unclaimed account looks like this:
+#     ou: $OSD_STAGING_1_OU_ROOT_ID -> aws account: $OSD_STAGING_1_AWS_ACCOUNT_ID 
+#
+#   After the account is claimed, the OU structure looks like this: 
+#     ou: $OSD_STAGING_1_OU_ROOT_ID -> ou: $OSD_STAGING_1_OU_BASE_ID -> ou: legal entity id from account claim -> aws account: $OSD_STAGING_1_AWS_ACCOUNT_ID
+#
+#   So, this test validates that the AWS account is moved from the root OU to the base OU.
+
 source test/integration/test_envs
 source test/integration/integration-test-lib.sh
 
@@ -8,50 +21,48 @@ EXIT_TEST_FAILED_MOVE_ACCOUNT_ROOT=1
 declare -A exitCodeMessages
 exitCodeMessages[$EXIT_TEST_FAILED_MOVE_ACCOUNT_ROOT]="Failed to move account out of root. Check AAO logs for more details."
 
+# isolate global env variable use to prevent them spreading too deep into the tests
+awsAccountId="${OSD_STAGING_1_AWS_ACCOUNT_ID}"
+accountCrName="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
+accountCrNamespace="${NAMESPACE}"
+accountClaimCrName="${ACCOUNT_CLAIM_NAME}"
+accountClaimCrNamespace="${ACCOUNT_CLAIM_NAMESPACE}"
+timeout="5m"
 
 function setupTestPhase {
-    local awsAccountId="${OSD_STAGING_1_AWS_ACCOUNT_ID}"
-    local accountCrName="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-    local accountCrNamespace="${NAMESPACE}"
-    local accountClaimCrName="${ACCOUNT_CLAIM_NAME}"
-    local accountClaimCrNamespace="${ACCOUNT_CLAIM_NAME}"
-    local timeoutSeconds="${STATUS_CHANGE_TIMEOUT}"
-
     # move OSD Staging 1 account to root ou to avoid ChildNotFoundInOU errors
+    echo "Ensuring AWS Account ${awsAccountId} is in the root OU"
     hack/scripts/aws/verify-organization.sh "${awsAccountId}" --profile osd-staging-1 --move
 
     createAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" || exit "$?"
-    waitForAccountCRReadyOrFailed "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeoutSeconds}" || exit "$?"
+    timeout="${ACCOUNT_READY_TIMEOUT}"
+    waitForAccountCRReadyOrFailed "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeout}" || exit "$?"
 
+    # AccountClaims live in the cluster's namespace, not the AAO namespace
     createNamespace "${accountClaimCrNamespace}" || exit "$?"
     createAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" || exit "$?"
-    waitForAccountClaimCRReadyOrFailed "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeoutSeconds}" || exit "$?"
+    timeout="${ACCOUNT_CLAIM_READY_TIMEOUT}"
+    waitForAccountClaimCRReadyOrFailed "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}" || exit "$?"
 
     exit "$EXIT_PASS"
 }
 
 function cleanupTestPhase {
-    local awsAccountId="${OSD_STAGING_1_AWS_ACCOUNT_ID}"
-    local accountCrName="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
-    local accountCrNamespace="${NAMESPACE}"
-    local accountClaimCrName="${ACCOUNT_CLAIM_NAME}"
-    local accountClaimCrNamespace="${ACCOUNT_CLAIM_NAME}"
-    local timeoutSeconds="${STATUS_CHANGE_TIMEOUT}"
-
     local cleanupExitCode="${EXIT_PASS}"
+    timeout="${RESOURCE_DELETE_TIMEOUT}"
 
-    if ! deleteAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeoutSeconds}"; then
+    if ! deleteAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}"; then
         echo "Failed to delete AccountClaim CR"
         cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
     fi
 
-    if ! deleteNamespace "${accountClaimCrNamespace}" "${timeoutSeconds}"; then
+    if ! deleteNamespace "${accountClaimCrNamespace}" "${timeout}"; then
         echo "Failed to delete AccountClaim namespace"
         cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
     fi
 
     #note: dont delete the accountCrNamespace because AAO is running there, but we should cleanup the Account CR
-    if ! deleteAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeoutSeconds}"; then
+    if ! deleteAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeout}"; then
         echo "Failed to delete Account CR"
         cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
     fi
