@@ -8,23 +8,28 @@ RESOURCE_DELETE_TIMEOUT="30s"
 
 
 EXIT_PASS=0
-EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED=95
+EXIT_TEST_FAIL_ACCOUNT_CLAIM_UNEXPECTED_STATUS=93
+EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED=94
+EXIT_TEST_FAIL_ACCOUNT_UNEXPECTED_STATUS=95
 EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED=96
 EXIT_TIMEOUT=97
 EXIT_SKIP=98
 EXIT_FAIL_UNEXPECTED_ERROR=99
 
 declare -A COMMON_EXIT_CODE_MESSAGES
-GENERAL_EXIT_CODE_MESSAGES[$EXIT_PASS]="PASS"
-GENERAL_EXIT_CODE_MESSAGES[$EXIT_FAIL_UNEXPECTED_ERROR]="Unexpected error. Check test logs for more details."
-GENERAL_EXIT_CODE_MESSAGES[$EXIT_TIMEOUT]="Timeout waiting for some condition to be met. Check test logs for more details."
-GENERAL_EXIT_CODE_MESSAGES[$EXIT_SKIP]="Test/phase execution was skipped. Check test logs for more details."
-GENERAL_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED]="Account CR has a status of failed. Check AAO logs for more details."
-GENERAL_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED]="AccountClaim CR has a status of failed. Check AAO logs for more details."
+export COMMON_EXIT_CODE_MESSAGES
+COMMON_EXIT_CODE_MESSAGES[$EXIT_PASS]="PASS"
+COMMON_EXIT_CODE_MESSAGES[$EXIT_FAIL_UNEXPECTED_ERROR]="Unexpected error. Check test logs for more details."
+COMMON_EXIT_CODE_MESSAGES[$EXIT_TIMEOUT]="Timeout waiting for some condition to be met. Check test logs for more details."
+COMMON_EXIT_CODE_MESSAGES[$EXIT_SKIP]="Test/phase execution was skipped. Check test logs for more details."
+COMMON_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_UNEXPECTED_STATUS]="Account CR has a status an unexpected status. Consider increasing test timeouts. Check AAO logs for more details."
+COMMON_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED]="Account CR has a status of failed. Check AAO logs for more details."
+COMMON_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_CLAIM_UNEXPECTED_STATUS]="AccountClaim CR has a status an unexpected status. Consider increasing test timeouts. Check AAO logs for more details."
+COMMON_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED]="AccountClaim CR has a status of failed. Check AAO logs for more details."
 
 function ocCreateResourceIfNotExists {
     local crYaml=$1
-    echo -e "\nCREATE RESOURCE:\n${crYaml}"
+    echo -e "\nCREATE RESOURCE:\n${crYaml}" 1>&2
     if ! echo "${crYaml}" | oc get -f - &>/dev/null; then
         if ! echo "${crYaml}" | oc apply -f -; then
             echo "Failed to create cluster resource"
@@ -42,7 +47,7 @@ function ocDeleteResourceIfExists {
     local crYaml=$1
     local timeout=$2
     local removeFinalizers=${3:-false}
-    echo -e "\nDELETE RESOURCE:\n${crYaml}"
+    echo -e "\nDELETE RESOURCE:\n${crYaml}" 1>&2
 
     if echo "${crYaml}" | oc get -f - &>/dev/null; then
         if $removeFinalizers; then
@@ -58,7 +63,6 @@ function ocDeleteResourceIfExists {
         echo "Cluster resource still exists after delete attempt." 
         return "$EXIT_FAIL_UNEXPECTED_ERROR"
     else
-        echo "Cluster resource deleted."
         return 0
     fi
 }
@@ -217,8 +221,10 @@ function waitForAccountCRReadyOrFailed {
                 return $EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED
             else
                 echo "Unexpected Account CR status: ${status}"
-                return $EXIT_FAIL_UNEXPECTED_ERROR
+                return $EXIT_TEST_FAIL_ACCOUNT_UNEXPECTED_STATUS
             fi
+        else
+            return $EXIT_FAIL_UNEXPECTED_ERROR
         fi
     fi
     return 0
@@ -238,8 +244,10 @@ function waitForAccountClaimCRReadyOrFailed {
                 return $EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED
             else
                 echo "Unexpected Account CR status: ${status}"
-                return $EXIT_FAIL_UNEXPECTED_ERROR
+                return $EXIT_TEST_FAIL_ACCOUNT_CLAIM_UNEXPECTED_STATUS
             fi
+        else
+            return $EXIT_FAIL_UNEXPECTED_ERROR
         fi
     fi
     return 0
