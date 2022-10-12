@@ -2,19 +2,19 @@
 
 source test/integration/test_envs
 
-ACCOUNT_READY_TIMEOUT="3m"
-ACCOUNT_CLAIM_READY_TIMEOUT="1m"
-RESOURCE_DELETE_TIMEOUT="30s"
+export ACCOUNT_READY_TIMEOUT="3m"
+export ACCOUNT_CLAIM_READY_TIMEOUT="1m"
+export RESOURCE_DELETE_TIMEOUT="30s"
 
 
-EXIT_PASS=0
-EXIT_TEST_FAIL_ACCOUNT_CLAIM_UNEXPECTED_STATUS=93
-EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED=94
-EXIT_TEST_FAIL_ACCOUNT_UNEXPECTED_STATUS=95
-EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED=96
-EXIT_TIMEOUT=97
-EXIT_SKIP=98
-EXIT_FAIL_UNEXPECTED_ERROR=99
+export EXIT_PASS=0
+export EXIT_TEST_FAIL_ACCOUNT_CLAIM_UNEXPECTED_STATUS=93
+export EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED=94
+export EXIT_TEST_FAIL_ACCOUNT_UNEXPECTED_STATUS=95
+export EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED=96
+export EXIT_TIMEOUT=97
+export EXIT_SKIP=98
+export EXIT_FAIL_UNEXPECTED_ERROR=99
 
 declare -A COMMON_EXIT_CODE_MESSAGES
 export COMMON_EXIT_CODE_MESSAGES
@@ -75,10 +75,7 @@ function ocWaitForResourceCondition {
     local forCondition=$3
 
     # oc wait doesnt seem to like when the resource doesnt exist at all
-    # or when the resource exists but has no "status" set which can happen
-    # if wait is executed before AAO has started processing the CR
-    if echo "${crYaml}" | oc get -f - &>/dev/null; then
-        sleep 2 # simple fix for missing status race condition    
+    if echo "${crYaml}" | oc get -f - &>/dev/null; then 
         echo "${crYaml}" | oc wait --for="${forCondition}" --timeout="${timeout}" -f -
         return $?
     else
@@ -214,7 +211,7 @@ function waitForAccountCRReadyOrFailed {
     local crYaml=$(generateAccountCRYaml "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}")
     
     echo -e "\nWaiting for Account CR to become ready (timeout: ${timeout})"
-    if ! ocWaitForResourceCondition "${crYaml}" "${timeout}" "jsonpath={.status.state}=Ready"; then
+    if ! ocWaitForResourceCondition "${crYaml}" "${timeout}" "condition=Ready"; then
         if status=$(ocGetResourceAsJson "${crYaml}" | jq -r '.items[0].status.state'); then
             if [ "${status}" == "Failed" ]; then
                 echo "Account CR has a status of failed. Check AAO logs for more details."
@@ -237,7 +234,7 @@ function waitForAccountClaimCRReadyOrFailed {
     local crYaml=$(generateAccountClaimCRYaml "${accountClaimCrName}" "${accountClaimCrNamespace}")
     
     echo "Waiting for AccountClaim CR to become ready (timeout: ${timeout})"
-    if ! ocWaitForResourceCondition "${crYaml}" "${timeout}" "jsonpath={.status.state}=Ready"; then
+    if ! ocWaitForResourceCondition "${crYaml}" "${timeout}" "condition=Ready"; then
         if status=$(ocGetResourceAsJson "${crYaml}" | jq -r '.items[0].status.state'); then
             if [ "${status}" == "Failed" ]; then
                 echo "AccountClaim CR has a status of failed. Check AAO logs for more details."
