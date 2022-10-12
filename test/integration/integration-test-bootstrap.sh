@@ -5,6 +5,7 @@ set -eo pipefail
 source test/integration/test_envs
 source test/integration/integration-test-lib.sh
 
+export OPERATOR_START_TIME=$(date --rfc-3339=seconds)
 export IMAGE_NAME=aws-account-operator
 export BUILD_CONFIG=aws-account-operator
 export OPERATOR_DEPLOYMENT=aws-account-operator
@@ -57,7 +58,7 @@ function parseArgs {
                 ;;
         esac
     done
-    if [ -z $NAMESPACE ]; then
+    if [ -z "$NAMESPACE" ]; then
         NAMESPACE=aws-account-operator
     fi
     echo "PROFILE=${PROFILE}"
@@ -88,7 +89,7 @@ function sourceFromMountedKvStoreConfig {
 }
 
 function sanityCheck {
-    if [ -z OPERATOR_ACCESS_KEY_ID -o -z OPERATOR_SECRET_ACCESS_KEY ]; then
+    if [ -z "$OPERATOR_ACCESS_KEY_ID" ] || [ -z "$OPERATOR_SECRET_ACCESS_KEY" ]; then
         echo "ERROR: AWS credential variable OPERATOR_ACCESS_KEY_ID or OPERATOR_SECRET_ACCESS_KEY is missing."
         return 1
     fi
@@ -100,31 +101,42 @@ function sanityCheck {
     fi
 }
 
-function consoleOperatorLogs {
-    if [ $LOCAL_LOG_FILE -a -f $LOCAL_LOG_FILE ];then
+function dumpOperatorLogsToConsole {
+    if [ "$LOCAL_LOG_FILE" ] && [ -f "$LOCAL_LOG_FILE" ];then
+        echo -e "\n========================================================================"
+        echo "= Operator Logs"
+        echo "========================================================================"
+        cat "$LOCAL_LOG_FILE"
+    else
+        echo -e "\nOPERATOR LOGS\nRetrieving from cluster..."
+        getOperatorPodCommand="$OC_WITH_NAMESPACE get po -lname=aws-account-operator"
+        if [[ $($getOperatorPodCommand --no-headers | wc -l) == 0 ]];
+            then
+                echo -e "\nNo operator pods found.\n"
+                return 0
+        fi
+
+        echo -e "\n========================================================================"
+        echo "= Operator Logs"
+        echo "========================================================================"
+        operatorPodName=$($getOperatorPodCommand -ojsonpath='{.items[0].metadata.name}')
+        echo -e "\nStatus of the operator pod\n"
+        $OC_WITH_NAMESPACE get po "$operatorPodName" -ojsonpath='{.status}'
         echo -e "\nOPERATOR LOGS\n"
-        cat $LOCAL_LOG_FILE
+        $OC_WITH_NAMESPACE logs "$operatorPodName" --since-time="$OPERATOR_START_TIME"
     fi
-    getOperatorPodCommand="$OC_WITH_NAMESPACE get po -lname=aws-account-operator"
-    if [[ $($getOperatorPodCommand --no-headers | wc -l) == 0 ]];
-        then
-            echo -e "\nNo operator pods found.\n"
-            return 0
-	fi
-	operatorPodName=$($getOperatorPodCommand -ojsonpath='{.items[0].metadata.name}')
-	echo -e "\nStatus of the operator pod\n"
-	$OC_WITH_NAMESPACE get po "$operatorPodName" -ojsonpath='{.status}'
-	echo -e "\nOPERATOR LOGS\n"
-	$OC_WITH_NAMESPACE logs $operatorPodName
+    
 }
 
-function removeDockerfileSoftLink {
+function cleanGeneratedBuildResources {
+    echo "Cleaning up generated build resources"
+
+    # remove dockerfile soft link
     if [ -f "Dockerfile" ]; then
         rm Dockerfile
     fi
-}
 
-function cleanKustomization {
+    # kustomize files generated during operator build/deploy
     if [ -f "./deploy/kustomization.yaml" ]; then
         rm ./deploy/kustomization.yaml
     fi
@@ -137,15 +149,17 @@ function cleanKustomization {
 ## Cleanup performs mandatory cleanup of Dockerfile Softlink, kustomization files & existing operator deployments or processes.
 ## If $SKIP_CLEANUP is not provided, existing aws-account-operator namespace is also cleaned up.
 function cleanup {
-    removeDockerfileSoftLink
-    cleanKustomization
-    if [ $localOperatorPID ]; then
-        kill $localOperatorPID 2>/dev/null || true
-    fi
-    if [ $LOCAL_LOG_FILE -a -f $LOCAL_LOG_FILE ]; then
-        rm $LOCAL_LOG_FILE
-    fi
     if [ -z $SKIP_CLEANUP ]; then
+        cleanGeneratedBuildResources
+        if [ "$localOperatorPID" ]; then
+            echo "Removing leftover operator-sdk process with PID $localOperatorPID"
+            kill "$localOperatorPID" 2>/dev/null || true
+        fi
+        if [ "$LOCAL_LOG_FILE" ] && [ -f "$LOCAL_LOG_FILE" ]; then
+            echo "Removing previous log file $LOCAL_LOG_FILE"
+            rm "$LOCAL_LOG_FILE"
+        fi
+        echo "Cleaning up cluster resources"
         $OC_WITH_NAMESPACE delete deployment $OPERATOR_DEPLOYMENT 2>/dev/null || true
         if [[ $($OC get namespace $NAMESPACE --no-headers 2>/dev/null | wc -l) == 0 ]];
             then
@@ -154,6 +168,9 @@ function cleanup {
         fi
 
         $OC delete namespace $NAMESPACE --ignore-not-found=true || true
+    else
+        echo "Skipping test bootstrap cleanup due to --skip-cleanup flag"
+        echo "Note: individual tests may still perform their own cleanup steps"
     fi
 }
 
@@ -170,31 +187,30 @@ function cleanupPost {
     echo -e "\n========================================================================"
     echo "= After All Test Cleanup"
     echo "========================================================================"
-    consoleOperatorLogs
-    if [ $clusterUserName ]; then
-        $OC --as backplane-cluster-admin adm policy remove-cluster-role-from-user cluster-admin $clusterUserName
+    if [ "$clusterUserName" ]; then
+        $OC --as backplane-cluster-admin adm policy remove-cluster-role-from-user cluster-admin "$clusterUserName"
     fi
     cleanup
-    echo -e "\nSTARTING AWS RESOURCES CLEANUP FOR CI\n"
+
+    echo -e "\n========================================================================"
+    echo "= AWS Resource Leak Check"
+    echo "========================================================================"
     make ci-aws-resources-cleanup
-    echo -e "\nAWS RESOURCES CLEANUP COMPLETED\n"
-
-}
-
-function createDockerfileSoftLink {
-    ln ./build/Dockerfile Dockerfile
 }
 
 function buildOperatorImage {
-    echo -e "\nSTARTING BUILD IMAGE\n"
-    createDockerfileSoftLink
+    # quirk with oc build process which requires the dockerfile be in the project root directory
+    ln ./build/Dockerfile Dockerfile
+
     $OC_WITH_NAMESPACE new-build --binary --strategy=docker --build-arg=FIPS_ENABLED=false  --name $BUILD_CONFIG || true
     $OC_WITH_NAMESPACE start-build $BUILD_CONFIG --from-dir . -F --exclude='(^|/)((\.git)|(\.venv)|(\.idea))(/|$)'
+    
+    # allow image lookup for the images produced by the build config
     $OC_WITH_NAMESPACE set image-lookup $BUILD_CONFIG
-    removeDockerfileSoftLink
 }
 
 function verifyBuildSuccess {
+    echo "Verifying build success"
     sleep 5
     local latestJobName phase
     latestJobName="$BUILD_CONFIG"-$($OC_WITH_NAMESPACE get buildconfig "$BUILD_CONFIG" -ojsonpath='{.status.lastVersion}') 
@@ -203,12 +219,13 @@ function verifyBuildSuccess {
         echo "ERROR - build was not completed fully, the state was $phase but expected to be 'Complete'"
         echo "the logs for the failed job are:"
 
-        $OC_WITH_NAMESPACE logs $latestJobName-build
+        $OC_WITH_NAMESPACE logs "${latestJobName}-build"
         return 1
     fi
 }
 
 function configureKustomization {
+    # make the AAO image (quay.io/app-sre/aws-account-operator:latest) resolve to the image we just built
     cat <<EOF >./deploy/kustomization.yaml
 resources:
 - operator.yaml
@@ -234,27 +251,31 @@ EOF
 }
 
 function deployOperator {
-    echo -e "\nDEPLOYING OPERATOR\n"
     configureKustomization
     $OC apply -k ./deploy
-    cleanKustomization
 }
 
 function waitForDeployment {
-    echo -e "\nWaiting for operator deployment to finish\n"
+    echo "Waiting for operator deployment to finish (timeout in 60s)"
     $OC_WITH_NAMESPACE wait --for=condition=available --timeout=60s deployment $OPERATOR_DEPLOYMENT || (echo -e '\nERROR - Waited for operator deployment to complete for 60s\n' && return 1)
-    echo -e "\nDeployment Completed\n"
+    echo "Deployment Completed"
 }
 
+# note: needed for running builds on prow infrastructure
 function installJq {
+    echo "Installing dependency: jq"
     curl -sfL https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 --output /tmp/jq
     chmod a+x /tmp/jq
 }
 
+# note: needed for running builds on prow infrastructure
 function installAWS {
+    echo "Installing dependency: aws-cli"
     curl -sfL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" --output /tmp/awscliv2.zip
     unzip -qq /tmp/awscliv2.zip
     ./aws/install --install-dir /tmp/aws-cli -b /tmp
+
+    echo "Configuring aws-cli credentials"
     cat <<EOF >/tmp/credentials
 [osd-staging-1]
 aws_access_key_id = $OPERATOR_ACCESS_KEY_ID
@@ -287,21 +308,32 @@ function profileLocal {
     sourceEnvrcConfig
     sanityCheck
 
-    echo "Configuring deployment cluster"
+    # cleanup resources from previous runs
     cleanupPre
+
+    echo -e "\n========================================================================"
+    echo "= Preparing Cluster for Build/Deploy"
+    echo "========================================================================"
     $OC adm new-project "$NAMESPACE" 2>/dev/null || true
     make predeploy
+
+    echo -e "\n========================================================================"
+    echo "= Building/Running Operator using operator-sdk"
+    echo "========================================================================"
 
     # start local operator if not already running
     # not sure if theres a better way to detect this, but operator-sdk processes look 
     # like this when I was testing locally: 
     #   > ps aux | grep go-build
     #      mstratto 3313211  0.2  0.1 2590492 117236 pts/7  Sl+  10:59   0:08 /tmp/go-build3762679696/b001/exe/main --zap-devel
-    ps aux | grep "[g]o-build"
-    if [ $? -ne 0 ]; then
+    if ! ps aux | grep "[g]o-build" &>/dev/null; then
         echo "Building and deploying operator image"
         make deploy-local OPERATOR_NAMESPACE=$NAMESPACE > $LOCAL_LOG_FILE 2>&1 &
-        $localOperatorPID=$!
+        localOperatorPID=$!
+        echo "Operator running in background with PID $localOperatorPID"
+        echo "You can follow operator logs with: tail -f $LOCAL_LOG_FILE"
+    else
+        echo "Local operator-sdk process already running. Not starting a new one."
     fi
 }
 
@@ -314,14 +346,26 @@ function profileProw {
     sourceFromMountedKvStoreConfig
     installProwCIDependencies
 
-    echo "Configuring depoloyment cluster"
+
+    # cleanup resources from previous runs
     cleanupPre
+
+    echo -e "\n========================================================================"
+    echo "= Preparing Cluster for Build/Deploy"
+    echo "========================================================================"
     $OC adm new-project "$NAMESPACE" 2>/dev/null || true
     make prow-ci-predeploy
 
-    echo "Building and deploying operator image"
+    echo -e "\n========================================================================"
+    echo "= Building Operator Image"
+    echo "========================================================================"
+    OPERATOR_START_TIME=$(date --rfc-3339=seconds)
     buildOperatorImage
     verifyBuildSuccess
+
+    echo -e "\n========================================================================"
+    echo "= Deploying Operator Image"
+    echo "========================================================================"
     deployOperator
     waitForDeployment
 }
@@ -336,29 +380,40 @@ function profileStage {
     sourceEnvrcConfig
     sanityCheck
     
-    echo "Configuring depoloyment cluster"
-    clusterUserName=$($OC whoami)
     ## OSD Staging cluster require cluster-admin roles for accessing & applying some manifests like CRDs etc.
     ## So, cluster-admin role is added to the user for the script's lifetime.
     ## The role is removed as the part of mandatory cleanup.
-    $OC --as backplane-cluster-admin adm policy add-cluster-role-to-user cluster-admin $clusterUserName
+    clusterUserName=$($OC whoami)
+    $OC --as backplane-cluster-admin adm policy add-cluster-role-to-user cluster-admin "$clusterUserName"
+
+    # cleanup resources from previous runs
     cleanupPre
+
+    echo -e "\n========================================================================"
+    echo "= Preparing Cluster for Build/Deploy"
+    echo "========================================================================"
     $OC adm new-project "$NAMESPACE" 2>/dev/null || true
     make prow-ci-predeploy
     make validate-deployment
 
-    echo -e "Checking for existing AAO deployment."
+    echo -e "\n========================================================================"
+    echo "= Building Operator Image"
+    echo "========================================================================"
+    echo "Checking for existing AAO deployment."
+    OPERATOR_START_TIME=$(date --rfc-3339=seconds)
     aaoDeployment=$($OC_WITH_NAMESPACE get deployment $OPERATOR_DEPLOYMENT -o json --ignore-not-found=true | jq '.status.conditions[] | select( .type == "Available" and .status == "True" )')
 
     if [ -z "$aaoDeployment" ]; then
-        echo "Deployment not found.  Building and deploying operator image."
         buildOperatorImage
         verifyBuildSuccess
+
+        echo -e "\n========================================================================"
+        echo "= Deploying Operator Image"
+        echo "========================================================================"
         deployOperator
         waitForDeployment
-        echo -e "Deployment Completed."
     else
-        echo "Deployment found."
+        echo "Deployment found. Not rebuilding or deploying operator image."
     fi
 }
 
@@ -367,10 +422,10 @@ function explainExitCode {
     local exitCode=$2
     message="UNKNOWN"
 
-    if [ -z $exitCode ]; then
+    if [ -z "$exitCode" ]; then
         message="No test results found"
-    elif [ $exitCode -ne 0 ]; then
-        message=$(/usr/bin/env bash $script explain $exitCode)
+    elif [ "$exitCode" -ne 0 ]; then
+        message=$(/usr/bin/env bash "$script" explain "$exitCode")
         if [ -z "$message" ]; then
             # check the general exit code messages
             message=${GENERAL_EXIT_CODE_MESSAGES[$exitCode]}
@@ -393,19 +448,19 @@ function runTest {
     echo "= Test: $testScript"
     echo "= Phase: setup"
     echo "========================================================================"
-    /usr/bin/env bash $testScript "setup"
+    /usr/bin/env bash "$testScript" "setup"
     setupExitCode=$?
-    setupExitMessage=$(explainExitCode $testScript $setupExitCode)
+    setupExitMessage=$(explainExitCode "$testScript" "$setupExitCode")
 
     echo -e "\n========================================================================"
     echo "= Test: $testScript"
     echo "= Phase: test"
     echo "========================================================================"
-    if [ $setupExitCode -eq $EXIT_PASS ]; then
-        /usr/bin/env bash $testScript "test"
+    if [ $setupExitCode -eq "$EXIT_PASS" ]; then
+        /usr/bin/env bash "$testScript" "test"
         testExitCode=$?
-        testExitMessage=$(explainExitCode $testScript $testExitCode)
-        if [ $testExitCode -eq $EXIT_PASS ]; then
+        testExitMessage=$(explainExitCode "$testScript" "$testExitCode")
+        if [ "$testExitCode" -eq "$EXIT_PASS" ]; then
             overall="PASS"
         else
             overall="FAIL"
@@ -421,9 +476,11 @@ function runTest {
     echo "= Test: $testScript"
     echo "= Phase: cleanup"
     echo "========================================================================"
-    /usr/bin/env bash $testScript "cleanup"
+    /usr/bin/env bash "$testScript" "cleanup"
+
+    # note: failure during cleanup doesnt currently affect the overall test result
     cleanupExitCode=$?
-    cleanupExitMessage=$(explainExitCode $testScript $cleanupExitCode)
+    cleanupExitMessage=$(explainExitCode "$testScript" explain "$cleanupExitCode")
 
     testResults[$testScript]=$(cat <<EOF
 {
@@ -449,13 +506,13 @@ function printTestResults {
     allPassed=1
     for t in "${!testResults[@]}"; do
         resultJson=${testResults[$t]}
-        testExitCode=$(echo $resultJson | jq -r .testExitCode)
-        overall=$(echo $resultJson | jq -r .overall)
-        setupExitMessage=$(echo $resultJson | jq -r .setupExitMessage)
-        testExitMessage=$(echo $resultJson | jq -r .testExitMessage)
-        cleanupExitMessage=$(echo $resultJson | jq -r .cleanupExitMessage)
+        testExitCode=$(echo "$resultJson" | jq -r .testExitCode)
+        overall=$(echo "$resultJson" | jq -r .overall)
+        setupExitMessage=$(echo "$resultJson" | jq -r .setupExitMessage)
+        testExitMessage=$(echo "$resultJson" | jq -r .testExitMessage)
+        cleanupExitMessage=$(echo "$resultJson" | jq -r .cleanupExitMessage)
 
-        if [ $testExitCode -ne 0 ]; then
+        if [ "$testExitCode" -ne 0 ]; then
             allPassed=0
         fi
 
@@ -474,7 +531,7 @@ function printTestResults {
 
 parseArgs "$@"
 OC_WITH_NAMESPACE="$OC -n $NAMESPACE"
-#trap cleanupPost EXIT
+trap cleanupPost EXIT
 case $PROFILE in
     local)
         profileLocal
@@ -495,13 +552,17 @@ echo -e "\n=====================================================================
 echo "= START INTEGRATION TESTS"
 echo "========================================================================"
 set +e
-runTest test/integration/tests/test_nonccs_account_creation.sh
-runTest test/integration/tests/test_nonccs_account_reuse.sh
-runTest test/integration/tests/test_aws_ou_logic.sh
+runTest "test/integration/tests/test_nonccs_account_creation.sh"
+#runTest "test/integration/tests/test_nonccs_account_reuse.sh"
+#runTest "test/integration/tests/test_aws_ou_logic.sh"
 set -e
+
+dumpOperatorLogsToConsole
 
 echo -e "\n========================================================================"
 echo "= INTEGRATION TEST RESULTS"
 echo "========================================================================"
 printTestResults
+
+
 
