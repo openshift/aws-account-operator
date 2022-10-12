@@ -73,14 +73,6 @@ function sourceEnvrcConfig {
     source .envrc
 }
 
-function sourceSetOperatorCredentials {
-    if [ ! -f "./hack/scripts/set_operator_credentials.sh" ]; then
-        echo "ERROR - set_operator_credentials.sh does not exist"
-        return 1
-    fi
-    source ./hack/scripts/set_operator_credentials.sh osd-staging-1
-}
-
 function sourceFromMountedKvStoreConfig {
     ## Prow CI uses existing secrets:- https://docs.ci.openshift.org/docs/how-tos/adding-a-new-secret-to-ci/
     OSD_STAGING_1_AWS_ACCOUNT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_AWS_ACCOUNT_ID)
@@ -303,7 +295,6 @@ function profileLocal {
     export LOCAL_LOG_FILE="localOperator.log"
     export FORCE_DEV_MODE=local
     sourceEnvrcConfig
-    sourceSetOperatorCredentials
     sanityCheck
 
     echo "Configuring deployment cluster"
@@ -352,7 +343,6 @@ function profileStage {
     echo "Configuring local build environment"
     export FORCE_DEV_MODE=cluster
     sourceEnvrcConfig
-    sourceSetOperatorCredentials
     sanityCheck
     
     echo "Configuring depoloyment cluster"
