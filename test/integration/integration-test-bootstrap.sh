@@ -438,7 +438,7 @@ function explainExitCode {
         message=$(/usr/bin/env bash "$script" explain "$exitCode")
         if [ -z "$message" ]; then
             # check the general exit code messages
-            message=${GENERAL_EXIT_CODE_MESSAGES[$exitCode]}
+            message=${COMMON_EXIT_CODE_MESSAGES[$exitCode]}
             if [ -z "$message" ]; then
                 message="UNKNOWN"
             fi
@@ -567,7 +567,7 @@ runTest "test/integration/tests/test_nonccs_account_reuse.sh"
 runTest "test/integration/tests/test_aws_ou_logic.sh"
 set -e
 
-dumpOperatorLogsToConsole
+#dumpOperatorLogsToConsole
 
 echo -e "\n========================================================================"
 echo "= INTEGRATION TEST RESULTS"
