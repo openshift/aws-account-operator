@@ -76,16 +76,26 @@ function sourceEnvrcConfig {
 
 function sourceFromMountedKvStoreConfig {
     ## Prow CI uses existing secrets:- https://docs.ci.openshift.org/docs/how-tos/adding-a-new-secret-to-ci/
-    export OSD_STAGING_1_AWS_ACCOUNT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_AWS_ACCOUNT_ID)
-    export OSD_STAGING_2_AWS_ACCOUNT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_2_AWS_ACCOUNT_ID)
-    export STS_ROLE_ARN=$(cat /tmp/secret/aao-aws-creds/STS_ROLE_ARN)
-    export STS_JUMP_ARN=$(cat /tmp/secret/aao-aws-creds/STS_JUMP_ARN)
-    export OSD_STAGING_1_OU_ROOT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_OU_ROOT_ID)
-    export OSD_STAGING_1_OU_BASE_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_OU_BASE_ID)
-    export SUPPORT_JUMP_ROLE=$(cat /tmp/secret/aao-aws-creds/SUPPORT_JUMP_ROLE)
-    export STS_JUMP_ROLE=$(cat /tmp/secret/aao-aws-creds/STS_JUMP_ROLE)
-    export OPERATOR_ACCESS_KEY_ID=$(cat /tmp/secret/aao-aws-creds/OPERATOR_ACCESS_KEY_ID)
-    export OPERATOR_SECRET_ACCESS_KEY=$(cat /tmp/secret/aao-aws-creds/OPERATOR_SECRET_ACCESS_KEY)
+    OSD_STAGING_1_AWS_ACCOUNT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_AWS_ACCOUNT_ID)
+    export OSD_STAGING_1_AWS_ACCOUNT_ID
+    OSD_STAGING_2_AWS_ACCOUNT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_2_AWS_ACCOUNT_ID)
+    export OSD_STAGING_2_AWS_ACCOUNT_ID
+    STS_ROLE_ARN=$(cat /tmp/secret/aao-aws-creds/STS_ROLE_ARN)
+    export STS_ROLE_ARN
+    STS_JUMP_ARN=$(cat /tmp/secret/aao-aws-creds/STS_JUMP_ARN)
+    export STS_JUMP_ARN
+    OSD_STAGING_1_OU_ROOT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_OU_ROOT_ID)
+    export OSD_STAGING_1_OU_ROOT_ID
+    OSD_STAGING_1_OU_BASE_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_OU_BASE_ID)
+    export OSD_STAGING_1_OU_BASE_ID
+    SUPPORT_JUMP_ROLE=$(cat /tmp/secret/aao-aws-creds/SUPPORT_JUMP_ROLE)
+    export SUPPORT_JUMP_ROLE
+    STS_JUMP_ROLE=$(cat /tmp/secret/aao-aws-creds/STS_JUMP_ROLE)
+    export STS_JUMP_ROLE
+    OPERATOR_ACCESS_KEY_ID=$(cat /tmp/secret/aao-aws-creds/OPERATOR_ACCESS_KEY_ID)
+    export OPERATOR_ACCESS_KEY_ID
+    OPERATOR_SECRET_ACCESS_KEY=$(cat /tmp/secret/aao-aws-creds/OPERATOR_SECRET_ACCESS_KEY)
+    export OPERATOR_SECRET_ACCESS_KEY
 }
 
 function sanityCheck {
@@ -480,7 +490,7 @@ function runTest {
 
     # note: failure during cleanup doesnt currently affect the overall test result
     cleanupExitCode=$?
-    cleanupExitMessage=$(explainExitCode "$testScript" explain "$cleanupExitCode")
+    cleanupExitMessage=$(explainExitCode "$testScript" "$cleanupExitCode")
 
     testResults[$testScript]=$(cat <<EOF
 {
@@ -553,8 +563,8 @@ echo "= START INTEGRATION TESTS"
 echo "========================================================================"
 set +e
 runTest "test/integration/tests/test_nonccs_account_creation.sh"
-#runTest "test/integration/tests/test_nonccs_account_reuse.sh"
-#runTest "test/integration/tests/test_aws_ou_logic.sh"
+runTest "test/integration/tests/test_nonccs_account_reuse.sh"
+runTest "test/integration/tests/test_aws_ou_logic.sh"
 set -e
 
 dumpOperatorLogsToConsole
