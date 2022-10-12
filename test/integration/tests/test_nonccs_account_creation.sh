@@ -31,6 +31,7 @@ accountCrNamespace="${NAMESPACE}"
 timeout="5m"
 
 function setupTestPhase {
+    echo "Creating Account CR."
     createAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" || exit "$?"
     
     exit "$EXIT_PASS"
@@ -38,10 +39,11 @@ function setupTestPhase {
 
 function cleanupTestPhase {
     timeout="${RESOURCE_DELETE_TIMEOUT}"
+    local removeFinalizers=true
     local cleanupExitCode="${EXIT_PASS}"
     
     #note: dont delete the accountCrNamespace because AAO is running there, but we should cleanup the Account CR
-    if ! deleteAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeout}"; then
+    if ! deleteAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeout}" $removeFinalizers; then
         echo "Failed to delete Account CR"
         cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
     fi
@@ -59,6 +61,7 @@ function testPhase {
         verifyAccountSecrets
         testStatus=$?
     fi
+
     exit $testStatus
 }
 
@@ -69,10 +72,10 @@ function explainExitCode {
 }
 
 function verifyAccountSecrets {
-    TEST_ACCOUNT_CR_NAME=${IAM_USER_SECRET}
-    TEST_NAMESPACE=${NAMESPACE}
+    accountSecretCrName="${accountCrName}-secret"
 
-    if ! test_secret="$(oc get secret "$TEST_ACCOUNT_CR_NAME" -n "$TEST_NAMESPACE" -o json | jq '.data')"; then
+    echo "Verifying account secret exists."
+    if ! test_secret="$(oc get secret "$accountSecretCrName" -n "$accountCrNamespace" -o json | jq '.data')"; then
         return "$EXIT_FAIL_UNEXPECTED_ERROR"
     elif [ "$test_secret" == "" ]; then
         return $EXIT_TEST_FAIL_NO_ACCOUNT_SECRET
@@ -80,6 +83,7 @@ function verifyAccountSecrets {
 
     unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
 
+    echo "Extracting aws_access_key_id from secret."
     AWS_ACCESS_KEY_ID=$(echo "$test_secret" | jq -r ".aws_access_key_id" | base64 -d)
     export AWS_ACCESS_KEY_ID
     if [ -z "$AWS_ACCESS_KEY_ID" ]; then
@@ -87,6 +91,7 @@ function verifyAccountSecrets {
       return $EXIT_TEST_FAIL_SECRET_INVALID_KEYS
     fi
 
+    echo "Extracting aws_secret_access_key from secret."
     AWS_SECRET_ACCESS_KEY=$(echo "$test_secret" | jq -r ".aws_secret_access_key" | base64 -d)
     export AWS_SECRET_ACCESS_KEY
     if [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
@@ -94,6 +99,7 @@ function verifyAccountSecrets {
       return $EXIT_TEST_FAIL_SECRET_INVALID_KEYS
     fi
 
+    echo "Extracting aws_user_name from secret."
     AWS_USER_NAME=$(echo "$test_secret" | jq -r ".aws_user_name" | base64 -d)
     export AWS_USER_NAME
     if [ -z "$AWS_USER_NAME" ]; then
@@ -102,9 +108,10 @@ function verifyAccountSecrets {
     fi
 
     # if the aws access key id is set, we should check the credential too.
+    echo "Verifying AWS credentials work."
     if [ -n "$AWS_ACCESS_KEY_ID" ]; then
         if ! aws sts get-caller-identity > /dev/null 2>&1; then
-            echo "Credentials for $TEST_ACCOUNT_CR_NAME are invalid."
+            echo "Credentials for $accountCrName are invalid."
             return $EXIT_TEST_FAIL_SECRET_INVALID_CREDS
         fi
     fi

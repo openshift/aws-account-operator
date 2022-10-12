@@ -48,20 +48,21 @@ function setupTestPhase {
 
 function cleanupTestPhase {
     local cleanupExitCode="${EXIT_PASS}"
+    local removeFinalizers=true
     timeout="${RESOURCE_DELETE_TIMEOUT}"
 
-    if ! deleteAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}"; then
+    if ! deleteAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}" $removeFinalizers; then
         echo "Failed to delete AccountClaim CR"
         cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
     fi
 
-    if ! deleteNamespace "${accountClaimCrNamespace}" "${timeout}"; then
+    if ! deleteNamespace "${accountClaimCrNamespace}" "${timeout}" $removeFinalizers; then
         echo "Failed to delete AccountClaim namespace"
         cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
     fi
 
     #note: dont delete the accountCrNamespace because AAO is running there, but we should cleanup the Account CR
-    if ! deleteAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeout}"; then
+    if ! deleteAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeout}" $removeFinalizers; then
         echo "Failed to delete Account CR"
         cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
     fi

@@ -29,6 +29,7 @@ accountCrName="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
 accountCrNamespace="${NAMESPACE}"
 accountClaimCrName="${ACCOUNT_CLAIM_NAME}"
 accountClaimCrNamespace="${ACCOUNT_CLAIM_NAMESPACE}"
+awsAccountSecretCrName="${accountCrName}-secret"
 timeout="5m"
 
 function setupTestPhase {
@@ -36,21 +37,24 @@ function setupTestPhase {
     echo "Ensuring AWS Account ${awsAccountId} is in the root OU"
     hack/scripts/aws/verify-organization.sh "${awsAccountId}" --profile osd-staging-1 --move
 
+    echo "Creating Account CR."
     createAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" || exit "$?"
     timeout="${ACCOUNT_READY_TIMEOUT}"
     waitForAccountCRReadyOrFailed "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeout}" || exit "$?"
 
     # AccountClaims live in the cluster's namespace, not the AAO namespace
+    echo "Creating customer cluster namespace and AccountClaim CR."
     createNamespace "${accountClaimCrNamespace}" || exit "$?"
     createAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" || exit "$?"
     timeout="${ACCOUNT_CLAIM_READY_TIMEOUT}"
     waitForAccountClaimCRReadyOrFailed "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}" || exit "$?"
 
     # Create S3 Bucket
-    AWS_ACCESS_KEY_ID=$(oc get secret "${IAM_USER_SECRET}" -n "${NAMESPACE}" -o json | jq -r '.data.aws_access_key_id' | base64 -d)
+    echo "Getting AWS account credentials."
+    AWS_ACCESS_KEY_ID=$(oc get secret "${awsAccountSecretCrName}" -n "${accountCrNamespace}" -o json | jq -r '.data.aws_access_key_id' | base64 -d)
     export AWS_ACCESS_KEY_ID
 
-    AWS_SECRET_ACCESS_KEY=$(oc get secret "${IAM_USER_SECRET}" -n "${NAMESPACE}" -o json | jq -r '.data.aws_secret_access_key' | base64 -d)
+    AWS_SECRET_ACCESS_KEY=$(oc get secret "${awsAccountSecretCrName}" -n "${accountCrNamespace}" -o json | jq -r '.data.aws_secret_access_key' | base64 -d)
     export AWS_SECRET_ACCESS_KEY
 
     if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
@@ -58,6 +62,8 @@ function setupTestPhase {
         exit $EXIT_TEST_FAIL_SECRET_INVALID_CREDS
     fi
 
+
+    echo "Simulating \"customer resource\" by creating an S3 bucket."
     REUSE_UUID=$(uuidgen)
 
     # make uuid lowercase for S3 bucket name requirements
@@ -102,12 +108,14 @@ function cleanupTestPhase {
 
 function testPhase {
     # Validate re-use
+    echo "Validating Account CR is ready."
     IS_READY=$(getAccountCRAsJson "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" | jq -r '.status.state')
     if [ "$IS_READY" != "Ready" ]; then
         echo "Reused Account is not Ready"
         exit $EXIT_TEST_FAIL_REUSED_ACCOUNT_NOT_READY
     fi
 
+    echo "Validating reuse status set on Account CR."
     IS_REUSED=$(getAccountCRAsJson "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" | jq -r '.status.reused')
     if [ "$IS_REUSED" != true ]; then
         echo "Account is not Reused"
@@ -115,6 +123,7 @@ function testPhase {
     fi
 
     # List S3 bucket
+    echo "Validating customer resources (s3 bucket) were removed."
     BUCKETS=$(
         AWS_ACCESS_KEY_ID=$(oc get secret "${IAM_USER_SECRET}" -n "${NAMESPACE}" -o json | jq -r '.data.aws_access_key_id' | base64 -d)
         export AWS_ACCESS_KEY_ID
@@ -123,10 +132,8 @@ function testPhase {
 
         aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'
     )
-    if [ "$BUCKETS" == 0 ]; then
-        echo "Reuse successfully complete"
-    else
-        echo "Reuse failed"
+    if [ "$BUCKETS" -ne 0 ]; then
+        echo "Customer resources (s3 bucket) still exists after account deletion."
         exit $EXIT_TEST_FAIL_S3_BUCKET_STILL_EXISTS
     fi
 
