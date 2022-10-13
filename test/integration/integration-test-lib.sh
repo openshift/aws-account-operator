@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
 
-source test/integration/test_envs
-
 export ACCOUNT_READY_TIMEOUT="3m"
 export ACCOUNT_CLAIM_READY_TIMEOUT="1m"
 export RESOURCE_DELETE_TIMEOUT="30s"
 
-
 export EXIT_PASS=0
-export EXIT_TEST_FAIL_ACCOUNT_CLAIM_UNEXPECTED_STATUS=93
-export EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED=94
-export EXIT_TEST_FAIL_ACCOUNT_UNEXPECTED_STATUS=95
-export EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED=96
-export EXIT_TIMEOUT=97
-export EXIT_SKIP=98
 export EXIT_FAIL_UNEXPECTED_ERROR=99
+export EXIT_SKIP=98
+export EXIT_TIMEOUT=97
+export EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED=96
+export EXIT_TEST_FAIL_ACCOUNT_UNEXPECTED_STATUS_AFTER_TIMEOUT=95
+export EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED=94
+export EXIT_TEST_FAIL_ACCOUNT_CLAIM_UNEXPECTED_STATUS_AFTER_TIMEOUT=93
+export EXIT_TEST_FAIL_CLUSTER_RESOURCE_NOT_DELETED=92
 
 declare -A COMMON_EXIT_CODE_MESSAGES
 export COMMON_EXIT_CODE_MESSAGES
@@ -22,10 +20,16 @@ COMMON_EXIT_CODE_MESSAGES[$EXIT_PASS]="PASS"
 COMMON_EXIT_CODE_MESSAGES[$EXIT_FAIL_UNEXPECTED_ERROR]="Unexpected error. Check test logs for more details."
 COMMON_EXIT_CODE_MESSAGES[$EXIT_TIMEOUT]="Timeout waiting for some condition to be met. Check test logs for more details."
 COMMON_EXIT_CODE_MESSAGES[$EXIT_SKIP]="Test/phase execution was skipped. Check test logs for more details."
-COMMON_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_UNEXPECTED_STATUS]="Account CR has an unexpected status. Consider increasing test timeouts. Check AAO logs for more details."
+COMMON_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_UNEXPECTED_STATUS_AFTER_TIMEOUT]="Condition Timeout - Account CR has an unexpected status (not Ready or Failed). Consider increasing the ACCOUNT_READY_TIMEOUT timeout. Check AAO logs for more details."
 COMMON_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED]="Account CR has a status of failed. Check AAO logs for more details."
-COMMON_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_CLAIM_UNEXPECTED_STATUS]="AccountClaim CR has an unexpected status. Consider increasing test timeouts. Check AAO logs for more details."
+COMMON_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_CLAIM_UNEXPECTED_STATUS_AFTER_TIMEOUT]="Condition Timeout - AccountClaim CR has an unexpected status (not Ready or Failed). Consider increasing ACCOUNT_CLAIM_READY_TIMEOUT timeouts. Check AAO logs for more details."
 COMMON_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED]="AccountClaim CR has a status of failed. Check AAO logs for more details."
+COMMON_EXIT_CODE_MESSAGES[$EXIT_TEST_FAIL_CLUSTER_RESOURCE_NOT_DELETED]="Condition Timeout - Cluster resource not deleted. Consider increasing the RESOURCE_DELETE_TIMEOUT timeout, however this usually means a resource finalizer is unable to complete due to some error. Check AAO logs for more details."
+
+
+#
+# TODO - consider adding retries for flakey oc network errors like:
+#   error: An error occurred while waiting for the condition to be satisfied: an error on the server ("unable to decode an event from the watch stream: http2: client connection lost") has prevented the request from succeedingUnable to connect to the server: net/http: TLS handshake timeout
 
 function ocCreateResourceIfNotExists {
     local crYaml=$1
@@ -43,6 +47,7 @@ function ocCreateResourceIfNotExists {
 
 
 # timeout uses oc's timeout syntax (e.g. 30s, 1m, 2h) 
+# if removeFinalizers is true, it will remove finalizers before trying to delete the resource
 function ocDeleteResourceIfExists {
     local crYaml=$1
     local timeout=$2
@@ -55,13 +60,13 @@ function ocDeleteResourceIfExists {
         fi
         if ! echo "${crYaml}" | oc delete --now --ignore-not-found --timeout="${timeout}" -f -; then
             echo "Failed to delete cluster resource"
-            return $EXIT_FAIL_UNEXPECTED_ERROR
+            return $EXIT_TEST_FAIL_CLUSTER_RESOURCE_NOT_DELETED
         fi
     fi
 
     if echo "${crYaml}" | oc get -f - &>/dev/null; then
         echo "Cluster resource still exists after delete attempt." 
-        return "$EXIT_FAIL_UNEXPECTED_ERROR"
+        return "$EXIT_TEST_FAIL_CLUSTER_RESOURCE_NOT_DELETED"
     else
         return 0
     fi
@@ -114,6 +119,7 @@ function createNamespace {
     return $?
 }
 
+# if removeFinalizers is true, it will attempt to remove finalizers and delete again if the first delete fails
 function deleteNamespace {
     local namespace=$1
     local timeout=$2
@@ -127,7 +133,6 @@ function deleteNamespace {
         deleteSuccess=$?
     fi
     return $deleteSuccess
-    return $?
 }
 
 function generateAccountCRYaml {
@@ -217,8 +222,8 @@ function waitForAccountCRReadyOrFailed {
                 echo "Account CR has a status of failed. Check AAO logs for more details."
                 return $EXIT_TEST_FAIL_ACCOUNT_PROVISIONING_FAILED
             else
-                echo "Unexpected Account CR status: ${status}"
-                return $EXIT_TEST_FAIL_ACCOUNT_UNEXPECTED_STATUS
+                echo "Unexpected Account CR status after timeout: ${status}"
+                return $EXIT_TEST_FAIL_ACCOUNT_UNEXPECTED_STATUS_AFTER_TIMEOUT
             fi
         else
             return $EXIT_FAIL_UNEXPECTED_ERROR
@@ -241,8 +246,8 @@ function waitForAccountClaimCRReadyOrFailed {
                 echo "AccountClaim CR has a status of failed. Check AAO logs for more details."
                 return $EXIT_TEST_FAIL_ACCOUNT_CLAIM_PROVISIONING_FAILED
             else
-                echo "Unexpected AccountClaim CR status: ${status}"
-                return $EXIT_TEST_FAIL_ACCOUNT_CLAIM_UNEXPECTED_STATUS
+                echo "Unexpected AccountClaim CR status after timeout: ${status}"
+                return $EXIT_TEST_FAIL_ACCOUNT_CLAIM_UNEXPECTED_STATUS_AFTER_TIMEOUT
             fi
         else
             return $EXIT_FAIL_UNEXPECTED_ERROR
