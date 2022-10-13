@@ -1,6 +1,3 @@
-REUSE_UUID := $(shell uuidgen | awk -F- '{ print tolower($$2) }')
-REUSE_BUCKET_NAME=test-reuse-bucket-${REUSE_UUID}
-
 include test/integration/test_envs
 
 .PHONY: prow-ci-predeploy
@@ -24,12 +21,17 @@ ci-aws-resources-cleanup:
 	hack/scripts/cleanup-aws-resources.sh "$(STS_ROLE_ARN)" "$(OSD_STAGING_1_AWS_ACCOUNT_ID)"
 	hack/scripts/cleanup-aws-resources.sh "$(STS_JUMP_ARN)" "$(OSD_STAGING_2_AWS_ACCOUNT_ID)"
 
-.PHONY: test-integration
-test-integration: test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts test-fake-accountclaim test-kms ## Runs all integration tests
+#############################################################################################
+# Everything below this should be reimplemented in the new test pattern
+# i.e. a self contained script like test/integration/tests/test_nonccs_account_creation.sh 
+#############################################################################################
 
 #############################################################################################
 # Tests
 #############################################################################################
+
+.PHONY: test-integration
+test-integration: test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts test-fake-accountclaim test-kms ## Runs all integration tests
 
 .PHONY: test-awsfederatedrole
 test-awsfederatedrole: check-aws-account-id-env ## Test Federated Access Roles
