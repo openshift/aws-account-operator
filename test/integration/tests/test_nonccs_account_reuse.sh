@@ -106,7 +106,7 @@ function cleanupTestPhase {
 
 function testPhase {
     timeout="${RESOURCE_DELETE_TIMEOUT}"
-    if ! waitForAccountClaimCRDeleted "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}"; then
+    if ! deleteAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}"; then
         echo "AccountClaim CR $accountClaimCrName failed to delete."
         exit $EXIT_TEST_FAIL_ACCOUNT_CLAIM_NOT_DELETED
     fi
