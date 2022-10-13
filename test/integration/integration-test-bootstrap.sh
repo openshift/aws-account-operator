@@ -572,11 +572,13 @@ echo -e "\n=====================================================================
 echo "= START INTEGRATION TESTS"
 echo "========================================================================"
 set +e
-#runTest "test/integration/tests/test_nonccs_account_creation.sh"
+runTest "test/integration/tests/test_nonccs_account_creation.sh"
 runTest "test/integration/tests/test_nonccs_account_reuse.sh"
-#runTest "test/integration/tests/test_aws_ou_logic.sh"
+runTest "test/integration/tests/test_aws_ou_logic.sh"
 set -e
 
+# we probably only want to dump the logs on prow for convenience
+# just leaving it commented out for now.
 #dumpOperatorLogsToConsole
 
 echo -e "\n========================================================================"
