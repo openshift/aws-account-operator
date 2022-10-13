@@ -8,7 +8,7 @@
 #  valid AWS credentials to access the "new" account.
 #
 #  normally this Account CR creation process is handled automatically by the AccountPool 
-#  controller which acutally creates a new AWS account as well, but for testing purposes 
+#  controller which actually creates a new AWS account as well, but for testing purposes 
 #  we create an Account CR manually for the AWS account we have already created to be 
 #  reused for all the tests
 
