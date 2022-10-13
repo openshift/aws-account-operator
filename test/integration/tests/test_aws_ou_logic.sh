@@ -22,10 +22,12 @@ exitCodeMessages[$EXIT_TEST_FAILED_MOVE_ACCOUNT_ROOT]="Failed to move account ou
 
 # isolate global env variable use to prevent them spreading too deep into the tests
 awsAccountId="${OSD_STAGING_1_AWS_ACCOUNT_ID}"
-accountCrName="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
 accountCrNamespace="${NAMESPACE}"
-accountClaimCrName="${ACCOUNT_CLAIM_NAME}"
-accountClaimCrNamespace="${ACCOUNT_CLAIM_NAMESPACE}"
+awsProfile="osd-staging-1"
+testName="test-aws-ou-logic-${TEST_START_TIME_SECONDS}"
+accountCrName="$testName"
+accountClaimCrName="$testName"
+accountClaimCrNamespace="${testName}-cluster"
 timeout="5m"
 
 function setupTestPhase {
@@ -72,7 +74,7 @@ function cleanupTestPhase {
 }
 
 function testPhase {
-    TYPE=$(aws organizations list-parents --child-id "${OSD_STAGING_1_AWS_ACCOUNT_ID}" --profile osd-staging-1 | jq -r ".Parents[0].Type")
+    TYPE=$(aws organizations list-parents --child-id "${awsAccountId}" --profile "${awsProfile}" | jq -r ".Parents[0].Type")
     if [ "$TYPE" == "ORGANIZATIONAL_UNIT" ]; then
         echo "Account move successfully"
         exit "$EXIT_PASS"

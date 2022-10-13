@@ -26,8 +26,10 @@ exitCodeMessages[$EXIT_TEST_FAIL_SECRET_INVALID_CREDS]="Test Account secret cred
 
 # isolate global env variable use to prevent them spreading too deep into the tests
 awsAccountId="${OSD_STAGING_1_AWS_ACCOUNT_ID}"
-accountCrName="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
 accountCrNamespace="${NAMESPACE}"
+testName="test-nonccs-account-creation-${TEST_START_TIME_SECONDS}"
+accountCrName="${testName}"
+awsAccountSecretCrName="${testName}-secret"
 timeout="5m"
 
 function setupTestPhase {
@@ -72,10 +74,9 @@ function explainExitCode {
 }
 
 function verifyAccountSecrets {
-    accountSecretCrName="${accountCrName}-secret"
 
     echo "Verifying account secret exists."
-    if ! test_secret="$(oc get secret "$accountSecretCrName" -n "$accountCrNamespace" -o json | jq '.data')"; then
+    if ! test_secret="$(oc get secret "$awsAccountSecretCrName" -n "$accountCrNamespace" -o json | jq '.data')"; then
         return "$EXIT_FAIL_UNEXPECTED_ERROR"
     elif [ "$test_secret" == "" ]; then
         return $EXIT_TEST_FAIL_NO_ACCOUNT_SECRET

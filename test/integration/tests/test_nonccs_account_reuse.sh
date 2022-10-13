@@ -15,6 +15,8 @@ EXIT_TEST_FAIL_ACCOUNT_NOT_REUSED=2
 EXIT_TEST_FAIL_SECRET_INVALID_CREDS=3
 EXIT_TEST_FAIL_S3_BUCKET_CREATION=4
 EXIT_TEST_FAIL_S3_BUCKET_STILL_EXISTS=5
+EXIT_TEST_FAIL_ACCOUNT_CLAIM_NOT_DELETED=6
+EXIT_TEST_FAIL_ACCOUNT_CLAIM_NAMESPACE_NOT_DELETED=7
 
 declare -A exitCodeMessages
 exitCodeMessages[$EXIT_TEST_FAIL_REUSED_ACCOUNT_NOT_READY]="Test Account CR is not in a ready state. Check AAO logs for more details."
@@ -22,14 +24,18 @@ exitCodeMessages[$EXIT_TEST_FAIL_ACCOUNT_NOT_REUSED]="Test Account CR was not re
 exitCodeMessages[$EXIT_TEST_FAIL_SECRET_INVALID_CREDS]="Test Account secret credentials are invalid. Check AAO logs for more details."
 exitCodeMessages[$EXIT_TEST_FAIL_S3_BUCKET_CREATION]="Failed to create AWS S3 bucket. Check logs for more details."
 exitCodeMessages[$EXIT_TEST_FAIL_S3_BUCKET_STILL_EXISTS]="AWS S3 bucket still exists after AccountClaim CR deletion. Check AAO logs for more details."
+exitCodeMessages[$EXIT_TEST_FAIL_ACCOUNT_CLAIM_NOT_DELETED]="Test AccountClaim CR failed to delete. Check AAO logs for more details."
+exitCodeMessages[$EXIT_TEST_FAIL_ACCOUNT_CLAIM_NAMESPACE_NOT_DELETED]="Test AccountClaim Namespace failed to delete. Most likely the AccountClaim CR still exists. Check AAO logs for more details."
 
 # isolate global env variable use to prevent them spreading too deep into the tests
 awsAccountId="${OSD_STAGING_1_AWS_ACCOUNT_ID}"
-accountCrName="${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
 accountCrNamespace="${NAMESPACE}"
-accountClaimCrName="${ACCOUNT_CLAIM_NAME}"
-accountClaimCrNamespace="${ACCOUNT_CLAIM_NAMESPACE}"
-awsAccountSecretCrName="${accountCrName}-secret"
+
+testName="test-nonccs-account-creation-${TEST_START_TIME_SECONDS}"
+accountCrName="${testName}"
+accountClaimCrName="${testName}"
+accountClaimCrNamespace="${testName}-cluster"
+awsAccountSecretCrName="${testName}-secret"
 timeout="5m"
 
 function setupTestPhase {
@@ -64,19 +70,12 @@ function setupTestPhase {
 
 
     echo "Simulating \"customer resource\" by creating an S3 bucket."
-    REUSE_UUID=$(uuidgen)
+    reuseBucketName="${testName}-bucket" 
 
-    # make uuid lowercase for S3 bucket name requirements
-    REUSE_BUCKET_NAME="test-reuse-bucket-${REUSE_UUID,,}" 
-
-    if ! aws s3api create-bucket --bucket "${REUSE_BUCKET_NAME}" --region=us-east-1; then
-        echo "Failed to create s3 bucket ${REUSE_BUCKET_NAME}."
+    if ! aws s3api create-bucket --bucket "${reuseBucketName}" --region=us-east-1; then
+        echo "Failed to create s3 bucket ${reuseBucketName}."
         exit $EXIT_TEST_FAIL_S3_BUCKET_CREATION
     fi
-
-    timeout="${RESOURCE_DELETE_TIMEOUT}"
-    deleteAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}" || exit "$?"
-    deleteNamespace "${accountClaimCrNamespace}" "${timeout}" || exit "$?"
 
     exit "$EXIT_PASS"
 }
@@ -87,47 +86,58 @@ function cleanupTestPhase {
     timeout="${RESOURCE_DELETE_TIMEOUT}"
 
     if ! deleteAccountClaimCR "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}" $removeFinalizers; then
-        echo "Failed to delete AccountClaim CR"
+        echo "Failed to delete AccountClaim CR - $accountClaimCrName"
         cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
     fi
 
     if ! deleteNamespace "${accountClaimCrNamespace}" "${timeout}" $removeFinalizers; then
-        echo "Failed to delete AccountClaim namespace"
+        echo "Failed to delete AccountClaim namespace - ${accountClaimCrNamespace}"
         cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
     fi
 
     #note: dont delete the accountCrNamespace because AAO is running there, but we should cleanup the Account CR
     if ! deleteAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeout}" $removeFinalizers; then
-        echo "Failed to delete Account CR"
+        echo "Failed to delete Account CR - ${accountCrName}"
         cleanupExitCode="${EXIT_FAIL_UNEXPECTED_ERROR}"
     fi
-
 
     exit "$cleanupExitCode"
 }
 
 function testPhase {
+    timeout="${RESOURCE_DELETE_TIMEOUT}"
+    if ! waitForAccountClaimCRDeleted "${accountClaimCrName}" "${accountClaimCrNamespace}" "${timeout}"; then
+        echo "AccountClaim CR $accountClaimCrName failed to delete."
+        exit $EXIT_TEST_FAIL_ACCOUNT_CLAIM_NOT_DELETED
+    fi
+    
+    # do we really need to delete the namespace?
+    if ! deleteNamespace "${accountClaimCrNamespace}" "${timeout}"; then
+        echo "AccountClaim Namespace $accountClaimCrNamespace failed to delete."
+        exit $EXIT_TEST_FAIL_ACCOUNT_CLAIM_NAMESPACE_NOT_DELETED
+    fi
+
     # Validate re-use
     echo "Validating Account CR is ready."
     IS_READY=$(getAccountCRAsJson "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" | jq -r '.status.state')
     if [ "$IS_READY" != "Ready" ]; then
-        echo "Reused Account is not Ready"
+        echo "Account CR $accountCrName is not Ready"
         exit $EXIT_TEST_FAIL_REUSED_ACCOUNT_NOT_READY
     fi
 
     echo "Validating reuse status set on Account CR."
     IS_REUSED=$(getAccountCRAsJson "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" | jq -r '.status.reused')
     if [ "$IS_REUSED" != true ]; then
-        echo "Account is not Reused"
+        echo "Account CR $accountCrName is missing the .status.reused field"
         exit $EXIT_TEST_FAIL_ACCOUNT_NOT_REUSED
     fi
 
     # List S3 bucket
     echo "Validating customer resources (s3 bucket) were removed."
     BUCKETS=$(
-        AWS_ACCESS_KEY_ID=$(oc get secret "${IAM_USER_SECRET}" -n "${NAMESPACE}" -o json | jq -r '.data.aws_access_key_id' | base64 -d)
+        AWS_ACCESS_KEY_ID=$(oc get secret "${awsAccountSecretCrName}" -n "${accountCrNamespace}" -o json | jq -r '.data.aws_access_key_id' | base64 -d)
         export AWS_ACCESS_KEY_ID
-        AWS_SECRET_ACCESS_KEY=$(oc get secret "${IAM_USER_SECRET}" -n "${NAMESPACE}" -o json | jq -r '.data.aws_secret_access_key' | base64 -d)
+        AWS_SECRET_ACCESS_KEY=$(oc get secret "${awsAccountSecretCrName}" -n "${accountCrNamespace}" -o json | jq -r '.data.aws_secret_access_key' | base64 -d)
         export AWS_SECRET_ACCESS_KEY
 
         aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'
