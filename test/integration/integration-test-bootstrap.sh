@@ -5,6 +5,7 @@ set -eo pipefail
 source test/integration/test_envs
 source test/integration/integration-test-lib.sh
 
+export TEST_START_TIME_SECONDS=$(date +%s)
 export OPERATOR_START_TIME=$(date --rfc-3339=seconds)
 export IMAGE_NAME=aws-account-operator
 export BUILD_CONFIG=aws-account-operator
@@ -61,9 +62,6 @@ function parseArgs {
     if [ -z "$NAMESPACE" ]; then
         NAMESPACE=aws-account-operator
     fi
-    echo "PROFILE=${PROFILE}"
-    echo "NAMESPACE=${NAMESPACE}"
-    echo "SKIP_CLEANUP=${SKIP_CLEANUP}"
 }
 
 function sourceEnvrcConfig {
@@ -332,18 +330,30 @@ function profileLocal {
     echo "========================================================================"
 
     # start local operator if not already running
+    #
     # not sure if theres a better way to detect this, but operator-sdk processes look 
     # like this when I was testing locally: 
-    #   > ps aux | grep go-build
-    #      mstratto 3313211  0.2  0.1 2590492 117236 pts/7  Sl+  10:59   0:08 /tmp/go-build3762679696/b001/exe/main --zap-devel
-    if ! ps aux | grep "[g]o-build" &>/dev/null; then
+    #   > ps aux | grep "[g]o-build"
+    #   mstratto 3313211  0.2  0.1 2590492 117236 pts/7  Sl+  10:59   0:08 /tmp/go-build3762679696/b001/exe/main --zap-devel
+    # There is some build information in that path, but I thought that was overkill:
+    #   > cat /tmp/go-build3762679696/b001/importcfg.link | grep aws-account-operator | wc -l
+    #   14
+    if ! localOperatorPID=$(pgrep -f go-build); then
         echo "Building and deploying operator image"
         make deploy-local OPERATOR_NAMESPACE=$NAMESPACE > $LOCAL_LOG_FILE 2>&1 &
         localOperatorPID=$!
         echo "Operator running in background with PID $localOperatorPID"
         echo "You can follow operator logs with: tail -f $LOCAL_LOG_FILE"
     else
-        echo "Local operator-sdk process already running. Not starting a new one."
+        echo "Local operator-sdk process (probably) already running with PID $localOperatorPID."
+        localOperatorStdOut=$(ls -l /proc/$localOperatorPID/fd/1)
+        if !  echo "$localOperatorStdOut" | grep "$LOCAL_LOG_FILE" &>/dev/null; then
+            echo -e "Proc $localOperatorPID stdout doesnt seem to be going to the expected log file ($LOCAL_LOG_FILE):\n\t$localOperatorStdOut"
+            echo "This might not be the operator process. Do you have multiple operator-sdk builds running?"
+            echo "You may need to intervene to make sure the operator is running properly."
+        else
+            echo "You can follow operator logs with: tail -f $LOCAL_LOG_FILE"
+        fi
     fi
 }
 
@@ -562,9 +572,9 @@ echo -e "\n=====================================================================
 echo "= START INTEGRATION TESTS"
 echo "========================================================================"
 set +e
-runTest "test/integration/tests/test_nonccs_account_creation.sh"
+#runTest "test/integration/tests/test_nonccs_account_creation.sh"
 runTest "test/integration/tests/test_nonccs_account_reuse.sh"
-runTest "test/integration/tests/test_aws_ou_logic.sh"
+#runTest "test/integration/tests/test_aws_ou_logic.sh"
 set -e
 
 #dumpOperatorLogsToConsole
