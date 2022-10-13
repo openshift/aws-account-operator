@@ -31,7 +31,7 @@ exitCodeMessages[$EXIT_TEST_FAIL_ACCOUNT_CLAIM_NAMESPACE_NOT_DELETED]="Test Acco
 awsAccountId="${OSD_STAGING_1_AWS_ACCOUNT_ID}"
 accountCrNamespace="${NAMESPACE}"
 
-testName="test-nonccs-account-creation-${TEST_START_TIME_SECONDS}"
+testName="test-nonccs-account-reuse-${TEST_START_TIME_SECONDS}"
 accountCrName="${testName}"
 accountClaimCrName="${testName}"
 accountClaimCrNamespace="${testName}-cluster"
