@@ -24,23 +24,12 @@ ci-aws-resources-cleanup:
 	hack/scripts/cleanup-aws-resources.sh "$(STS_ROLE_ARN)" "$(OSD_STAGING_1_AWS_ACCOUNT_ID)"
 	hack/scripts/cleanup-aws-resources.sh "$(STS_JUMP_ARN)" "$(OSD_STAGING_2_AWS_ACCOUNT_ID)"
 
-# working:
-#   test-account-creation
-#   test-reuse
-.PHONY: ci-int-tests
-ci-int-tests: test-reuse
-
 .PHONY: test-integration
-test-integration: test-ccs test-reuse test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts test-fake-accountclaim test-kms ## Runs all integration tests
+test-integration: test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts test-fake-accountclaim test-kms ## Runs all integration tests
 
 #############################################################################################
 # Tests
 #############################################################################################
-
-.PHONY: test-ccs
-test-ccs: create-ccs-secret create-ccs-accountclaim ## Test CCS
-	test/integration/tests/validate_ccs_accountclaim.sh
-	$(MAKE) delete-ccs
 
 .PHONY: test-awsfederatedrole
 test-awsfederatedrole: check-aws-account-id-env ## Test Federated Access Roles
@@ -127,13 +116,6 @@ create-ccs-accountclaim: ## Create CSS AccountClaim
 	# Wait for accountclaim to become ready
 	@while true; do STATUS=$$(oc get accountclaim ${CCS_CLAIM_NAME} -n ${CCS_NAMESPACE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${CCS_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
 
-.PHONY: create-accountclaim
-create-accountclaim: check-aws-account-id-env ## Create accountclaim
-	# Create Account
-	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc apply -f -
-	test/integration/api/create_account.sh
-	test/integration/api/create_accountclaim.sh
-
 #TODO: move to script
 .PHONY: create-awsfederatedrole
 create-awsfederatedrole: ## Create awsFederatedRole "Read Only"
@@ -200,16 +182,6 @@ delete-account: ## Delete account
 	test/integration/api/delete_account.sh || true
 	# Delete Secrets
 	test/integration/api/delete_account_secrets.sh
-
-.PHONY: delete-accountclaim-namespace
-delete-accountclaim-namespace: ## Delete account claim namespace
-	# Delete reuse namespace
-	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/namespace.tmpl | oc delete -f -
-
-.PHONY: delete-accountclaim
-delete-accountclaim: ## Delete AccountClaim
-	# Delete accountclaim
-	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws.managed.openshift.io_v1alpha1_accountclaim_cr.tmpl | oc delete -f -
 
 .PHONY: delete-ccs
 delete-ccs: ## Teardown the test CCS account
