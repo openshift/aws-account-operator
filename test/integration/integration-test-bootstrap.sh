@@ -320,13 +320,7 @@ function profileLocal {
     cleanupPre
 
     echo -e "\n========================================================================"
-    echo "= Preparing Cluster for Build/Deploy"
-    echo "========================================================================"
-    $OC adm new-project "$NAMESPACE" 2>/dev/null || true
-    make predeploy
-
-    echo -e "\n========================================================================"
-    echo "= Building/Running Operator using operator-sdk"
+    echo "= Operator Runtime"
     echo "========================================================================"
 
     # start local operator if not already running
@@ -339,7 +333,15 @@ function profileLocal {
     #   > cat /tmp/go-build3762679696/b001/importcfg.link | grep aws-account-operator | wc -l
     #   14
     if ! localOperatorPID=$(pgrep -f go-build); then
-        echo "Building and deploying operator image"
+        echo -e "\n========================================================================"
+        echo "= Preparing Cluster for Build/Deploy"
+        echo "========================================================================"
+        $OC adm new-project "$NAMESPACE" 2>/dev/null || true
+        make predeploy
+
+        echo -e "\n========================================================================"
+        echo "= Building/Running Operator using operator-sdk"
+        echo "========================================================================"
         make deploy-local OPERATOR_NAMESPACE=$NAMESPACE > $LOCAL_LOG_FILE 2>&1 &
         localOperatorPID=$!
         echo "Operator running in background with PID $localOperatorPID"
@@ -410,20 +412,23 @@ function profileStage {
     cleanupPre
 
     echo -e "\n========================================================================"
-    echo "= Preparing Cluster for Build/Deploy"
-    echo "========================================================================"
-    $OC adm new-project "$NAMESPACE" 2>/dev/null || true
-    make prow-ci-predeploy
-    make validate-deployment
-
-    echo -e "\n========================================================================"
-    echo "= Building Operator Image"
+    echo "= Operator Runtime"
     echo "========================================================================"
     echo "Checking for existing AAO deployment."
     OPERATOR_START_TIME=$(date --rfc-3339=seconds)
     aaoDeployment=$($OC_WITH_NAMESPACE get deployment $OPERATOR_DEPLOYMENT -o json --ignore-not-found=true | jq '.status.conditions[] | select( .type == "Available" and .status == "True" )')
 
     if [ -z "$aaoDeployment" ]; then
+        echo -e "\n========================================================================"
+        echo "= Preparing Cluster for Build/Deploy"
+        echo "========================================================================"
+        $OC adm new-project "$NAMESPACE" 2>/dev/null || true
+        make prow-ci-predeploy
+        make validate-deployment
+
+        echo -e "\n========================================================================"
+        echo "= Building Operator Image"
+        echo "========================================================================"
         buildOperatorImage
         verifyBuildSuccess
 
@@ -433,7 +438,7 @@ function profileStage {
         deployOperator
         waitForDeployment
     else
-        echo "Deployment found. Not rebuilding or deploying operator image."
+        echo "Existing deployment found. Not rebuilding or deploying operator image."
     fi
 }
 
