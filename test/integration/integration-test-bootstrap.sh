@@ -62,6 +62,7 @@ function parseArgs {
     if [ -z "$NAMESPACE" ]; then
         NAMESPACE=aws-account-operator
     fi
+    export NAMESPACE
 }
 
 function sourceEnvrcConfig {
