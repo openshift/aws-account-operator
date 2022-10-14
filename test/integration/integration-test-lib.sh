@@ -239,6 +239,12 @@ function waitForAccountClaimCRReadyOrFailed {
     local crYaml=$(generateAccountClaimCRYaml "${accountClaimCrName}" "${accountClaimCrNamespace}")
     
     echo "Waiting for AccountClaim CR to become ready (timeout: ${timeout})"
+    
+    # temporary, need to see why I'm getting this error on prow infra:
+    # error: unrecognized condition: "jsonpath={.status.state}=Ready"
+    oc version
+    oc wait --help
+
     # for some reason condition=Ready doesn't work here, will look into it later
     if ! ocWaitForResourceCondition "${crYaml}" "${timeout}" "jsonpath={.status.state}=Ready"; then
         if status=$(ocGetResourceAsJson "${crYaml}" | jq -r '.items[0].status.state'); then
