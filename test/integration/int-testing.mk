@@ -31,7 +31,7 @@ ci-aws-resources-cleanup:
 #############################################################################################
 
 .PHONY: test-integration
-test-integration: test-awsfederatedaccountaccess test-awsfederatedrole test-aws-ou-logic test-sts test-fake-accountclaim test-kms ## Runs all integration tests
+test-integration: test-awsfederatedaccountaccess test-awsfederatedrole test-sts test-fake-accountclaim test-kms ## Runs all integration tests
 
 .PHONY: test-awsfederatedrole
 test-awsfederatedrole: check-aws-account-id-env ## Test Federated Access Roles
