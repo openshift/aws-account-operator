@@ -3,7 +3,7 @@ kind: Template
 parameters:
 - name: ROOT
 - name: BASE
-- name: ACCOUNTLIMIT
+- name: ACCOUNT_LIMIT
 - name: VCPU_QUOTA
 - name: OPERATOR_NAMESPACE
 - name: STS_JUMP_ARN
@@ -21,7 +21,7 @@ objects:
     root: ${ROOT}
     base: ${BASE}
     quota.vcpu: ${VCPU_QUOTA}
-    account-limit: ${ACCOUNTLIMIT}
+    account-limit: ${ACCOUNT_LIMIT}
     MaxConcurrentReconciles.account: "2"
     MaxConcurrentReconciles.accountvalidation: "2"
     MaxConcurrentReconciles.accountclaim: "1"

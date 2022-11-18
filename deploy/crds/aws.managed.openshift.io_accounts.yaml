@@ -78,6 +78,20 @@ spec:
                 type: object
               manualSTSMode:
                 type: boolean
+              regionalServiceQuotas:
+                additionalProperties:
+                  additionalProperties:
+                    properties:
+                      status:
+                        type: string
+                      value:
+                        type: integer
+                    required:
+                    - status
+                    - value
+                    type: object
+                  type: object
+                type: object
             required:
             - awsAccountID
             - iamUserSecret
@@ -117,6 +131,20 @@ spec:
                       type: string
                   type: object
                 type: array
+              regionalServiceQuotas:
+                additionalProperties:
+                  additionalProperties:
+                    properties:
+                      status:
+                        type: string
+                      value:
+                        type: integer
+                    required:
+                    - status
+                    - value
+                    type: object
+                  type: object
+                type: object
               reused:
                 type: boolean
               rotateConsoleCredentials:

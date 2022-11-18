@@ -35,11 +35,48 @@ type AccountSpec struct {
 	// +optional
 	ClaimLink string `json:"claimLink"`
 	// +optional
-	ClaimLinkNamespace string      `json:"claimLinkNamespace,omitempty"`
-	LegalEntity        LegalEntity `json:"legalEntity,omitempty"`
-	ManualSTSMode      bool        `json:"manualSTSMode,omitempty"`
-	AccountPool        string      `json:"accountPool,omitempty"`
+	ClaimLinkNamespace    string                `json:"claimLinkNamespace,omitempty"`
+	LegalEntity           LegalEntity           `json:"legalEntity,omitempty"`
+	ManualSTSMode         bool                  `json:"manualSTSMode,omitempty"`
+	AccountPool           string                `json:"accountPool,omitempty"`
+	RegionalServiceQuotas RegionalServiceQuotas `json:"regionalServiceQuotas,omitempty"`
 }
+
+type RegionalServiceQuotas map[string]AccountServiceQuota
+
+// +k8s:openapi-gen=true
+type AccountServiceQuota map[SupportedServiceQuotas]*ServiceQuotaStatus
+
+type ServiceQuotaStatus struct {
+	Value  int                  `json:"value"`
+	Status ServiceRequestStatus `json:"status"`
+}
+
+type ServiceRequestStatus string
+
+const (
+	ServiceRequestTodo       ServiceRequestStatus = "TODO"
+	ServiceRequestInProgress ServiceRequestStatus = "IN_PROGRESS"
+	ServiceRequestCompleted  ServiceRequestStatus = "COMPLETED"
+	ServiceRequestDenied     ServiceRequestStatus = "DENIED"
+)
+
+type SupportedServiceQuotas string
+
+const (
+	RulesPerSecurityGroup     SupportedServiceQuotas = "L-0EA8095F"
+	RunningStandardInstances  SupportedServiceQuotas = "L-1216C47A"
+	NLBPerRegion              SupportedServiceQuotas = "L-69A177A2"
+	EC2VPCElasticIPsQuotaCode SupportedServiceQuotas = "L-0263D0A3" // EC2-VPC Elastic IPs
+)
+
+type SupportedServiceQuotaServices string
+
+const (
+	EC2ServiceQuota      SupportedServiceQuotaServices = "ec2"
+	VPCServiceQuota      SupportedServiceQuotaServices = "vpc"
+	Elasticloadbalancing SupportedServiceQuotaServices = "elasticloadbalancing"
+)
 
 // AccountStatus defines the observed state of Account
 // +k8s:openapi-gen=true
@@ -47,11 +84,12 @@ type AccountStatus struct {
 	Claimed       bool   `json:"claimed,omitempty"`
 	SupportCaseID string `json:"supportCaseID,omitempty"`
 	// +optional
-	Conditions               []AccountCondition `json:"conditions,omitempty"`
-	State                    string             `json:"state,omitempty"`
-	RotateCredentials        bool               `json:"rotateCredentials,omitempty"`
-	RotateConsoleCredentials bool               `json:"rotateConsoleCredentials,omitempty"`
-	Reused                   bool               `json:"reused,omitempty"`
+	Conditions               []AccountCondition    `json:"conditions,omitempty"`
+	State                    string                `json:"state,omitempty"`
+	RotateCredentials        bool                  `json:"rotateCredentials,omitempty"`
+	RotateConsoleCredentials bool                  `json:"rotateConsoleCredentials,omitempty"`
+	Reused                   bool                  `json:"reused,omitempty"`
+	RegionalServiceQuotas    RegionalServiceQuotas `json:"regionalServiceQuotas,omitempty"`
 }
 
 // AccountCondition contains details for the current condition of a AWS account
@@ -110,8 +148,6 @@ const (
 	// AccountInitializingRegions indicates we've kicked off the process of creating and terminating
 	// instances in all supported regions
 	AccountInitializingRegions = "InitializingRegions"
-	// AccountQuotaIncreaseRequested is set when a quota increase has been requested
-	AccountQuotaIncreaseRequested AccountConditionType = "QuotaIncreaseRequested"
 )
 
 // +genclient
@@ -175,6 +211,41 @@ func (a *Account) HasState() bool {
 // HasSupportCaseID returns true if an account has a SupportCaseID Set
 func (a *Account) HasSupportCaseID() bool {
 	return a.Status.SupportCaseID != ""
+}
+
+// HasOpenQuotaIncreaseRequests returns true if an account has any open quota increase requests
+func (a *Account) HasOpenQuotaIncreaseRequests() bool {
+	for _, accountServiceQuotas := range a.Status.RegionalServiceQuotas {
+		for _, v := range accountServiceQuotas {
+			if v.Status != ServiceRequestCompleted {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (a *Account) GetQuotaRequestsByStatus(stati ...ServiceRequestStatus) (int, RegionalServiceQuotas) {
+	// var returnRegionalServiceQuotaRequest RegionalServiceQuotas
+	var returnRegionalServiceQuotaRequest = make(RegionalServiceQuotas)
+	var count = 0
+	for region, accountServiceQuota := range a.Status.RegionalServiceQuotas {
+		for quotaCode, v := range accountServiceQuota {
+			for _, status := range stati {
+				if v.Status == status {
+					_, ok := returnRegionalServiceQuotaRequest[region]
+					if !ok {
+						returnRegionalServiceQuotaRequest[region] = make(AccountServiceQuota)
+						returnRegionalServiceQuotaRequest[region][quotaCode] = accountServiceQuota[quotaCode]
+					} else {
+						returnRegionalServiceQuotaRequest[region][quotaCode] = accountServiceQuota[quotaCode]
+					}
+					count++
+				}
+			}
+		}
+	}
+	return count, returnRegionalServiceQuotaRequest
 }
 
 // IsPendingVerification returns true if the account is in a PendingVerification state

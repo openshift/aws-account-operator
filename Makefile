@@ -101,7 +101,9 @@ predeploy-aws-account-operator: ## Predeploy AWS Account Operator
 	# Create aws-account-operator CRDs
 	@ls deploy/crds/*.yaml | xargs -L1 oc apply -f
 	# Create zero size account pool
-	@oc apply -f hack/files/aws.managed.openshift.io_v1alpha1_zero_size_accountpool.yaml
+	@oc process --local -p NAME="zero-size-accountpool" -p SIZE=0 -p TYPE="Default" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountpool.tmpl | oc apply -f -	
+	# Create zero size account pool
+	@oc process --local -p NAME="hs-zero-size-accountpool" -p SIZE=1 -p TYPE="Hypershift" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountpool.tmpl | oc apply -f -
 
 .PHONY: validate-deployment
 validate-deployment: check-aws-account-id-env check-sts-setup ## Validates deployment configuration
@@ -131,7 +133,7 @@ deploy-cluster: isclean ## Deploy to cluster
 .PHONY: create-ou-map
 create-ou-map: check-ou-mapping-configmap-env ## Test apply OU map CR
 	# Create OU map
-	@hack/scripts/set_operator_configmap.sh -a 0 -v 1 -r "${OSD_STAGING_1_OU_ROOT_ID}" -o "${OSD_STAGING_1_OU_BASE_ID}" -s "${STS_JUMP_ARN}" -m "${SUPPORT_JUMP_ROLE}"
+	@hack/scripts/set_operator_configmap.sh -a 0 -v 1 -r "${OSD_STAGING_1_OU_ROOT_ID}" -o "${OSD_STAGING_1_OU_BASE_ID}" -s "${STS_JUMP_ARN}" -m "${SUPPORT_JUMP_ROLE}" -a "${ACCOUNT_LIMIT}"
 
 .PHONY: delete-ou-map
 delete-ou-map: ## Test delete OU map CR

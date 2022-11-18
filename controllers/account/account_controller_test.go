@@ -8,12 +8,20 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/organizations"
+	"github.com/aws/aws-sdk-go/service/servicequotas"
+	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go/service/support"
 	"github.com/go-logr/logr"
 	"github.com/golang/mock/gomock"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 	apis "github.com/openshift/aws-account-operator/api"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"github.com/openshift/aws-account-operator/pkg/utils"
@@ -25,10 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	. "github.com/onsi/gomega/gstruct"
 )
 
 type testAccountBuilder struct {
@@ -99,6 +103,12 @@ func (t *testAccountBuilder) WithObjectMeta(objm metav1.ObjectMeta) *testAccount
 // Just set the whole Status all in one go
 func (t *testAccountBuilder) WithStatus(status awsv1alpha1.AccountStatus) *testAccountBuilder {
 	t.acct.Status = status
+	return t
+}
+
+func (t *testAccountBuilder) WithServiceQuota(regionalServiceQuotas awsv1alpha1.RegionalServiceQuotas) *testAccountBuilder {
+	t.acct.Spec.RegionalServiceQuotas = regionalServiceQuotas
+	t.acct.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
 	return t
 }
 
@@ -1111,6 +1121,63 @@ func TestGetAssumeRole(t *testing.T) {
 	}
 }
 
+// Test GetOpenRegionalQuotaIncreaseRequestsRef
+func TestGetOpenRegionalQuotaIncreaseRequestsRef(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected int
+		acct     *testAccountBuilder
+	}{
+		{
+			name: "GetOpenRegionalQuotaIncreaseRequestsRef",
+			acct: newTestAccountBuilder().WithStatus(
+				awsv1alpha1.AccountStatus{
+					RegionalServiceQuotas: awsv1alpha1.RegionalServiceQuotas{
+						"us-east-1": awsv1alpha1.AccountServiceQuota{
+							awsv1alpha1.RunningStandardInstances: {
+								Value:  10,
+								Status: awsv1alpha1.ServiceRequestTodo,
+							},
+						},
+						"us-east-2": awsv1alpha1.AccountServiceQuota{
+							awsv1alpha1.RunningStandardInstances: {
+								Value:  20,
+								Status: awsv1alpha1.ServiceRequestTodo,
+							},
+							awsv1alpha1.EC2VPCElasticIPsQuotaCode: {
+								Value:  11,
+								Status: awsv1alpha1.ServiceRequestTodo,
+							},
+						},
+						"us-west-1": awsv1alpha1.AccountServiceQuota{
+							awsv1alpha1.RunningStandardInstances: {
+								Value:  10,
+								Status: awsv1alpha1.ServiceRequestCompleted,
+							},
+						},
+					},
+				},
+			),
+			expected: 3,
+		},
+	}
+	for _, test := range tests {
+		t.Run(
+			test.name,
+			func(t *testing.T) {
+				count, _ := test.acct.acct.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
+				if count != test.expected {
+					t.Error(
+						"for account:", test.acct,
+						"expected", test.expected,
+						"got", count,
+					)
+				}
+			},
+		)
+	}
+}
+
 // Test finalizeAccount
 func TestFinalizeAccount(t *testing.T) {
 
@@ -1414,5 +1481,421 @@ var _ = Describe("Account Controller", func() {
 			})))
 		})
 
+	})
+
+	Context("Testing account CR service quotas", func() {
+		utils.DetectDevMode = ""
+		When("Called with a CCS account", func() {
+			account = &newTestAccountBuilder().BYOC(true).WithState(awsv1alpha1.AccountPendingVerification).acct
+			It("does nothing", func() {
+				_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Equal("account is BYOC - should not be handled in NonCCS method"))
+			})
+		})
+		When("Called with a non-CCS account", func() {
+			BeforeEach(func() {
+				account = &newTestAccountBuilder().BYOC(false).WithState(awsv1alpha1.AccountPendingVerification).WithAwsAccountID("4321").acct
+				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account}...).Build()
+			})
+			When("No service quotas are defined for the account", func() {
+				It("does does not open service quota requests for the account", func() {
+					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+						CaseId: aws.String("123456"),
+					}, nil)
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []*support.CaseDetails{
+							{
+								CaseId: aws.String("123456"),
+								Status: aws.String("resolved"),
+							},
+						},
+					}, nil)
+					mockAWSClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any()).Times(0)
+					Eventually(func() []string {
+						_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+						Expect(err).NotTo(HaveOccurred())
+						return []string{account.Status.State, account.Status.SupportCaseID}
+					}).Should(Equal([]string{AccountReady, "123456"}))
+				})
+			})
+			When("Service quotas are defined for the account", func() {
+				BeforeEach(func() {
+					account = &newTestAccountBuilder().BYOC(false).WithServiceQuota(awsv1alpha1.RegionalServiceQuotas{
+						"default": awsv1alpha1.AccountServiceQuota{
+							awsv1alpha1.RunningStandardInstances: {
+								Value: 100,
+							},
+						},
+					}).WithState(awsv1alpha1.AccountPendingVerification).WithAwsAccountID("4321").acct
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
+				})
+				It("copies the service quotas from spec to status", func() {
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRole = func(r *AccountReconciler,
+						reqLogger logr.Logger,
+						currentAcctInstance *awsv1alpha1.Account,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+					// Reconciliation loop 1
+					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []*ec2.Region{
+							{
+								RegionName: aws.String("us-east-1"),
+							},
+						},
+					}, nil)
+					err := setCurrentAccountServiceQuotas(r, nullLogger, account, mockAWSClient)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(1))
+					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))
+				})
+				It("errors when called with a unsupported (by us) servicequota", func() {
+					account = &newTestAccountBuilder().BYOC(false).WithServiceQuota(awsv1alpha1.RegionalServiceQuotas{
+						"default": awsv1alpha1.AccountServiceQuota{
+							"Invalid-Code": {
+								Value: 100,
+							},
+						},
+					}).WithState(awsv1alpha1.AccountPendingVerification).acct
+
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRole = func(r *AccountReconciler,
+						reqLogger logr.Logger,
+						currentAcctInstance *awsv1alpha1.Account,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+
+					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+						CaseId: aws.String("123456"),
+					}, nil)
+					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []*ec2.Region{
+							{
+								RegionName: aws.String("us-east-1"),
+							},
+						},
+					}, nil)
+					_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					Expect(err).To(HaveOccurred())
+				})
+				It("does not create a servicequota case if the quota is already higher", func() {
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRole = func(r *AccountReconciler,
+						reqLogger logr.Logger,
+						currentAcctInstance *awsv1alpha1.Account,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+					// Reconciliation loop 1
+					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+						CaseId: aws.String("123456"),
+					}, nil)
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []*support.CaseDetails{
+							{
+								CaseId: aws.String("123456"),
+								Status: aws.String("resolved"),
+							},
+						},
+					}, nil).Times(2)
+					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []*ec2.Region{
+							{
+								RegionName: aws.String("us-east-1"),
+							},
+						},
+					}, nil)
+					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotas.ServiceQuota{
+							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
+							Value:     aws.Float64(101),
+						},
+					}, nil)
+					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any()).Times(0)
+					Eventually(func() []string {
+						_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+						Expect(err).NotTo(HaveOccurred())
+						return []string{account.Status.State, account.Status.SupportCaseID}
+					}, 60*time.Second).Should(Equal([]string{AccountReady, "123456"}))
+				})
+				It("creates a servicequota case for each defined quota", func() {
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRole = func(r *AccountReconciler,
+						reqLogger logr.Logger,
+						currentAcctInstance *awsv1alpha1.Account,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+					// Reconciliation loop 1
+					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+						CaseId: aws.String("123456"),
+					}, nil)
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []*support.CaseDetails{
+							{
+								CaseId: aws.String("123456"),
+								Status: aws.String("resolved"),
+							},
+						},
+					}, nil).Times(2)
+					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []*ec2.Region{
+							{
+								RegionName: aws.String("us-east-1"),
+							},
+						},
+					}, nil)
+					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any()).Return(&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
+						RequestedQuotas: []*servicequotas.RequestedServiceQuotaChange{},
+					}, nil)
+					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotas.ServiceQuota{
+							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
+							Value:     aws.Float64(0),
+						},
+					}, nil)
+					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any()).Return(&servicequotas.RequestServiceQuotaIncreaseOutput{
+						RequestedQuota: &servicequotas.RequestedServiceQuotaChange{
+							CaseId: aws.String("234567"),
+						},
+					}, nil)
+					// Reconciliation loop 2
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []*support.CaseDetails{
+							{
+								CaseId: aws.String("123456"),
+								Status: aws.String("resolved"),
+							},
+						},
+					}, nil)
+					// The quota now matches the requested value the case is finished
+					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotas.ServiceQuota{
+							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
+							Value:     aws.Float64(100),
+						},
+					}, nil)
+					Eventually(func() []string {
+						_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+						Expect(err).NotTo(HaveOccurred())
+						return []string{account.Status.State, account.Status.SupportCaseID}
+					}).Should(Equal([]string{AccountReady, "123456"}))
+					var k8sAccount awsv1alpha1.Account
+					_ = r.Client.Get(context.TODO(), types.NamespacedName{
+						Namespace: TestAccountNamespace,
+						Name:      TestAccountName,
+					}, &k8sAccount)
+					Expect(k8sAccount.Status.State).To(Equal(AccountReady))
+				})
+				It("moves a servicequota to in-progress if the case is open but not resolved", func() {
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRole = func(r *AccountReconciler,
+						reqLogger logr.Logger,
+						currentAcctInstance *awsv1alpha1.Account,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+					// Reconciliation loop 1
+					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+						CaseId: aws.String("123456"),
+					}, nil)
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []*support.CaseDetails{
+							{
+								CaseId: aws.String("123456"),
+								Status: aws.String("resolved"),
+							},
+						},
+					}, nil)
+					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []*ec2.Region{
+							{
+								RegionName: aws.String("us-east-1"),
+							},
+						},
+					}, nil)
+					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any()).Return(&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
+						RequestedQuotas: []*servicequotas.RequestedServiceQuotaChange{},
+					}, nil)
+					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotas.ServiceQuota{
+							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
+							Value:     aws.Float64(0),
+						},
+					}, nil)
+					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any()).Return(&servicequotas.RequestServiceQuotaIncreaseOutput{
+						RequestedQuota: &servicequotas.RequestedServiceQuotaChange{
+							CaseId: aws.String("234567"),
+						},
+					}, nil)
+					Eventually(func() []string {
+						_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+						Expect(err).NotTo(HaveOccurred())
+						status := account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances]
+						fmt.Printf("%+v\n", status.Status)
+						stringStatus := string(status.Status)
+						supportCase := account.Status.SupportCaseID
+						return []string{stringStatus, supportCase}
+					}).Should(Equal([]string{string(awsv1alpha1.ServiceRequestInProgress), "123456"}))
+					var k8sAccount awsv1alpha1.Account
+					_ = r.Client.Get(context.TODO(), types.NamespacedName{
+						Namespace: TestAccountNamespace,
+						Name:      TestAccountName,
+					}, &k8sAccount)
+					Expect(k8sAccount.Status.State).To(Equal(AccountPendingVerification))
+				})
+				It("updates the correct region if multiple ones get updated", func() {
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRole = func(r *AccountReconciler,
+						reqLogger logr.Logger,
+						currentAcctInstance *awsv1alpha1.Account,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+					// Reconciliation loop 1
+					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+						CaseId: aws.String("123456"),
+					}, nil)
+					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []*ec2.Region{
+							{
+								RegionName: aws.String("us-east-1"),
+							},
+							{
+								RegionName: aws.String("us-east-2"),
+							},
+						},
+					}, nil)
+					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(2))
+					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))
+					Expect(len(account.Status.RegionalServiceQuotas["us-east-2"])).To(Equal(1))
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []*support.CaseDetails{
+							{
+								CaseId: aws.String("123456"),
+								Status: aws.String("resolved"),
+							},
+						},
+					}, nil).Times(2)
+					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any()).Return(&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
+						RequestedQuotas: []*servicequotas.RequestedServiceQuotaChange{},
+					}, nil).Times(2)
+					// Have to increase both of our quotas
+					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotas.ServiceQuota{
+							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
+							Value:     aws.Float64(0),
+						},
+					}, nil).Times(2)
+					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any()).Return(&servicequotas.RequestServiceQuotaIncreaseOutput{
+						RequestedQuota: &servicequotas.RequestedServiceQuotaChange{
+							CaseId: aws.String("234567"),
+						},
+					}, nil).Times(2)
+					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					Expect(account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestInProgress))
+					Expect(account.Status.RegionalServiceQuotas["us-east-2"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestInProgress))
+					Expect(account.Status.State).To(Equal(AccountPendingVerification))
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []*support.CaseDetails{
+							{
+								CaseId: aws.String("123456"),
+								Status: aws.String("resolved"),
+							},
+						},
+					}, nil)
+					// Have to increase both of our quotas
+					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotas.ServiceQuota{
+							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
+							Value:     aws.Float64(100),
+						},
+					}, nil).Times(2)
+					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					Expect(account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestCompleted))
+					Expect(account.Status.RegionalServiceQuotas["us-east-2"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestCompleted))
+					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					Expect(account.Status.State).To(Equal(AccountReady))
+				})
+				It("fails the account if a request is denied", func() {
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRole = func(r *AccountReconciler,
+						reqLogger logr.Logger,
+						currentAcctInstance *awsv1alpha1.Account,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+					// Reconciliation loop 1
+					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+						CaseId: aws.String("123456"),
+					}, nil)
+					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []*ec2.Region{
+							{
+								RegionName: aws.String("us-east-1"),
+							},
+						},
+					}, nil)
+					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(1))
+					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []*support.CaseDetails{
+							{
+								CaseId: aws.String("123456"),
+								Status: aws.String("resolved"),
+							},
+						},
+					}, nil)
+					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any()).Return(&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
+						RequestedQuotas: []*servicequotas.RequestedServiceQuotaChange{
+							{
+								DesiredValue: aws.Float64(100),
+								QuotaCode:    aws.String(string(awsv1alpha1.RunningStandardInstances)),
+								ServiceCode:  aws.String(string(awsv1alpha1.EC2ServiceQuota)),
+								Status:       aws.String("DENIED"),
+							},
+						},
+					}, nil).Times(1)
+					// Have to increase both of our quotas
+					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotas.ServiceQuota{
+							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
+							Value:     aws.Float64(0),
+						},
+					}, nil).Times(1)
+					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					Expect(account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestDenied))
+					Expect(account.Status.State).To(Equal(AccountFailed))
+				})
+			})
+		})
 	})
 })

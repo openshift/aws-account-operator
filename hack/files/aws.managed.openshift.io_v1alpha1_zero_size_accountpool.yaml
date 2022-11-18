@@ -1,7 +1,0 @@
-apiVersion: aws.managed.openshift.io/v1alpha1
-kind: AccountPool
-metadata:
-  name: zero-size-accountpool
-  namespace: aws-account-operator
-spec:
-  poolSize: 0

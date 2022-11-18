@@ -90,8 +90,17 @@ if [ -z "${SUPPORT_JUMP_ROLE+x}" ]; then
 fi
 
 ACCOUNTPOOL_CONFIG="
-zero-size-accountpool:
-  default: true"
+zero-size-accountpool: 
+  default: true
+hs-zero-size-accountpool:
+  servicequotas:
+    default:
+      L-1216C47A: '750'
+      L-0EA8095F: '200'
+      L-69A177A2: '255'
+      L-0263D0A3: '6'
+    us-east-1:
+      L-1216C47A: '11'"
 
 echo "Deploying AWS Account Operator Configmap"
-oc process -p ROOT="${AWS_ROOT_OU}" -p BASE="${AWS_BASE_OU}" -p ACCOUNTLIMIT="${AWS_ACCOUNT_LIMIT}" -p VCPU_QUOTA="${AWS_VCPU_QUOTA}" -p OPERATOR_NAMESPACE=aws-account-operator -p STS_JUMP_ARN="${STS_JUMP_ARN}" -p SUPPORT_JUMP_ROLE="${SUPPORT_JUMP_ROLE}" -p ACCOUNTPOOL_CONFIG="${ACCOUNTPOOL_CONFIG}" -f hack/templates/aws.managed.openshift.io_v1alpha1_configmap.tmpl | oc apply -f -
+oc process -p ROOT="${AWS_ROOT_OU}" -p BASE="${AWS_BASE_OU}" -p ACCOUNT_LIMIT="${AWS_ACCOUNT_LIMIT}" -p VCPU_QUOTA="${AWS_VCPU_QUOTA}" -p OPERATOR_NAMESPACE=aws-account-operator -p STS_JUMP_ARN="${STS_JUMP_ARN}" -p SUPPORT_JUMP_ROLE="${SUPPORT_JUMP_ROLE}" -p ACCOUNTPOOL_CONFIG="${ACCOUNTPOOL_CONFIG}" -f hack/templates/aws.managed.openshift.io_v1alpha1_configmap.tmpl | oc apply -f -

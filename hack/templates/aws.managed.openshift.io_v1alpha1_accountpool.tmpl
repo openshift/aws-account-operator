@@ -1,0 +1,16 @@
+
+apiVersion: template.openshift.io/v1
+kind: Template
+parameters:
+- name: NAME
+- name: SIZE
+- name: TYPE
+objects:
+- apiVersion: aws.managed.openshift.io/v1alpha1
+  kind: AccountPool
+  metadata:
+    name: "${NAME}"
+    namespace: aws-account-operator
+  spec:
+    poolSize: ${{SIZE}}
+    poolType: "${TYPE}"
