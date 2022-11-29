@@ -1,0 +1,12 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: aws-account-operator-consumer
+subjects:
+- kind: ServiceAccount
+  namespace: aws-account-operator
+  name: aws-account-operator-consumer
+roleRef:
+  kind: ClusterRole
+  name: aws-account-operator-consumer
+  apiGroup: rbac.authorization.k8s.io
