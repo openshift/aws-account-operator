@@ -19,9 +19,13 @@ import (
 	"strconv"
 	"strings"
 
-	corev1 "k8s.io/api/core/v1"
-
+	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/utils"
+	"github.com/openshift/aws-account-operator/test/fixtures"
+	"gopkg.in/yaml.v2"
+	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -80,4 +84,35 @@ func GetIAMArn(awsAccountID, awsResourceType, awsResourceID string) (arn string)
 	// arn:partition:service:region:account-id:resource-type/resource-id
 	arn = strings.Join([]string{"arn:", awsAPI, ":iam::", awsAccountID, ":", awsResourceType, "/", awsResourceID}, "")
 	return
+}
+
+func GetDefaultAccountPoolName(reqLogger logr.Logger, kubeClient client.Client) (string, error) {
+
+	cm, err := utils.GetOperatorConfigMap(kubeClient)
+	if err != nil {
+		reqLogger.Error(err, "failed retrieving configmap")
+		return "", err
+	}
+
+	accountpoolString := cm.Data["accountpool"]
+
+	type AccountPool struct {
+		IsDefault     bool              `yaml:"default,omitempty"`
+		Servicequotas map[string]string `yaml:"servicequotas,omitempty"`
+	}
+
+	data := make(map[string]AccountPool)
+	err = yaml.Unmarshal([]byte(accountpoolString), &data)
+
+	if err != nil {
+		return "", err
+	}
+
+	for poolName, poolData := range data {
+		if poolData.IsDefault {
+			return poolName, nil
+		}
+	}
+
+	return "", fixtures.NotFound
 }

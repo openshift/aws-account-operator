@@ -52,6 +52,8 @@ spec:
                 type: string
               accountOU:
                 type: string
+              accountPool:
+                type: string
               aws:
                 description: Aws struct contains specific AWS account configuration
                   options

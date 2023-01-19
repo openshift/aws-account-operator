@@ -8,7 +8,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -94,6 +94,17 @@ func TestReconcileAccountPool(t *testing.T) {
 	}
 
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
+
+	configmap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      awsv1alpha1.DefaultConfigMap,
+			Namespace: awsv1alpha1.AccountCrNamespace,
+		},
+		Data: map[string]string{
+			"accountpool": "test: {\"default\": true}",
+		},
+	}
+
 	tests := []struct {
 		name                  string
 		localObjects          []runtime.Object
@@ -118,6 +129,7 @@ func TestReconcileAccountPool(t *testing.T) {
 						UnclaimedAccounts: 2,
 					},
 				},
+				configmap,
 				createAccountMock("account1", "Ready", unclaimed),
 				createAccountMock("account2", "Ready", unclaimed),
 			},
@@ -155,6 +167,7 @@ func TestReconcileAccountPool(t *testing.T) {
 						UnclaimedAccounts: 0,
 					},
 				},
+				configmap,
 			},
 			expectedAccountPool: awsv1alpha1.AccountPool{
 				ObjectMeta: metav1.ObjectMeta{
@@ -190,6 +203,7 @@ func TestReconcileAccountPool(t *testing.T) {
 				createAccountMock("account3", "PendingVerification", unclaimed),
 				createAccountMock("account4", "Failed", unclaimed),
 				createAccountMock("account5", "Ready", claimed),
+				configmap,
 			},
 			expectedAccountPool: awsv1alpha1.AccountPool{
 				ObjectMeta: metav1.ObjectMeta{
