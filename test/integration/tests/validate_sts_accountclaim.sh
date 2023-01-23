@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
 # get name/namespace
-source hack/scripts/test_envs
+source test/integration/test_envs
 
 # get accountclaim
 accClaim=$(oc get accountclaim "$STS_CLAIM_NAME" -n "$STS_NAMESPACE_NAME" -o json)

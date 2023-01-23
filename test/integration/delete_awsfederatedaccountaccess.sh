@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source hack/scripts/test_envs
+source test/integration/test_envs
 
 while [ "$1" != "" ]; do
   case $1 in

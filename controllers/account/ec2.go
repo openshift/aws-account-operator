@@ -803,7 +803,7 @@ func vCPUQuotaNeedsIncrease(client awsclient.Client, desiredQuota float64) (bool
 
 	// Regardless of errors, if we got the result for the actual quota,
 	// then compare it to the desired quota.
-	if result.Quota != nil {
+	if result.Quota != nil && result.Quota.Value != nil {
 		if *result.Quota.Value < desiredQuota {
 			return true, err
 		}
