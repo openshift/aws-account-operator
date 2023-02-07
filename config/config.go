@@ -97,14 +97,14 @@ func GetDefaultAccountPoolName(reqLogger logr.Logger, kubeClient client.Client) 
 	accountpoolString := cm.Data["accountpool"]
 
 	type AccountPool struct {
-		IsDefault     bool              `yaml:"default,omitempty"`
-		Servicequotas map[string]string `yaml:"servicequotas,omitempty"`
+		IsDefault bool `yaml:"default,omitempty"`
 	}
 
 	data := make(map[string]AccountPool)
 	err = yaml.Unmarshal([]byte(accountpoolString), &data)
 
 	if err != nil {
+		reqLogger.Error(err, "failed unmarshalling the accountpool data")
 		return "", err
 	}
 

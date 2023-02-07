@@ -135,6 +135,7 @@ func (r *AccountPoolReconciler) calculateAccountPoolStatus(reqLogger logr.Logger
 			defaultPoolName, err := config.GetDefaultAccountPoolName(reqLogger, r.Client)
 
 			if err != nil {
+				reqLogger.Error(err, "error getting default accountpool name")
 				return awsv1alpha1.AccountPoolStatus{}, err
 			}
 

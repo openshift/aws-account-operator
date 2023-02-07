@@ -8,6 +8,7 @@ parameters:
 - name: OPERATOR_NAMESPACE
 - name: STS_JUMP_ARN
 - name: SUPPORT_JUMP_ROLE
+- name: ACCOUNTPOOL_CONFIG
 metadata:
   name: test-aws-ou-mapping-configmap-template
 objects:
@@ -57,6 +58,4 @@ objects:
     feature.validation_move_account: "false"
     feature.validation_tag_account: "false"
     shard-name: local
-    accountpool: | 
-      zero-size-accountpool: 
-        default: true
+    accountpool: ${ACCOUNTPOOL_CONFIG}
