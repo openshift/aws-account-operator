@@ -52,6 +52,8 @@ spec:
           spec:
             description: AccountSpec defines the desired state of Account
             properties:
+              accountPool:
+                type: string
               awsAccountID:
                 type: string
               byoc:

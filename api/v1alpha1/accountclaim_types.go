@@ -27,6 +27,7 @@ type AccountClaimSpec struct {
 	SupportRoleARN      string      `json:"supportRoleARN,omitempty"`
 	CustomTags          string      `json:"customTags,omitempty"`
 	KmsKeyId            string      `json:"kmsKeyId,omitempty"`
+	AccountPool         string      `json:"accountPool,omitempty"`
 }
 
 // AccountClaimStatus defines the observed state of AccountClaim
