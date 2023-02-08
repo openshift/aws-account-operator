@@ -20,6 +20,8 @@ parameters:
   required: true
 - name: ACCOUNT_POOL_NAME
   required: true
+- name: ACCOUNT_POOL_CONFIG
+  required: true
 - name: STS_JUMP_ROLE
   required: true
 - name: SUPPORT_JUMP_ROLE
@@ -90,6 +92,7 @@ objects:
     support-jump-role: ${SUPPORT_JUMP_ROLE}
     shard-name: ${SHARD_NAME}
     aws-managed-tags: "${AWS_MANAGED_TAGS}"
+    accountpool: "${ACCOUNT_POOL_CONFIG}"
     MaxConcurrentReconciles.account: "${MAXCONCURRENTRECONCILES_ACCOUNT}"
     MaxConcurrentReconciles.accountclaim: "${MAXCONCURRENTRECONCILES_ACCOUNTCLAIM}"
     MaxConcurrentReconciles.accountpool: "${MAXCONCURRENTRECONCILES_ACCOUNTPOOL}"
