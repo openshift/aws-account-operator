@@ -16,6 +16,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/test/fixtures"
+	v1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -313,3 +314,347 @@ func (p *possiblyErroringFakeCtrlRuntimeClient) Update(
 	}
 	return p.Client.Update(ctx, acc)
 }
+
+var _ = Describe("Mutiple AccountPools Claim", func() {
+	var (
+		namespace = awsv1alpha1.AccountCrNamespace // Can't set custom namespace as getUnclaimedAccount has this hardcoded
+
+		defaultAccountName     = "default-account"
+		defaultClaimName       = "default-accountclaim"
+		defaultAccountPoolName = "my-default-accountpool"
+
+		sqAccountName     = "service-quota-account"
+		sqClaimName       = "service-quota-accountclaim"
+		sqAccountPoolName = "my-service-quota-accountpool"
+
+		accounts      []*awsv1alpha1.Account
+		accountClaims []*awsv1alpha1.AccountClaim
+		configMap     *v1.ConfigMap
+
+		r              *AccountClaimReconciler
+		ctrl           *gomock.Controller
+		req            reconcile.Request
+		reconcileCount = 2
+	)
+
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		fmt.Printf("failed adding apis to scheme in account controller tests")
+	}
+	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
+
+	BeforeEach(func() {
+		ctrl = gomock.NewController(GinkgoT())
+		myYaml := `
+        my-default-accountpool:
+          default: true`
+		configMap = &v1.ConfigMap{
+			TypeMeta: metav1.TypeMeta{},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        awsv1alpha1.DefaultConfigMap,
+				Namespace:   awsv1alpha1.AccountCrNamespace,
+				Labels:      map[string]string{},
+				Annotations: map[string]string{},
+			},
+			Data: map[string]string{
+				"accountpool": myYaml,
+			},
+		}
+		// Create the reconciler with a mocking AWS client IBuilder.
+		r = &AccountClaimReconciler{
+			// Test cases need to set fakeClient.
+			Scheme: scheme.Scheme,
+			awsClientBuilder: &mock.Builder{
+				MockController: ctrl,
+			},
+		}
+	})
+
+	AfterEach(func() {
+		ctrl.Finish()
+	})
+
+	When("Reconciling an AccountClaim", func() {
+		When("Only Default AccountPool Account Exists", func() {
+
+			BeforeEach(func() {
+				accounts = append(accounts, &awsv1alpha1.Account{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              defaultAccountName,
+						Namespace:         namespace,
+						CreationTimestamp: metav1.Time{},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								Kind: "AccountPool",
+							},
+						},
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						AccountPool: "",
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State:   AccountReady,
+						Claimed: false,
+					},
+				})
+			})
+
+			AfterEach(func() {
+				accounts = []*awsv1alpha1.Account{}
+			})
+
+			When("We create a non-default claim", func() {
+				It("should NOT claim the default account", func() {
+					accountClaims = append(accountClaims, &awsv1alpha1.AccountClaim{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:              sqClaimName,
+							Namespace:         namespace,
+							CreationTimestamp: metav1.Time{},
+							Finalizers:        []string{accountClaimFinalizer},
+						},
+						Spec: awsv1alpha1.AccountClaimSpec{
+							AccountPool: sqAccountPoolName,
+						},
+					})
+
+					objs := []runtime.Object{configMap, accountClaims[0], accounts[0]}
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
+
+					req = reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Name:      sqClaimName,
+							Namespace: namespace,
+						},
+					}
+
+					for i := 1; i < reconcileCount; i++ {
+						_, err := r.Reconcile(context.TODO(), req)
+						Expect(err).NotTo(HaveOccurred())
+					}
+
+					acc := awsv1alpha1.Account{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(acc.Spec.ClaimLink).To(BeEmpty())
+					Expect(acc.Spec.ClaimLinkNamespace).To(BeEmpty())
+					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
+				})
+			})
+		})
+
+		When("both account types are available", func() {
+			// Needs default + non-default account
+			BeforeEach(func() {
+				accounts = []*awsv1alpha1.Account{}
+				accountClaims = []*awsv1alpha1.AccountClaim{}
+
+				accounts = append(accounts, &awsv1alpha1.Account{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              defaultAccountName,
+						Namespace:         namespace,
+						CreationTimestamp: metav1.Time{},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								Kind: "AccountPool",
+							},
+						},
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						AccountPool: defaultAccountPoolName,
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State:   AccountReady,
+						Claimed: false,
+					},
+				})
+				accounts = append(accounts, &awsv1alpha1.Account{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              sqAccountName,
+						Namespace:         namespace,
+						CreationTimestamp: metav1.Time{},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								Kind: "AccountPool",
+							},
+						},
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						AccountPool: sqAccountPoolName,
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State:   AccountReady,
+						Claimed: false,
+					},
+				})
+			})
+
+			AfterEach(func() {
+				accounts = []*awsv1alpha1.Account{}
+				accountClaims = []*awsv1alpha1.AccountClaim{}
+			})
+
+			When("we create a non-default claim", func() {
+				It("should claim the non-default account", func() {
+					// Needs non-default accountclaim
+					accountClaims = append(accountClaims, &awsv1alpha1.AccountClaim{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:              sqClaimName,
+							Namespace:         namespace,
+							CreationTimestamp: metav1.Time{},
+							Finalizers:        []string{accountClaimFinalizer},
+						},
+						Spec: awsv1alpha1.AccountClaimSpec{
+							AccountPool: sqAccountPoolName,
+						},
+						Status: awsv1alpha1.AccountClaimStatus{
+							State: awsv1alpha1.ClaimStatusReady,
+						},
+					})
+
+					objs := []runtime.Object{configMap, accountClaims[0], accounts[0], accounts[1]}
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
+
+					req = reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Name:      sqClaimName,
+							Namespace: namespace,
+						},
+					}
+
+					for i := 1; i < reconcileCount; i++ {
+						_, err := r.Reconcile(context.TODO(), req)
+						Expect(err).NotTo(HaveOccurred())
+					}
+
+					// Default
+					acc := awsv1alpha1.Account{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(acc.Spec.ClaimLink).To(BeEmpty())
+					Expect(acc.Spec.ClaimLinkNamespace).To(BeEmpty())
+					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
+
+					// SQ
+					acc = awsv1alpha1.Account{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: sqAccountName, Namespace: namespace}, &acc)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(acc.Spec.ClaimLink).To(Equal(sqClaimName))
+					Expect(acc.Spec.ClaimLinkNamespace).To(Equal(namespace))
+					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
+
+					claim := awsv1alpha1.AccountClaim{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: sqClaimName, Namespace: namespace}, &claim)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(claim.Spec.AccountLink).To(Equal(sqAccountName))
+				})
+			})
+			When("we create an explicit claim to the default account pool name", func() {
+				It("should claim the default account", func() {
+					accountClaims = append(accountClaims, &awsv1alpha1.AccountClaim{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:              defaultClaimName,
+							Namespace:         namespace,
+							CreationTimestamp: metav1.Time{},
+							Finalizers:        []string{accountClaimFinalizer},
+						},
+						Spec: awsv1alpha1.AccountClaimSpec{
+							AccountPool: defaultAccountPoolName,
+						},
+						Status: awsv1alpha1.AccountClaimStatus{
+							State: awsv1alpha1.ClaimStatusReady,
+						},
+					})
+
+					objs := []runtime.Object{configMap, accountClaims[0], accounts[0], accounts[1]}
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
+
+					req = reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Name:      defaultClaimName,
+							Namespace: namespace,
+						},
+					}
+
+					for i := 1; i < reconcileCount; i++ {
+						_, err := r.Reconcile(context.TODO(), req)
+						Expect(err).NotTo(HaveOccurred())
+					}
+
+					// Default
+					acc := awsv1alpha1.Account{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(acc.Spec.ClaimLink).To(Equal(defaultClaimName))
+					Expect(acc.Spec.ClaimLinkNamespace).To(Equal(namespace))
+					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
+
+					// SQ
+					acc = awsv1alpha1.Account{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: sqAccountName, Namespace: namespace}, &acc)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(acc.Spec.ClaimLink).To(BeEmpty())
+					Expect(acc.Spec.ClaimLinkNamespace).To(BeEmpty())
+					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
+
+					claim := awsv1alpha1.AccountClaim{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultClaimName, Namespace: namespace}, &claim)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(claim.Spec.AccountLink).To(Equal(defaultAccountName))
+				})
+			})
+
+			When("we create a blank claim (by not specifying an AccountPool in the claim spec)", func() {
+				It("should claim the default account", func() {
+					accountClaims = append(accountClaims, &awsv1alpha1.AccountClaim{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:              defaultClaimName,
+							Namespace:         namespace,
+							CreationTimestamp: metav1.Time{},
+							Finalizers:        []string{accountClaimFinalizer},
+						},
+						Spec: awsv1alpha1.AccountClaimSpec{},
+						Status: awsv1alpha1.AccountClaimStatus{
+							State: awsv1alpha1.ClaimStatusReady,
+						},
+					})
+
+					objs := []runtime.Object{configMap, accountClaims[0], accounts[0], accounts[1]}
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
+
+					req = reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Name:      defaultClaimName,
+							Namespace: namespace,
+						},
+					}
+
+					for i := 1; i < reconcileCount; i++ {
+						_, err := r.Reconcile(context.TODO(), req)
+						Expect(err).NotTo(HaveOccurred())
+					}
+
+					// Default
+					acc := awsv1alpha1.Account{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(acc.Spec.ClaimLink).To(Equal(defaultClaimName))
+					Expect(acc.Spec.ClaimLinkNamespace).To(Equal(namespace))
+					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
+
+					// SQ
+					acc = awsv1alpha1.Account{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: sqAccountName, Namespace: namespace}, &acc)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(acc.Spec.ClaimLink).To(BeEmpty())
+					Expect(acc.Spec.ClaimLinkNamespace).To(BeEmpty())
+					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
+
+					claim := awsv1alpha1.AccountClaim{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultClaimName, Namespace: namespace}, &claim)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(claim.Spec.AccountLink).To(Equal(defaultAccountName))
+				})
+			})
+		})
+	})
+})
