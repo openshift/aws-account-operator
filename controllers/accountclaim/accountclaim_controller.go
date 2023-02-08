@@ -3,8 +3,6 @@ package accountclaim
 import (
 	"context"
 	"fmt"
-	"time"
-
 	"github.com/go-logr/logr"
 	"github.com/openshift/aws-account-operator/config"
 	"github.com/openshift/aws-account-operator/controllers/account"
@@ -17,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -54,9 +53,8 @@ type AccountClaimReconciler struct {
 //+kubebuilder:rbac:groups=aws.managed.openshift.io,resources=accountclaims/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=aws.managed.openshift.io,resources=accountclaims/finalizers,verbs=update
 
-// NewReconcileAccountClaim initializes ReconcileAccountClaim
-//
 //go:generate mockgen -destination ./mock/cr-client.go -package mock sigs.k8s.io/controller-runtime/pkg/client Client
+// NewReconcileAccountClaim initializes ReconcileAccountClaim
 func NewAccountClaimReconciler(client client.Client, scheme *runtime.Scheme, awsClientBuilder awsclient.IBuilder) *AccountClaimReconciler {
 	return &AccountClaimReconciler{
 		Client:           client,
@@ -148,11 +146,21 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 	}
 
+	accountList := &awsv1alpha1.AccountList{}
+
+	listOpts := []client.ListOption{
+		client.InNamespace(awsv1alpha1.AccountCrNamespace),
+	}
+	if err = r.Client.List(context.TODO(), accountList, listOpts...); err != nil {
+		reqLogger.Error(err, "Unable to get accountList")
+		return reconcile.Result{}, err
+	}
+
 	var unclaimedAccount *awsv1alpha1.Account
 
 	// Get an unclaimed account from the pool
 	if accountClaim.Spec.AccountLink == "" {
-		unclaimedAccount, err = r.getUnclaimedAccount(reqLogger, accountClaim)
+		unclaimedAccount, err = getUnclaimedAccount(reqLogger, accountList, accountClaim)
 		if err != nil {
 			reqLogger.Error(err, "Unable to select an unclaimed account from the pool")
 			return reconcile.Result{}, err
@@ -419,78 +427,45 @@ func (r *AccountClaimReconciler) getClaimedAccount(accountLink string, namespace
 	return account, nil
 }
 
-func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
-
-	accountList := &awsv1alpha1.AccountList{}
-
-	listOpts := []client.ListOption{
-		client.InNamespace(awsv1alpha1.AccountCrNamespace),
-	}
-
-	if err := r.Client.List(context.TODO(), accountList, listOpts...); err != nil {
-		reqLogger.Error(err, "Unable to get accountList")
-		return nil, err
-	}
-
-	defaultAccountPoolName, err := config.GetDefaultAccountPoolName(reqLogger, r.Client)
-	if err != nil {
-		reqLogger.Error(err, "Failed getting default AccountPool name")
-		return nil, err
-	}
-
-	if defaultAccountPoolName == "" {
-		// We shouldn't really ever hit this, as GetDefaultAccountPoolName will return NotFound err if
-		// defaultAccountPoolName is empty, more of a just in case something changes.
-		err = fmt.Errorf("Cannot find default accountpool")
-		reqLogger.Error(err, "Default AccountPool name is empty")
-		return nil, err
-	} else {
-		reqLogger.Info(fmt.Sprintf("defaultAccountPoolName: %s", defaultAccountPoolName))
-	}
-
-	if accountClaim.Spec.AccountPool == defaultAccountPoolName || accountClaim.Spec.AccountPool == "" {
-		for _, account := range accountList.Items {
-			// Ensure we're pulling accounts from the default accountPool
-			if account.Spec.AccountPool == defaultAccountPoolName || (account.IsOwnedByAccountPool() && account.Spec.AccountPool == "") {
-				return checkClaimAccountValidity(reqLogger, account, accountClaim)
-			}
-		}
-	} else {
-		for _, account := range accountList.Items {
-			if account.Spec.AccountPool == accountClaim.Spec.AccountPool {
-				return checkClaimAccountValidity(reqLogger, account, accountClaim)
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("can't find a suitable account to claim")
-}
-
-func checkClaimAccountValidity(reqLogger logr.Logger, account awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
-
+func getUnclaimedAccount(reqLogger logr.Logger, accountList *awsv1alpha1.AccountList, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
 	var unclaimedAccount awsv1alpha1.Account
+	var reusedAccount awsv1alpha1.Account
 	var unclaimedAccountFound = false
+	var reusedAccountFound = false
+	time.Sleep(1000 * time.Millisecond)
 
-	if !account.Status.Claimed && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
-		// Check for a reused account with matching legalEntity
-		if account.Status.Reused {
-			if matchAccountForReuse(&account, accountClaim) {
-				reqLogger.Info(fmt.Sprintf("Reusing account: %s", account.ObjectMeta.Name))
-				return &account, nil
-			}
-		} else {
-			// If account is not reused, and we didn't claim one yet, do it
-			if !unclaimedAccountFound {
-				unclaimedAccount = account
-				unclaimedAccountFound = true
+	// Range through accounts and select the first one that doesn't have a claim link
+	for i, account := range accountList.Items {
+		if !account.Status.Claimed && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
+			// Check for a reused account with matching legalEntity
+			if account.Status.Reused {
+				if matchAccountForReuse(&accountList.Items[i], accountClaim) {
+					reusedAccountFound = true
+					reusedAccount = account
+					// if available we break the loop, reused account takes priority
+					break
+				}
+			} else {
+				// If account is not reused, and we didn't claim one yet, do it
+				if !unclaimedAccountFound {
+					unclaimedAccount = account
+					unclaimedAccountFound = true
+				}
 			}
 		}
+	}
+
+	// Give priority to reusing accounts instead of claiming
+	if reusedAccountFound {
+		reqLogger.Info(fmt.Sprintf("Reusing account: %s", reusedAccount.ObjectMeta.Name))
+		return &reusedAccount, nil
 	}
 	// Go for unclaimed accounts
 	if unclaimedAccountFound {
 		reqLogger.Info(fmt.Sprintf("Claiming account: %s", unclaimedAccount.ObjectMeta.Name))
 		return &unclaimedAccount, nil
 	}
+
 	// Neither unclaimed nor reused accounts found
 	return nil, fmt.Errorf("can't find a ready account to claim")
 }
@@ -533,7 +508,10 @@ func (r *AccountClaimReconciler) checkIAMSecretExists(name string, namespace str
 	secretObjectKey := client.ObjectKey{Name: name, Namespace: namespace}
 	err := r.Client.Get(context.TODO(), secretObjectKey, &secret)
 	//nolint:gosimple // Ignores false-positive S1008 gosimple notice
-	return err == nil
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 func (r *AccountClaimReconciler) statusUpdate(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
