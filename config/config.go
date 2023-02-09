@@ -110,6 +110,9 @@ func GetDefaultAccountPoolName(reqLogger logr.Logger, kubeClient client.Client) 
 
 	for poolName, poolData := range data {
 		if poolData.IsDefault {
+			if poolName == "" {
+				return "", fmt.Errorf("Pool Name Empty")
+			}
 			return poolName, nil
 		}
 	}
