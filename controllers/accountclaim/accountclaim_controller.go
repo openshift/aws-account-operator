@@ -444,13 +444,19 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 		for _, account := range accountList.Items {
 			// Ensure we're pulling accounts from the default accountPool
 			if account.Spec.AccountPool == defaultAccountPoolName || (account.IsOwnedByAccountPool() && account.Spec.AccountPool == "") {
-				return checkClaimAccountValidity(reqLogger, account, accountClaim)
+				acc := checkClaimAccountValidity(reqLogger, account, accountClaim)
+				if acc != nil {
+					return acc, nil
+				}
 			}
 		}
 	} else {
 		for _, account := range accountList.Items {
 			if account.Spec.AccountPool == accountClaim.Spec.AccountPool {
-				return checkClaimAccountValidity(reqLogger, account, accountClaim)
+				acc := checkClaimAccountValidity(reqLogger, account, accountClaim)
+				if acc != nil {
+					return acc, nil
+				}
 			}
 		}
 	}
@@ -458,7 +464,7 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 	return nil, fmt.Errorf("can't find a suitable account to claim")
 }
 
-func checkClaimAccountValidity(reqLogger logr.Logger, account awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
+func checkClaimAccountValidity(reqLogger logr.Logger, account awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) *awsv1alpha1.Account {
 
 	var unclaimedAccount awsv1alpha1.Account
 	var unclaimedAccountFound = false
@@ -468,7 +474,7 @@ func checkClaimAccountValidity(reqLogger logr.Logger, account awsv1alpha1.Accoun
 		if account.Status.Reused {
 			if matchAccountForReuse(&account, accountClaim) {
 				reqLogger.Info(fmt.Sprintf("Reusing account: %s", account.ObjectMeta.Name))
-				return &account, nil
+				return &account
 			}
 		} else {
 			// If account is not reused, and we didn't claim one yet, do it
@@ -481,10 +487,10 @@ func checkClaimAccountValidity(reqLogger logr.Logger, account awsv1alpha1.Accoun
 	// Go for unclaimed accounts
 	if unclaimedAccountFound {
 		reqLogger.Info(fmt.Sprintf("Claiming account: %s", unclaimedAccount.ObjectMeta.Name))
-		return &unclaimedAccount, nil
+		return &unclaimedAccount
 	}
-	// Neither unclaimed nor reused accounts found
-	return nil, fmt.Errorf("can't find a ready account to claim")
+
+	return nil
 }
 
 func (r *AccountClaimReconciler) createIAMSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {

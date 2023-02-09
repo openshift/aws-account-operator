@@ -403,6 +403,103 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 				accounts = []*awsv1alpha1.Account{}
 			})
 
+			When("The first account is claimed under a different legal entity", func() {
+				BeforeEach(func() {
+					legalEntity1 := awsv1alpha1.LegalEntity{
+						Name: "test1",
+						ID:   "abcdefg",
+					}
+					legalEntity2 := awsv1alpha1.LegalEntity{
+						Name: "test2",
+						ID:   "hijklmno",
+					}
+
+					accounts[0].Spec.LegalEntity = legalEntity1
+					accounts[0].Status.Reused = true
+					accounts = append(accounts, &awsv1alpha1.Account{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:              "account-two",
+							Namespace:         namespace,
+							CreationTimestamp: metav1.Time{},
+							OwnerReferences: []metav1.OwnerReference{
+								{
+									Kind: "AccountPool",
+								},
+							},
+						},
+						Spec: awsv1alpha1.AccountSpec{
+							AccountPool: "",
+							LegalEntity: legalEntity2,
+						},
+						Status: awsv1alpha1.AccountStatus{
+							State:   AccountReady,
+							Claimed: false,
+							Reused:  true,
+						},
+					})
+
+					accountClaims = append(accountClaims, &awsv1alpha1.AccountClaim{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:              sqClaimName,
+							Namespace:         namespace,
+							CreationTimestamp: metav1.Time{},
+							Finalizers:        []string{accountClaimFinalizer},
+						},
+						Spec: awsv1alpha1.AccountClaimSpec{
+							AccountPool: sqAccountPoolName,
+							LegalEntity: legalEntity2,
+						},
+					})
+
+					objs := []runtime.Object{configMap, accountClaims[0], accounts[0], accounts[1]}
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
+				})
+
+				It("should not claim the wrong legalEntity account", func() {
+					req = reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Name:      sqClaimName,
+							Namespace: namespace,
+						},
+					}
+
+					for i := 1; i < reconcileCount; i++ {
+						_, err := r.Reconcile(context.TODO(), req)
+						Expect(err).NotTo(HaveOccurred())
+					}
+
+					acc := awsv1alpha1.Account{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(acc.Spec.ClaimLink).To(BeEmpty())
+					Expect(acc.Spec.ClaimLinkNamespace).To(BeEmpty())
+					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
+				})
+
+				It("should claim the correct legalEntity account", func() {
+					req = reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Name:      sqClaimName,
+							Namespace: namespace,
+						},
+					}
+
+					for i := 1; i < reconcileCount; i++ {
+						_, err := r.Reconcile(context.TODO(), req)
+						Expect(err).NotTo(HaveOccurred())
+					}
+
+					acc := awsv1alpha1.Account{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: "account-two", Namespace: namespace}, &acc)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(acc.Spec.ClaimLink).To(Equal(sqClaimName))
+					Expect(acc.Spec.ClaimLinkNamespace).To(Equal(namespace))
+					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
+					Expect(acc.Status.Claimed).To(BeTrue())
+				})
+
+			})
+
 			When("We create a non-default claim", func() {
 				It("should NOT claim the default account", func() {
 					accountClaims = append(accountClaims, &awsv1alpha1.AccountClaim{
