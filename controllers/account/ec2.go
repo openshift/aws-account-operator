@@ -160,7 +160,9 @@ func (r *AccountReconciler) InitializeRegion(
 	if vCPUQuota != 0 {
 		// ServiceQuotaStatus is not used for this code to track the status of this specific request.
 		// That's why we pass an unused reference.
-		err := r.HandleServiceQuotaRequests(reqLogger, awsClient, awsv1alpha1.RunningStandardInstances, &awsv1alpha1.ServiceQuotaStatus{})
+		err := r.HandleServiceQuotaRequests(reqLogger, awsClient, awsv1alpha1.RunningStandardInstances, &awsv1alpha1.ServiceQuotaStatus{
+			Value: int(vCPUQuota),
+		})
 		if err != nil {
 			return err
 		}
