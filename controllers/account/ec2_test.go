@@ -434,7 +434,7 @@ func TestCreateVpc(t *testing.T) {
 			Name:    "positive",
 			Account: newTestAccountBuilder().BYOC(true).GetTestAccount(),
 			ManagedTags: []awsclient.AWSTag{
-				awsclient.AWSTag{
+				{
 					Key:   "Name",
 					Value: "managed-openshift-cluster",
 				},

@@ -310,7 +310,7 @@ func attachAndEnsureRolePolicies(reqLogger logr.Logger, client awsclient.Client,
 			reqLogger.Info(fmt.Sprintf("Found attached policy %s", *policy.PolicyArn))
 			break
 		} else {
-			err = fmt.Errorf("Policy %s never attached to role %s", policyArn, roleName)
+			err = fmt.Errorf("policy %s never attached to role %s", policyArn, roleName)
 			return err
 		}
 	}

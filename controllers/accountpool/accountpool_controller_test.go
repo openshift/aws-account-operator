@@ -61,11 +61,9 @@ func createAccountMock(name string, state string, claimed bool) *awsv1alpha1.Acc
 	}
 	return &awsv1alpha1.Account{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "aws-account-operator",
-			OwnerReferences: []metav1.OwnerReference{
-				metav1.OwnerReference{Kind: "AccountPool"},
-			},
+			Name:            name,
+			Namespace:       "aws-account-operator",
+			OwnerReferences: []metav1.OwnerReference{{Kind: "AccountPool"}},
 		},
 		Spec: awsv1alpha1.AccountSpec{
 			AwsAccountID:  "000000",
@@ -166,6 +164,7 @@ func TestReconcileAccountPool(t *testing.T) {
 						UnclaimedAccounts: 0,
 					},
 				},
+				configmap,
 			},
 			expectedAccountPool: awsv1alpha1.AccountPool{
 				ObjectMeta: metav1.ObjectMeta{

@@ -807,12 +807,33 @@ func schema_openshift_aws_account_operator_api_v1alpha1_AccountSpec(ref common.R
 							Format: "",
 						},
 					},
+					"regionalServiceQuotas": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type: []string{"object"},
+										AdditionalProperties: &spec.SchemaOrBool{
+											Allows: true,
+											Schema: &spec.Schema{
+												SchemaProps: spec.SchemaProps{
+													Ref: ref("github.com/openshift/aws-account-operator/api/v1alpha1.ServiceQuotaStatus"),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 				Required: []string{"awsAccountID", "iamUserSecret"},
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/api/v1alpha1.LegalEntity"},
+			"github.com/openshift/aws-account-operator/api/v1alpha1.LegalEntity", "github.com/openshift/aws-account-operator/api/v1alpha1.ServiceQuotaStatus"},
 	}
 }
 
@@ -872,10 +893,31 @@ func schema_openshift_aws_account_operator_api_v1alpha1_AccountStatus(ref common
 							Format: "",
 						},
 					},
+					"regionalServiceQuotas": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type: []string{"object"},
+										AdditionalProperties: &spec.SchemaOrBool{
+											Allows: true,
+											Schema: &spec.Schema{
+												SchemaProps: spec.SchemaProps{
+													Ref: ref("github.com/openshift/aws-account-operator/api/v1alpha1.ServiceQuotaStatus"),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/api/v1alpha1.AccountCondition"},
+			"github.com/openshift/aws-account-operator/api/v1alpha1.AccountCondition", "github.com/openshift/aws-account-operator/api/v1alpha1.ServiceQuotaStatus"},
 	}
 }

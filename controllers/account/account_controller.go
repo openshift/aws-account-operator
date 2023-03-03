@@ -36,14 +36,9 @@ import (
 )
 
 var log = logf.Log.WithName("controller_account")
+var AssumeRole = AssumeRoleFunc
 
 const (
-	// Service Quota-related constants
-	// vCPUQuotaCode
-	vCPUQuotaCode = "L-1216C47A"
-	// vCPUServiceCode
-	vCPUServiceCode = "ec2"
-
 	// createPendTime is the maximum time we allow an Account to sit in Creating state before we
 	// time out and set it to Failed.
 	createPendTime = utils.WaitTime * time.Minute
@@ -74,6 +69,9 @@ const (
 	// probeSecretEnabled
 	// Currently disabled because it significantly increases reconcile time in production
 	probeSecretEnabled = false
+
+	// number of service quota requests we are allowed to open concurrently in AWS
+	maxOpenQuotaRequests = 20
 )
 
 // AccountReconciler reconciles a Account object
@@ -146,7 +144,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		var awsClient awsclient.Client
 		if currentAcctInstance.IsBYOC() {
 			roleToAssume := getAssumeRole(currentAcctInstance)
-			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
+			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, "", roleToAssume, "")
 			if err != nil {
 				reqLogger.Error(err, "failed building BYOC client from assume_role")
 				if aerr, ok := err.(awserr.Error); ok {
@@ -169,7 +167,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				return reconcile.Result{}, err
 			}
 		} else {
-			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, awsv1alpha1.AccountOperatorIAMRole, "")
+			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
 			if err != nil {
 				reqLogger.Error(err, "failed building AWS client from assume_role")
 				return reconcile.Result{}, err
@@ -238,7 +236,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 		// Test PendingVerification state creating support case and checking for case status
 		if currentAcctInstance.IsPendingVerification() {
-			return r.handleNonCCSPendingVerification(reqLogger, currentAcctInstance, awsSetupClient)
+			return r.HandleNonCCSPendingVerification(reqLogger, currentAcctInstance, awsSetupClient)
 		}
 
 		// Update account Status.Claimed to true if the account is ready and the claim link is not empty
@@ -391,7 +389,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	if currentAcctInstance.IsReady() && probeSecretEnabled {
 
 		roleToAssume := getAssumeRole(currentAcctInstance)
-		awsClient, _, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
+		awsClient, _, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, "", roleToAssume, "")
 		if err != nil {
 			reqLogger.Error(err, "failed building BYOC client from assume_role")
 			// We don't want to error here as erroring will requeue and we will end in an
@@ -486,8 +484,13 @@ func (r *AccountReconciler) handleAccountInitializingRegions(reqLogger logr.Logg
 	return reconcile.Result{}, nil
 }
 
-func (r *AccountReconciler) handleNonCCSPendingVerification(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client) (reconcile.Result, error) {
+func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client) (reconcile.Result, error) {
 	// If the supportCaseID is blank and Account State = PendingVerification, create a case
+	if currentAcctInstance.Spec.BYOC {
+		err := errors.New("account is BYOC - should not be handled in NonCCS method")
+		reqLogger.Error(err, "a BYOC account passed to non-CCS function", "account", currentAcctInstance.Name)
+		return reconcile.Result{}, err
+	}
 	if !currentAcctInstance.HasSupportCaseID() {
 		switch utils.DetectDevMode {
 		case utils.DevModeProduction:
@@ -500,14 +503,21 @@ func (r *AccountReconciler) handleNonCCSPendingVerification(reqLogger logr.Logge
 			// Update supportCaseId in CR
 			currentAcctInstance.Status.SupportCaseID = caseID
 			utils.SetAccountStatus(currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
+			err = setCurrentAccountServiceQuotas(r, reqLogger, currentAcctInstance, awsSetupClient)
+			if err != nil {
+				reqLogger.Error(err, "failed to set account service quotas")
+				return reconcile.Result{}, err
+			}
+
 			err = r.statusUpdate(currentAcctInstance)
 			if err != nil {
 				reqLogger.Error(err, "failed to update account state, retrying", "desired state", AccountPendingVerification)
 				return reconcile.Result{}, err
 			}
 
-			// After creating the support case requeue the request. To avoid flooding and being blacklisted by AWS when
-			// starting the operator with a large AccountPool, add a randomInterval (between 0 and 30 secs) to the regular wait time
+			// After creating the support case or increasing quotas requeue the request. To avoid flooding
+			// and being blacklisted by AWS when starting the operator with a large AccountPool, add a
+			// randomInterval (between 0 and 30 secs) to the regular wait time
 			randomInterval, err := strconv.Atoi(currentAcctInstance.Spec.AwsAccountID)
 			if err != nil {
 				reqLogger.Error(err, "failed converting AwsAccountID string to int")
@@ -522,8 +532,7 @@ func (r *AccountReconciler) handleNonCCSPendingVerification(reqLogger logr.Logge
 		}
 	}
 
-	var resolved bool
-
+	var supportCaseResolved bool
 	switch utils.DetectDevMode {
 	case utils.DevModeProduction:
 		resolvedScoped, err := checkCaseResolution(reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
@@ -531,23 +540,160 @@ func (r *AccountReconciler) handleNonCCSPendingVerification(reqLogger logr.Logge
 			reqLogger.Error(err, "Error checking for Case Resolution")
 			return reconcile.Result{}, err
 		}
-		resolved = resolvedScoped
+		supportCaseResolved = resolvedScoped
 	default:
 		log.Info("Running in development mode, Skipping case resolution check")
-		resolved = true
+		supportCaseResolved = true
 	}
 
-	// Case Resolved, account is Ready
-	if resolved {
-		reqLogger.Info("case resolved", "caseID", currentAcctInstance.Status.SupportCaseID)
+	if currentAcctInstance.HasOpenQuotaIncreaseRequests() {
+		switch utils.DetectDevMode {
+		case utils.DevModeProduction:
+			// First we get all request we need to get a status update on:
+			// - Requests that are not yet open on the AWS side
+			// - Requests that are open but not yet completed
+			currentInFlightCount, inFlightQuotaRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
+			_, onlyOpenRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
+			if currentInFlightCount <= maxOpenQuotaRequests {
+				reqLogger.Info(fmt.Sprintf("currentInFlightCount (%d) <= maxOpenQuotaRequests (%d)", currentInFlightCount, maxOpenQuotaRequests))
+				var maxRequestsReached = false
+				for region, onlyOpenRequest := range onlyOpenRequests {
+					if maxRequestsReached {
+						break
+					}
+					if _, ok := inFlightQuotaRequests[region]; !ok {
+						inFlightQuotaRequests[region] = awsv1alpha1.AccountServiceQuota{}
+					}
+					for quotaCode, r := range onlyOpenRequest {
+						inFlightQuotaRequests[region][quotaCode] = r
+						currentInFlightCount += 1
+						if currentInFlightCount >= maxOpenQuotaRequests {
+							maxRequestsReached = true
+							break
+						}
+					}
+				}
+			}
+			reqLogger.Info("Handling quotarequets", "current-in-flight-count", currentInFlightCount)
+			err := r.updateServiceQuotaRequests(reqLogger, awsSetupClient, currentAcctInstance, inFlightQuotaRequests, currentInFlightCount)
+			return reconcile.Result{RequeueAfter: 30 * time.Second, Requeue: true}, err
+		}
+	}
 
+	openCaseCount, _ := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
+	// Case Resolved and quota increases are all done: account is Ready
+	if supportCaseResolved && openCaseCount == 0 {
+		reqLogger.Info("case and quota increases resolved", "caseID", currentAcctInstance.Status.SupportCaseID)
 		utils.SetAccountStatus(currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, AccountReady)
-		return reconcile.Result{}, r.statusUpdate(currentAcctInstance)
+		_ = r.statusUpdate(currentAcctInstance)
+		return reconcile.Result{}, nil
 	}
 
 	// Case not Resolved, log info and try again in pre-defined interval
-	reqLogger.Info("case not yet resolved, retrying", "caseID", currentAcctInstance.Status.SupportCaseID, "retry delay", intervalBetweenChecksMinutes)
+	if !supportCaseResolved {
+		reqLogger.Info("case not yet resolved, retrying", "caseID", currentAcctInstance.Status.SupportCaseID, "retry delay", intervalBetweenChecksMinutes)
+	}
+
 	return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
+}
+
+func (r *AccountReconciler) updateServiceQuotaRequests(reqLogger logr.Logger, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, serviceQuotaRequests awsv1alpha1.RegionalServiceQuotas, count int) error {
+	for region, quotaRequest := range serviceQuotaRequests {
+		regionLogger := reqLogger.WithValues("Region", region)
+		roleToAssume := getAssumeRole(currentAcctInstance)
+		awsAssumedRoleClient, _, err := AssumeRole(r, reqLogger, currentAcctInstance, awsSetupClient, region, roleToAssume, "")
+		if err != nil {
+			reqLogger.Error(err, "Could not impersonate AWS account", "aws-account", currentAcctInstance.Spec.AwsAccountID)
+			return err
+		}
+
+		// for each open quota in this region check to see if we need to request an increase.
+		for quotaCode, openQuotaRef := range quotaRequest {
+			reqLogger.Info(fmt.Sprintf("Handling quota request for quotaCode: %s", quotaCode))
+			err = r.HandleServiceQuotaRequests(regionLogger, awsAssumedRoleClient, quotaCode, openQuotaRef)
+			if err != nil {
+				return err // TODO: For review, do we want to be handling the error like this?
+			}
+		}
+	}
+
+	deniedCount, _ := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestDenied)
+
+	if deniedCount > 0 {
+		utils.SetAccountStatus(currentAcctInstance, "ServiceQuota increase got denied", awsv1alpha1.AccountFailed, AccountFailed)
+	}
+
+	err := r.statusUpdate(currentAcctInstance)
+	if err != nil {
+		return err // TODO: For review, do we want to be handling the error like this?
+	}
+
+	return nil
+}
+
+// This function takes any service quotas defined in the account CR spec and builds them out in the status. The struct for the service quoats in spec and status will differ
+// as the spec uses a 'default' region to reduce configuation complexity, whereas the status lists all regions and their service quoata values as it's easier to iterate over.
+func setCurrentAccountServiceQuotas(r *AccountReconciler, reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client) error {
+
+	// If standard account, return early
+	if currentAcctInstance.Spec.RegionalServiceQuotas == nil {
+		return nil
+	}
+
+	var defaultAccountServiceQuotas awsv1alpha1.AccountServiceQuota
+	var ok bool
+	if defaultAccountServiceQuotas, ok = currentAcctInstance.Spec.RegionalServiceQuotas["default"]; !ok {
+		err := fmt.Errorf("could not find default key in RegionalServiceQuotas for Account")
+		reqLogger.Error(err, "Could not find default key in RegionalServiceQuotas for Account")
+		return err
+	}
+
+	// Need to assume role into the cluster account
+	roleToAssume := getAssumeRole(currentAcctInstance)
+	awsAssumedRoleClient, _, err := AssumeRole(r, reqLogger, currentAcctInstance, awsSetupClient, "", roleToAssume, "")
+	if err != nil {
+		reqLogger.Error(err, "Could not impersonate AWS account", "aws-account", currentAcctInstance.Spec.AwsAccountID)
+		return err
+	}
+
+	// Get a list of regions enabled in the current account
+	regionsEnabledInAccount, err := awsAssumedRoleClient.DescribeRegions(&ec2.DescribeRegionsInput{
+		AllRegions: aws.Bool(false),
+	})
+	if err != nil {
+		// Retry on failures related to the slow AWS API
+		if aerr, ok := err.(awserr.Error); ok {
+			if aerr.Code() == "OptInRequired" {
+				return nil
+			}
+		}
+		reqLogger.Error(err, "Failed to retrieve list of regions enabled in this account.")
+		return err
+	}
+
+	currentAcctInstance.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
+	// By iterating over the regions returned by AWS as opposed to what's in the Account CR Spec, we
+	// won't set the SQ for a region the account doesn't support by mistake.
+	for _, region := range regionsEnabledInAccount.Regions {
+		// Take the default service quota values and apply to all regions - save to CR status
+		currentAcctInstance.Status.RegionalServiceQuotas[*region.RegionName] = defaultAccountServiceQuotas
+
+		// If we've specified another value for a specific region, set it in the status.
+		if currentAcctInstance.Spec.RegionalServiceQuotas[*region.RegionName] != nil {
+			// For each value in the spec, set it in the status
+			for k, v := range currentAcctInstance.Spec.RegionalServiceQuotas[*region.RegionName] {
+				currentAcctInstance.Status.RegionalServiceQuotas[*region.RegionName][k] = v
+			}
+		}
+	}
+
+	// Blanket setting all status values to TODO.
+	for _, quota := range currentAcctInstance.Status.RegionalServiceQuotas {
+		for k := range quota {
+			quota[k].Status = awsv1alpha1.ServiceRequestTodo
+		}
+	}
+	return nil
 }
 
 func (r *AccountReconciler) finalizeAccount(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account) {
@@ -630,10 +776,21 @@ func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName 
 	return nil
 }
 
+func AssumeRoleFunc(r *AccountReconciler,
+	reqLogger logr.Logger,
+	currentAcctInstance *awsv1alpha1.Account,
+	awsSetupClient awsclient.Client,
+	region string,
+	roleToAssume string,
+	ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+	return r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, region, roleToAssume, ccsRoleID)
+}
+
 func (r *AccountReconciler) assumeRole(
 	reqLogger logr.Logger,
 	currentAcctInstance *awsv1alpha1.Account,
 	awsSetupClient awsclient.Client,
+	region string,
 	roleToAssume string,
 	ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
 
@@ -686,7 +843,13 @@ func (r *AccountReconciler) assumeRole(
 		}
 	}
 
-	awsRegion := config.GetDefaultRegion()
+	var awsRegion string
+	if region != "" {
+		awsRegion = region
+	} else {
+		awsRegion = config.GetDefaultRegion()
+	}
+
 	awsAssumedRoleClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
 		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
@@ -1183,9 +1346,10 @@ func (r *AccountReconciler) getCustomTags(log logr.Logger, account *awsv1alpha1.
 // processTagsFromString accepts a set of strings, each being a key=value pair, one per line.  This is typically defined in YAML similar to:
 //
 // myTags: |
-//   key=value
-//   my-tag=true
-//   base64-is-accepted=eWVzIQ==
+//
+//	key=value
+//	my-tag=true
+//	base64-is-accepted=eWVzIQ==
 //
 // Specifically, we are splitting on the FIRST "=" to deliniate key=value, so any equals signs after the first will go into the value.
 func parseTagsFromString(tags string) []awsclient.AWSTag {
@@ -1286,7 +1450,7 @@ func (r *AccountReconciler) handleCreateAdminAccessRole(
 			return nil, nil, err
 		}
 
-		awsAssumedRoleClient, creds, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, roleID)
+		awsAssumedRoleClient, creds, err = AssumeRole(r, reqLogger, currentAcctInstance, awsSetupClient, "", roleToAssume, roleID)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1294,7 +1458,7 @@ func (r *AccountReconciler) handleCreateAdminAccessRole(
 	} else {
 		// Unlike the CCS block, the non-CCS block does not have a dependency on the RoleID to assumeRole. The
 		// awsAssumedRoleClient is what is needed to create the ManagedOpenShift-Support in the non-CCS account.
-		awsAssumedRoleClient, creds, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, roleToAssume, "")
+		awsAssumedRoleClient, creds, err = AssumeRole(r, reqLogger, currentAcctInstance, awsSetupClient, "", roleToAssume, "")
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1321,7 +1485,7 @@ func (r *AccountReconciler) handleCreateAdminAccessRole(
 func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	r.awsClientBuilder = &awsclient.Builder{}
-	
+
 	maxReconciles, err := utils.GetControllerMaxReconciles(controllerName)
 	if err != nil {
 		log.Error(err, "missing max reconciles for controller", "controller", controllerName)

@@ -111,6 +111,7 @@ func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.
 		return true, nil
 	}
 
-	// reqLogger.Info(fmt.Sprintf("Case [%s] not yet Resolved, waiting. Current Status: %s", caseID, *caseResult.Cases[0].Status))
+	reqLogger.Info(fmt.Sprintf("Case [%s] not yet Resolved, waiting. Current Status: %s", caseID, *caseResult.Cases[0].Status))
+
 	return false, nil
 }
