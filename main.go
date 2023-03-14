@@ -211,7 +211,13 @@ func main() {
 		}
 		http.Handle(customMetricsPath, promhttp.Handler())
 		go func() {
-			if err := http.ListenAndServe(":"+customMetricsPort, nil); err != nil {
+			// Fix for GO-S2114 - "Use of net/http's ListenAndServe function has no support for setting timeouts"
+			server := &http.Server{
+				Addr:              ":" + customMetricsPort,
+				ReadHeaderTimeout: 3 * time.Second,
+			}
+			err := server.ListenAndServe()
+			if err != nil {
 				setupLog.Error(err, "Failed to start metrics handler")
 				os.Exit(1)
 			}
