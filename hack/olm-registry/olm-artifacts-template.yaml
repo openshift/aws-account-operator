@@ -217,6 +217,7 @@ objects:
             - "ram:ListPrincipals"
             - "ram:ListResources"
             - "ram:RejectResourceShareInvitation"
+            - "route53:ListHostedZonesByVPC"
             - "route53resolver:AssociateResolverRule"
             - "route53resolver:DeleteResolverRule"
             - "route53resolver:DisassociateResolverRule"
