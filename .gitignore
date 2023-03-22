@@ -90,7 +90,6 @@ tags
 
 ### boilerplate
 # appsre pipeline
-Dockerfile.olm-registry
 saas-aws-account-operator-bundle/
 .docker/
 .misspell/

@@ -3,7 +3,6 @@ package federatedaccesstesting
 import (
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"testing"
@@ -162,7 +161,7 @@ func logPointerList(list []*string) []string {
 func unmarshalFromFile(t *testing.T, cr string, crToTest *crStruct) {
 	file := "../../" + cr
 
-	yamlFile, err := ioutil.ReadFile(file)
+	yamlFile, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatal("Unable to read from file: "+file, err)
 	}
