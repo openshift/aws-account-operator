@@ -11,3 +11,6 @@
   * [AWSFederatedAccountAccess](3.5-AWSFederatedAccountAccess.md)
 * [Special Items in main.go](./4.0-Special-Items-Main-Go.md) 
 * [Debugging](./5.0-Debugging.md) Useful commands and tips for debugging the operator and AWS.
+* [Maintenance](./6.0-Maintenance.md)
+* [Prow CI Integration Test Framework](./7.0-ProwCIIntegrationTest.md)
+* [Service Quotas](./8.0-ServiceQuotas.md) An overview of AccountPool AWS Service Quotas.  
