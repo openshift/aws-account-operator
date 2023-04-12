@@ -148,11 +148,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 			newLabel := map[string]string{awsv1alpha1.FederatedRoleNameLabel: requestedRole.Name}
 
 			// Join the new UID label with any current labels
-			if currentFAA.Labels != nil {
-				currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
-			} else {
-				currentFAA.Labels = newLabel
-			}
+			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
 			err = r.Client.Update(context.TODO(), currentFAA)
 			if err != nil {
@@ -180,14 +176,10 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 		uid := controllerutils.GenerateShortUID()
 
 		reqLogger.Info(fmt.Sprintf("Adding UID %s to AccountAccess %s", uid, currentFAA.Name))
-		newLabel := map[string]string{"uid": uid}
+		newLabel := map[string]string{awsv1alpha1.UIDLabel: uid}
 
 		// Join the new UID label with any current labels
-		if currentFAA.Labels != nil {
-			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
-		} else {
-			currentFAA.Labels = newLabel
-		}
+		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
 		// Update the CR with new labels
 		err = r.Client.Update(context.TODO(), currentFAA)
@@ -222,14 +214,10 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 	if !hasLabel(currentFAA, awsv1alpha1.AccountIDLabel) {
 
 		reqLogger.Info(fmt.Sprintf("Adding awsAccountID %s to AccountAccess %s", accountID, currentFAA.Name))
-		newLabel := map[string]string{"awsAccountID": accountID}
+		newLabel := map[string]string{awsv1alpha1.AccountIDLabel: accountID}
 
 		// Join the new UID label with any current labels
-		if currentFAA.Labels != nil {
-			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
-		} else {
-			currentFAA.Labels = newLabel
-		}
+		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
 		// Update the CR with new labels
 		err = r.Client.Update(context.TODO(), currentFAA)

@@ -195,6 +195,9 @@ func GenerateLabel(key, value string) map[string]string {
 
 // JoinLabelMaps adds a label to CR
 func JoinLabelMaps(m1, m2 map[string]string) map[string]string {
+	if m1 == nil {
+		return m2
+	}
 
 	for key, value := range m2 {
 		m1[key] = value
