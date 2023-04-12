@@ -95,6 +95,10 @@ type Client interface {
 	ListAttachedUserPolicies(*iam.ListAttachedUserPoliciesInput) (*iam.ListAttachedUserPoliciesOutput, error)
 	CreatePolicy(*iam.CreatePolicyInput) (*iam.CreatePolicyOutput, error)
 	DeletePolicy(input *iam.DeletePolicyInput) (*iam.DeletePolicyOutput, error)
+	DeletePolicyVersion(input *iam.DeletePolicyVersionInput) (*iam.DeletePolicyVersionOutput, error)
+	GetPolicy(input *iam.GetPolicyInput) (*iam.GetPolicyOutput, error)
+	GetPolicyVersion(input *iam.GetPolicyVersionInput) (*iam.GetPolicyVersionOutput, error)
+	ListPolicyVersions(input *iam.ListPolicyVersionsInput) (*iam.ListPolicyVersionsOutput, error)
 	AttachRolePolicy(*iam.AttachRolePolicyInput) (*iam.AttachRolePolicyOutput, error)
 	DetachRolePolicy(*iam.DetachRolePolicyInput) (*iam.DetachRolePolicyOutput, error)
 	ListAttachedRolePolicies(*iam.ListAttachedRolePoliciesInput) (*iam.ListAttachedRolePoliciesOutput, error)
@@ -302,6 +306,22 @@ func (c *awsClient) CreatePolicy(input *iam.CreatePolicyInput) (*iam.CreatePolic
 
 func (c *awsClient) DeletePolicy(input *iam.DeletePolicyInput) (*iam.DeletePolicyOutput, error) {
 	return c.iamClient.DeletePolicy(input)
+}
+
+func (c *awsClient) DeletePolicyVersion(input *iam.DeletePolicyVersionInput) (*iam.DeletePolicyVersionOutput, error) {
+	return c.iamClient.DeletePolicyVersion(input)
+}
+
+func (c *awsClient) GetPolicy(input *iam.GetPolicyInput) (*iam.GetPolicyOutput, error) {
+	return c.iamClient.GetPolicy(input)
+}
+
+func (c *awsClient) GetPolicyVersion(input *iam.GetPolicyVersionInput) (*iam.GetPolicyVersionOutput, error) {
+	return c.iamClient.GetPolicyVersion(input)
+}
+
+func (c *awsClient) ListPolicyVersions(input *iam.ListPolicyVersionsInput) (*iam.ListPolicyVersionsOutput, error) {
+	return c.iamClient.ListPolicyVersions(input)
 }
 
 func (c *awsClient) AttachRolePolicy(input *iam.AttachRolePolicyInput) (*iam.AttachRolePolicyOutput, error) {

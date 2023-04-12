@@ -75,7 +75,7 @@ func GetOperatorStartTime() *metav1.Time {
 }
 
 // The JSON tags as capitals due to requirements for the policydoc
-type awsStatement struct {
+type AwsStatement struct {
 	Effect    string                 `json:"Effect"`
 	Action    []string               `json:"Action"`
 	Resource  []string               `json:"Resource,omitempty"`
@@ -105,21 +105,21 @@ const (
 // in production or a development environment.
 var DetectDevMode devMode = devMode(strings.ToLower(os.Getenv(envDevMode)))
 
-type awsPolicy struct {
+type AwsPolicy struct {
 	Version   string
-	Statement []awsStatement
+	Statement []AwsStatement
 }
 
 // MarshalIAMPolicy converts a role CR into a JSON policy that is acceptable to AWS
 func MarshalIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
-	statements := []awsStatement{}
+	statements := []AwsStatement{}
 
 	for _, statement := range role.Spec.AWSCustomPolicy.Statements {
-		statements = append(statements, awsStatement(statement))
+		statements = append(statements, AwsStatement(statement))
 	}
 
 	// Create a aws policydoc formated struct
-	policyDoc := awsPolicy{
+	policyDoc := AwsPolicy{
 		Version:   "2012-10-17",
 		Statement: statements,
 	}

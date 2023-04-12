@@ -25,7 +25,7 @@ func createRoleMock(statements []awsv1alpha1.StatementEntry) awsv1alpha1.AWSFede
 }
 
 func TestMarshallingIAMPolicy(t *testing.T) {
-	expected := awsStatement{
+	expected := AwsStatement{
 		Effect:   "Allow",
 		Action:   []string{"ec2:DescribeInstances"},
 		Resource: []string{"*"},
@@ -53,7 +53,7 @@ func TestMarshallingIAMPolicy(t *testing.T) {
 
 	// Convert the policy back to an object so we can run comparisons easier than
 	// trying to do the same with a string.
-	var policy awsPolicy
+	var policy AwsPolicy
 	err = json.Unmarshal([]byte(policyJSON), &policy)
 	if err != nil {
 		t.Errorf("There was an error unmarshalling the IAM Policy. %s", err)
@@ -85,7 +85,7 @@ func TestMarshallingIAMPolicy(t *testing.T) {
 }
 
 func TestMarshalingMultipleStatements(t *testing.T) {
-	expectedList := []awsStatement{
+	expectedList := []AwsStatement{
 		{
 			Effect:   "Allow",
 			Action:   []string{"ec2:DescribeInstances"},
@@ -120,7 +120,7 @@ func TestMarshalingMultipleStatements(t *testing.T) {
 
 	// Convert the policy back to an object so we can run comparisons easier than
 	// trying to do the same with a string.
-	var policy awsPolicy
+	var policy AwsPolicy
 	err = json.Unmarshal([]byte(policyJSON), &policy)
 	if err != nil {
 		t.Errorf("There was an error unmarshalling the IAM Policy. %s", err)
@@ -135,7 +135,7 @@ func TestAddingConditionsToStatements(t *testing.T) {
 	condition := &awsv1alpha1.Condition{
 		StringEquals: map[string]string{"ram:RequestedResourceType": "route53resolver:ResolverRule"},
 	}
-	expected := awsStatement{
+	expected := AwsStatement{
 		Effect:    "Allow",
 		Action:    []string{"ec2:DescribeInstances"},
 		Resource:  []string{"*"},
@@ -165,7 +165,7 @@ func TestAddingConditionsToStatements(t *testing.T) {
 
 	// Convert the policy back to an object so we can run comparisons easier than
 	// trying to do the same with a string.
-	var policy awsPolicy
+	var policy AwsPolicy
 	err = json.Unmarshal([]byte(policyJSON), &policy)
 	if err != nil {
 		t.Errorf("There was an error unmarshalling the IAM Policy. %s", err)
