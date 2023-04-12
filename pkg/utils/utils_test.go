@@ -310,7 +310,7 @@ func TestJoinLabelMaps(t *testing.T) {
 	}{
 		{
 			name: "both maps nil",
-			want: nil,
+			want: map[string]string{},
 		},
 		{
 			name: "m1 is nil",
@@ -331,7 +331,7 @@ func TestJoinLabelMaps(t *testing.T) {
 			want: map[string]string{"foo": "bar"},
 		},
 		{
-			name: "m1 and m2 populated with different entires",
+			name: "m1 and m2 populated with differententries ",
 			m1:   map[string]string{"foo": "bar"},
 			m2:   map[string]string{"boo": "far"},
 			want: map[string]string{"foo": "bar", "boo": "far"},
