@@ -207,15 +207,14 @@ delete-accountclaim: ## Delete AccountClaim
 .PHONY: create-awsfederatedrole
 create-awsfederatedrole: ## Create awsFederatedRole "Read Only"
 	# Create Federated role
-	@oc apply -f test/deploy/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml
+	@test/local/create_federated_role.sh
 	# Wait for awsFederatedRole CR to become ready
 	@while true; do STATUS=$$(oc get awsfederatedrole -n ${NAMESPACE} ${AWS_FEDERATED_ROLE_NAME} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Valid" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "awsFederatedRole CR ${AWS_FEDERATED_ROLE_NAME} failed to create"; exit 1; fi; sleep 1; done
 
 .PHONY: delete-awsfederatedrole
 delete-awsfederatedrole: ## Delete awsFederatedRole "Read Only"
 	# Delete Federated role
-	@oc delete -f test/deploy/aws.managed.openshift.io_v1alpha1_awsfederatedrole_readonly_cr.yaml
-	$(MAKE) delete-account || true
+	oc delete awsfederatedrole -n aws-account-operator read-only network-mgmt
 
 .PHONY: create-awsfederatedaccountaccess
 create-awsfederatedaccountaccess: check-aws-account-id-env ## Create awsFederatedAccountAccess - This uses a AWS Account ID from your environment
