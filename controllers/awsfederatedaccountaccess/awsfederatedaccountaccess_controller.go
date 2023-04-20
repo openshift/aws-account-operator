@@ -141,6 +141,22 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 	}
 
 	if currentFAA.Status.State != "" {
+		// Make sure the awsFederatedRoleName label is present
+		if !hasLabel(currentFAA, awsv1alpha1.FederatedRoleNameLabel) {
+			reqLogger.Info(fmt.Sprintf("Adding %s label with value %s to AccountAccess %s", awsv1alpha1.FederatedRoleNameLabel, requestedRole.Name, currentFAA.Name))
+
+			newLabel := map[string]string{awsv1alpha1.FederatedRoleNameLabel: requestedRole.Name}
+
+			// Join the new UID label with any current labels
+			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
+
+			err = r.Client.Update(context.TODO(), currentFAA)
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Failed to update label %s for %s/%s", awsv1alpha1.FederatedRoleNameLabel, currentFAA.Namespace, currentFAA.Name))
+				return reconcile.Result{}, err
+			}
+		}
+
 		if err = r.syncIAMPolicy(currentFAA, requestedRole, awsClient, reqLogger); err != nil {
 			reqLogger.Error(err, fmt.Sprintf("Failed to validate IAM policy for account access %s/%s", currentFAA.Namespace, currentFAA.Name))
 			currentFAA.Status.State = awsv1alpha1.AWSFederatedAccountStateFailed
@@ -160,14 +176,10 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 		uid := controllerutils.GenerateShortUID()
 
 		reqLogger.Info(fmt.Sprintf("Adding UID %s to AccountAccess %s", uid, currentFAA.Name))
-		newLabel := map[string]string{"uid": uid}
+		newLabel := map[string]string{awsv1alpha1.UIDLabel: uid}
 
 		// Join the new UID label with any current labels
-		if currentFAA.Labels != nil {
-			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
-		} else {
-			currentFAA.Labels = newLabel
-		}
+		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
 		// Update the CR with new labels
 		err = r.Client.Update(context.TODO(), currentFAA)
@@ -181,16 +193,6 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 	uidLabel, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
 	if !ok {
 		return reconcile.Result{}, err
-	}
-
-	if !hasLabel(currentFAA, awsv1alpha1.FederatedRoleNameLabel) {
-		currentFAA.Labels[awsv1alpha1.FederatedRoleNameLabel] = requestedRole.Name
-
-		err = r.Client.Update(context.TODO(), currentFAA)
-		if err != nil {
-			reqLogger.Error(err, fmt.Sprintf("Failed to update label %s for %s/%s", awsv1alpha1.FederatedRoleNameLabel, currentFAA.Namespace, currentFAA.Name))
-			return reconcile.Result{}, err
-		}
 	}
 
 	// Get account number of cluster account
@@ -212,14 +214,10 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 	if !hasLabel(currentFAA, awsv1alpha1.AccountIDLabel) {
 
 		reqLogger.Info(fmt.Sprintf("Adding awsAccountID %s to AccountAccess %s", accountID, currentFAA.Name))
-		newLabel := map[string]string{"awsAccountID": accountID}
+		newLabel := map[string]string{awsv1alpha1.AccountIDLabel: accountID}
 
 		// Join the new UID label with any current labels
-		if currentFAA.Labels != nil {
-			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
-		} else {
-			currentFAA.Labels = newLabel
-		}
+		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
 		// Update the CR with new labels
 		err = r.Client.Update(context.TODO(), currentFAA)

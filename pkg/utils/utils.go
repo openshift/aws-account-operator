@@ -195,11 +195,16 @@ func GenerateLabel(key, value string) map[string]string {
 
 // JoinLabelMaps adds a label to CR
 func JoinLabelMaps(m1, m2 map[string]string) map[string]string {
+	merged := make(map[string]string)
+
+	for key, value := range m1 {
+		merged[key] = value
+	}
 
 	for key, value := range m2 {
-		m1[key] = value
+		merged[key] = value
 	}
-	return m1
+	return merged
 }
 
 // AccountCRHasIAMUserIDLabel check for label

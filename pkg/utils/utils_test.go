@@ -300,3 +300,48 @@ func TestGetControllerMaxReconcilesFromCM(t *testing.T) {
 		})
 	}
 }
+
+func TestJoinLabelMaps(t *testing.T) {
+	tests := []struct {
+		name string
+		m1   map[string]string
+		m2   map[string]string
+		want map[string]string
+	}{
+		{
+			name: "both maps nil",
+			want: map[string]string{},
+		},
+		{
+			name: "m1 is nil",
+			m1:   nil,
+			m2:   map[string]string{"foo": "bar"},
+			want: map[string]string{"foo": "bar"},
+		},
+		{
+			name: "m2 is nil",
+			m1:   map[string]string{"foo": "bar"},
+			m2:   nil,
+			want: map[string]string{"foo": "bar"},
+		},
+		{
+			name: "m1 and m2 populated with same entry",
+			m1:   map[string]string{"foo": "bar"},
+			m2:   map[string]string{"foo": "bar"},
+			want: map[string]string{"foo": "bar"},
+		},
+		{
+			name: "m1 and m2 populated with differententries ",
+			m1:   map[string]string{"foo": "bar"},
+			m2:   map[string]string{"boo": "far"},
+			want: map[string]string{"foo": "bar", "boo": "far"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := JoinLabelMaps(tt.m1, tt.m2); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("JoinLabelMaps() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
