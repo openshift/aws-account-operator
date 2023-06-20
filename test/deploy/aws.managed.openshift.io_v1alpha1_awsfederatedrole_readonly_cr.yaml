@@ -25,3 +25,4 @@ spec:
    - "AmazonS3ReadOnlyAccess"
    - "IAMReadOnlyAccess"
    - "CloudWatchReadOnlyAccess"
+   - "ServiceQuotasReadOnlyAccess"

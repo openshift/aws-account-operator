@@ -336,3 +336,4 @@ objects:
     - "AmazonS3ReadOnlyAccess"
     - "IAMReadOnlyAccess"
     - "CloudWatchReadOnlyAccess"
+    - "ServiceQuotasReadOnlyAccess"
