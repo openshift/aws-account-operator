@@ -57,6 +57,8 @@ objects:
     name: aws-account-operator-catalog
   spec:
     sourceType: grpc
+    grpcPodConfig:
+      securityContextConfig: restricted
     image: ${REGISTRY_IMG}@${IMAGE_DIGEST}
     displayName: aws-account-operator Registry
     publisher: SRE
