@@ -1,12 +1,10 @@
 package account
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
-
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -22,6 +20,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 type testRunInstanceInputBuilder struct {
@@ -348,6 +348,10 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 		RequesterId:   aws.String("aao"),
 		ReservationId: aws.String("1"),
 	}, nil)
+	mockAWSClient.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
+		InstanceTypes: []*ec2.InstanceTypeInfo{{
+			InstanceType: aws.String("t3.micro"),
+		}}}, nil)
 	mockAWSClient.EXPECT().DescribeInstanceStatus(gomock.Any()).Return(&ec2.DescribeInstanceStatusOutput{
 		InstanceStatuses: []*ec2.InstanceStatus{
 			{
@@ -736,6 +740,76 @@ func TestCleanFedrampSubnet(t *testing.T) {
 			err := cleanFedrampSubnet(logger, mockAWSClient, test.VpcId)
 			if err != nil {
 				t.Errorf("unexpected error: %s\n", err)
+			}
+		})
+	}
+}
+
+func TestRetrieveFreeInstanceType(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	type args struct {
+		awsClient awsclient.Client
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{"retrieve a t2.micro instance", args{
+			awsClient: func() awsclient.Client {
+				mock := mock.NewMockClient(ctrl)
+				mock.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
+					InstanceTypes: []*ec2.InstanceTypeInfo{{
+						InstanceType: aws.String("t2.micro"),
+					}}}, nil)
+				return mock
+			}(),
+		}, "t2.micro", false},
+		{"retrieve a t3 instance", args{
+			awsClient: func() awsclient.Client {
+				mock := mock.NewMockClient(ctrl)
+				mock.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
+					InstanceTypes: []*ec2.InstanceTypeInfo{{
+						InstanceType: aws.String("t3.micro"),
+					}}}, nil)
+				return mock
+			}(),
+		}, "t3.micro", false},
+		{"if both are available, retrieve a t3 instance", args{
+			awsClient: func() awsclient.Client {
+				mock := mock.NewMockClient(ctrl)
+				mock.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
+					InstanceTypes: []*ec2.InstanceTypeInfo{
+						{
+							InstanceType: aws.String("t2.micro"),
+						},
+						{
+							InstanceType: aws.String("t3.micro"),
+						}},
+				}, nil)
+				return mock
+			}(),
+		}, "t3.micro", false},
+		{"can not retrieve an instance", args{
+			awsClient: func() awsclient.Client {
+				mock := mock.NewMockClient(ctrl)
+				mock.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(nil, errors.New("an error happened"))
+				return mock
+			}(),
+		}, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RetrieveFreeInstanceType(tt.args.awsClient)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("RetrieveFreeInstanceType() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("RetrieveFreeInstanceType() = %v, want %v", got, tt.want)
 			}
 		})
 	}

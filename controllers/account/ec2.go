@@ -168,7 +168,18 @@ func (r *AccountReconciler) InitializeRegion(
 		}
 	}
 
-	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, instanceInfo, managedTags, customerTags, kmsKeyId)
+	instanceType, err := RetrieveFreeInstanceType(awsClient)
+	if err != nil {
+		determineTypesErr := fmt.Sprintf("Unable to determine available instance types in region: %s", region)
+		controllerutils.LogAwsError(reqLogger, determineTypesErr, nil, err)
+		ec2Errors <- regionInitializationError{ErrorMsg: determineTypesErr, Region: region}
+	}
+	newInstanceInfo := awsv1alpha1.AmiSpec{
+		Ami:          instanceInfo.Ami,
+		InstanceType: instanceType,
+	}
+
+	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, newInstanceInfo, managedTags, customerTags, kmsKeyId)
 	if err != nil {
 		createErr := fmt.Sprintf("Unable to create instance in region: %s", region)
 		controllerutils.LogAwsError(reqLogger, createErr, nil, err)
@@ -773,4 +784,29 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 		}
 	}
 	return cleaned, nil
+}
+
+// Get the free instance type for the client's region
+func RetrieveFreeInstanceType(awsClient awsclient.Client) (string, error) {
+	availableTypes, err := awsClient.DescribeInstanceTypes(&ec2.DescribeInstanceTypesInput{
+		Filters: []*ec2.Filter{
+			{
+				Name:   aws.String("free-tier-eligible"),
+				Values: []*string{aws.String("true")},
+			},
+		},
+	})
+	if err != nil || len(availableTypes.InstanceTypes) == 0 {
+		return "", err
+	}
+	// TODO: Are there regions that allow both free instance types?
+	if len(availableTypes.InstanceTypes) > 1 {
+		for _, instanceType := range availableTypes.InstanceTypes {
+			if *instanceType.InstanceType == "t3.micro" {
+				return *instanceType.InstanceType, nil
+			}
+		}
+	}
+	instanceType := *availableTypes.InstanceTypes[0].InstanceType
+	return instanceType, nil
 }
