@@ -109,6 +109,7 @@ objects:
       ca-central-1:ami-06ca3c0058d0275b3:t2.micro
       eu-north-1:ami-08bc26bf92a90ba04:t3.micro
       eu-central-1:ami-09de4a4c670389e4b:t2.micro
+      eu-central-2:ami-0ad6de85a8b717c26:t3.micro
       eu-west-1:ami-0202869bdd0fc8c75:t2.micro
       eu-west-2:ami-0188c0c5eddd2d032:t2.micro
       eu-west-3:ami-0c4224e392ec4e440:t2.micro
