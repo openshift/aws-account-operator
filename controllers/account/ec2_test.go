@@ -352,6 +352,16 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 		InstanceTypes: []*ec2.InstanceTypeInfo{{
 			InstanceType: aws.String("t3.micro"),
 		}}}, nil)
+	mockAWSClient.EXPECT().DescribeImages(gomock.Any()).Return(
+		&ec2.DescribeImagesOutput{
+			Images: []*ec2.Image{
+				{
+					ImageId: aws.String("ami-075ed2fafb0c1aa68"),
+					Name:    aws.String("RHEL-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+					OwnerId: aws.String("12345"),
+				},
+			},
+		}, nil)
 	mockAWSClient.EXPECT().DescribeInstanceStatus(gomock.Any()).Return(&ec2.DescribeInstanceStatusOutput{
 		InstanceStatuses: []*ec2.InstanceStatus{
 			{
@@ -370,11 +380,11 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 		shardName        string
 	}
 	type args struct {
-		reqLogger  testutils.TestLogger
-		account    *awsv1alpha1.Account
-		regions    []awsv1alpha1.AwsRegions
-		creds      *sts.AssumeRoleOutput
-		regionAMIs map[string]awsv1alpha1.AmiSpec
+		reqLogger testutils.TestLogger
+		account   *awsv1alpha1.Account
+		regions   []awsv1alpha1.AwsRegions
+		creds     *sts.AssumeRoleOutput
+		amiOwner  string
 	}
 	tests := []struct {
 		name   string
@@ -409,7 +419,7 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 					},
 					PackedPolicySize: new(int64),
 				},
-				regionAMIs: map[string]awsv1alpha1.AmiSpec{},
+				amiOwner: "",
 			}},
 	}
 	for _, tt := range tests {
@@ -420,7 +430,7 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 				awsClientBuilder: tt.fields.awsClientBuilder,
 				shardName:        tt.fields.shardName,
 			}
-			r.InitializeSupportedRegions(tt.args.reqLogger.Logger(), tt.args.account, tt.args.regions, tt.args.creds, tt.args.regionAMIs)
+			r.InitializeSupportedRegions(tt.args.reqLogger.Logger(), tt.args.account, tt.args.regions, tt.args.creds, tt.args.amiOwner)
 			assert.Contains(t, tt.args.reqLogger.Messages(), "Could not retrieve account claim for account.")
 		})
 	}
@@ -810,6 +820,115 @@ func TestRetrieveFreeInstanceType(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("RetrieveFreeInstanceType() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRetrieveAmi(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	type args struct {
+		awsClient awsclient.Client
+		amiOwner  string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "Choose non-SAP image",
+			args: args{
+				awsClient: func() awsclient.Client {
+					mock := mock.NewMockClient(ctrl)
+					mock.EXPECT().DescribeImages(gomock.Any()).Return(
+						&ec2.DescribeImagesOutput{
+							Images: []*ec2.Image{
+								{
+									ImageId: aws.String("ami-075ed2fafb0c1aa69"),
+									Name:    aws.String("RHEL-SAP-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+									OwnerId: aws.String("12345"),
+								},
+								{
+									ImageId: aws.String("ami-075ed2fafb0c1aa68"),
+									Name:    aws.String("RHEL-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+									OwnerId: aws.String("12345"),
+								},
+							},
+						}, nil)
+					return mock
+				}(),
+				amiOwner: "12345",
+			},
+			want:    "ami-075ed2fafb0c1aa68",
+			wantErr: false,
+		},
+		{
+			name: "Choose non-beta image",
+			args: args{
+				awsClient: func() awsclient.Client {
+					mock := mock.NewMockClient(ctrl)
+					mock.EXPECT().DescribeImages(gomock.Any()).Return(
+						&ec2.DescribeImagesOutput{
+							Images: []*ec2.Image{
+								{
+									ImageId: aws.String("ami-075ed2fafb0c1aa69"),
+									Name:    aws.String("RHEL-BETA-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+									OwnerId: aws.String("12345"),
+								},
+								{
+									ImageId: aws.String("ami-075ed2fafb0c1aa68"),
+									Name:    aws.String("RHEL-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+									OwnerId: aws.String("12345"),
+								},
+							},
+						}, nil)
+					return mock
+				}(),
+				amiOwner: "12345",
+			},
+			want:    "ami-075ed2fafb0c1aa68",
+			wantErr: false,
+		},
+		{
+			name: "error if only SAP and Beta images are available",
+			args: args{
+				awsClient: func() awsclient.Client {
+					mock := mock.NewMockClient(ctrl)
+					mock.EXPECT().DescribeImages(gomock.Any()).Return(
+						&ec2.DescribeImagesOutput{
+							Images: []*ec2.Image{
+								{
+									ImageId: aws.String("ami-075ed2fafb0c1aa69"),
+									Name:    aws.String("RHEL-BETA-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+									OwnerId: aws.String("12345"),
+								},
+								{
+									ImageId: aws.String("ami-075ed2fafb0c1aa68"),
+									Name:    aws.String("RHEL-SAP-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+									OwnerId: aws.String("12345"),
+								},
+							},
+						}, nil)
+					return mock
+				}(),
+				amiOwner: "12345",
+			},
+			want:    "",
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RetrieveAmi(tt.args.awsClient, tt.args.amiOwner)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("RetrieveAmi() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("RetrieveAmi() = %v, want %v", got, tt.want)
 			}
 		})
 	}

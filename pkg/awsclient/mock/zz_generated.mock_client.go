@@ -477,6 +477,21 @@ func (mr *MockClientMockRecorder) DescribeCreateAccountStatus(arg0 interface{}) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeCreateAccountStatus", reflect.TypeOf((*MockClient)(nil).DescribeCreateAccountStatus), arg0)
 }
 
+// DescribeImages mocks base method.
+func (m *MockClient) DescribeImages(arg0 *ec2.DescribeImagesInput) (*ec2.DescribeImagesOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DescribeImages", arg0)
+	ret0, _ := ret[0].(*ec2.DescribeImagesOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DescribeImages indicates an expected call of DescribeImages.
+func (mr *MockClientMockRecorder) DescribeImages(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeImages", reflect.TypeOf((*MockClient)(nil).DescribeImages), arg0)
+}
+
 // DescribeInstanceStatus mocks base method.
 func (m *MockClient) DescribeInstanceStatus(arg0 *ec2.DescribeInstanceStatusInput) (*ec2.DescribeInstanceStatusOutput, error) {
 	m.ctrl.T.Helper()

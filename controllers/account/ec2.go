@@ -3,6 +3,7 @@ package account
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -28,7 +29,7 @@ var sampleVPCID = ""
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
 // NOTE: This function does not have any returns. In particular, error conditions from the
 // goroutines are logged, but do not result in a failure up the stack.
-func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []awsv1alpha1.AwsRegions, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) {
+func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []awsv1alpha1.AwsRegions, creds *sts.AssumeRoleOutput, amiOwner string) {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
 	ec2Notifications, ec2Errors := make(chan string), make(chan regionInitializationError)
 
@@ -56,7 +57,7 @@ func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, ac
 
 	// Create go routines to initialize regions in parallel
 	for _, region := range regions {
-		go r.InitializeRegion(reqLogger, account, region.Name, regionAMIs[region.Name], vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags, kmsKeyId) //nolint:errcheck // Unable to do anything with the returned error
+		go r.InitializeRegion(reqLogger, account, region.Name, amiOwner, vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags, kmsKeyId) //nolint:errcheck // Unable to do anything with the returned error
 	}
 
 	var regionInitFailedRegion []string
@@ -91,7 +92,7 @@ func (r *AccountReconciler) InitializeRegion(
 	reqLogger logr.Logger,
 	account *awsv1alpha1.Account,
 	region string,
-	instanceInfo awsv1alpha1.AmiSpec,
+	amiOwner string,
 	vCPUQuota float64,
 	ec2Notifications chan string,
 	ec2Errors chan regionInitializationError,
@@ -174,12 +175,18 @@ func (r *AccountReconciler) InitializeRegion(
 		controllerutils.LogAwsError(reqLogger, determineTypesErr, nil, err)
 		ec2Errors <- regionInitializationError{ErrorMsg: determineTypesErr, Region: region}
 	}
-	newInstanceInfo := awsv1alpha1.AmiSpec{
-		Ami:          instanceInfo.Ami,
+	ami, err := RetrieveAmi(awsClient, amiOwner)
+	if err != nil {
+		retrieveAmiErr := fmt.Sprintf("Unable to find suitable AMI in region: %s", region)
+		controllerutils.LogAwsError(reqLogger, retrieveAmiErr, nil, err)
+		ec2Errors <- regionInitializationError{ErrorMsg: retrieveAmiErr, Region: region}
+	}
+	instanceInfo := awsv1alpha1.AmiSpec{
+		Ami:          ami,
 		InstanceType: instanceType,
 	}
 
-	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, newInstanceInfo, managedTags, customerTags, kmsKeyId)
+	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, instanceInfo, managedTags, customerTags, kmsKeyId)
 	if err != nil {
 		createErr := fmt.Sprintf("Unable to create instance in region: %s", region)
 		controllerutils.LogAwsError(reqLogger, createErr, nil, err)
@@ -809,4 +816,31 @@ func RetrieveFreeInstanceType(awsClient awsclient.Client) (string, error) {
 	}
 	instanceType := *availableTypes.InstanceTypes[0].InstanceType
 	return instanceType, nil
+}
+
+func RetrieveAmi(awsClient awsclient.Client, amiOwner string) (string, error) {
+	var ami string
+	executableBy := "self"
+	input := ec2.DescribeImagesInput{
+		ExecutableUsers: []*string{&executableBy},
+		Owners:          []*string{&amiOwner},
+	}
+	availableAmis, err := awsClient.DescribeImages(&input)
+	if err != nil {
+		return "", err
+	}
+	for _, image := range availableAmis.Images {
+		if strings.Contains(*image.Name, "SAP") {
+			continue
+		}
+		if strings.Contains(*image.Name, "BETA") {
+			continue
+		}
+		ami = *image.ImageId
+		break
+	}
+	if ami == "" {
+		return "", errors.New("Could not find a matching AMI.")
+	}
+	return ami, nil
 }
