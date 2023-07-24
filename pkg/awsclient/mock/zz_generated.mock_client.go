@@ -312,6 +312,21 @@ func (mr *MockClientMockRecorder) DeletePolicy(input interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePolicy", reflect.TypeOf((*MockClient)(nil).DeletePolicy), input)
 }
 
+// DeletePolicyVersion mocks base method.
+func (m *MockClient) DeletePolicyVersion(input *iam.DeletePolicyVersionInput) (*iam.DeletePolicyVersionOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeletePolicyVersion", input)
+	ret0, _ := ret[0].(*iam.DeletePolicyVersionOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeletePolicyVersion indicates an expected call of DeletePolicyVersion.
+func (mr *MockClientMockRecorder) DeletePolicyVersion(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePolicyVersion", reflect.TypeOf((*MockClient)(nil).DeletePolicyVersion), input)
+}
+
 // DeleteRole mocks base method.
 func (m *MockClient) DeleteRole(arg0 *iam.DeleteRoleInput) (*iam.DeleteRoleOutput, error) {
 	m.ctrl.T.Helper()
@@ -642,6 +657,36 @@ func (mr *MockClientMockRecorder) GetFederationToken(arg0 interface{}) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFederationToken", reflect.TypeOf((*MockClient)(nil).GetFederationToken), arg0)
 }
 
+// GetPolicy mocks base method.
+func (m *MockClient) GetPolicy(input *iam.GetPolicyInput) (*iam.GetPolicyOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPolicy", input)
+	ret0, _ := ret[0].(*iam.GetPolicyOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPolicy indicates an expected call of GetPolicy.
+func (mr *MockClientMockRecorder) GetPolicy(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPolicy", reflect.TypeOf((*MockClient)(nil).GetPolicy), input)
+}
+
+// GetPolicyVersion mocks base method.
+func (m *MockClient) GetPolicyVersion(input *iam.GetPolicyVersionInput) (*iam.GetPolicyVersionOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPolicyVersion", input)
+	ret0, _ := ret[0].(*iam.GetPolicyVersionOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPolicyVersion indicates an expected call of GetPolicyVersion.
+func (mr *MockClientMockRecorder) GetPolicyVersion(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPolicyVersion", reflect.TypeOf((*MockClient)(nil).GetPolicyVersion), input)
+}
+
 // GetRole mocks base method.
 func (m *MockClient) GetRole(arg0 *iam.GetRoleInput) (*iam.GetRoleOutput, error) {
 	m.ctrl.T.Helper()
@@ -850,6 +895,21 @@ func (m *MockClient) ListPolicies(arg0 *iam.ListPoliciesInput) (*iam.ListPolicie
 func (mr *MockClientMockRecorder) ListPolicies(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPolicies", reflect.TypeOf((*MockClient)(nil).ListPolicies), arg0)
+}
+
+// ListPolicyVersions mocks base method.
+func (m *MockClient) ListPolicyVersions(input *iam.ListPolicyVersionsInput) (*iam.ListPolicyVersionsOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPolicyVersions", input)
+	ret0, _ := ret[0].(*iam.ListPolicyVersionsOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPolicyVersions indicates an expected call of ListPolicyVersions.
+func (mr *MockClientMockRecorder) ListPolicyVersions(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPolicyVersions", reflect.TypeOf((*MockClient)(nil).ListPolicyVersions), input)
 }
 
 // ListRequestedServiceQuotaChangeHistory mocks base method.

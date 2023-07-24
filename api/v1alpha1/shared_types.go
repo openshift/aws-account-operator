@@ -91,6 +91,10 @@ var ErrFailedToDeleteSubnet = errors.New("FailedToDeleteSubnet")
 // UIDLabel is the string for the uid label on AWS Federated Account Access CRs
 var UIDLabel = "uid"
 
+var FederatedRoleNameLabel = "awsFederatedRoleName"
+
+var LastRoleUpdateAnnotation = "lastRoleUpdate"
+
 // AccountIDLabel is the string for the AWS Account ID label on AWS Federated Account Access CRs
 var AccountIDLabel = "awsAccountID"
 

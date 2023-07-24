@@ -25,7 +25,7 @@ func createRoleMock(statements []awsv1alpha1.StatementEntry) awsv1alpha1.AWSFede
 }
 
 func TestMarshallingIAMPolicy(t *testing.T) {
-	expected := awsStatement{
+	expected := AwsStatement{
 		Effect:   "Allow",
 		Action:   []string{"ec2:DescribeInstances"},
 		Resource: []string{"*"},
@@ -53,7 +53,7 @@ func TestMarshallingIAMPolicy(t *testing.T) {
 
 	// Convert the policy back to an object so we can run comparisons easier than
 	// trying to do the same with a string.
-	var policy awsPolicy
+	var policy AwsPolicy
 	err = json.Unmarshal([]byte(policyJSON), &policy)
 	if err != nil {
 		t.Errorf("There was an error unmarshalling the IAM Policy. %s", err)
@@ -85,7 +85,7 @@ func TestMarshallingIAMPolicy(t *testing.T) {
 }
 
 func TestMarshalingMultipleStatements(t *testing.T) {
-	expectedList := []awsStatement{
+	expectedList := []AwsStatement{
 		{
 			Effect:   "Allow",
 			Action:   []string{"ec2:DescribeInstances"},
@@ -120,7 +120,7 @@ func TestMarshalingMultipleStatements(t *testing.T) {
 
 	// Convert the policy back to an object so we can run comparisons easier than
 	// trying to do the same with a string.
-	var policy awsPolicy
+	var policy AwsPolicy
 	err = json.Unmarshal([]byte(policyJSON), &policy)
 	if err != nil {
 		t.Errorf("There was an error unmarshalling the IAM Policy. %s", err)
@@ -135,7 +135,7 @@ func TestAddingConditionsToStatements(t *testing.T) {
 	condition := &awsv1alpha1.Condition{
 		StringEquals: map[string]string{"ram:RequestedResourceType": "route53resolver:ResolverRule"},
 	}
-	expected := awsStatement{
+	expected := AwsStatement{
 		Effect:    "Allow",
 		Action:    []string{"ec2:DescribeInstances"},
 		Resource:  []string{"*"},
@@ -165,7 +165,7 @@ func TestAddingConditionsToStatements(t *testing.T) {
 
 	// Convert the policy back to an object so we can run comparisons easier than
 	// trying to do the same with a string.
-	var policy awsPolicy
+	var policy AwsPolicy
 	err = json.Unmarshal([]byte(policyJSON), &policy)
 	if err != nil {
 		t.Errorf("There was an error unmarshalling the IAM Policy. %s", err)
@@ -296,6 +296,51 @@ func TestGetControllerMaxReconcilesFromCM(t *testing.T) {
 			// Check for Value
 			if test.expectedVal != val {
 				t.Errorf("Expected value %d but got %d", test.expectedVal, val)
+			}
+		})
+	}
+}
+
+func TestJoinLabelMaps(t *testing.T) {
+	tests := []struct {
+		name string
+		m1   map[string]string
+		m2   map[string]string
+		want map[string]string
+	}{
+		{
+			name: "both maps nil",
+			want: map[string]string{},
+		},
+		{
+			name: "m1 is nil",
+			m1:   nil,
+			m2:   map[string]string{"foo": "bar"},
+			want: map[string]string{"foo": "bar"},
+		},
+		{
+			name: "m2 is nil",
+			m1:   map[string]string{"foo": "bar"},
+			m2:   nil,
+			want: map[string]string{"foo": "bar"},
+		},
+		{
+			name: "m1 and m2 populated with same entry",
+			m1:   map[string]string{"foo": "bar"},
+			m2:   map[string]string{"foo": "bar"},
+			want: map[string]string{"foo": "bar"},
+		},
+		{
+			name: "m1 and m2 populated with differententries ",
+			m1:   map[string]string{"foo": "bar"},
+			m2:   map[string]string{"boo": "far"},
+			want: map[string]string{"foo": "bar", "boo": "far"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := JoinLabelMaps(tt.m1, tt.m2); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("JoinLabelMaps() = %v, want %v", got, tt.want)
 			}
 		})
 	}

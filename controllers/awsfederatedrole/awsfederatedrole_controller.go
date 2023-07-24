@@ -4,10 +4,8 @@ import (
 	"context"
 	goerr "errors"
 	"fmt"
-
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -15,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"time"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
@@ -46,14 +45,10 @@ type AWSFederatedRoleReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the AWSFederatedRole object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.2/pkg/reconcile
-func (r *AWSFederatedRoleReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
+func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.Request) (ctrl.Result, error) {
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	if config.IsFedramp() {
@@ -103,10 +98,6 @@ func (r *AWSFederatedRoleReconciler) Reconcile(ctx context.Context, request ctrl
 		}
 	}
 
-	// If the CR is known to be Valid or Invalid, doesn't need to be reconciled.
-	if instance.Status.State == awsv1alpha1.AWSFederatedRoleStateValid || instance.Status.State == awsv1alpha1.AWSFederatedRoleStateInvalid {
-		return reconcile.Result{}, nil
-	}
 	// Setup AWS client
 	awsRegion := config.GetDefaultRegion()
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
@@ -147,7 +138,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(ctx context.Context, request ctrl
 		return reconcile.Result{}, nil
 	}
 
-	// Attempts to create the policy to ensure its a valid policy
+	// Attempts to create the policy to ensure it's a valid policy
 	createOutput, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
 		Description:    &instance.Spec.AWSCustomPolicy.Description,
 		PolicyName:     &instance.Spec.AWSCustomPolicy.Name,
@@ -179,7 +170,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(ctx context.Context, request ctrl
 		return reconcile.Result{}, err
 	}
 
-	// Cleanup the created policy since its only for validation
+	// Cleanup the created policy since it's only for validation
 	_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: createOutput.Policy.Arn})
 	if err != nil {
 		log.Error(err, "Error deleting custom policy")
@@ -237,7 +228,32 @@ func (r *AWSFederatedRoleReconciler) Reconcile(ctx context.Context, request ctrl
 		log.Error(err, "Error updating conditions")
 		return reconcile.Result{}, err
 	}
+
+	if err := annotateAccountAccesses(r.Client, instance.Name); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	return reconcile.Result{}, nil
+}
+
+func annotateAccountAccesses(kubeClient client.Client, roleName string) error {
+	accountAccesses := &awsv1alpha1.AWSFederatedAccountAccessList{}
+	err := kubeClient.List(context.TODO(), accountAccesses, client.MatchingLabels{awsv1alpha1.FederatedRoleNameLabel: roleName})
+	if err != nil {
+		return err
+	}
+	for i := range accountAccesses.Items {
+		if accountAccesses.Items[i].ObjectMeta.Annotations == nil {
+			accountAccesses.Items[i].ObjectMeta.Annotations = make(map[string]string)
+		}
+
+		accountAccesses.Items[i].ObjectMeta.Annotations[awsv1alpha1.LastRoleUpdateAnnotation] = time.Now().UTC().Format(time.RFC850)
+		err = kubeClient.Update(context.TODO(), &accountAccesses.Items[i])
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Paginate through ListPolicy results from AWS

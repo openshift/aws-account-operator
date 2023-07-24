@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"net/url"
+	"strings"
 
 	controllerutils "github.com/openshift/aws-account-operator/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
@@ -64,7 +64,7 @@ type AWSFederatedAccountAccessReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.2/pkg/reconcile
-func (r *AWSFederatedAccountAccessReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
+func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, request ctrl.Request) (ctrl.Result, error) {
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Fetch the AWSFederatedAccountAccess instance
@@ -129,6 +129,42 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(ctx context.Context, req
 		}
 	}
 
+	// Get aws client
+	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+		SecretName: currentFAA.Spec.AWSCustomerCredentialSecret.Name,
+		NameSpace:  currentFAA.Spec.AWSCustomerCredentialSecret.Namespace,
+		AwsRegion:  config.GetDefaultRegion(),
+	})
+	if err != nil {
+		reqLogger.Error(err, "Unable to create aws client for region")
+		return reconcile.Result{}, err
+	}
+
+	if currentFAA.Status.State != "" {
+		// Make sure the awsFederatedRoleName label is present
+		if !hasLabel(currentFAA, awsv1alpha1.FederatedRoleNameLabel) {
+			reqLogger.Info(fmt.Sprintf("Adding %s label with value %s to AccountAccess %s", awsv1alpha1.FederatedRoleNameLabel, requestedRole.Name, currentFAA.Name))
+
+			newLabel := map[string]string{awsv1alpha1.FederatedRoleNameLabel: requestedRole.Name}
+
+			// Join the new UID label with any current labels
+			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
+
+			err = r.Client.Update(context.TODO(), currentFAA)
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Failed to update label %s for %s/%s", awsv1alpha1.FederatedRoleNameLabel, currentFAA.Namespace, currentFAA.Name))
+				return reconcile.Result{}, err
+			}
+		}
+
+		if err = r.syncIAMPolicy(currentFAA, requestedRole, awsClient, reqLogger); err != nil {
+			reqLogger.Error(err, fmt.Sprintf("Failed to validate IAM policy for account access %s/%s", currentFAA.Namespace, currentFAA.Name))
+			currentFAA.Status.State = awsv1alpha1.AWSFederatedAccountStateFailed
+			SetStatuswithCondition(currentFAA, "Failed to update policy", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
+			return reconcile.Result{}, err
+		}
+	}
+
 	// If the state is ready or failed don't do anything
 	if currentFAA.Status.State == awsv1alpha1.AWSFederatedAccountStateReady || currentFAA.Status.State == awsv1alpha1.AWSFederatedAccountStateFailed {
 		return reconcile.Result{}, nil
@@ -140,19 +176,15 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(ctx context.Context, req
 		uid := controllerutils.GenerateShortUID()
 
 		reqLogger.Info(fmt.Sprintf("Adding UID %s to AccountAccess %s", uid, currentFAA.Name))
-		newLabel := map[string]string{"uid": uid}
+		newLabel := map[string]string{awsv1alpha1.UIDLabel: uid}
 
 		// Join the new UID label with any current labels
-		if currentFAA.Labels != nil {
-			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
-		} else {
-			currentFAA.Labels = newLabel
-		}
+		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
 		// Update the CR with new labels
 		err = r.Client.Update(context.TODO(), currentFAA)
 		if err != nil {
-			reqLogger.Error(err, fmt.Sprintf("Lable update for %s failed", currentFAA.Name))
+			reqLogger.Error(err, fmt.Sprintf("Failed to update label %s for %s/%s", awsv1alpha1.UIDLabel, currentFAA.Namespace, currentFAA.Name))
 			return reconcile.Result{}, err
 		}
 
@@ -160,18 +192,6 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(ctx context.Context, req
 
 	uidLabel, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
 	if !ok {
-		return reconcile.Result{}, err
-	}
-
-	// Get aws client
-	awsRegion := config.GetDefaultRegion()
-	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-		SecretName: currentFAA.Spec.AWSCustomerCredentialSecret.Name,
-		NameSpace:  currentFAA.Spec.AWSCustomerCredentialSecret.Namespace,
-		AwsRegion:  awsRegion,
-	})
-	if err != nil {
-		reqLogger.Error(err, "Unable to create aws client for region ")
 		return reconcile.Result{}, err
 	}
 
@@ -194,14 +214,10 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(ctx context.Context, req
 	if !hasLabel(currentFAA, awsv1alpha1.AccountIDLabel) {
 
 		reqLogger.Info(fmt.Sprintf("Adding awsAccountID %s to AccountAccess %s", accountID, currentFAA.Name))
-		newLabel := map[string]string{"awsAccountID": accountID}
+		newLabel := map[string]string{awsv1alpha1.AccountIDLabel: accountID}
 
 		// Join the new UID label with any current labels
-		if currentFAA.Labels != nil {
-			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
-		} else {
-			currentFAA.Labels = newLabel
-		}
+		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
 		// Update the CR with new labels
 		err = r.Client.Update(context.TODO(), currentFAA)
@@ -246,7 +262,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(ctx context.Context, req
 	currentFAA.Status.ConsoleURL = fmt.Sprintf("https://signin.aws.amazon.com/switchrole?account=%s&roleName=%s", accountID, *role.RoleName)
 
 	awsManagedPolicyNames := []string{}
-	// Add all aws managed policy names to a array
+	// Add all aws managed policy names to an array
 	awsManagedPolicyNames = append(awsManagedPolicyNames, requestedRole.Spec.AWSManagedPolicies...)
 	// Get policy arns for managed policies
 	policyArns := createPolicyArns(accountID, awsManagedPolicyNames, true)
@@ -282,29 +298,107 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(ctx context.Context, req
 	return reconcile.Result{}, nil
 }
 
-// createIAMPolicy creates the IAM policys in AWSFederatedRole inside of our cluster account
-func (r *AWSFederatedAccountAccessReconciler) createIAMPolicy(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) (*iam.Policy, error) {
-	// Same struct from the afr.Spec.AWSCustomPolicy.Statements , but with json tags as capitals due to requirements for the policydoc
-	type awsStatement struct {
-		Effect    string                 `json:"Effect"`
-		Action    []string               `json:"Action"`
-		Resource  []string               `json:"Resource,omitempty"`
-		Condition *awsv1alpha1.Condition `json:"Condition,omitempty"`
-		Principal *awsv1alpha1.Principal `json:"Principal,omitempty"`
+func detachRolePolicy(awsClient awsclient.Client, federatedRole *awsv1alpha1.AWSFederatedRole, awsAccountID string, uid string) error {
+	roleName := federatedRole.Name + "-" + uid
+	policyName := federatedRole.Spec.AWSCustomPolicy.Name + "-" + uid
+	policyArn := fmt.Sprintf("arn:aws:iam::%s:policy/%s", awsAccountID, policyName)
+
+	if _, err := awsClient.DetachRolePolicy(&iam.DetachRolePolicyInput{
+		PolicyArn: &policyArn,
+		RoleName:  &roleName,
+	}); err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			if aerr.Code() != iam.ErrCodeNoSuchEntityException {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *AWSFederatedAccountAccessReconciler) syncIAMPolicy(currentFAA *awsv1alpha1.AWSFederatedAccountAccess, requestedRole *awsv1alpha1.AWSFederatedRole, awsClient awsclient.Client, reqLogger logr.Logger) error {
+	// validate that the policy in AWS matches the CR
+	uid, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
+	if !ok {
+		err := errors.New("FederatedAccountAccess has no uid label")
+		reqLogger.Error(err, fmt.Sprintf("Federated account access %s/%s has no uid label.", currentFAA.Namespace, currentFAA.Name))
+		return err
+	}
+	roleName := fmt.Sprintf("%s-%s", requestedRole.Name, uid)
+	policyName := fmt.Sprintf("%s-%s", requestedRole.Spec.AWSCustomPolicy.Name, uid)
+	awsRolePolicies, err := awsClient.ListAttachedRolePolicies(&iam.ListAttachedRolePoliciesInput{RoleName: &roleName})
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Failed to list policies for role %s from AWS", roleName))
+		return err
 	}
 
-	statements := []awsStatement{}
+	for _, awsAttachedPolicy := range awsRolePolicies.AttachedPolicies {
+		if *awsAttachedPolicy.PolicyName == policyName {
+			awsPolicy, err := awsClient.GetPolicy(&iam.GetPolicyInput{PolicyArn: awsAttachedPolicy.PolicyArn})
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Failed to get policy %s for role %s from AWS", *awsAttachedPolicy.PolicyName, roleName))
+				return err
+			}
+
+			awsPolicyVersion, err := awsClient.GetPolicyVersion(&iam.GetPolicyVersionInput{
+				PolicyArn: awsAttachedPolicy.PolicyArn,
+				VersionId: awsPolicy.Policy.DefaultVersionId,
+			})
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Failed to get version %s for policy %s for role %s from AWS", *awsPolicy.Policy.DefaultVersionId, *awsAttachedPolicy.PolicyName, roleName))
+				return err
+			}
+
+			awsDocument, err := url.QueryUnescape(*awsPolicyVersion.PolicyVersion.Document)
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Failed to parse policy document from AWS for %v", awsAttachedPolicy.PolicyName))
+			}
+
+			jsonRequestedRole, err := controllerutils.MarshalIAMPolicy(*requestedRole)
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Failed to marshal policy %s for role %s from AWS", *awsAttachedPolicy.PolicyName, roleName))
+				return err
+			}
+
+			if jsonRequestedRole == awsDocument {
+				return nil
+			}
+
+			err = detachRolePolicy(awsClient, requestedRole, currentFAA.Labels[awsv1alpha1.AccountIDLabel], uid)
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Failed to detach policy %s from role %s", requestedRole.Spec.AWSCustomPolicy.Name, requestedRole.Name))
+				return err
+			}
+			err = r.createOrUpdateIAMPolicy(awsClient, *requestedRole, *currentFAA)
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Failed to apply IAM policy for AWS federated account access CR %s/%s", requestedRole.Namespace, roleName))
+				return err
+			}
+			err = r.attachIAMPolices(awsClient, roleName, createPolicyArns(currentFAA.Labels[awsv1alpha1.AccountIDLabel], []string{requestedRole.Spec.AWSCustomPolicy.Name + "-" + uid}, false))
+			if err != nil {
+				reqLogger.Error(err, fmt.Sprintf("Failed to attach IAM policy for AWS federated account access CR %s/%s", requestedRole.Namespace, roleName))
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// createIAMPolicy creates the IAM policies in AWSFederatedRole inside our cluster account
+func (r *AWSFederatedAccountAccessReconciler) createIAMPolicy(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) (*iam.Policy, error) {
+	// Same struct from the afr.Spec.AWSCustomPolicy.Statements , but with json tags as capitals due to requirements for the policydoc
+
+	statements := []controllerutils.AwsStatement{}
 
 	for _, sm := range afr.Spec.AWSCustomPolicy.Statements {
-		var a awsStatement = awsStatement(sm)
+		var a = controllerutils.AwsStatement(sm)
 		statements = append(statements, a)
 	}
 
 	// Create an aws policydoc formated struct
-	policyDoc := struct {
-		Version   string
-		Statement []awsStatement
-	}{
+	policyDoc := controllerutils.AwsPolicy{
 		Version:   "2012-10-17",
 		Statement: statements,
 	}
@@ -403,7 +497,8 @@ func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMPolicy(awsClient 
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			if aerr.Code() == "EntityAlreadyExists" {
-				_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: aws.String(customPolArns[0])})
+				policyName := afr.Spec.AWSCustomPolicy.Name + "-" + uidLabel
+				err = checkAndDeletePolicy(awsClient, uidLabel, afr.Spec.AWSCustomPolicy.Name, &policyName, &customPolArns[0])
 				if err != nil {
 					return err
 				}
@@ -643,7 +738,7 @@ func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr
 				}
 			}
 
-			err = checkAndDeletePolicy(reqLogger, awsClient, uidLabel, federatedRoleCR.Spec.AWSCustomPolicy.Name, attachedPolicy.PolicyName, attachedPolicy.PolicyArn)
+			err = checkAndDeletePolicy(awsClient, uidLabel, federatedRoleCR.Spec.AWSCustomPolicy.Name, attachedPolicy.PolicyName, attachedPolicy.PolicyArn)
 			if err != nil {
 				return err
 			}
@@ -699,7 +794,7 @@ func (r *AWSFederatedAccountAccessReconciler) deleteNonAttachedCustomPolicy(reqL
 		}
 
 		for _, policy := range policyListOutput.Policies {
-			err = checkAndDeletePolicy(reqLogger, awsClient, uidLabel, federatedRoleCR.Spec.AWSCustomPolicy.Name, policy.PolicyName, policy.Arn)
+			err = checkAndDeletePolicy(awsClient, uidLabel, federatedRoleCR.Spec.AWSCustomPolicy.Name, policy.PolicyName, policy.Arn)
 			if err != nil {
 				return err
 			}
@@ -724,26 +819,31 @@ func hasLabel(awsFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess, 
 	return false
 }
 
-func checkAndDeletePolicy(reqLogger logr.Logger, awsClient awsclient.Client, uidLabel string, crPolicyName string, policyName *string, policyArn *string) error {
-
-	var awsCustomPolicyname string
-	awsCustomPolicyname = getPolicyNameWithUID(awsCustomPolicyname, crPolicyName, uidLabel)
+func checkAndDeletePolicy(awsClient awsclient.Client, uidLabel string, crPolicyName string, policyName *string, policyArn *string) error {
+	awsCustomPolicyname := getPolicyNameWithUID(crPolicyName, uidLabel)
 
 	if *policyName == awsCustomPolicyname {
-		_, err := awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: policyArn})
+		policyVersions, err := awsClient.ListPolicyVersions(&iam.ListPolicyVersionsInput{PolicyArn: policyArn})
+		if err != nil {
+			return err
+		}
+
+		for _, policyVersion := range policyVersions.Versions {
+			if !*policyVersion.IsDefaultVersion {
+				if _, err = awsClient.DeletePolicyVersion(&iam.DeletePolicyVersionInput{VersionId: policyVersion.VersionId, PolicyArn: policyArn}); err != nil {
+					return err
+				}
+			}
+		}
+
+		_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: policyArn})
 		if err != nil {
 			if aerr, ok := err.(awserr.Error); ok {
 				switch aerr.Code() {
 				default:
-					reqLogger.Error(
-						aerr,
-						fmt.Sprint(aerr.Error()),
-					)
-					reqLogger.Error(err, fmt.Sprintf("%v", err))
 					return err
 				}
 			} else {
-				reqLogger.Error(err, "Other error while trying to detach policies")
 				return err
 			}
 		}
@@ -751,7 +851,7 @@ func checkAndDeletePolicy(reqLogger logr.Logger, awsClient awsclient.Client, uid
 	return nil
 }
 
-func getPolicyNameWithUID(awsCustomPolicyname string, crPolicyName string, uidLabel string) string {
+func getPolicyNameWithUID(crPolicyName string, uidLabel string) string {
 	if !strings.HasSuffix(crPolicyName, "-"+uidLabel) {
 		crPolicyName = crPolicyName + "-" + uidLabel
 	}

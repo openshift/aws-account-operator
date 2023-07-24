@@ -18,7 +18,6 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
 type testAwsCustomPolicyBuilder struct {
@@ -50,7 +49,7 @@ type mocks struct {
 	mockCtrl *gomock.Controller
 }
 
-func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
+func setupDefaultMocks(t *testing.T) *mocks {
 	mocks := &mocks{
 		mockCtrl: gomock.NewController(t),
 	}
@@ -61,39 +60,61 @@ func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
 func TestCheckAndDeletePolicy(t *testing.T) {
 
 	tests := []struct {
-		name      string
-		awsOutput *iam.DeletePolicyOutput
-		err       error
+		name                     string
+		listPolicyVersionsOutput *iam.ListPolicyVersionsOutput
+		deletePolicyOut          *iam.DeletePolicyOutput
+		err                      error
 	}{
 		{
-			name:      "No error",
-			awsOutput: &iam.DeletePolicyOutput{},
-			err:       nil,
+			name:                     "No error",
+			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{},
+			deletePolicyOut:          &iam.DeletePolicyOutput{},
+			err:                      nil,
 		},
 		{
-			name:      "TestNoSuchEntity",
-			awsOutput: nil,
-			err:       awserr.New(iam.ErrCodeNoSuchEntityException, "", nil),
+			name: "Multiple Versions",
+			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{
+				Versions: []*iam.PolicyVersion{
+					{
+						VersionId:        aws.String("v1"),
+						IsDefaultVersion: aws.Bool(false),
+					},
+					{
+						VersionId:        aws.String("v2"),
+						IsDefaultVersion: aws.Bool(true),
+					},
+				},
+			},
 		},
 		{
-			name:      "TestLimitExceeded",
-			awsOutput: nil,
-			err:       awserr.New(iam.ErrCodeLimitExceededException, "", nil),
+			name:                     "TestNoSuchEntity",
+			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{},
+			deletePolicyOut:          nil,
+			err:                      awserr.New(iam.ErrCodeNoSuchEntityException, "", nil),
 		},
 		{
-			name:      "TestInvalidInput",
-			awsOutput: nil,
-			err:       awserr.New(iam.ErrCodeInvalidInputException, "", nil),
+			name:                     "TestLimitExceeded",
+			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{},
+			deletePolicyOut:          nil,
+			err:                      awserr.New(iam.ErrCodeLimitExceededException, "", nil),
 		},
 		{
-			name:      "TestDeleteConflict",
-			awsOutput: nil,
-			err:       awserr.New(iam.ErrCodeDeleteConflictException, "", nil),
+			name:                     "TestInvalidInput",
+			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{},
+			deletePolicyOut:          nil,
+			err:                      awserr.New(iam.ErrCodeInvalidInputException, "", nil),
 		},
 		{
-			name:      "TestServiceFailure",
-			awsOutput: nil,
-			err:       awserr.New(iam.ErrCodeServiceFailureException, "", nil),
+			name:                     "TestDeleteConflict",
+			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{},
+			deletePolicyOut:          nil,
+			err:                      awserr.New(iam.ErrCodeDeleteConflictException, "", nil),
+		},
+		{
+			name:                     "TestServiceFailure",
+			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{},
+			deletePolicyOut:          nil,
+			err:                      awserr.New(iam.ErrCodeServiceFailureException, "", nil),
 		},
 	}
 
@@ -105,15 +126,18 @@ func TestCheckAndDeletePolicy(t *testing.T) {
 			crPolicyName := "randPolicyName-randLabel"
 			policyName := "randPolicyName-randLabel"
 
-			mocks := setupDefaultMocks(t, []runtime.Object{})
+			mocks := setupDefaultMocks(t)
 
 			mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
+			mockAWSClient.EXPECT().ListPolicyVersions(&iam.ListPolicyVersionsInput{PolicyArn: policyArn}).Return(test.listPolicyVersionsOutput, nil)
 			mockAWSClient.EXPECT().DeletePolicy(
-				&iam.DeletePolicyInput{PolicyArn: policyArn}).Return(test.awsOutput, test.err)
+				&iam.DeletePolicyInput{PolicyArn: policyArn}).Return(test.deletePolicyOut, test.err)
+			if test.listPolicyVersionsOutput.Versions != nil {
+				mockAWSClient.EXPECT().DeletePolicyVersion(gomock.Any()).Return(nil, test.err)
+			}
 
-			nullLogger := testutils.NewTestLogger().Logger()
-			err := checkAndDeletePolicy(nullLogger, mockAWSClient, uidLabel, crPolicyName, &policyName, policyArn)
+			err := checkAndDeletePolicy(mockAWSClient, uidLabel, crPolicyName, &policyName, policyArn)
 			if test.err != nil {
 				assert.Equal(t, test.err, err)
 			} else {
@@ -143,12 +167,11 @@ func TestGetPolicyNameWithUID(t *testing.T) {
 		},
 	}
 
-	awsCustomPolicyname := "randCustomPolicyName"
 	uidLabel := "randLabel"
 
 	for _, test := range testData {
 		t.Run(test.name, func(t *testing.T) {
-			returnVal := getPolicyNameWithUID(awsCustomPolicyname, test.crPolicyName, uidLabel)
+			returnVal := getPolicyNameWithUID(test.crPolicyName, uidLabel)
 			if returnVal != test.expectedCrPolicyName {
 				t.Errorf("expected return value %s and got %s", test.expectedCrPolicyName, returnVal)
 			}
@@ -185,7 +208,7 @@ func TestCreateIAMPolicy(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 
-			mocks := setupDefaultMocks(t, []runtime.Object{})
+			mocks := setupDefaultMocks(t)
 
 			mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
@@ -247,7 +270,7 @@ func TestCreateIAMRole(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 
-			mocks := setupDefaultMocks(t, []runtime.Object{})
+			mocks := setupDefaultMocks(t)
 
 			mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
@@ -287,7 +310,7 @@ func TestCreateIAMRole(t *testing.T) {
 
 func TestCreateOrUpdateIAMPolicy(t *testing.T) {
 
-	mocks := setupDefaultMocks(t, []runtime.Object{})
+	mocks := setupDefaultMocks(t)
 
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
@@ -332,6 +355,7 @@ func TestCreateOrUpdateIAMPolicy(t *testing.T) {
 		awserr.New("EntityAlreadyExists", "", nil),
 	)
 
+	mockAWSClient.EXPECT().ListPolicyVersions(&iam.ListPolicyVersionsInput{PolicyArn: aws.String(customPolArns[0])}).Return(&iam.ListPolicyVersionsOutput{}, nil)
 	mockAWSClient.EXPECT().DeletePolicy(&iam.DeletePolicyInput{PolicyArn: aws.String(customPolArns[0])}).Return(
 		&iam.DeletePolicyOutput{},
 		nil,
@@ -356,7 +380,7 @@ func TestCreateOrUpdateIAMPolicy(t *testing.T) {
 
 func TestCreateOrUpdateIAMRole(t *testing.T) {
 
-	mocks := setupDefaultMocks(t, []runtime.Object{})
+	mocks := setupDefaultMocks(t)
 
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
@@ -439,7 +463,7 @@ func TestCreateOrUpdateIAMRole(t *testing.T) {
 
 func TestAttachIAMPolicies(t *testing.T) {
 
-	mocks := setupDefaultMocks(t, []runtime.Object{})
+	mocks := setupDefaultMocks(t)
 
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
