@@ -22,6 +22,14 @@ type regionInitializationError struct {
 	Region   string
 }
 
+// Constants used to retrieve instance types and AMIs:
+// AMIs we use should be executable by everyone
+const EXECUTABLEBY = "all"
+
+// T3 and T2 micro instanes are free to start
+const T3INSTANCETYPE = "t3.micro"
+const T2INSTANCETYPE = "t2.micro"
+
 var sampleCIDR = "10.0.0.0/16"
 var sampleVPCID = ""
 
@@ -169,7 +177,7 @@ func (r *AccountReconciler) InitializeRegion(
 		}
 	}
 
-	instanceType, err := RetrieveFreeInstanceType(awsClient)
+	instanceType, err := RetrieveAvailableMicroInstanceType(reqLogger, awsClient)
 	if err != nil {
 		determineTypesErr := fmt.Sprintf("Unable to determine available instance types in region: %s", region)
 		controllerutils.LogAwsError(reqLogger, determineTypesErr, nil, err)
@@ -794,35 +802,38 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 }
 
 // Get the free instance type for the client's region
-func RetrieveFreeInstanceType(awsClient awsclient.Client) (string, error) {
+func RetrieveAvailableMicroInstanceType(logger logr.Logger, awsClient awsclient.Client) (string, error) {
+	// FIXME: For unknown reasons attempting to use the free-tier-eligible
+	// filter from go returns *nothing*, but works fine from the CLI.
+	// HTTP-requests looks the same using both options.
 	availableTypes, err := awsClient.DescribeInstanceTypes(&ec2.DescribeInstanceTypesInput{
-		Filters: []*ec2.Filter{
-			{
-				Name:   aws.String("free-tier-eligible"),
-				Values: []*string{aws.String("true")},
-			},
-		},
+		InstanceTypes: []*string{aws.String(T3INSTANCETYPE)},
 	})
-	if err != nil || len(availableTypes.InstanceTypes) == 0 {
-		return "", err
-	}
-	// TODO: Are there regions that allow both free instance types?
-	if len(availableTypes.InstanceTypes) > 1 {
-		for _, instanceType := range availableTypes.InstanceTypes {
-			if *instanceType.InstanceType == "t3.micro" {
-				return *instanceType.InstanceType, nil
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case "InvalidInstanceType":
+				logger.Info("Did not find t3.micro - falling back to t2.micro")
+				availableTypes, err := awsClient.DescribeInstanceTypes(&ec2.DescribeInstanceTypesInput{
+					InstanceTypes: []*string{aws.String(T2INSTANCETYPE)},
+				})
+				if err != nil {
+					return "", err
+				}
+				return *availableTypes.InstanceTypes[0].InstanceType, nil
+			default:
+				return "", err
 			}
 		}
+		return "", err
 	}
-	instanceType := *availableTypes.InstanceTypes[0].InstanceType
-	return instanceType, nil
+	return *availableTypes.InstanceTypes[0].InstanceType, nil
 }
 
 func RetrieveAmi(awsClient awsclient.Client, amiOwner string) (string, error) {
 	var ami string
-	executableBy := "self"
 	input := ec2.DescribeImagesInput{
-		ExecutableUsers: []*string{&executableBy},
+		ExecutableUsers: []*string{aws.String(EXECUTABLEBY)},
 		Owners:          []*string{&amiOwner},
 	}
 	availableAmis, err := awsClient.DescribeImages(&input)
@@ -830,6 +841,9 @@ func RetrieveAmi(awsClient awsclient.Client, amiOwner string) (string, error) {
 		return "", err
 	}
 	for _, image := range availableAmis.Images {
+		if *image.Architecture != "x86_64" {
+			continue
+		}
 		if strings.Contains(*image.Name, "SAP") {
 			continue
 		}

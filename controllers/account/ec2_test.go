@@ -356,9 +356,10 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 		&ec2.DescribeImagesOutput{
 			Images: []*ec2.Image{
 				{
-					ImageId: aws.String("ami-075ed2fafb0c1aa68"),
-					Name:    aws.String("RHEL-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
-					OwnerId: aws.String("12345"),
+					Architecture: aws.String("x86_64"),
+					ImageId:      aws.String("ami-075ed2fafb0c1aa68"),
+					Name:         aws.String("RHEL-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+					OwnerId:      aws.String("12345"),
 				},
 			},
 		}, nil)
@@ -756,10 +757,12 @@ func TestCleanFedrampSubnet(t *testing.T) {
 }
 
 func TestRetrieveFreeInstanceType(t *testing.T) {
+	logger := testutils.NewTestLogger().Logger()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	type args struct {
+		logger    logr.Logger
 		awsClient awsclient.Client
 	}
 	tests := []struct {
@@ -771,12 +774,14 @@ func TestRetrieveFreeInstanceType(t *testing.T) {
 		{"retrieve a t2.micro instance", args{
 			awsClient: func() awsclient.Client {
 				mock := mock.NewMockClient(ctrl)
+				mock.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(nil, awserr.New("InvalidInstanceType", "Not found", nil))
 				mock.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
 					InstanceTypes: []*ec2.InstanceTypeInfo{{
 						InstanceType: aws.String("t2.micro"),
 					}}}, nil)
 				return mock
 			}(),
+			logger: logger,
 		}, "t2.micro", false},
 		{"retrieve a t3 instance", args{
 			awsClient: func() awsclient.Client {
@@ -787,33 +792,20 @@ func TestRetrieveFreeInstanceType(t *testing.T) {
 					}}}, nil)
 				return mock
 			}(),
+			logger: logger,
 		}, "t3.micro", false},
-		{"if both are available, retrieve a t3 instance", args{
-			awsClient: func() awsclient.Client {
-				mock := mock.NewMockClient(ctrl)
-				mock.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
-					InstanceTypes: []*ec2.InstanceTypeInfo{
-						{
-							InstanceType: aws.String("t2.micro"),
-						},
-						{
-							InstanceType: aws.String("t3.micro"),
-						}},
-				}, nil)
-				return mock
-			}(),
-		}, "t3.micro", false},
-		{"can not retrieve an instance", args{
+		{"can not retrieve an instance - other error", args{
 			awsClient: func() awsclient.Client {
 				mock := mock.NewMockClient(ctrl)
 				mock.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(nil, errors.New("an error happened"))
 				return mock
 			}(),
+			logger: logger,
 		}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := RetrieveFreeInstanceType(tt.args.awsClient)
+			got, err := RetrieveAvailableMicroInstanceType(tt.args.logger, tt.args.awsClient)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("RetrieveFreeInstanceType() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -847,14 +839,16 @@ func TestRetrieveAmi(t *testing.T) {
 						&ec2.DescribeImagesOutput{
 							Images: []*ec2.Image{
 								{
-									ImageId: aws.String("ami-075ed2fafb0c1aa69"),
-									Name:    aws.String("RHEL-SAP-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
-									OwnerId: aws.String("12345"),
+									Architecture: aws.String("x86_64"),
+									ImageId:      aws.String("ami-075ed2fafb0c1aa69"),
+									Name:         aws.String("RHEL-SAP-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+									OwnerId:      aws.String("12345"),
 								},
 								{
-									ImageId: aws.String("ami-075ed2fafb0c1aa68"),
-									Name:    aws.String("RHEL-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
-									OwnerId: aws.String("12345"),
+									Architecture: aws.String("x86_64"),
+									ImageId:      aws.String("ami-075ed2fafb0c1aa68"),
+									Name:         aws.String("RHEL-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+									OwnerId:      aws.String("12345"),
 								},
 							},
 						}, nil)
@@ -874,14 +868,16 @@ func TestRetrieveAmi(t *testing.T) {
 						&ec2.DescribeImagesOutput{
 							Images: []*ec2.Image{
 								{
-									ImageId: aws.String("ami-075ed2fafb0c1aa69"),
-									Name:    aws.String("RHEL-BETA-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
-									OwnerId: aws.String("12345"),
+									Architecture: aws.String("x86_64"),
+									ImageId:      aws.String("ami-075ed2fafb0c1aa69"),
+									Name:         aws.String("RHEL-BETA-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+									OwnerId:      aws.String("12345"),
 								},
 								{
-									ImageId: aws.String("ami-075ed2fafb0c1aa68"),
-									Name:    aws.String("RHEL-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
-									OwnerId: aws.String("12345"),
+									Architecture: aws.String("x86_64"),
+									ImageId:      aws.String("ami-075ed2fafb0c1aa68"),
+									Name:         aws.String("RHEL-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+									OwnerId:      aws.String("12345"),
 								},
 							},
 						}, nil)
@@ -901,14 +897,16 @@ func TestRetrieveAmi(t *testing.T) {
 						&ec2.DescribeImagesOutput{
 							Images: []*ec2.Image{
 								{
-									ImageId: aws.String("ami-075ed2fafb0c1aa69"),
-									Name:    aws.String("RHEL-BETA-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
-									OwnerId: aws.String("12345"),
+									Architecture: aws.String("x86_64"),
+									ImageId:      aws.String("ami-075ed2fafb0c1aa69"),
+									Name:         aws.String("RHEL-BETA-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+									OwnerId:      aws.String("12345"),
 								},
 								{
-									ImageId: aws.String("ami-075ed2fafb0c1aa68"),
-									Name:    aws.String("RHEL-SAP-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
-									OwnerId: aws.String("12345"),
+									Architecture: aws.String("x86_64"),
+									ImageId:      aws.String("ami-075ed2fafb0c1aa68"),
+									Name:         aws.String("RHEL-SAP-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
+									OwnerId:      aws.String("12345"),
 								},
 							},
 						}, nil)
