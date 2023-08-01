@@ -263,7 +263,7 @@ func (r *AccountReconciler) getSTSClient(log logr.Logger, accountClaim *awsv1alp
 
 	awsRegion := config.GetDefaultRegion()
 
-	jumpRoleCreds, err := getSTSCredentials(log, operatorAWSClient, stsAccessARN, "", "awsAccountOperator")
+	jumpRoleCreds, err := awsclient.GetSTSCredentials(log, operatorAWSClient, stsAccessARN, "", "awsAccountOperator")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -278,7 +278,7 @@ func (r *AccountReconciler) getSTSClient(log logr.Logger, accountClaim *awsv1alp
 		return nil, nil, err
 	}
 
-	customerAccountCreds, err := getSTSCredentials(log, jumpRoleClient,
+	customerAccountCreds, err := awsclient.GetSTSCredentials(log, jumpRoleClient,
 		accountClaim.Spec.STSRoleARN, accountClaim.Spec.STSExternalID, "RH-Account-Initialization")
 	if err != nil {
 		return nil, nil, err

@@ -91,7 +91,7 @@ func TestGetSTSCredentials(t *testing.T) {
 		nil, // no error
 	)
 
-	creds, err := getSTSCredentials(
+	creds, err := awsclient.GetSTSCredentials(
 		nullLogger,
 		mockAWSClient,
 		"",
@@ -119,7 +119,7 @@ func TestGetSTSCredentials(t *testing.T) {
 		expectedErr,
 	).Times(100)
 
-	creds, err = getSTSCredentials(
+	creds, err = awsclient.GetSTSCredentials(
 		nullLogger,
 		mockAWSClient,
 		"",
