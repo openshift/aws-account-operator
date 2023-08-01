@@ -372,9 +372,12 @@ func (a *Account) HasNeverBeenClaimed() bool {
 	return !a.Status.Claimed && a.Spec.LegalEntity.ID == ""
 }
 
-// IsOwnedByAccountPool returns true if the account has an ownerreference type that is the accountpool
+// IsOwnedByAccountPool returns true if the account has an ownerreference type that is the accountpool or if the accountpool is defined in the account spec
 func (a *Account) IsOwnedByAccountPool() bool {
 	if a.ObjectMeta.OwnerReferences == nil {
+		if a.Spec.AccountPool != "" {
+			return true
+		}
 		return false
 	}
 	for _, ref := range a.ObjectMeta.OwnerReferences {
