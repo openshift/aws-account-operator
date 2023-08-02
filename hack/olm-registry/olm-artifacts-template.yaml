@@ -114,6 +114,7 @@ objects:
       eu-west-2:ami-0188c0c5eddd2d032:t2.micro
       eu-west-3:ami-0c4224e392ec4e440:t2.micro
       eu-south-1:ami-04684e5a51afd7579:t3.micro
+      eu-south-2:ami-0ff2e412ffb1b6aac:t3.micro
       ap-northeast-1:ami-00b95502a4d51a07e:t2.micro
       ap-northeast-2:ami-041b16ca28f036753:t2.micro
       ap-northeast-3:ami-070dd2ec8c4a6df38:t2.micro
