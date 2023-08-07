@@ -739,6 +739,11 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 			return cleaned, err
 		}
 	}
+	// Get the instance type that will be used for this region and filter by that one.
+	instanceType, err := RetrieveAvailableMicroInstanceType(logger, client)
+	if err != nil {
+		return cleaned, err
+	}
 	// Get a list of all running t2.micro instances
 	output, err := client.DescribeInstances(&ec2.DescribeInstancesInput{
 		MaxResults: aws.Int64(100),
@@ -746,7 +751,7 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 			{
 				Name: aws.String("instance-type"),
 				Values: []*string{
-					aws.String("t2.micro"),
+					aws.String(instanceType),
 				},
 			},
 			{

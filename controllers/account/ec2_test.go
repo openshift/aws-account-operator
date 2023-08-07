@@ -351,7 +351,7 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 	mockAWSClient.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
 		InstanceTypes: []*ec2.InstanceTypeInfo{{
 			InstanceType: aws.String("t3.micro"),
-		}}}, nil)
+		}}}, nil).Times(2)
 	mockAWSClient.EXPECT().DescribeImages(gomock.Any()).Return(
 		&ec2.DescribeImagesOutput{
 			Images: []*ec2.Image{
