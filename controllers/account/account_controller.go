@@ -1042,6 +1042,8 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 
 	createOutput, err := client.CreateAccount(&createInput)
 	if err != nil {
+		createAccountFailureReasons := strings.Join(organizations.CreateAccountFailureReason_Values(), ",")
+		errMsg := fmt.Sprintf("Error creating account, failure reasons: %s", createAccountFailureReasons)
 		var returnErr error
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
@@ -1057,6 +1059,7 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 			}
 
 		}
+		utils.LogAwsError(reqLogger, errMsg, returnErr, err)
 		return &organizations.DescribeCreateAccountStatusOutput{}, returnErr
 	}
 
