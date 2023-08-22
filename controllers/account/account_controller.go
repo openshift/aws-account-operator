@@ -1042,6 +1042,7 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 
 	createOutput, err := client.CreateAccount(&createInput)
 	if err != nil {
+		errMsg := "Error creating account"
 		var returnErr error
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
@@ -1053,10 +1054,10 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 				returnErr = awsv1alpha1.ErrAwsTooManyRequests
 			default:
 				returnErr = awsv1alpha1.ErrAwsFailedCreateAccount
-				utils.LogAwsError(reqLogger, "New AWS Error during account creation", returnErr, err)
 			}
 
 		}
+		utils.LogAwsError(reqLogger, errMsg, returnErr, err)
 		return &organizations.DescribeCreateAccountStatusOutput{}, returnErr
 	}
 
