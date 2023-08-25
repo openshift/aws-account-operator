@@ -857,11 +857,6 @@ func schema_openshift_aws_account_operator_api_v1alpha1_AccountStatus(ref common
 						},
 					},
 					"conditions": {
-						VendorExtensible: spec.VendorExtensible{
-							Extensions: spec.Extensions{
-								"x-kubernetes-list-type": "map",
-							},
-						},
 						SchemaProps: spec.SchemaProps{
 							Type: []string{"array"},
 							Items: &spec.SchemaOrArray{
