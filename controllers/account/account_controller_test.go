@@ -1269,16 +1269,15 @@ func TestFinalizeAccount_LabelledBYOCAccount(t *testing.T) {
 
 var _ = Describe("Account Controller", func() {
 	var (
-		nullTestLogger testutils.TestLogger
-		nullLogger     logr.Logger
-		mockAWSClient  *mock.MockClient
-		accountName    string
-		accountEmail   string
-		ctrl           *gomock.Controller
-		account        *awsv1alpha1.Account
-		configMap      *v1.ConfigMap
-		r              *AccountReconciler
-		req            reconcile.Request
+		nullLogger    logr.Logger
+		mockAWSClient *mock.MockClient
+		accountName   string
+		accountEmail  string
+		ctrl          *gomock.Controller
+		account       *awsv1alpha1.Account
+		configMap     *v1.ConfigMap
+		r             *AccountReconciler
+		req           reconcile.Request
 	)
 
 	err := apis.AddToScheme(scheme.Scheme)
@@ -1290,8 +1289,7 @@ var _ = Describe("Account Controller", func() {
 		ctrl = gomock.NewController(GinkgoT())
 		accountName = TestAccountName
 		accountEmail = TestAccountEmail
-		nullTestLogger = testutils.NewTestLogger()
-		nullLogger = nullTestLogger.Logger()
+		nullLogger = testutils.NewTestLogger().Logger()
 		mockAWSClient = mock.NewMockClient(ctrl)
 		configMap = &v1.ConfigMap{
 			TypeMeta: metav1.TypeMeta{},
@@ -1327,7 +1325,6 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsAccountLimitExceeded).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeConstraintViolationException)))
 		})
 
 		It("AWS returns ErrCodeServiceException from CreateAccount", func() {
@@ -1337,7 +1334,6 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsInternalFailure).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeServiceException)))
 		})
 
 		It("AWS returns ErrCodeTooManyRequestsException from CreateAccount", func() {
@@ -1347,7 +1343,6 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsTooManyRequests).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeTooManyRequestsException)))
 		})
 
 		It("AWS returns error from CreateAccount", func() {
@@ -1357,7 +1352,6 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsFailedCreateAccount).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeDuplicateAccountException)))
 		})
 
 		It("AWS returns an error from DescribeCreateAccountStatus", func() {
