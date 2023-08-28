@@ -1302,7 +1302,7 @@ var _ = Describe("Account Controller", func() {
 				Annotations: map[string]string{},
 			},
 			Data: map[string]string{
-				"regions": "us-east-1:ami-000db10762d0c4c05:t2.micro",
+				"ami-owner": "12345",
 			},
 		}
 		r = &AccountReconciler{

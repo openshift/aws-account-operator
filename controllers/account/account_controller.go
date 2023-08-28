@@ -289,17 +289,16 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		}
 	}
 
-	// Get regions from configmap data
-	stringRegions, ok := configMap.Data["regions"]
+	// Get the owner of the Red Hat amis from the configmap
+	amiOwner, ok := configMap.Data["ami-owner"]
 	if !ok {
 		err = awsv1alpha1.ErrInvalidConfigMap
 		return reconcile.Result{}, err
 	}
 	if err != nil {
-		reqLogger.Error(err, "failed getting regions from configmap data")
+		reqLogger.Error(err, "failed getting ami-owner from configmap data")
 		return reconcile.Result{}, err
 	}
-	regionAMIs := processConfigMapRegions(stringRegions)
 
 	// Account init for both BYOC and Non-BYOC
 	if currentAcctInstance.ReadyForInitialization() {
@@ -330,7 +329,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				return reconcile.Result{}, err
 			}
 
-			if err = r.initializeRegions(reqLogger, currentAcctInstance, creds, regionAMIs); err != nil {
+			if err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner); err != nil {
 				// initializeRegions logs
 				return reconcile.Result{}, err
 			}
@@ -380,7 +379,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			return reconcile.Result{}, err
 		}
 
-		if err = r.initializeRegions(reqLogger, currentAcctInstance, creds, regionAMIs); err != nil {
+		if err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner); err != nil {
 			// initializeRegions logs
 			return reconcile.Result{}, err
 		}
@@ -877,7 +876,7 @@ func (r *AccountReconciler) assumeRole(
 	return awsAssumedRoleClient, creds, nil
 }
 
-func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) error {
+func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, amiOwner string) error {
 	awsRegion := config.GetDefaultRegion()
 	// Instantiate a client with a default region to retrieve regions we want to initialize
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
@@ -917,7 +916,7 @@ func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcct
 
 	// For accounts created by the accountpool we want to ensure we initiate all regions
 	if !currentAcctInstance.IsBYOC() {
-		go r.asyncRegionInit(reqLogger, currentAcctInstance, creds, regionAMIs, castAWSRegionType(regionsEnabledInAccount.Regions))
+		go r.asyncRegionInit(reqLogger, currentAcctInstance, creds, amiOwner, castAWSRegionType(regionsEnabledInAccount.Regions))
 		return nil
 	}
 
@@ -951,7 +950,7 @@ func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcct
 	// This initializes supported regions, and updates Account state when that's done. There is
 	// no error checking at this level.
 	// Only initiate the one requested region
-	go r.asyncRegionInit(reqLogger, currentAcctInstance, creds, regionAMIs, accountClaim.Spec.Aws.Regions)
+	go r.asyncRegionInit(reqLogger, currentAcctInstance, creds, amiOwner, accountClaim.Spec.Aws.Regions)
 
 	return nil
 }
@@ -964,10 +963,10 @@ func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcct
 // - This goroutine dies in some horrible and unpredictable way.
 // In either case we would expect the main reconciler to eventually notice that the Account has
 // been in the InitializingRegions state for too long, and set it to Failed.
-func (r *AccountReconciler) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec, regionsEnabledInAccount []awsv1alpha1.AwsRegions) {
+func (r *AccountReconciler) asyncRegionInit(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, amiOwner string, regionsEnabledInAccount []awsv1alpha1.AwsRegions) {
 
 	// Initialize all supported regions by creating and terminating an instance in each
-	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, regionsEnabledInAccount, creds, regionAMIs)
+	r.InitializeSupportedRegions(reqLogger, currentAcctInstance, regionsEnabledInAccount, creds, amiOwner)
 
 	if currentAcctInstance.IsBYOC() {
 		utils.SetAccountStatus(currentAcctInstance, "BYOC Account Ready", awsv1alpha1.AccountReady, AccountReady)
@@ -1284,22 +1283,6 @@ func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountCondition
 	} else {
 		return "UnhandledError", awsv1alpha1.AccountUnhandledError
 	}
-}
-
-// processConfigMapRegions is a very hacky way of turning the region ami data we store in the configmap into an region-ami map
-func processConfigMapRegions(regionString string) map[string]awsv1alpha1.AmiSpec {
-	output := make(map[string]awsv1alpha1.AmiSpec)
-	regionsDelimited := strings.Split(regionString, "\n")
-	for _, value := range regionsDelimited {
-		tempArr := strings.Split(value, ":")
-		if len(tempArr) == 3 {
-			output[strings.ReplaceAll(tempArr[0], " ", "")] = awsv1alpha1.AmiSpec{
-				Ami:          strings.ReplaceAll(tempArr[1], " ", ""),
-				InstanceType: strings.ReplaceAll(tempArr[2], " ", ""),
-			}
-		}
-	}
-	return output
 }
 
 // getManagedTags retrieves a list of managed tags from the configmap
