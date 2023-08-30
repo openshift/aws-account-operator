@@ -1,18 +1,18 @@
 reviewers:
-- jharrington22
-- iamkirkbater
-- dkeohane
-- mrWinston
-- NautiluX
 - AlexVulaj
 - bergmannf
-- T0MASD
-- reedcort
+- dkeohane
 - geowa4
+- iamkirkbater
+- jharrington22
+- mrWinston
+- NautiluX
+- reedcort
+- T0MASD
 approvers:
 - bergmannf
-- jharrington22
-- iamkirkbater
 - dkeohane
+- iamkirkbater
+- jharrington22
 - NautiluX
 maintainers:
