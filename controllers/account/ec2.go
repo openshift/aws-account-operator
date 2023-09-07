@@ -3,6 +3,7 @@ package account
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -21,6 +22,14 @@ type regionInitializationError struct {
 	Region   string
 }
 
+// Constants used to retrieve instance types and AMIs:
+// AMIs we use should be executable by everyone
+const EXECUTABLEBY = "all"
+
+// T3 and T2 micro instanes are free to start
+const T3INSTANCETYPE = "t3.micro"
+const T2INSTANCETYPE = "t2.micro"
+
 var sampleCIDR = "10.0.0.0/16"
 var sampleVPCID = ""
 
@@ -28,7 +37,7 @@ var sampleVPCID = ""
 // This should ensure we don't see any AWS API "PendingVerification" errors when launching instances
 // NOTE: This function does not have any returns. In particular, error conditions from the
 // goroutines are logged, but do not result in a failure up the stack.
-func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []awsv1alpha1.AwsRegions, creds *sts.AssumeRoleOutput, regionAMIs map[string]awsv1alpha1.AmiSpec) {
+func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []awsv1alpha1.AwsRegions, creds *sts.AssumeRoleOutput, amiOwner string) {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
 	ec2Notifications, ec2Errors := make(chan string), make(chan regionInitializationError)
 
@@ -56,7 +65,7 @@ func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, ac
 
 	// Create go routines to initialize regions in parallel
 	for _, region := range regions {
-		go r.InitializeRegion(reqLogger, account, region.Name, regionAMIs[region.Name], vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags, kmsKeyId) //nolint:errcheck // Unable to do anything with the returned error
+		go r.InitializeRegion(reqLogger, account, region.Name, amiOwner, vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags, kmsKeyId) //nolint:errcheck // Unable to do anything with the returned error
 	}
 
 	var regionInitFailedRegion []string
@@ -91,7 +100,7 @@ func (r *AccountReconciler) InitializeRegion(
 	reqLogger logr.Logger,
 	account *awsv1alpha1.Account,
 	region string,
-	instanceInfo awsv1alpha1.AmiSpec,
+	amiOwner string,
 	vCPUQuota float64,
 	ec2Notifications chan string,
 	ec2Errors chan regionInitializationError,
@@ -166,6 +175,23 @@ func (r *AccountReconciler) InitializeRegion(
 		if err != nil {
 			return err
 		}
+	}
+
+	instanceType, err := RetrieveAvailableMicroInstanceType(reqLogger, awsClient)
+	if err != nil {
+		determineTypesErr := fmt.Sprintf("Unable to determine available instance types in region: %s", region)
+		controllerutils.LogAwsError(reqLogger, determineTypesErr, nil, err)
+		ec2Errors <- regionInitializationError{ErrorMsg: determineTypesErr, Region: region}
+	}
+	ami, err := RetrieveAmi(awsClient, amiOwner)
+	if err != nil {
+		retrieveAmiErr := fmt.Sprintf("Unable to find suitable AMI in region: %s", region)
+		controllerutils.LogAwsError(reqLogger, retrieveAmiErr, nil, err)
+		ec2Errors <- regionInitializationError{ErrorMsg: retrieveAmiErr, Region: region}
+	}
+	instanceInfo := awsv1alpha1.AmiSpec{
+		Ami:          ami,
+		InstanceType: instanceType,
 	}
 
 	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, instanceInfo, managedTags, customerTags, kmsKeyId)
@@ -713,6 +739,11 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 			return cleaned, err
 		}
 	}
+	// Get the instance type that will be used for this region and filter by that one.
+	instanceType, err := RetrieveAvailableMicroInstanceType(logger, client)
+	if err != nil {
+		return cleaned, err
+	}
 	// Get a list of all running t2.micro instances
 	output, err := client.DescribeInstances(&ec2.DescribeInstancesInput{
 		MaxResults: aws.Int64(100),
@@ -720,7 +751,7 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 			{
 				Name: aws.String("instance-type"),
 				Values: []*string{
-					aws.String("t2.micro"),
+					aws.String(instanceType),
 				},
 			},
 			{
@@ -773,4 +804,62 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 		}
 	}
 	return cleaned, nil
+}
+
+// Get the free instance type for the client's region
+func RetrieveAvailableMicroInstanceType(logger logr.Logger, awsClient awsclient.Client) (string, error) {
+	// FIXME: For unknown reasons attempting to use the free-tier-eligible
+	// filter from go returns *nothing*, but works fine from the CLI.
+	// HTTP-requests looks the same using both options.
+	availableTypes, err := awsClient.DescribeInstanceTypes(&ec2.DescribeInstanceTypesInput{
+		InstanceTypes: []*string{aws.String(T3INSTANCETYPE)},
+	})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case "InvalidInstanceType":
+				logger.Info("Did not find t3.micro - falling back to t2.micro")
+				availableTypes, err := awsClient.DescribeInstanceTypes(&ec2.DescribeInstanceTypesInput{
+					InstanceTypes: []*string{aws.String(T2INSTANCETYPE)},
+				})
+				if err != nil {
+					return "", err
+				}
+				return *availableTypes.InstanceTypes[0].InstanceType, nil
+			default:
+				return "", err
+			}
+		}
+		return "", err
+	}
+	return *availableTypes.InstanceTypes[0].InstanceType, nil
+}
+
+func RetrieveAmi(awsClient awsclient.Client, amiOwner string) (string, error) {
+	var ami string
+	input := ec2.DescribeImagesInput{
+		ExecutableUsers: []*string{aws.String(EXECUTABLEBY)},
+		Owners:          []*string{&amiOwner},
+	}
+	availableAmis, err := awsClient.DescribeImages(&input)
+	if err != nil {
+		return "", err
+	}
+	for _, image := range availableAmis.Images {
+		if *image.Architecture != "x86_64" {
+			continue
+		}
+		if strings.Contains(*image.Name, "SAP") {
+			continue
+		}
+		if strings.Contains(*image.Name, "BETA") {
+			continue
+		}
+		ami = *image.ImageId
+		break
+	}
+	if ami == "" {
+		return "", errors.New("Could not find a matching AMI.")
+	}
+	return ami, nil
 }
