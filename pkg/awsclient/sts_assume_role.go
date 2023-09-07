@@ -72,6 +72,7 @@ func GetSTSCredentials(
 			reqLogger.Error(err,
 				fmt.Sprintf(`Unknown error while getting STS credentials: %s`, err))
 		}
+		return &sts.AssumeRoleOutput{}, err
 	}
 	return assumeRoleOutput, err
 }
