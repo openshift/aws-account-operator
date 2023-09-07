@@ -68,14 +68,15 @@ func GetSTSCredentials(
 					AWS Error Message: %s`,
 					aerr.Code(),
 					aerr.Message()))
+		} else {
+			reqLogger.Error(err,
+				fmt.Sprintf(`Unknown error while getting STS credentials: %s`, err))
 		}
-		return &sts.AssumeRoleOutput{}, err
 	}
-
-	return assumeRoleOutput, nil
+	return assumeRoleOutput, err
 }
 
-func AssumeRoleFunc(
+func AssumeRoleAndCreateClient(
 	reqLogger logr.Logger,
 	awsClientBuilder IBuilder,
 	currentAcctInstance *awsv1alpha1.Account,
@@ -84,10 +85,10 @@ func AssumeRoleFunc(
 	region string,
 	roleToAssume string,
 	ccsRoleID string) (Client, *sts.AssumeRoleOutput, error) {
-	return AssumeRole(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, ccsRoleID)
+	return HandleRoleAssumption(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, ccsRoleID)
 }
 
-func AssumeRole(
+func HandleRoleAssumption(
 	reqLogger logr.Logger,
 	awsClientBuilder IBuilder,
 	currentAcctInstance *awsv1alpha1.Account,
