@@ -16,6 +16,7 @@ package awsclient
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/endpoints"
@@ -487,11 +488,16 @@ func (c *awsClient) ListRequestedServiceQuotaChangeHistoryByQuota(input *service
 // NewClient creates our client wrapper object for the actual AWS clients we use.
 // If controllerName is nonempty, metrics are collected timing and counting each AWS request.
 func newClient(controllerName, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
+  // dereferencing http.DefaultClient so we copy the underlying struct instead of copying the pointer.
+	timeOutHttpClient := *http.DefaultClient
+	timeOutHttpClient.Timeout = 5 * time.Minute
+
 	var err error
 	// Set region and retryer to prevent any potential rate limiting on the aws side
 	awsConfig := &aws.Config{
 		Region:      aws.String(region),
 		Credentials: credentials.NewStaticCredentials(awsAccessID, awsAccessSecret, token),
+		HTTPClient:  &timeOutHttpClient,
 		Retryer: client.DefaultRetryer{
 			NumMaxRetries:    10,
 			MinThrottleDelay: 2 * time.Second,
@@ -511,10 +517,12 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 			SigningRegion: region,
 		}, nil
 	}
+
 	ec2AwsConfig := &aws.Config{
 		Region:           aws.String(region),
 		Credentials:      credentials.NewStaticCredentials(awsAccessID, awsAccessSecret, token),
 		EndpointResolver: endpoints.ResolverFunc(resolver),
+		HTTPClient:  &timeOutHttpClient,
 		Retryer: client.DefaultRetryer{
 			NumMaxRetries:    10,
 			MinThrottleDelay: 2 * time.Second,
@@ -547,7 +555,7 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 		s3Client:            s3.New(s),
 		stsClient:           sts.New(s),
 		supportClient:       support.New(s),
-		serviceQuotasClient: servicequotas.New(s, aws.NewConfig()),
+		serviceQuotasClient: servicequotas.New(s),
 	}, nil
 }
 
