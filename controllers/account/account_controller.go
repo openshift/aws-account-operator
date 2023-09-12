@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 	"regexp"
 	"strconv"
 	"strings"
@@ -34,8 +35,8 @@ import (
 )
 
 var log = logf.Log.WithName("controller_account")
-var AssumeRoleAndCreateClient = awsclient.AssumeRoleAndCreateClient
-var handleRoleAssumption = awsclient.HandleRoleAssumption
+var AssumeRoleAndCreateClient = stsclient.AssumeRoleAndCreateClient
+var handleRoleAssumption = stsclient.HandleRoleAssumption
 
 const (
 	// createPendTime is the maximum time we allow an Account to sit in Creating state before we
@@ -827,7 +828,6 @@ func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName 
 
 	return nil
 }
-
 
 func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, amiOwner string) error {
 	awsRegion := config.GetDefaultRegion()

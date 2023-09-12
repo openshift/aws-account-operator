@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -263,7 +264,7 @@ func (r *AccountReconciler) getSTSClient(log logr.Logger, accountClaim *awsv1alp
 
 	awsRegion := config.GetDefaultRegion()
 
-	jumpRoleCreds, err := awsclient.GetSTSCredentials(log, operatorAWSClient, stsAccessARN, "", "awsAccountOperator")
+	jumpRoleCreds, err := stsclient.GetSTSCredentials(log, operatorAWSClient, stsAccessARN, "", "awsAccountOperator")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -278,7 +279,7 @@ func (r *AccountReconciler) getSTSClient(log logr.Logger, accountClaim *awsv1alp
 		return nil, nil, err
 	}
 
-	customerAccountCreds, err := awsclient.GetSTSCredentials(log, jumpRoleClient,
+	customerAccountCreds, err := stsclient.GetSTSCredentials(log, jumpRoleClient,
 		accountClaim.Spec.STSRoleARN, accountClaim.Spec.STSExternalID, "RH-Account-Initialization")
 	if err != nil {
 		return nil, nil, err

@@ -1,4 +1,4 @@
-package awsclient
+package sts
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/rkt/rkt/tests/testutils/logger"
 	"regexp"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,7 +30,7 @@ func matchSubstring(roleID, role string) (bool, error) {
 // getSTSCredentials returns STS credentials for the specified account ARN
 func GetSTSCredentials(
 	reqLogger logr.Logger,
-	client Client,
+	client awsclient.Client,
 	roleArn string,
 	externalID string,
 	roleSessionName string) (*sts.AssumeRoleOutput, error) {
@@ -79,25 +80,25 @@ func GetSTSCredentials(
 
 func AssumeRoleAndCreateClient(
 	reqLogger logr.Logger,
-	awsClientBuilder IBuilder,
+	awsClientBuilder awsclient.IBuilder,
 	currentAcctInstance *awsv1alpha1.Account,
 	client client.Client,
-	awsSetupClient Client,
+	awsSetupClient awsclient.Client,
 	region string,
 	roleToAssume string,
-	ccsRoleID string) (Client, *sts.AssumeRoleOutput, error) {
+	ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
 	return HandleRoleAssumption(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, ccsRoleID)
 }
 
 func HandleRoleAssumption(
 	reqLogger logr.Logger,
-	awsClientBuilder IBuilder,
+	awsClientBuilder awsclient.IBuilder,
 	currentAcctInstance *awsv1alpha1.Account,
 	client client.Client,
-	awsSetupClient Client,
+	awsSetupClient awsclient.Client,
 	region string,
 	roleToAssume string,
-	ccsRoleID string) (Client, *sts.AssumeRoleOutput, error) {
+	ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
 
 	// The role ARN made up of the account number and the role which is the default role name
 	// created in child accounts
@@ -140,7 +141,7 @@ func HandleRoleAssumption(
 	// create an awsclientbuilder function in the accountReconciler struct
 
 	// pass in awsclient or pass in the AwsClientBuilder
-	awsAssumedRoleClient, err := awsClientBuilder.GetClient(controllerName, client, NewAwsClientInput{
+	awsAssumedRoleClient, err := awsClientBuilder.GetClient(controllerName, client, awsclient.NewAwsClientInput{
 		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
 		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
 		AwsToken:                *creds.Credentials.SessionToken,
