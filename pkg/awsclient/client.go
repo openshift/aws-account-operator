@@ -491,7 +491,7 @@ var awsApiMaxRetries int = 10
 // NewClient creates our client wrapper object for the actual AWS clients we use.
 // If controllerName is nonempty, metrics are collected timing and counting each AWS request.
 func newClient(controllerName, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
-  // dereferencing http.DefaultClient so we copy the underlying struct instead of copying the pointer.
+	// dereferencing http.DefaultClient so we copy the underlying struct instead of copying the pointer.
 	timeOutHttpClient := *http.DefaultClient
 	timeOutHttpClient.Timeout = awsApiTimeout
 
@@ -525,7 +525,7 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 		Region:           aws.String(region),
 		Credentials:      credentials.NewStaticCredentials(awsAccessID, awsAccessSecret, token),
 		EndpointResolver: endpoints.ResolverFunc(resolver),
-		HTTPClient:  &timeOutHttpClient,
+		HTTPClient:       &timeOutHttpClient,
 		Retryer: client.DefaultRetryer{
 			NumMaxRetries:    awsApiMaxRetries,
 			MinThrottleDelay: 2 * time.Second,

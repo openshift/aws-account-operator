@@ -14,9 +14,9 @@ var _ = Describe("AWS Resource Tag Builder", func() {
 	When("Testing aws client timeout", func() {
 
 		It("Should timeout a hanging call", func() {
-      // overwrite default values so the test can run in 10 seconds
+			// overwrite default values so the test can run in 10 seconds
 			awsApiTimeout = 1 * time.Second
-      awsApiMaxRetries = 5
+			awsApiMaxRetries = 5
 
 			http.DefaultClient.Transport = &http.Transport{
 				Proxy: func(r *http.Request) (*url.URL, error) {
@@ -30,7 +30,7 @@ var _ = Describe("AWS Resource Tag Builder", func() {
 
 			client, err := newClient("", "sss", "TESTSTETST", "eu-central-1", "eu-central-1")
 			done := make(chan error)
-      // call describeRegions asyncronously
+			// call describeRegions asyncronously
 			go func() {
 				_, err = client.DescribeRegions(&ec2.DescribeRegionsInput{})
 				done <- err
@@ -40,12 +40,12 @@ var _ = Describe("AWS Resource Tag Builder", func() {
 			time.Sleep(awsApiTimeout * 10)
 
 			select {
-      case err, ok := <-done:
-        Expect(ok).To(BeTrue())
-        Expect(err).ToNot(BeNil())
-        Expect(err).To(ContainSubstring("Client.Timeout exceeded"))
+			case err, ok := <-done:
+				Expect(ok).To(BeTrue())
+				Expect(err).ToNot(BeNil())
+				Expect(err).To(ContainSubstring("Client.Timeout exceeded"))
 			default:
-        Fail("Api call did not time out.")
+				Fail("Api call did not time out.")
 			}
 		})
 	})
