@@ -36,7 +36,6 @@ import (
 
 var log = logf.Log.WithName("controller_account")
 var AssumeRoleAndCreateClient = stsclient.AssumeRoleAndCreateClient
-var handleRoleAssumption = stsclient.HandleRoleAssumption
 
 const (
 	// createPendTime is the maximum time we allow an Account to sit in Creating state before we
@@ -144,7 +143,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		var awsClient awsclient.Client
 		if currentAcctInstance.IsBYOC() {
 			roleToAssume := currentAcctInstance.GetAssumeRole()
-			awsClient, _, err = handleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
+			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
 			if err != nil {
 				reqLogger.Error(err, "failed building BYOC client from assume_role")
 				// Get custom failure reason to update account status
@@ -185,7 +184,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				return reconcile.Result{}, err
 			}
 		} else {
-			awsClient, _, err = handleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
+			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
 			if err != nil {
 				reqLogger.Error(err, "failed building AWS client from assume_role")
 				// Get custom failure reason to update account status
@@ -424,7 +423,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	if currentAcctInstance.IsReady() && probeSecretEnabled {
 
 		roleToAssume := currentAcctInstance.GetAssumeRole()
-		awsClient, _, err := handleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
+		awsClient, _, err := stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
 		if err != nil {
 			reqLogger.Error(err, "failed building BYOC client from assume_role")
 			// Get custom failure reason to update account status
