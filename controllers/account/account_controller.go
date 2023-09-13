@@ -146,24 +146,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
 			if err != nil {
 				reqLogger.Error(err, "failed building BYOC client from assume_role")
-				// Get custom failure reason to update account status
-				reason := ""
-				if aerr, ok := err.(awserr.Error); ok {
-					reason = aerr.Code()
-				}
-				errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s: %s", currentAcctInstance.Spec.AwsAccountID, err)
-				//take out and place in controller
-				_, stateErr := r.setAccountFailed(
-					reqLogger,
-					currentAcctInstance,
-					awsv1alpha1.AccountClientError,
-					reason,
-					errMsg,
-					AccountFailed,
-				)
-				if stateErr != nil {
-					reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
-				}
+				_, err = r.handleAWSClientError(reqLogger, currentAcctInstance, err)
 				if aerr, ok := err.(awserr.Error); ok {
 					switch aerr.Code() {
 					// If it's AccessDenied we want to just delete the finalizer and continue as we assume
@@ -187,25 +170,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
 			if err != nil {
 				reqLogger.Error(err, "failed building AWS client from assume_role")
-				// Get custom failure reason to update account status
-				reason := ""
-				if aerr, ok := err.(awserr.Error); ok {
-					reason = aerr.Code()
-				}
-				errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s: %s", currentAcctInstance.Spec.AwsAccountID, err)
-				//take out and place in controller
-				_, stateErr := r.setAccountFailed(
-					reqLogger,
-					currentAcctInstance,
-					awsv1alpha1.AccountClientError,
-					reason,
-					errMsg,
-					AccountFailed,
-				)
-				if stateErr != nil {
-					reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
-				}
-				return reconcile.Result{}, err
+				return r.handleAWSClientError(reqLogger, currentAcctInstance, err)
 			}
 		}
 		r.finalizeAccount(reqLogger, awsClient, currentAcctInstance)
@@ -426,28 +391,11 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		awsClient, _, err := stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
 		if err != nil {
 			reqLogger.Error(err, "failed building BYOC client from assume_role")
-			// Get custom failure reason to update account status
-			reason := ""
-			if aerr, ok := err.(awserr.Error); ok {
-				reason = aerr.Code()
-			}
-			errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s: %s", currentAcctInstance.Spec.AwsAccountID, err)
-			//take out and place in controller
-			_, stateErr := r.setAccountFailed(
-				reqLogger,
-				currentAcctInstance,
-				awsv1alpha1.AccountClientError,
-				reason,
-				errMsg,
-				AccountFailed,
-			)
-			if stateErr != nil {
-				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
-			}
+			result, _ := r.handleAWSClientError(reqLogger, currentAcctInstance, err)
 			// We don't want to error here as erroring will requeue and we will end in an
 			// infinite loop.  So we just log the error and exit.
 			// TODO maybe there's a better way to handle this?
-			return reconcile.Result{}, nil
+			return result, nil
 		}
 
 		// Check that secret is valid and reheal it if not
@@ -465,6 +413,28 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, err error) (reconcile.Result, error) {
+	// Get custom failure reason to update account status
+	reason := ""
+	if aerr, ok := err.(awserr.Error); ok {
+		reason = aerr.Code()
+	}
+	errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s: %s", currentAcctInstance.Spec.AwsAccountID, err)
+	_, stateErr := r.setAccountFailed(
+		reqLogger,
+		currentAcctInstance,
+		awsv1alpha1.AccountClientError,
+		reason,
+		errMsg,
+		AccountFailed,
+	)
+	if stateErr != nil {
+		reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
+	}
+
+	return reconcile.Result{}, err
 }
 
 func (r *AccountReconciler) handleAccountInitializingRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) (reconcile.Result, error) {
