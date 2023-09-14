@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 	"regexp"
 	"strconv"
 	"strings"
@@ -26,8 +27,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/go-logr/logr"
-	"github.com/rkt/rkt/tests/testutils/logger"
-
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
@@ -36,7 +35,7 @@ import (
 )
 
 var log = logf.Log.WithName("controller_account")
-var AssumeRole = AssumeRoleFunc
+var AssumeRoleAndCreateClient = stsclient.AssumeRoleAndCreateClient
 
 const (
 	// createPendTime is the maximum time we allow an Account to sit in Creating state before we
@@ -143,10 +142,11 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 		var awsClient awsclient.Client
 		if currentAcctInstance.IsBYOC() {
-			roleToAssume := getAssumeRole(currentAcctInstance)
-			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, "", roleToAssume, "")
+			roleToAssume := currentAcctInstance.GetAssumeRole()
+			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
 			if err != nil {
 				reqLogger.Error(err, "failed building BYOC client from assume_role")
+				_, err = r.handleAWSClientError(reqLogger, currentAcctInstance, err)
 				if aerr, ok := err.(awserr.Error); ok {
 					switch aerr.Code() {
 					// If it's AccessDenied we want to just delete the finalizer and continue as we assume
@@ -167,10 +167,10 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				return reconcile.Result{}, err
 			}
 		} else {
-			awsClient, _, err = r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
+			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
 			if err != nil {
 				reqLogger.Error(err, "failed building AWS client from assume_role")
-				return reconcile.Result{}, err
+				return r.handleAWSClientError(reqLogger, currentAcctInstance, err)
 			}
 		}
 		r.finalizeAccount(reqLogger, awsClient, currentAcctInstance)
@@ -387,14 +387,15 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	if currentAcctInstance.IsReady() && probeSecretEnabled {
 
-		roleToAssume := getAssumeRole(currentAcctInstance)
-		awsClient, _, err := r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, "", roleToAssume, "")
+		roleToAssume := currentAcctInstance.GetAssumeRole()
+		awsClient, _, err := stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
 		if err != nil {
 			reqLogger.Error(err, "failed building BYOC client from assume_role")
+			result, _ := r.handleAWSClientError(reqLogger, currentAcctInstance, err)
 			// We don't want to error here as erroring will requeue and we will end in an
 			// infinite loop.  So we just log the error and exit.
 			// TODO maybe there's a better way to handle this?
-			return reconcile.Result{}, nil
+			return result, nil
 		}
 
 		// Check that secret is valid and reheal it if not
@@ -412,6 +413,28 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, err error) (reconcile.Result, error) {
+	// Get custom failure reason to update account status
+	reason := ""
+	if aerr, ok := err.(awserr.Error); ok {
+		reason = aerr.Code()
+	}
+	errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s: %s", currentAcctInstance.Spec.AwsAccountID, err)
+	_, stateErr := r.setAccountFailed(
+		reqLogger,
+		currentAcctInstance,
+		awsv1alpha1.AccountClientError,
+		reason,
+		errMsg,
+		AccountFailed,
+	)
+	if stateErr != nil {
+		reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
+	}
+
+	return reconcile.Result{}, err
 }
 
 func (r *AccountReconciler) handleAccountInitializingRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) (reconcile.Result, error) {
@@ -599,8 +622,8 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 func (r *AccountReconciler) updateServiceQuotaRequests(reqLogger logr.Logger, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, serviceQuotaRequests awsv1alpha1.RegionalServiceQuotas, count int) error {
 	for region, quotaRequest := range serviceQuotaRequests {
 		regionLogger := reqLogger.WithValues("Region", region)
-		roleToAssume := getAssumeRole(currentAcctInstance)
-		awsAssumedRoleClient, _, err := AssumeRole(r, reqLogger, currentAcctInstance, awsSetupClient, region, roleToAssume, "")
+		roleToAssume := currentAcctInstance.GetAssumeRole()
+		awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, region, roleToAssume, "")
 		if err != nil {
 			reqLogger.Error(err, "Could not impersonate AWS account", "aws-account", currentAcctInstance.Spec.AwsAccountID)
 			return err
@@ -648,8 +671,8 @@ func setCurrentAccountServiceQuotas(r *AccountReconciler, reqLogger logr.Logger,
 	}
 
 	// Need to assume role into the cluster account
-	roleToAssume := getAssumeRole(currentAcctInstance)
-	awsAssumedRoleClient, _, err := AssumeRole(r, reqLogger, currentAcctInstance, awsSetupClient, "", roleToAssume, "")
+	roleToAssume := currentAcctInstance.GetAssumeRole()
+	awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
 	if err != nil {
 		reqLogger.Error(err, "Could not impersonate AWS account", "aws-account", currentAcctInstance.Spec.AwsAccountID)
 		return err
@@ -773,107 +796,6 @@ func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName 
 	}
 
 	return nil
-}
-
-func AssumeRoleFunc(r *AccountReconciler,
-	reqLogger logr.Logger,
-	currentAcctInstance *awsv1alpha1.Account,
-	awsSetupClient awsclient.Client,
-	region string,
-	roleToAssume string,
-	ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
-	return r.assumeRole(reqLogger, currentAcctInstance, awsSetupClient, region, roleToAssume, ccsRoleID)
-}
-
-func (r *AccountReconciler) assumeRole(
-	reqLogger logr.Logger,
-	currentAcctInstance *awsv1alpha1.Account,
-	awsSetupClient awsclient.Client,
-	region string,
-	roleToAssume string,
-	ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
-
-	// The role ARN made up of the account number and the role which is the default role name
-	// created in child accounts
-	roleArn := config.GetIAMArn(currentAcctInstance.Spec.AwsAccountID, config.AwsResourceTypeRole, roleToAssume)
-
-	// Use the role session name to uniquely identify a session when the same role
-	// is assumed by different principals or for different reasons.
-	var roleSessionName = "awsAccountOperator"
-
-	var creds *sts.AssumeRoleOutput
-	var credsErr error
-
-	for i := 0; i < 10; i++ {
-
-		// Get STS credentials so that we can create an aws client with
-		creds, credsErr = getSTSCredentials(reqLogger, awsSetupClient, roleArn, "", roleSessionName)
-		if credsErr != nil {
-			// Get custom failure reason to update account status
-			reason := ""
-			if aerr, ok := credsErr.(awserr.Error); ok {
-				reason = aerr.Code()
-			}
-			errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s: %s", currentAcctInstance.Spec.AwsAccountID, credsErr)
-			_, stateErr := r.setAccountFailed(
-				reqLogger,
-				currentAcctInstance,
-				awsv1alpha1.AccountClientError,
-				reason,
-				errMsg,
-				AccountFailed,
-			)
-			if stateErr != nil {
-				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
-			}
-			return nil, nil, credsErr
-		}
-
-		// If this is a BYOC account, check that BYOCAdminAccess role was the one used in the AssumedRole.
-		// RoleID must exist in the AssumeRoleID string. This is an eventual consistency work-around code.
-		// It can take some varying amount of time to use the correct role if it had just been created.
-		match, _ := matchSubstring(ccsRoleID, *creds.AssumedRoleUser.AssumedRoleId)
-		if ccsRoleID != "" && !match {
-			reqLogger.Info(fmt.Sprintf("Assumed RoleID:Session string does not match new RoleID: %s, %s", *creds.AssumedRoleUser.AssumedRoleId, ccsRoleID))
-			reqLogger.Info(fmt.Sprintf("Sleeping %d seconds", i))
-			time.Sleep(time.Duration(i) * time.Second)
-		} else {
-			break
-		}
-	}
-
-	var awsRegion string
-	if region != "" {
-		awsRegion = region
-	} else {
-		awsRegion = config.GetDefaultRegion()
-	}
-
-	awsAssumedRoleClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
-		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
-		AwsToken:                *creds.Credentials.SessionToken,
-		AwsRegion:               awsRegion,
-	})
-	if err != nil {
-		logger.Error(err, "Failed to assume role")
-		reqLogger.Info(err.Error())
-		errMsg := "Message Failed creating AWS Client with Assumed Role"
-		_, stateErr := r.setAccountFailed(
-			reqLogger,
-			currentAcctInstance,
-			awsv1alpha1.AccountClientError,
-			"AWSClientCreationFailed",
-			errMsg,
-			AccountFailed,
-		)
-		if stateErr != nil {
-			reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
-		}
-		return nil, nil, err
-	}
-
-	return awsAssumedRoleClient, creds, nil
 }
 
 func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, creds *sts.AssumeRoleOutput, amiOwner string) error {
@@ -1263,16 +1185,6 @@ func matchSubstring(roleID, role string) (bool, error) {
 	return matched, err
 }
 
-func getAssumeRole(c *awsv1alpha1.Account) string {
-	// If the account is a CCS account, return the ManagedOpenShiftSupport role
-	if c.IsBYOC() {
-		return fmt.Sprintf("%s-%s", awsv1alpha1.ManagedOpenShiftSupportRole, c.Labels[awsv1alpha1.IAMUserIDLabel])
-	}
-
-	// Else return the default role
-	return awsv1alpha1.AccountOperatorIAMRole
-}
-
 func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountConditionType) {
 	if err == awsv1alpha1.ErrInvalidToken {
 		return "InvalidClientTokenId", awsv1alpha1.AccountAuthenticationError
@@ -1376,7 +1288,7 @@ func (r *AccountReconciler) handleCreateAdminAccessRole(
 	var awsAssumedRoleClient awsclient.Client
 	var creds *sts.AssumeRoleOutput
 	currentAccInstanceID := currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel]
-	roleToAssume := getAssumeRole(currentAcctInstance)
+	roleToAssume := currentAcctInstance.GetAssumeRole()
 
 	adminAccessArn := config.GetIAMArn("aws", config.AwsResourceTypePolicy, config.AwsResourceIDAdministratorAccessRole)
 
@@ -1388,11 +1300,11 @@ func (r *AccountReconciler) handleCreateAdminAccessRole(
 	).GetIAMTags()
 
 	// In this block we are creating the ManagedOpenShift-Support-XYZ for both CCS and non-CCS accounts.
-	// The dependency on the roleID validation within the assumeRole, and the different aws clients
+	// The dependency on the roleID validation within the handleRoleAssumption, and the different aws clients
 	// required between CCS and non-CCS, is what has caused these steps to be done independently.
 	if currentAcctInstance.Spec.BYOC {
 		// The CCS uses the CCS client for creating the ManagedOpenShift-Support and then utilizes the RoleID
-		// generated from that in the assumeRole func for role validation
+		// generated from that in the handleRoleAssumption func for role validation
 
 		// Get the AccountClaim in Order to retrieve the CCSClient
 		accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
@@ -1434,15 +1346,15 @@ func (r *AccountReconciler) handleCreateAdminAccessRole(
 			return nil, nil, err
 		}
 
-		awsAssumedRoleClient, creds, err = AssumeRole(r, reqLogger, currentAcctInstance, awsSetupClient, "", roleToAssume, roleID)
+		awsAssumedRoleClient, creds, err = AssumeRoleAndCreateClient(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, roleID)
 		if err != nil {
 			return nil, nil, err
 		}
 
 	} else {
-		// Unlike the CCS block, the non-CCS block does not have a dependency on the RoleID to assumeRole. The
+		// Unlike the CCS block, the non-CCS block does not have a dependency on the RoleID to handleRoleAssumption. The
 		// awsAssumedRoleClient is what is needed to create the ManagedOpenShift-Support in the non-CCS account.
-		awsAssumedRoleClient, creds, err = AssumeRole(r, reqLogger, currentAcctInstance, awsSetupClient, "", roleToAssume, "")
+		awsAssumedRoleClient, creds, err = AssumeRoleAndCreateClient(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
 		if err != nil {
 			return nil, nil, err
 		}

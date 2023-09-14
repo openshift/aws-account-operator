@@ -77,55 +77,6 @@ func (r *AccountReconciler) CreateSecret(reqLogger logr.Logger, account *awsv1al
 	return nil
 }
 
-// getSTSCredentials returns STS credentials for the specified account ARN
-func getSTSCredentials(
-	reqLogger logr.Logger,
-	client awsclient.Client,
-	roleArn string,
-	externalID string,
-	roleSessionName string) (*sts.AssumeRoleOutput, error) {
-	// Default duration in seconds of the session token 3600. We need to have the roles policy
-	// changed if we want it to be longer than 3600 seconds
-	var roleSessionDuration int64 = 3600
-	reqLogger.Info(fmt.Sprintf("Creating STS credentials for AWS ARN: %s", roleArn))
-	// Build input for AssumeRole
-	assumeRoleInput := sts.AssumeRoleInput{
-		DurationSeconds: &roleSessionDuration,
-		RoleArn:         &roleArn,
-		RoleSessionName: &roleSessionName,
-	}
-	if externalID != "" {
-		assumeRoleInput.ExternalId = &externalID
-	}
-
-	assumeRoleOutput := &sts.AssumeRoleOutput{}
-	var err error
-	for i := 0; i < 100; i++ {
-		time.Sleep(defaultSleepDelay)
-		assumeRoleOutput, err = client.AssumeRole(&assumeRoleInput)
-		if err == nil {
-			break
-		}
-		if i == 99 {
-			reqLogger.Info(fmt.Sprintf("Timed out while assuming role %s", roleArn))
-		}
-	}
-	if err != nil {
-		// Log AWS error
-		if aerr, ok := err.(awserr.Error); ok {
-			reqLogger.Error(aerr,
-				fmt.Sprintf(`New AWS Error while getting STS credentials,
-					AWS Error Code: %s,
-					AWS Error Message: %s`,
-					aerr.Code(),
-					aerr.Message()))
-		}
-		return &sts.AssumeRoleOutput{}, err
-	}
-
-	return assumeRoleOutput, nil
-}
-
 func retryIfAwsServiceFailureOrInvalidToken(err error) bool {
 	if aerr, ok := err.(awserr.Error); ok {
 		switch aerr.Code() {

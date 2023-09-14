@@ -67,69 +67,6 @@ func TestIAMCreateSecret(t *testing.T) {
 	assert.Error(t, err, "")
 }
 
-func TestGetSTSCredentials(t *testing.T) {
-
-	mocks := setupDefaultMocks(t, []runtime.Object{})
-	nullLogger := testutils.NewTestLogger().Logger()
-	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
-	defer mocks.mockCtrl.Finish()
-
-	AccessKeyId := aws.String("MyAccessKeyID")
-	Expiration := aws.Time(time.Now().Add(time.Hour))
-	SecretAccessKey := aws.String("MySecretAccessKey")
-	SessionToken := aws.String("MySessionToken")
-
-	mockAWSClient.EXPECT().AssumeRole(gomock.Any()).Return(
-		&sts.AssumeRoleOutput{
-			Credentials: &sts.Credentials{
-				AccessKeyId:     AccessKeyId,
-				Expiration:      Expiration,
-				SecretAccessKey: SecretAccessKey,
-				SessionToken:    SessionToken,
-			},
-		},
-		nil, // no error
-	)
-
-	creds, err := getSTSCredentials(
-		nullLogger,
-		mockAWSClient,
-		"",
-		"",
-		"",
-	)
-
-	assert.Equal(t, creds.Credentials.AccessKeyId, AccessKeyId)
-	assert.Equal(t, creds.Credentials.Expiration, Expiration)
-	assert.Equal(t, creds.Credentials.SecretAccessKey, SecretAccessKey)
-	assert.Equal(t, creds.Credentials.SessionToken, SessionToken)
-	assert.NoError(t, err)
-
-	// Test AWS Failure
-	expectedErr := awserr.New("AccessDenied", "", nil)
-	mockAWSClient.EXPECT().AssumeRole(gomock.Any()).Return(
-		&sts.AssumeRoleOutput{
-			Credentials: &sts.Credentials{
-				AccessKeyId:     AccessKeyId,
-				Expiration:      Expiration,
-				SecretAccessKey: SecretAccessKey,
-				SessionToken:    SessionToken,
-			},
-		},
-		expectedErr,
-	).Times(100)
-
-	creds, err = getSTSCredentials(
-		nullLogger,
-		mockAWSClient,
-		"",
-		"",
-		"",
-	)
-	assert.Error(t, err, expectedErr)
-	assert.Equal(t, creds, &sts.AssumeRoleOutput{})
-}
-
 func TestRetryIfAwsServiceFailureOrInvalidToken(t *testing.T) {
 	tests := []struct {
 		name          string

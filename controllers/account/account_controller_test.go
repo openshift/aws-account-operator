@@ -1108,7 +1108,7 @@ func TestGetAssumeRole(t *testing.T) {
 		t.Run(
 			test.name,
 			func(t *testing.T) {
-				result := getAssumeRole(&test.acct.acct)
+				result := test.acct.acct.GetAssumeRole()
 				if result != test.expected {
 					t.Error(
 						"for account:", test.acct,
@@ -1538,9 +1538,11 @@ var _ = Describe("Account Controller", func() {
 				})
 				It("copies the service quotas from spec to status", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRole = func(r *AccountReconciler,
+					AssumeRoleAndCreateClient = func(
 						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
 						awsSetupClient awsclient.Client,
 						region string,
 						roleToAssume string,
@@ -1570,9 +1572,11 @@ var _ = Describe("Account Controller", func() {
 					}).WithState(awsv1alpha1.AccountPendingVerification).acct
 
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRole = func(r *AccountReconciler,
+					AssumeRoleAndCreateClient = func(
 						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
 						awsSetupClient awsclient.Client,
 						region string,
 						roleToAssume string,
@@ -1595,9 +1599,11 @@ var _ = Describe("Account Controller", func() {
 				})
 				It("does not create a servicequota case if the quota is already higher", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRole = func(r *AccountReconciler,
+					AssumeRoleAndCreateClient = func(
 						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
 						awsSetupClient awsclient.Client,
 						region string,
 						roleToAssume string,
@@ -1638,9 +1644,11 @@ var _ = Describe("Account Controller", func() {
 				})
 				It("creates a servicequota case for each defined quota", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRole = func(r *AccountReconciler,
+					AssumeRoleAndCreateClient = func(
 						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
 						awsSetupClient awsclient.Client,
 						region string,
 						roleToAssume string,
@@ -1710,9 +1718,11 @@ var _ = Describe("Account Controller", func() {
 				})
 				It("moves a servicequota to in-progress if the case is open but not resolved", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRole = func(r *AccountReconciler,
+					AssumeRoleAndCreateClient = func(
 						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
 						awsSetupClient awsclient.Client,
 						region string,
 						roleToAssume string,
@@ -1770,9 +1780,11 @@ var _ = Describe("Account Controller", func() {
 				})
 				It("updates the correct region if multiple ones get updated", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRole = func(r *AccountReconciler,
+					AssumeRoleAndCreateClient = func(
 						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
 						awsSetupClient awsclient.Client,
 						region string,
 						roleToAssume string,
@@ -1848,9 +1860,11 @@ var _ = Describe("Account Controller", func() {
 				})
 				It("fails the account if a request is denied", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRole = func(r *AccountReconciler,
+					AssumeRoleAndCreateClient = func(
 						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
 						awsSetupClient awsclient.Client,
 						region string,
 						roleToAssume string,

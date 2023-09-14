@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"fmt"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -386,6 +387,15 @@ func (a *Account) IsOwnedByAccountPool() bool {
 		}
 	}
 	return false
+}
+
+func (a *Account) GetAssumeRole() string {
+	// If the account is a CCS account, return the ManagedOpenShiftSupport role
+	if a.IsBYOC() {
+		return fmt.Sprintf("%s-%s", ManagedOpenShiftSupportRole, a.Labels[IAMUserIDLabel])
+	}
+	// Else return the default role
+	return AccountOperatorIAMRole
 }
 
 // GetCondition finds the condition that has the
