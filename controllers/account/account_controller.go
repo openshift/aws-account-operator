@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 	"regexp"
 	"strconv"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/aws/aws-sdk-go/service/sts"
+	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -376,11 +376,15 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		currentAcctInstance.Spec.IAMUserSecret = *secretName
 		err = r.accountSpecUpdate(reqLogger, currentAcctInstance)
 		if err != nil {
+			reqLogger.Error(err, "Error updating Secret Ref in Account CR")
 			return reconcile.Result{}, err
 		}
 
+		reqLogger.Info("IAM User created and saved", "user", iamUserUHC)
+
 		if err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner); err != nil {
 			// initializeRegions logs
+			reqLogger.Error(err, "Error kicking off the region initialization")
 			return reconcile.Result{}, err
 		}
 	}
@@ -813,28 +817,39 @@ func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcct
 		return err
 	}
 
+	reqLogger.Info("Created AWS Client for region initialization")
+
+	// TODO - Kirk - I think this is where the account creation bug is happening - I wonder
+	// if this next AWS call is failing and the error casting is making this return nil, which
+	// lets the reconciler exit without error causing this to stay in a "creating" state
+
 	// Get a list of regions enabled in the current account
 	regionsEnabledInAccount, err := awsClient.DescribeRegions(&ec2.DescribeRegionsInput{
 		AllRegions: aws.Bool(false),
 	})
 	if err != nil {
+		reqLogger.Error(err, "Failed to retrieve list of regions enabled in this account.")
 		// Retry on failures related to the slow AWS API
 		if aerr, ok := err.(awserr.Error); ok {
 			if aerr.Code() == "OptInRequired" {
+				reqLogger.Error(aerr, "Opt In Error")
+				// TODO - Kirk - Why are we returning nil here?
 				return nil
 			}
 		}
-		reqLogger.Error(err, "Failed to retrieve list of regions enabled in this account.")
 		return err
 	}
 
+	reqLogger.Info("Setting account status to Initializing Regions")
 	// We're about to kick off region init in a goroutine. This status makes subsequent
 	// Reconciles ignore the Account (unless it stays in this state for too long).
 	utils.SetAccountStatus(currentAcctInstance, "Initializing Regions", awsv1alpha1.AccountInitializingRegions, AccountInitializingRegions)
 	if err := r.statusUpdate(currentAcctInstance); err != nil {
-		// statusUpdate logs
+		reqLogger.Error(err, "Could not update status to Initializing Regions")
 		return err
 	}
+
+	reqLogger.Info("Initializing Regions")
 
 	// For accounts created by the accountpool we want to ensure we initiate all regions
 	if !currentAcctInstance.IsBYOC() {
