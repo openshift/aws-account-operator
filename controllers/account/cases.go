@@ -32,9 +32,7 @@ func createCase(reqLogger logr.Logger, account *v1alpha1.Account, client awsclie
 	caseCommunicationBody := fmt.Sprintf(
 		`Hello AWS,
 
-Please enable Enterprise Support on AWS account %s.
-
-Once this has been completed and the default EC2 limits are ready for use, please resolve this support case. Please do not set the case to Pending Customer Action.
+Please enable Enterprise Support on AWS account %s and resolve this support case.
 
 Thanks.
 
