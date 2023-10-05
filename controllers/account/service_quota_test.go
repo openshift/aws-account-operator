@@ -51,11 +51,6 @@ func TestAccountReconciler_HandleServiceQuotaRequests(t *testing.T) {
 			// after mocks is defined
 			defer mocks.mockCtrl.Finish()
 
-			r := AccountReconciler{
-				Client: mocks.fakeKubeClient,
-				Scheme: scheme.Scheme,
-			}
-
 			mockAWSClient.EXPECT().GetServiceQuota(gomock.Any()).Return(
 				&servicequotas.GetServiceQuotaOutput{
 					Quota: &servicequotas.ServiceQuota{
@@ -85,7 +80,7 @@ func TestAccountReconciler_HandleServiceQuotaRequests(t *testing.T) {
 				nil,
 			)
 
-			if err := r.HandleServiceQuotaRequests(test.reqLogger, mockAWSClient, test.quotaCode, &test.quotaValue); (err != nil) != test.wantErr {
+			if err := HandleServiceQuotaRequests(test.reqLogger, mockAWSClient, test.quotaCode, &test.quotaValue); (err != nil) != test.wantErr {
 				t.Errorf("AccountReconciler.HandleServiceQuotaRequests() error = %v, wantErr %v", err, test.wantErr)
 			}
 		})

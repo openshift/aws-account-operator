@@ -16,7 +16,7 @@ import (
 	"github.com/openshift/aws-account-operator/test/fixtures"
 )
 
-func (r *AccountReconciler) HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Client, quotaCode awsv1alpha1.SupportedServiceQuotas, serviceQuotaStatus *awsv1alpha1.ServiceQuotaStatus) error {
+func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Client, quotaCode awsv1alpha1.SupportedServiceQuotas, serviceQuotaStatus *awsv1alpha1.ServiceQuotaStatus) error {
 
 	reqLogger.Info("Handling ServiceQuota Requests")
 	serviceCode, found := getServiceCode(quotaCode)
