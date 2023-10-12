@@ -843,9 +843,6 @@ func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcct
 
 	reqLogger.Info("Created AWS Client for region initialization")
 
-	// TODO - Kirk - I think this is where the account creation bug is happening - I wonder
-	// if this next AWS call is failing and the error casting is making this return nil, which
-	// lets the reconciler exit without error causing this to stay in a "creating" state
 
 	// Get a list of regions enabled in the current account
 	regionsEnabledInAccount, err := awsClient.DescribeRegions(&ec2.DescribeRegionsInput{

@@ -1487,6 +1487,54 @@ var _ = Describe("Account Controller", func() {
 			})))
 		})
 
+    It("Should try reconciliation again when region init failed due to an OptInError", func ()  {
+		  mockAWSClient = mock.NewMockClient(ctrl)
+      r = &AccountReconciler{
+        Scheme: scheme.Scheme,
+        awsClientBuilder: &mock.Builder{
+          MockController: ctrl,
+        },
+        shardName: "hivename",
+      }
+      testAccount := &newTestAccountBuilder().BYOC(false).WithState(AccountCreating).acct
+      testAccount.Status.Conditions = append(testAccount.Status.Conditions, awsv1alpha1.AccountCondition{
+      	Type:               awsv1alpha1.AccountCreating,
+      	Status:             "",
+      	LastProbeTime:      metav1.Time{
+      		Time: time.Now(),
+      	},
+      	LastTransitionTime: metav1.Time{
+      		Time: time.Now(),
+      	},
+      })
+      testAccount.Labels[awsv1alpha1.IAMUserIDLabel] = "abcdef"
+          
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{testAccount, configMap}...).Build()
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: testAccount.Namespace,
+					Name:      testAccount.Name,
+				},
+			}
+
+      mockAWSClient.EXPECT().AssumeRole(gomock.Any()).Return(&sts.AssumeRoleOutput{
+      	AssumedRoleUser:  &sts.AssumedRoleUser{
+      		Arn:           new(string),
+      		AssumedRoleId: new(string),
+      	},
+      	Credentials:      &sts.Credentials{
+      		AccessKeyId:     new(string),
+      		Expiration:      &time.Time{},
+      		SecretAccessKey: new(string),
+      		SessionToken:    new(string),
+      	},
+      	PackedPolicySize: new(int64),
+      })
+			outRequest, err := r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(outRequest).ToNot(BeNil())
+      Expect(outRequest.RequeueAfter).To(Equal(awsAccountInitRequeueDuration))
+    })
 	})
 
   Context("Testing isAwsOptInError()", func() {
