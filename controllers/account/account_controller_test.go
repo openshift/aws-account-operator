@@ -1489,6 +1489,24 @@ var _ = Describe("Account Controller", func() {
 
 	})
 
+  Context("Testing isAwsOptInError()", func() {
+    It("Should return False when passing nil", func ()  {
+      Expect(isAwsOptInError(nil)).To(BeFalse())
+    })
+    It("Should return False when passing an error that can't be cast to awserr.Error", func ()  {
+      Expect(isAwsOptInError(fmt.Errorf("anyError"))).To(BeFalse())
+    })
+    It("Should return False when passing a wrong awserror", func ()  {
+      wrongError := awserr.New("InvalidQueryParameter", "The AWS query string is malformed or does not adhere to AWS standards.", fmt.Errorf("error"))
+      Expect(isAwsOptInError(wrongError)).To(BeFalse())
+    })
+    It("Should return True when passing an OptInError", func ()  {
+      rightError := awserr.New("OptInRequired", "You are not subscribed to this service. Please go to http://aws.amazon.com to subscribe.", nil)
+      Expect(isAwsOptInError(rightError)).To(BeTrue())
+    })
+
+  })
+
 	Context("Testing account CR service quotas", func() {
 		utils.DetectDevMode = ""
 		When("Called with a CCS account", func() {
