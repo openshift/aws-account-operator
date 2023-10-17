@@ -69,6 +69,7 @@ const (
 	RunningStandardInstances  SupportedServiceQuotas = "L-1216C47A"
 	NLBPerRegion              SupportedServiceQuotas = "L-69A177A2"
 	EC2VPCElasticIPsQuotaCode SupportedServiceQuotas = "L-0263D0A3" // EC2-VPC Elastic IPs
+	EC2NetworkAclQuotaCode    SupportedServiceQuotas = "L-2AEEBF1A" // EC2-Network ACL
 )
 
 type SupportedServiceQuotaServices string
