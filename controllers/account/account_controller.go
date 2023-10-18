@@ -602,6 +602,9 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 			}
 			reqLogger.Info("Handling quotarequets", "current-in-flight-count", currentInFlightCount)
 			err := UpdateServiceQuotaRequests(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client, inFlightQuotaRequests, currentInFlightCount)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
 			err = r.statusUpdate(currentAcctInstance)
 			if err != nil {
 				return reconcile.Result{}, err // TODO: For review, do we want to be handling the error like this?
