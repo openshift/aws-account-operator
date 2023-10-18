@@ -97,6 +97,8 @@ func getServiceCode(quotaCode awsv1alpha1.SupportedServiceQuotas) (string, bool)
 		awsv1alpha1.EC2VPCElasticIPsQuotaCode: string(awsv1alpha1.EC2ServiceQuota),
 		awsv1alpha1.NLBPerRegion:              string(awsv1alpha1.Elasticloadbalancing),
 		awsv1alpha1.RulesPerSecurityGroup:     string(awsv1alpha1.VPCServiceQuota),
+		awsv1alpha1.EC2NetworkAclQuotaCode:    string(awsv1alpha1.EC2ServiceQuota),
+		awsv1alpha1.GeneralPurposeSSD:         string(awsv1alpha1.EC2ServiceQuota),
 	}
 
 	v, found := servicesMap[quotaCode]
