@@ -21,6 +21,7 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 	apis "github.com/openshift/aws-account-operator/api"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
+	"github.com/openshift/aws-account-operator/config"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
@@ -1487,29 +1488,27 @@ var _ = Describe("Account Controller", func() {
 			})))
 		})
 
-    It("Should try reconciliation again when region init failed due to an OptInError", func ()  {
-		  mockAWSClient = mock.NewMockClient(ctrl)
-      r = &AccountReconciler{
-        Scheme: scheme.Scheme,
-        awsClientBuilder: &mock.Builder{
-          MockController: ctrl,
-        },
-        shardName: "hivename",
-      }
-      testAccount := &newTestAccountBuilder().BYOC(false).WithState(AccountCreating).acct
-      testAccount.Status.Conditions = append(testAccount.Status.Conditions, awsv1alpha1.AccountCondition{
-      	Type:               awsv1alpha1.AccountCreating,
-      	Status:             "",
-      	LastProbeTime:      metav1.Time{
-      		Time: time.Now(),
-      	},
-      	LastTransitionTime: metav1.Time{
-      		Time: time.Now(),
-      	},
-      })
-      testAccount.Labels[awsv1alpha1.IAMUserIDLabel] = "abcdef"
-          
+		It("Should try reconciliation again when region init failed due to an OptInError", func() {
+      // run GetClient once so the cached client is actually populated
+			tmpcli, _ := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
+			mockAWSClient = tmpcli.(*mock.MockClient)
+
+			testAccount := &newTestAccountBuilder().BYOC(false).WithState(AccountCreating).acct
+			testAccount.Status.Conditions = append(testAccount.Status.Conditions, awsv1alpha1.AccountCondition{
+				Type:   awsv1alpha1.AccountCreating,
+				Status: "",
+				LastProbeTime: metav1.Time{
+					Time: time.Now(),
+				},
+				LastTransitionTime: metav1.Time{
+					Time: time.Now(),
+				},
+			})
+			testAccount.Labels[awsv1alpha1.IAMUserIDLabel] = "abcdef"
+			configMap.Data[awsv1alpha1.SupportJumpRole] = "arn:::support-jump-role"
+
 			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{testAccount, configMap}...).Build()
+
 			req = reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Namespace: testAccount.Namespace,
@@ -1517,43 +1516,156 @@ var _ = Describe("Account Controller", func() {
 				},
 			}
 
-      mockAWSClient.EXPECT().AssumeRole(gomock.Any()).Return(&sts.AssumeRoleOutput{
-      	AssumedRoleUser:  &sts.AssumedRoleUser{
-      		Arn:           new(string),
-      		AssumedRoleId: new(string),
-      	},
-      	Credentials:      &sts.Credentials{
-      		AccessKeyId:     new(string),
-      		Expiration:      &time.Time{},
-      		SecretAccessKey: new(string),
-      		SessionToken:    new(string),
-      	},
-      	PackedPolicySize: new(int64),
-      })
+			validUntil := time.Now().Add(time.Hour)
+			orgAccessRoleName := "OrganizationAccountAccessRole"
+			orgAccessArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, config.AwsResourceTypeRole, orgAccessRoleName)
+			roleSessionName := "awsAccountOperator"
+      // Assume org access role in account
+			mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
+				DurationSeconds: aws.Int64(3600),
+				RoleArn:         &orgAccessArn,
+				RoleSessionName: &roleSessionName,
+			}).Return(&sts.AssumeRoleOutput{
+				AssumedRoleUser: &sts.AssumedRoleUser{
+					Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
+					AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
+				},
+				Credentials: &sts.Credentials{
+					AccessKeyId:     aws.String("ACCESS_KEY"),
+					Expiration:      &validUntil,
+					SecretAccessKey: aws.String("SECRET_KEY"),
+					SessionToken:    aws.String("SESSION_TOKEN"),
+				},
+				PackedPolicySize: aws.Int64(40),
+			}, nil)
+
+      aaoRootIamUserName := "aao-root"
+      aaoRootIamUserArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, "user", aaoRootIamUserName)
+			mockAWSClient.EXPECT().GetUser(gomock.Any()).Return(&iam.GetUserOutput{
+				User: &iam.User{
+					Arn:      &aaoRootIamUserArn,
+					UserName: &aaoRootIamUserName,
+				},
+			}, nil)
+			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(&iam.GetRoleOutput{}, nil)
+      
+			rolePolicyDoc := fmt.Sprintf("{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"sts:AssumeRole\"],\"Principal\":{\"AWS\":[\"%s\",\"arn:::support-jump-role\"]}}]}", aaoRootIamUserArn)
+			roleDesc := "AdminAccess for BYOC"
+			roleName := "ManagedOpenShift-Support-abcdef"
+			roleCreate := time.Now()
+			roleTags := []*iam.Tag{
+				{
+					Key:   aws.String("clusterAccountName"),
+					Value: aws.String("testaccount"),
+				},
+				{
+					Key:   aws.String("clusterNamespace"),
+					Value: aws.String("testnamespace"),
+				},
+				{
+					Key:   aws.String("clusterClaimLink"),
+					Value: aws.String(""),
+				},
+				{
+					Key:   aws.String("clusterClaimLinkNamespace"),
+					Value: aws.String(""),
+				},
+			}
+			mockAWSClient.EXPECT().CreateRole(&iam.CreateRoleInput{
+				AssumeRolePolicyDocument: &rolePolicyDoc,
+				Description:              &roleDesc,
+				RoleName:                 &roleName,
+				Tags:                     roleTags,
+			}).Return(&iam.CreateRoleOutput{
+				Role: &iam.Role{
+					Arn:                      aws.String(fmt.Sprintf("aws:::%s", roleName)),
+					AssumeRolePolicyDocument: &rolePolicyDoc,
+					CreateDate:               &roleCreate,
+					Description:              &roleDesc,
+					MaxSessionDuration:       aws.Int64(1000000),
+					RoleId:                   &roleName,
+					RoleName:                 &roleName,
+					Tags:                     roleTags,
+				},
+			}, nil)
+
+			adminAccessArn := config.GetIAMArn("aws", config.AwsResourceTypePolicy, config.AwsResourceIDAdministratorAccessRole)
+			mockAWSClient.EXPECT().AttachRolePolicy(&iam.AttachRolePolicyInput{
+				PolicyArn: &adminAccessArn,
+				RoleName:  &roleName,
+			}).Return(nil, nil)
+			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(&iam.ListAttachedRolePoliciesOutput{
+				AttachedPolicies: []*iam.AttachedPolicy{{
+					PolicyArn:  &adminAccessArn,
+					PolicyName: aws.String(config.AwsResourceIDAdministratorAccessRole),
+				}},
+			}, nil)
+
+			userName := "osdManagedAdmin-abcdef"
+			mockAWSClient.EXPECT().GetUser(&iam.GetUserInput{
+				UserName: &userName,
+			}).Return(nil, awserr.New(iam.ErrCodeNoSuchEntityException, "", nil))
+
+			mockAWSClient.EXPECT().CreateUser(gomock.Any()).Return(&iam.CreateUserOutput{
+				User: &iam.User{
+					Arn:      aws.String(fmt.Sprintf("aws:::%s", userName)),
+					Tags:     roleTags,
+					UserId:   &userName,
+					UserName: &userName,
+				},
+			}, nil)
+
+			mockAWSClient.EXPECT().AttachUserPolicy(&iam.AttachUserPolicyInput{
+				UserName:  &userName,
+				PolicyArn: &adminAccessArn,
+			}).Return(nil, nil)
+
+			mockAWSClient.EXPECT().ListAccessKeys(&iam.ListAccessKeysInput{
+				UserName: &userName,
+			}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []*iam.AccessKeyMetadata{},
+			}, nil)
+
+			mockAWSClient.EXPECT().CreateAccessKey(&iam.CreateAccessKeyInput{
+				UserName: &userName,
+			}).Return(&iam.CreateAccessKeyOutput{
+				AccessKey: &iam.AccessKey{
+					AccessKeyId:     aws.String("ACCESS_KEY"),
+					CreateDate:      &roleCreate,
+					SecretAccessKey: aws.String("SECRET_KEY"),
+					Status:          aws.String("Valid"),
+					UserName:        &userName,
+				},
+			}, nil)
+
+			mockAWSClient.EXPECT().DescribeRegions(&ec2.DescribeRegionsInput{
+				AllRegions: aws.Bool(false),
+			}).Return(nil, awserr.New("OptInRequired", "You are not subscribed to this service. Please go to http://aws.amazon.com to subscribe.", nil))
+
 			outRequest, err := r.Reconcile(context.TODO(), req)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(outRequest).ToNot(BeNil())
-      Expect(outRequest.RequeueAfter).To(Equal(awsAccountInitRequeueDuration))
-    })
+			Expect(outRequest.RequeueAfter).To(Equal(awsAccountInitRequeueDuration))
+		})
 	})
 
-  Context("Testing isAwsOptInError()", func() {
-    It("Should return False when passing nil", func ()  {
-      Expect(isAwsOptInError(nil)).To(BeFalse())
-    })
-    It("Should return False when passing an error that can't be cast to awserr.Error", func ()  {
-      Expect(isAwsOptInError(fmt.Errorf("anyError"))).To(BeFalse())
-    })
-    It("Should return False when passing a wrong awserror", func ()  {
-      wrongError := awserr.New("InvalidQueryParameter", "The AWS query string is malformed or does not adhere to AWS standards.", fmt.Errorf("error"))
-      Expect(isAwsOptInError(wrongError)).To(BeFalse())
-    })
-    It("Should return True when passing an OptInError", func ()  {
-      rightError := awserr.New("OptInRequired", "You are not subscribed to this service. Please go to http://aws.amazon.com to subscribe.", nil)
-      Expect(isAwsOptInError(rightError)).To(BeTrue())
-    })
+	Context("Testing isAwsOptInError()", func() {
+		It("Should return False when passing nil", func() {
+			Expect(isAwsOptInError(nil)).To(BeFalse())
+		})
+		It("Should return False when passing an error that can't be cast to awserr.Error", func() {
+			Expect(isAwsOptInError(fmt.Errorf("anyError"))).To(BeFalse())
+		})
+		It("Should return False when passing a wrong awserror", func() {
+			wrongError := awserr.New("InvalidQueryParameter", "The AWS query string is malformed or does not adhere to AWS standards.", fmt.Errorf("error"))
+			Expect(isAwsOptInError(wrongError)).To(BeFalse())
+		})
+		It("Should return True when passing an OptInError", func() {
+			rightError := awserr.New("OptInRequired", "You are not subscribed to this service. Please go to http://aws.amazon.com to subscribe.", nil)
+			Expect(isAwsOptInError(rightError)).To(BeTrue())
+		})
 
-  })
+	})
 
 	Context("Testing account CR service quotas", func() {
 		utils.DetectDevMode = ""
