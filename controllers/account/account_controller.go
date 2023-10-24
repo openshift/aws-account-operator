@@ -529,7 +529,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 			// Update supportCaseId in CR
 			currentAcctInstance.Status.SupportCaseID = caseID
 			utils.SetAccountStatus(currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
-			err = SetCurrentAccountServiceQuotas(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient)
+			err = SetCurrentAccountServiceQuotas(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
 			if err != nil {
 				reqLogger.Error(err, "failed to set account service quotas")
 				return reconcile.Result{}, err
@@ -661,7 +661,7 @@ func UpdateServiceQuotaRequests(reqLogger logr.Logger, awsClientBuilder awsclien
 
 // This function takes any service quotas defined in the account CR spec and builds them out in the status. The struct for the service quoats in spec and status will differ
 // as the spec uses a 'default' region to reduce configuation complexity, whereas the status lists all regions and their service quoata values as it's easier to iterate over.
-func SetCurrentAccountServiceQuotas(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, currentAcctInstance *awsv1alpha1.Account, client client.Client, awsSetupClient awsclient.Client) error {
+func SetCurrentAccountServiceQuotas(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) error {
 
 	// If standard account, return early
 	if currentAcctInstance.Spec.RegionalServiceQuotas == nil {
