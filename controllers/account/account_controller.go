@@ -45,6 +45,9 @@ const (
 	// state. This is based on async region init taking a theoretical maximum of WaitTime * 2
 	// minutes plus a handful of AWS API calls (see asyncRegionInit).
 	regionInitTime = (time.Minute * utils.WaitTime * time.Duration(2)) + time.Minute
+	// awsAccountInitRequeueDuration is the duration we want to wait for the next
+	// reconcile loop after hitting an OptInRequired-error during region initialization.
+	awsAccountInitRequeueDuration = 1 * time.Minute
 
 	// AccountPending indicates an account is pending
 	AccountPending = "Pending"
@@ -304,6 +307,8 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	if currentAcctInstance.ReadyForInitialization() {
 		reqLogger.Info("initializing account", "awsAccountID", currentAcctInstance.Spec.AwsAccountID)
 
+		var creds *sts.AssumeRoleOutput
+
 		// STS mode doesn't need IAM user init, so just get the creds necessary, init regions, and exit
 		if currentAcctInstance.Spec.ManualSTSMode {
 			accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
@@ -323,70 +328,71 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				return reconcile.Result{}, acctClaimErr
 			}
 
-			_, creds, err := r.getSTSClient(reqLogger, accountClaim, awsSetupClient)
+			_, creds, err = r.getSTSClient(reqLogger, accountClaim, awsSetupClient)
 			if err != nil {
 				reqLogger.Error(err, "error getting sts client to initialize regions")
 				return reconcile.Result{}, err
 			}
 
-			if err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner); err != nil {
-				// initializeRegions logs
+		} else {
+
+			// Set IAMUserIDLabel if not there, and requeue
+			if !utils.AccountCRHasIAMUserIDLabel(currentAcctInstance) {
+				utils.AddLabels(
+					currentAcctInstance,
+					utils.GenerateLabel(
+						awsv1alpha1.IAMUserIDLabel,
+						utils.GenerateShortUID(),
+					),
+				)
+				return reconcile.Result{Requeue: true}, r.Client.Update(context.TODO(), currentAcctInstance)
+			}
+			var awsAssumedRoleClient awsclient.Client
+			awsAssumedRoleClient, creds, err = r.handleCreateAdminAccessRole(reqLogger, currentAcctInstance, awsSetupClient)
+			if err != nil {
 				return reconcile.Result{}, err
 			}
-			return reconcile.Result{}, nil
-		}
 
-		// Set IAMUserIDLabel if not there, and requeue
-		if !utils.AccountCRHasIAMUserIDLabel(currentAcctInstance) {
-			utils.AddLabels(
-				currentAcctInstance,
-				utils.GenerateLabel(
-					awsv1alpha1.IAMUserIDLabel,
-					utils.GenerateShortUID(),
-				),
-			)
-			return reconcile.Result{Requeue: true}, r.Client.Update(context.TODO(), currentAcctInstance)
-		}
-
-		awsAssumedRoleClient, creds, err := r.handleCreateAdminAccessRole(reqLogger, currentAcctInstance, awsSetupClient)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Use the same ID applied to the account name for IAM usernames
-		iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
-		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
-		if err != nil {
-			reason, errType := getBuildIAMUserErrorReason(err)
-			errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
-			_, stateErr := r.setAccountFailed(
-				reqLogger,
-				currentAcctInstance,
-				errType,
-				reason,
-				errMsg,
-				AccountFailed,
-			)
-			if stateErr != nil {
-				reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
+			// Use the same ID applied to the account name for IAM usernames
+			iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
+			secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
+			if err != nil {
+				reason, errType := getBuildIAMUserErrorReason(err)
+				errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
+				_, stateErr := r.setAccountFailed(
+					reqLogger,
+					currentAcctInstance,
+					errType,
+					reason,
+					errMsg,
+					AccountFailed,
+				)
+				if stateErr != nil {
+					reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
+				}
+				return reconcile.Result{}, err
 			}
-			return reconcile.Result{}, err
+
+			currentAcctInstance.Spec.IAMUserSecret = *secretName
+			err = r.accountSpecUpdate(reqLogger, currentAcctInstance)
+			if err != nil {
+				reqLogger.Error(err, "Error updating Secret Ref in Account CR")
+				return reconcile.Result{}, err
+			}
+
+			reqLogger.Info("IAM User created and saved", "user", iamUserUHC)
 		}
 
-		currentAcctInstance.Spec.IAMUserSecret = *secretName
-		err = r.accountSpecUpdate(reqLogger, currentAcctInstance)
-		if err != nil {
-			reqLogger.Error(err, "Error updating Secret Ref in Account CR")
-			return reconcile.Result{}, err
+		err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner)
+
+		if isAwsOptInError(err) {
+			reqLogger.Info("Aws Account not ready yet, requeuing.")
+			return reconcile.Result{
+				RequeueAfter: awsAccountInitRequeueDuration,
+			}, nil
 		}
 
-		reqLogger.Info("IAM User created and saved", "user", iamUserUHC)
-
-		if err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner); err != nil {
-			// initializeRegions logs
-			reqLogger.Error(err, "Error kicking off the region initialization")
-			return reconcile.Result{}, err
-		}
+		return reconcile.Result{}, err
 	}
 
 	if currentAcctInstance.IsReady() && probeSecretEnabled {
@@ -417,6 +423,24 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	return reconcile.Result{}, nil
+}
+
+// isAwsOptInError checks weather the error passed in is an instance of an Aws
+// Error with the error code "OptInRequired". This usually indicates that a
+// newly created aws account is not yet fully operational.
+//
+// returns true only if the error can be cast to an instance of awserr.Error and has the appropriate code set. Passing in `nil` also returns false.
+func isAwsOptInError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	awsError, ok := err.(awserr.Error)
+	if !ok {
+		return false
+	}
+
+	return awsError.Code() == "OptInRequired"
 }
 
 func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, err error) (reconcile.Result, error) {
@@ -819,9 +843,6 @@ func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcct
 
 	reqLogger.Info("Created AWS Client for region initialization")
 
-	// TODO - Kirk - I think this is where the account creation bug is happening - I wonder
-	// if this next AWS call is failing and the error casting is making this return nil, which
-	// lets the reconciler exit without error causing this to stay in a "creating" state
 
 	// Get a list of regions enabled in the current account
 	regionsEnabledInAccount, err := awsClient.DescribeRegions(&ec2.DescribeRegionsInput{
@@ -829,14 +850,6 @@ func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcct
 	})
 	if err != nil {
 		reqLogger.Error(err, "Failed to retrieve list of regions enabled in this account.")
-		// Retry on failures related to the slow AWS API
-		if aerr, ok := err.(awserr.Error); ok {
-			if aerr.Code() == "OptInRequired" {
-				reqLogger.Error(aerr, "Opt In Error")
-				// TODO - Kirk - Why are we returning nil here?
-				return nil
-			}
-		}
 		return err
 	}
 
