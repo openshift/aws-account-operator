@@ -73,7 +73,7 @@ const (
 	probeSecretEnabled = false
 
 	// number of service quota requests we are allowed to open concurrently in AWS
-	maxOpenQuotaRequests = 20
+	MaxOpenQuotaRequests = 20
 )
 
 // AccountReconciler reconciles a Account object
@@ -604,8 +604,8 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 			// - Requests that are open but not yet completed
 			currentInFlightCount, inFlightQuotaRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
 			_, onlyOpenRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
-			if currentInFlightCount <= maxOpenQuotaRequests {
-				reqLogger.Info(fmt.Sprintf("currentInFlightCount (%d) <= maxOpenQuotaRequests (%d)", currentInFlightCount, maxOpenQuotaRequests))
+			if currentInFlightCount <= MaxOpenQuotaRequests {
+				reqLogger.Info(fmt.Sprintf("currentInFlightCount (%d) <= maxOpenQuotaRequests (%d)", currentInFlightCount, MaxOpenQuotaRequests))
 				var maxRequestsReached = false
 				for region, onlyOpenRequest := range onlyOpenRequests {
 					if maxRequestsReached {
@@ -617,7 +617,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 					for quotaCode, r := range onlyOpenRequest {
 						inFlightQuotaRequests[region][quotaCode] = r
 						currentInFlightCount += 1
-						if currentInFlightCount >= maxOpenQuotaRequests {
+						if currentInFlightCount >= MaxOpenQuotaRequests {
 							maxRequestsReached = true
 							break
 						}
@@ -844,7 +844,6 @@ func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcct
 	}
 
 	reqLogger.Info("Created AWS Client for region initialization")
-
 
 	// Get a list of regions enabled in the current account
 	regionsEnabledInAccount, err := awsClient.DescribeRegions(&ec2.DescribeRegionsInput{
