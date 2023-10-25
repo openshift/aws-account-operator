@@ -1735,7 +1735,7 @@ var _ = Describe("Account Controller", func() {
 							},
 						},
 					}, nil)
-					err := setCurrentAccountServiceQuotas(r, nullLogger, account, mockAWSClient)
+					err := SetCurrentAccountServiceQuotas(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(1))
 					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))

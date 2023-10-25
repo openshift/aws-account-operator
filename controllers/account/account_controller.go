@@ -553,7 +553,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 			// Update supportCaseId in CR
 			currentAcctInstance.Status.SupportCaseID = caseID
 			utils.SetAccountStatus(currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
-			err = setCurrentAccountServiceQuotas(r, reqLogger, currentAcctInstance, awsSetupClient)
+			err = SetCurrentAccountServiceQuotas(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
 			if err != nil {
 				reqLogger.Error(err, "failed to set account service quotas")
 				return reconcile.Result{}, err
@@ -625,7 +625,14 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 				}
 			}
 			reqLogger.Info("Handling quotarequets", "current-in-flight-count", currentInFlightCount)
-			err := r.updateServiceQuotaRequests(reqLogger, awsSetupClient, currentAcctInstance, inFlightQuotaRequests, currentInFlightCount)
+			err := UpdateServiceQuotaRequests(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client, inFlightQuotaRequests, currentInFlightCount)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			err = r.statusUpdate(currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err // TODO: For review, do we want to be handling the error like this?
+			}
 			return reconcile.Result{RequeueAfter: 30 * time.Second, Requeue: true}, err
 		}
 	}
@@ -647,11 +654,11 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 	return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
 }
 
-func (r *AccountReconciler) updateServiceQuotaRequests(reqLogger logr.Logger, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, serviceQuotaRequests awsv1alpha1.RegionalServiceQuotas, count int) error {
+func UpdateServiceQuotaRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, serviceQuotaRequests awsv1alpha1.RegionalServiceQuotas, count int) error {
 	for region, quotaRequest := range serviceQuotaRequests {
 		regionLogger := reqLogger.WithValues("Region", region)
 		roleToAssume := currentAcctInstance.GetAssumeRole()
-		awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, region, roleToAssume, "")
+		awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, "")
 		if err != nil {
 			reqLogger.Error(err, "Could not impersonate AWS account", "aws-account", currentAcctInstance.Spec.AwsAccountID)
 			return err
@@ -660,7 +667,7 @@ func (r *AccountReconciler) updateServiceQuotaRequests(reqLogger logr.Logger, aw
 		// for each open quota in this region check to see if we need to request an increase.
 		for quotaCode, openQuotaRef := range quotaRequest {
 			reqLogger.Info(fmt.Sprintf("Handling quota request for quotaCode: %s", quotaCode))
-			err = r.HandleServiceQuotaRequests(regionLogger, awsAssumedRoleClient, quotaCode, openQuotaRef)
+			err = HandleServiceQuotaRequests(regionLogger, awsAssumedRoleClient, quotaCode, openQuotaRef)
 			if err != nil {
 				return err // TODO: For review, do we want to be handling the error like this?
 			}
@@ -673,17 +680,12 @@ func (r *AccountReconciler) updateServiceQuotaRequests(reqLogger logr.Logger, aw
 		utils.SetAccountStatus(currentAcctInstance, "ServiceQuota increase got denied", awsv1alpha1.AccountFailed, AccountFailed)
 	}
 
-	err := r.statusUpdate(currentAcctInstance)
-	if err != nil {
-		return err // TODO: For review, do we want to be handling the error like this?
-	}
-
 	return nil
 }
 
 // This function takes any service quotas defined in the account CR spec and builds them out in the status. The struct for the service quoats in spec and status will differ
 // as the spec uses a 'default' region to reduce configuation complexity, whereas the status lists all regions and their service quoata values as it's easier to iterate over.
-func setCurrentAccountServiceQuotas(r *AccountReconciler, reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client) error {
+func SetCurrentAccountServiceQuotas(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) error {
 
 	// If standard account, return early
 	if currentAcctInstance.Spec.RegionalServiceQuotas == nil {
@@ -700,7 +702,7 @@ func setCurrentAccountServiceQuotas(r *AccountReconciler, reqLogger logr.Logger,
 
 	// Need to assume role into the cluster account
 	roleToAssume := currentAcctInstance.GetAssumeRole()
-	awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
+	awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, "", roleToAssume, "")
 	if err != nil {
 		reqLogger.Error(err, "Could not impersonate AWS account", "aws-account", currentAcctInstance.Spec.AwsAccountID)
 		return err
