@@ -474,17 +474,26 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 				if err != nil {
 					return reconcile.Result{}, err
 				}
+
+				return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
 			} else {
 				_, err = r.getServiceQuotaRequest(reqLogger, &account, awsSetupClient, shardName)
 				if err != nil {
 					reqLogger.Error(err, "failed to get account service quota")
-					return reconcile.Result{}, err
+					return reconcile.Result{RequeueAfter: 30 * time.Second}, err
+				}
+				for _, quotas := range account.Status.RegionalServiceQuotas {
+					for _, quota := range quotas {
+						if quota.Status == "TODO" || quota.Status == "IN_PROGRESS" {
+							return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
+						}
+					}
 				}
 
 			}
 		}
 	}
-	return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
+	return utils.DoNotRequeue()
 }
 
 func (r *AccountValidationReconciler) getServiceQuotaRequest(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, shardName string) (reconcile.Result, error) {
@@ -527,12 +536,9 @@ func (r *AccountValidationReconciler) getServiceQuotaRequest(reqLogger logr.Logg
 			if err != nil {
 				return reconcile.Result{}, err // TODO: For review, do we want to be handling the error like this?
 			}
-
-			//Don't requeue if status is completed
-			return reconcile.Result{RequeueAfter: 30 * time.Second, Requeue: true}, err
 		}
 	}
-	return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
+	return reconcile.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

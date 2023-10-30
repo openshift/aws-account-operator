@@ -23,7 +23,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-var logs = logf.Log.WithName("controller_accountpoolvalidation")
+var (
+	defaultSleepDelay = 500 * time.Millisecond
+	logs              = logf.Log.WithName("controller_accountpoolvalidation")
+)
 
 const (
 	ControllerName = "accountpoolvalidation"
@@ -185,7 +188,6 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 	for _, account := range accountList {
 		if !reflect.DeepEqual(account.Spec.RegionalServiceQuotas, parsedRegionalServiceQuotas) {
 			account.Spec.RegionalServiceQuotas = parsedRegionalServiceQuotas
-			account.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
 			if !accountPoolValidationEnabled {
 				reqLogger.Info("Accountpool Validation is not enabled")
 				reqLogger.Info(fmt.Sprintf("Expected Servicequotas:%v", parsedRegionalServiceQuotas))
@@ -204,6 +206,7 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 		}
 	}
 
+	time.Sleep(defaultSleepDelay) // the delay ensures the most recent account version is used
 	updatedAccountList, err := r.getAccountPoolAccounts(accountPoolName)
 	if err != nil {
 		reqLogger.Error(err, "Failed to get AccountPool updated accounts")
@@ -211,11 +214,11 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 	}
 
 	updatedAccountMap := make(map[string]bool)
-	for _, item2 := range updatedAccountList {
+	for _, item2 := range updatedAccountSpecs {
 		updatedAccountMap[item2.Name] = true
 	}
 	for _, updatedaccount := range updatedAccountList {
-		if exists := updatedAccountMap[updatedaccount.Name]; exists {
+		if exists := updatedAccountMap[updatedaccount.ObjectMeta.Name]; exists {
 			updatedaccount.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
 			reqLogger.Info(fmt.Sprintf("Attempting to update the account status for: %v", &updatedaccount))
 			err = r.accountStatusUpdate(reqLogger, &updatedaccount)
