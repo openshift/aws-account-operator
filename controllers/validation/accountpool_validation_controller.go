@@ -183,30 +183,27 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 		reqLogger.Error(err, "Failed to get AccountPool accounts")
 		return reconcile.Result{}, err
 	}
-	var (
-		updatedAccountSpecs []awsv1alpha1.Account
-		accountPtr          *awsv1alpha1.Account
-	)
+	var updatedAccountSpecs []awsv1alpha1.Account
 
 	for _, account := range accountList {
-		accountPtr = &account
-		if !reflect.DeepEqual(accountPtr.Spec.RegionalServiceQuotas, parsedRegionalServiceQuotas) {
-			accountPtr.Spec.RegionalServiceQuotas = parsedRegionalServiceQuotas
+		accountCopy := account
+		if !reflect.DeepEqual(accountCopy.Spec.RegionalServiceQuotas, parsedRegionalServiceQuotas) {
+			accountCopy.Spec.RegionalServiceQuotas = parsedRegionalServiceQuotas
 			if !accountPoolValidationEnabled {
 				reqLogger.Info("Accountpool Validation is not enabled")
 				reqLogger.Info(fmt.Sprintf("Expected Servicequotas:%v", parsedRegionalServiceQuotas))
-				reqLogger.Info(fmt.Sprintf("Account Servicequotas:%v", accountPtr.Spec.RegionalServiceQuotas))
+				reqLogger.Info(fmt.Sprintf("Account Servicequotas:%v", accountCopy.Spec.RegionalServiceQuotas))
 				return reconcile.Result{}, nil
 			}
 
-			reqLogger.Info(fmt.Sprintf("Attempting to update the account Spec for: %v", accountPtr))
-			err = r.accountSpecUpdate(reqLogger, accountPtr)
+			reqLogger.Info(fmt.Sprintf("Attempting to update the account Spec for: %v", accountCopy.Name))
+			err = r.accountSpecUpdate(reqLogger, &accountCopy)
 			if err != nil {
-				logs.Error(err, "failed to update account spec", "account", accountPtr)
+				logs.Error(err, "failed to update account spec", "account", accountCopy.Name)
 				return reconcile.Result{}, err
 			}
-			reqLogger.Info(fmt.Sprintf("Successfully updated %v Spec", accountPtr))
-			updatedAccountSpecs = append(updatedAccountSpecs, *accountPtr)
+			reqLogger.Info(fmt.Sprintf("Successfully updated %v Spec", accountCopy.Name))
+			updatedAccountSpecs = append(updatedAccountSpecs, accountCopy)
 		}
 	}
 
@@ -221,19 +218,18 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 	for _, item2 := range updatedAccountSpecs {
 		updatedAccountMap[item2.Name] = true
 	}
-	var updatedAccountPtr *awsv1alpha1.Account
 
 	for _, updatedAccount := range updatedAccountList {
-		updatedAccountPtr = &updatedAccount
-		if exists := updatedAccountMap[updatedAccountPtr.ObjectMeta.Name]; exists {
-			updatedAccountPtr.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
-			reqLogger.Info(fmt.Sprintf("Attempting to update the account status for: %v", updatedAccountPtr))
-			err = r.accountStatusUpdate(reqLogger, updatedAccountPtr)
+		updatedAccountCopy := updatedAccount
+		if exists := updatedAccountMap[updatedAccountCopy.ObjectMeta.Name]; exists {
+			updatedAccountCopy.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
+			reqLogger.Info(fmt.Sprintf("Attempting to update the account status for: %v", updatedAccountCopy.Name))
+			err = r.accountStatusUpdate(reqLogger, &updatedAccountCopy)
 			if err != nil {
-				logs.Error(err, "failed to update account status", "account", updatedAccountPtr)
+				logs.Error(err, "failed to update account status", "account", updatedAccountCopy.Name)
 				return reconcile.Result{}, err
 			}
-			reqLogger.Info(fmt.Sprintf("Successfully updated %v Status", updatedAccountPtr))
+			reqLogger.Info(fmt.Sprintf("Successfully updated %v Status", updatedAccountCopy.Name))
 		}
 	}
 
