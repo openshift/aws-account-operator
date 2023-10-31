@@ -356,49 +356,42 @@ func changeRequestMatches(change *servicequotas.RequestedServiceQuotaChange, quo
 	return true
 }
 
-func GetServiceQuotaRequest(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) (reconcile.Result, error) {
-	if currentAcctInstance.HasOpenQuotaIncreaseRequests() {
-		switch controllerutils.DetectDevMode {
-		case controllerutils.DevModeProduction:
-			// First we get all request we need to get a status update on:
-			// - Requests that are not yet open on the AWS side
-			// - Requests that are open but not yet completed
-			currentInFlightCount, inFlightQuotaRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
-			_, onlyOpenRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
-			if currentInFlightCount <= MaxOpenQuotaRequests {
-				reqLogger.Info(fmt.Sprintf("currentInFlightCount (%d) <= maxOpenQuotaRequests (%d)", currentInFlightCount, MaxOpenQuotaRequests))
-				var maxRequestsReached = false
-				for region, onlyOpenRequest := range onlyOpenRequests {
-					if maxRequestsReached {
-						break
-					}
-					if _, ok := inFlightQuotaRequests[region]; !ok {
-						inFlightQuotaRequests[region] = awsv1alpha1.AccountServiceQuota{}
-					}
-					for quotaCode, req := range onlyOpenRequest {
-						inFlightQuotaRequests[region][quotaCode] = req
-						currentInFlightCount += 1
-						if currentInFlightCount >= MaxOpenQuotaRequests {
-							maxRequestsReached = true
-							break
-						}
-					}
+func HandleQuotaIncreaseRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) (reconcile.Result, error) {
+	// First we get all request we need to get a status update on:
+	// - Requests that are not yet open on the AWS side
+	// - Requests that are open but not yet completed
+	currentInFlightCount, inFlightQuotaRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
+	_, onlyOpenRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
+	if currentInFlightCount <= MaxOpenQuotaRequests {
+		reqLogger.Info(fmt.Sprintf("currentInFlightCount (%d) <= maxOpenQuotaRequests (%d)", currentInFlightCount, MaxOpenQuotaRequests))
+		var maxRequestsReached = false
+		for region, onlyOpenRequest := range onlyOpenRequests {
+			if maxRequestsReached {
+				break
+			}
+			if _, ok := inFlightQuotaRequests[region]; !ok {
+				inFlightQuotaRequests[region] = awsv1alpha1.AccountServiceQuota{}
+			}
+			for quotaCode, req := range onlyOpenRequest {
+				inFlightQuotaRequests[region][quotaCode] = req
+				currentInFlightCount += 1
+				if currentInFlightCount >= MaxOpenQuotaRequests {
+					maxRequestsReached = true
+					break
 				}
 			}
-			reqLogger.Info("Handling quotarequets", "current-in-flight-count", currentInFlightCount)
-			err := UpdateServiceQuotaRequests(reqLogger, awsClientBuilder, awsSetupClient, currentAcctInstance, client, inFlightQuotaRequests, currentInFlightCount)
-			if err != nil {
-				return reconcile.Result{}, err // TODO: For review, do we want to be handling the error like this?
-			}
-			err = client.Status().Update(context.TODO(), currentAcctInstance)
-			if err != nil {
-				return reconcile.Result{}, err // TODO: For review, do we want to be handling the error like this?
-			}
-			return reconcile.Result{RequeueAfter: 30 * time.Second, Requeue: true}, err
 		}
 	}
-
-	return reconcile.Result{}, nil
+	reqLogger.Info("Handling quotarequets", "current-in-flight-count", currentInFlightCount)
+	err := UpdateServiceQuotaRequests(reqLogger, awsClientBuilder, awsSetupClient, currentAcctInstance, client, inFlightQuotaRequests, currentInFlightCount)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	err = client.Status().Update(context.TODO(), currentAcctInstance)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	return reconcile.Result{RequeueAfter: 30 * time.Second, Requeue: true}, err
 }
 
 func UpdateServiceQuotaRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, serviceQuotaRequests awsv1alpha1.RegionalServiceQuotas, count int) error {

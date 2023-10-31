@@ -596,10 +596,11 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 		supportCaseResolved = true
 	}
 
-	_, err := GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
-	if err != nil {
-		reqLogger.Error(err, "Error getting account service quota")
-		return reconcile.Result{}, err
+	if currentAcctInstance.HasOpenQuotaIncreaseRequests() {
+		switch utils.DetectDevMode {
+		case utils.DevModeProduction:
+			return HandleQuotaIncreaseRequests(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
+		}
 	}
 
 	openCaseCount, _ := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)

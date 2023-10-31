@@ -476,10 +476,11 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 
 				return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
 			} else {
-				_, err = accountcontroller.GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
-				if err != nil {
-					reqLogger.Error(err, "failed to get account service quota")
-					return reconcile.Result{RequeueAfter: 30 * time.Second}, err
+				if account.HasOpenQuotaIncreaseRequests() {
+					switch utils.DetectDevMode {
+					case utils.DevModeProduction:
+						return accountcontroller.HandleQuotaIncreaseRequests(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
+					}
 				}
 				for _, quotas := range account.Status.RegionalServiceQuotas {
 					for _, quota := range quotas {
