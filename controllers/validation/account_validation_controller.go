@@ -4,8 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-logr/logr"
-	acct "github.com/openshift/aws-account-operator/controllers/account"
+	accountcontroller "github.com/openshift/aws-account-operator/controllers/account"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strconv"
 	"time"
@@ -465,7 +464,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 
 		if account.Spec.RegionalServiceQuotas != nil {
 			if account.Status.RegionalServiceQuotas == nil {
-				err = acct.SetCurrentAccountServiceQuotas(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
+				err = accountcontroller.SetCurrentAccountServiceQuotas(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
 				if err != nil {
 					reqLogger.Error(err, "failed to set account service quotas")
 					return reconcile.Result{}, err
@@ -477,7 +476,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 
 				return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
 			} else {
-				_, err = r.getServiceQuotaRequest(reqLogger, &account, awsSetupClient, shardName)
+				_, err = accountcontroller.GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
 				if err != nil {
 					reqLogger.Error(err, "failed to get account service quota")
 					return reconcile.Result{RequeueAfter: 30 * time.Second}, err
@@ -494,51 +493,6 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		}
 	}
 	return utils.DoNotRequeue()
-}
-
-func (r *AccountValidationReconciler) getServiceQuotaRequest(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, shardName string) (reconcile.Result, error) {
-	if currentAcctInstance.HasOpenQuotaIncreaseRequests() {
-		switch utils.DetectDevMode {
-		case utils.DevModeProduction:
-			// First we get all request we need to get a status update on:
-			// - Requests that are not yet open on the AWS side
-			// - Requests that are open but not yet completed
-			reqLogger.Info("Look here???")
-			currentInFlightCount, inFlightQuotaRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
-			_, onlyOpenRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
-			if currentInFlightCount <= acct.MaxOpenQuotaRequests {
-				reqLogger.Info(fmt.Sprintf("currentInFlightCount (%d) <= maxOpenQuotaRequests (%d)", currentInFlightCount, acct.MaxOpenQuotaRequests))
-				var maxRequestsReached = false
-				for region, onlyOpenRequest := range onlyOpenRequests {
-					if maxRequestsReached {
-						break
-					}
-					if _, ok := inFlightQuotaRequests[region]; !ok {
-						inFlightQuotaRequests[region] = awsv1alpha1.AccountServiceQuota{}
-					}
-					for quotaCode, req := range onlyOpenRequest {
-						inFlightQuotaRequests[region][quotaCode] = req
-						currentInFlightCount += 1
-						if currentInFlightCount >= acct.MaxOpenQuotaRequests {
-							maxRequestsReached = true
-							break
-						}
-					}
-				}
-			}
-			reqLogger.Info("Handling quotarequets", "current-in-flight-count", currentInFlightCount)
-			err := acct.UpdateServiceQuotaRequests(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client, inFlightQuotaRequests, currentInFlightCount)
-			if err != nil {
-				return reconcile.Result{}, err // TODO: For review, do we want to be handling the error like this?
-			}
-
-			err = r.statusUpdate(currentAcctInstance)
-			if err != nil {
-				return reconcile.Result{}, err // TODO: For review, do we want to be handling the error like this?
-			}
-		}
-	}
-	return reconcile.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

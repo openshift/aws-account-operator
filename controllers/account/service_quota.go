@@ -1,7 +1,9 @@
 package account
 
 import (
+	"context"
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strconv"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/utils"
 	"github.com/openshift/aws-account-operator/test/fixtures"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Client, quotaCode awsv1alpha1.SupportedServiceQuotas, serviceQuotaStatus *awsv1alpha1.ServiceQuotaStatus) error {
@@ -351,4 +354,78 @@ func changeRequestMatches(change *servicequotas.RequestedServiceQuotaChange, quo
 	}
 
 	return true
+}
+
+func GetServiceQuotaRequest(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) (reconcile.Result, error) {
+	if currentAcctInstance.HasOpenQuotaIncreaseRequests() {
+		switch controllerutils.DetectDevMode {
+		case controllerutils.DevModeProduction:
+			// First we get all request we need to get a status update on:
+			// - Requests that are not yet open on the AWS side
+			// - Requests that are open but not yet completed
+			currentInFlightCount, inFlightQuotaRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
+			_, onlyOpenRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
+			if currentInFlightCount <= MaxOpenQuotaRequests {
+				reqLogger.Info(fmt.Sprintf("currentInFlightCount (%d) <= maxOpenQuotaRequests (%d)", currentInFlightCount, MaxOpenQuotaRequests))
+				var maxRequestsReached = false
+				for region, onlyOpenRequest := range onlyOpenRequests {
+					if maxRequestsReached {
+						break
+					}
+					if _, ok := inFlightQuotaRequests[region]; !ok {
+						inFlightQuotaRequests[region] = awsv1alpha1.AccountServiceQuota{}
+					}
+					for quotaCode, req := range onlyOpenRequest {
+						inFlightQuotaRequests[region][quotaCode] = req
+						currentInFlightCount += 1
+						if currentInFlightCount >= MaxOpenQuotaRequests {
+							maxRequestsReached = true
+							break
+						}
+					}
+				}
+			}
+			reqLogger.Info("Handling quotarequets", "current-in-flight-count", currentInFlightCount)
+			err := UpdateServiceQuotaRequests(reqLogger, awsClientBuilder, awsSetupClient, currentAcctInstance, client, inFlightQuotaRequests, currentInFlightCount)
+			if err != nil {
+				return reconcile.Result{}, err // TODO: For review, do we want to be handling the error like this?
+			}
+			err = client.Status().Update(context.TODO(), currentAcctInstance)
+			if err != nil {
+				return reconcile.Result{}, err // TODO: For review, do we want to be handling the error like this?
+			}
+			return reconcile.Result{RequeueAfter: 30 * time.Second, Requeue: true}, err
+		}
+	}
+
+	return reconcile.Result{}, nil
+}
+
+func UpdateServiceQuotaRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, serviceQuotaRequests awsv1alpha1.RegionalServiceQuotas, count int) error {
+	for region, quotaRequest := range serviceQuotaRequests {
+		regionLogger := reqLogger.WithValues("Region", region)
+		roleToAssume := currentAcctInstance.GetAssumeRole()
+		awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, "")
+		if err != nil {
+			reqLogger.Error(err, "Could not impersonate AWS account", "aws-account", currentAcctInstance.Spec.AwsAccountID)
+			return err
+		}
+
+		// for each open quota in this region check to see if we need to request an increase.
+		for quotaCode, openQuotaRef := range quotaRequest {
+			reqLogger.Info(fmt.Sprintf("Handling quota request for quotaCode: %s", quotaCode))
+			err = HandleServiceQuotaRequests(regionLogger, awsAssumedRoleClient, quotaCode, openQuotaRef)
+			if err != nil {
+				return err // TODO: For review, do we want to be handling the error like this?
+			}
+		}
+	}
+
+	deniedCount, _ := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestDenied)
+
+	if deniedCount > 0 {
+		controllerutils.SetAccountStatus(currentAcctInstance, "ServiceQuota increase got denied", awsv1alpha1.AccountFailed, AccountFailed)
+	}
+
+	return nil
 }

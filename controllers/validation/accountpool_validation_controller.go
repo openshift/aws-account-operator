@@ -5,7 +5,6 @@ import (
 	"fmt"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"gopkg.in/yaml.v2"
 	"reflect"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"strconv"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/openshift/aws-account-operator/pkg/utils"
-	"github.com/openshift/aws-account-operator/test/fixtures"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -74,7 +72,7 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 
 	reqLogger.Info("Checking ConfigMap for ServiceQuotas")
 	// check if accountpool has servicequota defined in configmap
-	reginalServiceQuotas, err := r.getAccountPoolRegionalServiceQuota(reqLogger, currentAccountPool.Name)
+	reginalServiceQuotas, err := utils.ParseAccountPoolData(reqLogger, currentAccountPool.Name, r.Client)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -122,58 +120,6 @@ func (r *AccountPoolValidationReconciler) getAccountPoolAccounts(accountPoolName
 	}
 	return accounts, nil
 
-}
-
-// Gets ServiceQuota from ConfigMap
-func (r *AccountPoolValidationReconciler) getAccountPoolRegionalServiceQuota(reqLogger logr.Logger, accountPoolName string) (awsv1alpha1.RegionalServiceQuotas, error) {
-	reqLogger.Info("Loading Service Quotas")
-
-	cm, err := utils.GetOperatorConfigMap(r.Client)
-	if err != nil {
-		reqLogger.Error(err, "failed retrieving configmap")
-		return nil, err
-	}
-
-	accountpoolString, found := cm.Data["accountpool"]
-	if !found {
-		reqLogger.Error(fixtures.NotFound, "failed getting accountpool data from configmap")
-		return nil, fixtures.NotFound
-	}
-
-	type Servicequotas map[string]string
-	type AccountPool struct {
-		IsDefault             bool                     `yaml:"default,omitempty"`
-		RegionedServicequotas map[string]Servicequotas `yaml:"servicequotas,omitempty"`
-	}
-
-	data := make(map[string]AccountPool)
-	err = yaml.Unmarshal([]byte(accountpoolString), &data)
-
-	if err != nil {
-		reqLogger.Error(err, "Failed to unmarshal yaml")
-		return nil, err
-	}
-
-	var parsedRegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
-
-	if poolData, ok := data[accountPoolName]; !ok {
-		reqLogger.Error(fixtures.NotFound, "Accountpool not found")
-		return nil, fixtures.NotFound
-	} else {
-		// for each service quota in a given region, we'll need to parse and save to use in the account spec.
-		for regionName, serviceQuota := range poolData.RegionedServicequotas {
-			var parsedServiceQuotas = make(awsv1alpha1.AccountServiceQuota)
-			for quotaCode, quotaValue := range serviceQuota {
-				qv, _ := strconv.Atoi(quotaValue)
-				parsedServiceQuotas[awsv1alpha1.SupportedServiceQuotas(quotaCode)] = &awsv1alpha1.ServiceQuotaStatus{
-					Value: qv,
-				}
-			}
-			parsedRegionalServiceQuotas[regionName] = parsedServiceQuotas
-		}
-	}
-
-	return parsedRegionalServiceQuotas, nil
 }
 
 // Updates Account Spec ServiceQuotas to match what's in the ConfigMap
