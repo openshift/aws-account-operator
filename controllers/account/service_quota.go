@@ -356,7 +356,7 @@ func changeRequestMatches(change *servicequotas.RequestedServiceQuotaChange, quo
 	return true
 }
 
-func HandleQuotaIncreaseRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) (reconcile.Result, error) {
+func GetServiceQuotaRequest(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) (reconcile.Result, error) {
 	// First we get all request we need to get a status update on:
 	// - Requests that are not yet open on the AWS side
 	// - Requests that are open but not yet completed

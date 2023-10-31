@@ -479,7 +479,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 				if account.HasOpenQuotaIncreaseRequests() {
 					switch utils.DetectDevMode {
 					case utils.DevModeProduction:
-						return accountcontroller.HandleQuotaIncreaseRequests(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
+						return accountcontroller.GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
 					}
 				}
 				for _, quotas := range account.Status.RegionalServiceQuotas {
