@@ -60,15 +60,15 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 		return utils.RequeueAfter(5 * time.Minute)
 	}
 
-	var accountPoolValidationisEnabled bool = false
+	var isEnabled bool = false
 
 	enabled, err := strconv.ParseBool(cm.Data["feature.accountpool_validation"])
 	if err != nil {
 		logs.Info("Could not retrieve feature flag 'feature.accountpool_validation' - accountpool validation is disabled")
 	} else {
-		accountPoolValidationisEnabled = enabled
+		isEnabled = enabled
 	}
-	logs.Info("Is accountpool_validation enabled?", "enabled", accountPoolValidationisEnabled)
+	logs.Info("Is accountpool_validation enabled?", "enabled", isEnabled)
 
 	reqLogger.Info("Checking ConfigMap for ServiceQuotas")
 	// check if accountpool has servicequota defined in configmap
@@ -78,7 +78,7 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 	}
 
 	reqLogger.Info("Updating Account ServiceQuotas")
-	_, err = r.checkAccountServiceQuota(reqLogger, currentAccountPool.Name, reginalServiceQuotas, accountPoolValidationisEnabled)
+	_, err = r.checkAccountServiceQuota(reqLogger, currentAccountPool.Name, reginalServiceQuotas, isEnabled)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -123,7 +123,7 @@ func (r *AccountPoolValidationReconciler) getAccountPoolAccounts(accountPoolName
 }
 
 // Updates Account Spec ServiceQuotas to match what's in the ConfigMap
-func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger logr.Logger, accountPoolName string, parsedRegionalServiceQuotas awsv1alpha1.RegionalServiceQuotas, accountPoolValidationEnabled bool) (ctrl.Result, error) {
+func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger logr.Logger, accountPoolName string, parsedRegionalServiceQuotas awsv1alpha1.RegionalServiceQuotas, isEnabled bool) (ctrl.Result, error) {
 	accountList, err := r.getAccountPoolAccounts(accountPoolName)
 	if err != nil {
 		reqLogger.Error(err, "Failed to get AccountPool accounts")
@@ -135,7 +135,7 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 		accountCopy := account
 		if !reflect.DeepEqual(accountCopy.Spec.RegionalServiceQuotas, parsedRegionalServiceQuotas) {
 			accountCopy.Spec.RegionalServiceQuotas = parsedRegionalServiceQuotas
-			if !accountPoolValidationEnabled {
+			if !isEnabled {
 				reqLogger.Info("Accountpool Validation is not enabled")
 				reqLogger.Info(fmt.Sprintf("Expected Servicequotas:%v", parsedRegionalServiceQuotas))
 				reqLogger.Info(fmt.Sprintf("Account Servicequotas:%v", accountCopy.Spec.RegionalServiceQuotas))
