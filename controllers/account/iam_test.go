@@ -531,7 +531,7 @@ func TestDeleteIAMUsers(t *testing.T) {
 		return []*iam.User{{UserName: username}}, nil
 	}
 
-	err = deleteIAMUsers(nullLogger, mockAWSClient, &account)
+	err = DeleteIAMUsers(nullLogger, mockAWSClient, &account)
 	listIAMUsers = old
 	assert.Nil(t, err)
 }
