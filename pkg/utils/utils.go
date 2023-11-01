@@ -112,8 +112,8 @@ type AwsPolicy struct {
 	Statement []AwsStatement
 }
 
-// ParseAccountPoolData retrieves and processes the account pool's service quotas from ConfigMap
-func ParseAccountPoolData(reqLogger logr.Logger, accountPoolName string, client client.Client) (awsv1alpha1.RegionalServiceQuotas, error) {
+// GetServiceQuotasFromAccountPool retrieves and processes the account pool's service quotas from ConfigMap
+func GetServiceQuotasFromAccountPool(reqLogger logr.Logger, accountPoolName string, client client.Client) (awsv1alpha1.RegionalServiceQuotas, error) {
 	reqLogger.Info("Loading Service Quotas")
 
 	cm, err := GetOperatorConfigMap(client)
@@ -149,9 +149,9 @@ func ParseAccountPoolData(reqLogger logr.Logger, accountPoolName string, client 
 		return nil, fixtures.NotFound
 	} else {
 		// for each service quota in a given region, we'll need to parse and save to use in the account spec.
-		for regionName, serviceQuota := range poolData.RegionedServicequotas {
+		for regionName, serviceQuotas := range poolData.RegionedServicequotas {
 			var parsedServiceQuotas = make(awsv1alpha1.AccountServiceQuota)
-			for quotaCode, quotaValue := range serviceQuota {
+			for quotaCode, quotaValue := range serviceQuotas {
 				qv, _ := strconv.Atoi(quotaValue)
 				parsedServiceQuotas[awsv1alpha1.SupportedServiceQuotas(quotaCode)] = &awsv1alpha1.ServiceQuotaStatus{
 					Value: qv,

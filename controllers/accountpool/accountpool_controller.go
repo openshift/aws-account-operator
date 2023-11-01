@@ -110,7 +110,7 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 }
 
 func (r *AccountPoolReconciler) handleServiceQuotas(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
-	parsedRegionalServiceQuotas, err := utils.ParseAccountPoolData(reqLogger, account.Spec.AccountPool, r.Client)
+	parsedRegionalServiceQuotas, err := utils.GetServiceQuotasFromAccountPool(reqLogger, account.Spec.AccountPool, r.Client)
 	if err != nil {
 		return err
 	}

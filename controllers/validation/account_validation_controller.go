@@ -459,38 +459,39 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		if err != nil {
 			connErr := fmt.Sprintf("unable to connect to default region %s", awsRegion)
 			reqLogger.Error(err, connErr)
-			return ctrl.Result{}, err
+			return utils.RequeueWithError(err)
 		}
 
-		if account.Spec.RegionalServiceQuotas != nil {
-			if account.Status.RegionalServiceQuotas == nil {
-				err = accountcontroller.SetCurrentAccountServiceQuotas(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
-				if err != nil {
-					reqLogger.Error(err, "failed to set account service quotas")
-					return reconcile.Result{}, err
-				}
-				err := r.statusUpdate(&account)
-				if err != nil {
-					return reconcile.Result{}, err
-				}
-
-				return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
-			} else {
-				if account.HasOpenQuotaIncreaseRequests() {
-					switch utils.DetectDevMode {
-					case utils.DevModeProduction:
-						return accountcontroller.GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
-					}
-				}
-				for _, quotas := range account.Status.RegionalServiceQuotas {
-					for _, quota := range quotas {
-						if quota.Status == "TODO" || quota.Status == "IN_PROGRESS" {
-							return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
-						}
-					}
-				}
-
+		if account.Spec.RegionalServiceQuotas == nil {
+			return utils.DoNotRequeue()
+		}
+		if account.Status.RegionalServiceQuotas == nil {
+			err = accountcontroller.SetCurrentAccountServiceQuotas(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
+			if err != nil {
+				reqLogger.Error(err, "failed to set account service quotas")
+				return reconcile.Result{}, err
 			}
+			err := r.statusUpdate(&account)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+		} else {
+			if account.HasOpenQuotaIncreaseRequests() {
+				switch utils.DetectDevMode {
+				case utils.DevModeProduction:
+					return accountcontroller.GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
+				}
+			}
+			for _, quotas := range account.Status.RegionalServiceQuotas {
+				for _, quota := range quotas {
+					if quota.Status == "TODO" || quota.Status == "IN_PROGRESS" {
+						return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
+					}
+				}
+			}
+
 		}
 	}
 	return utils.DoNotRequeue()

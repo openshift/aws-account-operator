@@ -60,25 +60,25 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 		return utils.RequeueAfter(5 * time.Minute)
 	}
 
-	var accountPoolValidationEnabled bool = false
+	var accountPoolValidationisEnabled bool = false
 
 	enabled, err := strconv.ParseBool(cm.Data["feature.accountpool_validation"])
 	if err != nil {
 		logs.Info("Could not retrieve feature flag 'feature.accountpool_validation' - accountpool validation is disabled")
 	} else {
-		accountPoolValidationEnabled = enabled
+		accountPoolValidationisEnabled = enabled
 	}
-	logs.Info("Is accountpool_validation enabled?", "enabled", accountPoolValidationEnabled)
+	logs.Info("Is accountpool_validation enabled?", "enabled", accountPoolValidationisEnabled)
 
 	reqLogger.Info("Checking ConfigMap for ServiceQuotas")
 	// check if accountpool has servicequota defined in configmap
-	reginalServiceQuotas, err := utils.ParseAccountPoolData(reqLogger, currentAccountPool.Name, r.Client)
+	reginalServiceQuotas, err := utils.GetServiceQuotasFromAccountPool(reqLogger, currentAccountPool.Name, r.Client)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
 	reqLogger.Info("Updating Account ServiceQuotas")
-	_, err = r.checkAccountServiceQuota(reqLogger, currentAccountPool.Name, reginalServiceQuotas, accountPoolValidationEnabled)
+	_, err = r.checkAccountServiceQuota(reqLogger, currentAccountPool.Name, reginalServiceQuotas, accountPoolValidationisEnabled)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
