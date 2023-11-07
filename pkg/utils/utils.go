@@ -129,12 +129,12 @@ func GetServiceQuotasFromAccountPool(reqLogger logr.Logger, accountPoolName stri
 	}
 
 	type Servicequotas map[string]string
-	type AccountPool struct {
+	type AccountPoolConfig struct {
 		IsDefault             bool                     `yaml:"default,omitempty"`
 		RegionedServicequotas map[string]Servicequotas `yaml:"servicequotas,omitempty"`
 	}
 
-	data := make(map[string]AccountPool)
+	data := make(map[string]AccountPoolConfig)
 	err = yaml.Unmarshal([]byte(accountpoolString), &data)
 
 	if err != nil {

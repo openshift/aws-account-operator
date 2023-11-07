@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/go-logr/logr"
 	accountcontroller "github.com/openshift/aws-account-operator/controllers/account"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strconv"
@@ -450,51 +451,58 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 
 	// check if account belongs to accountpool
 	if !account.IsBYOC() {
-		awsRegion := config.GetDefaultRegion()
-		awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-			SecretName: utils.AwsSecretName,
-			NameSpace:  awsv1alpha1.AccountCrNamespace,
-			AwsRegion:  awsRegion,
-		})
+		result, err := r.ValidateRegionalServiceQuotas(reqLogger, &account, r.awsClientBuilder)
 		if err != nil {
-			connErr := fmt.Sprintf("unable to connect to default region %s", awsRegion)
-			reqLogger.Error(err, connErr)
-			return utils.RequeueWithError(err)
-		}
-
-		if account.Spec.RegionalServiceQuotas == nil {
 			return utils.DoNotRequeue()
 		}
-		if account.Status.RegionalServiceQuotas == nil {
-			err = accountcontroller.SetCurrentAccountServiceQuotas(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
-			if err != nil {
-				reqLogger.Error(err, "failed to set account service quotas")
-				return reconcile.Result{}, err
-			}
-			err := r.statusUpdate(&account)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
+		return result, nil
 
-			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
-		} else {
-			if account.HasOpenQuotaIncreaseRequests() {
-				switch utils.DetectDevMode {
-				case utils.DevModeProduction:
-					return accountcontroller.GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, &account, r.Client)
-				}
-			}
-			for _, quotas := range account.Status.RegionalServiceQuotas {
-				for _, quota := range quotas {
-					if quota.Status == "TODO" || quota.Status == "IN_PROGRESS" {
-						return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
-					}
-				}
-			}
-
-		}
 	}
 	return utils.DoNotRequeue()
+}
+
+func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder) (reconcile.Result, error) {
+
+	awsRegion := config.GetDefaultRegion()
+	awsSetupClient, err := awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+		SecretName: utils.AwsSecretName,
+		NameSpace:  awsv1alpha1.AccountCrNamespace,
+		AwsRegion:  awsRegion,
+	})
+	if err != nil {
+		connErr := fmt.Sprintf("unable to connect to default region %s", awsRegion)
+		reqLogger.Error(err, connErr)
+		return utils.RequeueWithError(err)
+	}
+
+	if account.Spec.RegionalServiceQuotas == nil {
+		return utils.DoNotRequeue()
+	}
+	if account.Status.RegionalServiceQuotas == nil {
+		err = accountcontroller.SetCurrentAccountServiceQuotas(reqLogger, awsClientBuilder, awsSetupClient, account, r.Client)
+		if err != nil {
+			reqLogger.Error(err, "failed to set account service quotas")
+			return reconcile.Result{}, err
+		}
+		err := r.statusUpdate(account)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+	} else {
+		if account.HasOpenQuotaIncreaseRequests() && utils.DetectDevMode == utils.DevModeProduction {
+			return accountcontroller.GetServiceQuotaRequest(reqLogger, awsClientBuilder, awsSetupClient, account, r.Client)
+		}
+	}
+	for _, quotas := range account.Status.RegionalServiceQuotas {
+		for _, quota := range quotas {
+			if quota.Status == "TODO" || quota.Status == "IN_PROGRESS" {
+				return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
+			}
+		}
+	}
+	return reconcile.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
