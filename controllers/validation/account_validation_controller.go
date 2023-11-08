@@ -472,7 +472,7 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 	if err != nil {
 		connErr := fmt.Sprintf("unable to connect to default region %s", awsRegion)
 		reqLogger.Error(err, connErr)
-		return utils.RequeueWithError(err)
+		return reconcile.Result{}, err
 	}
 
 	if account.Spec.RegionalServiceQuotas == nil {
