@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	defaultSleepDelay = 500 * time.Millisecond
+	defaultSleepDelay = 10 * time.Second
 	logs              = logf.Log.WithName("controller_accountpoolvalidation")
 )
 
@@ -133,14 +133,8 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 
 	for _, account := range accountList {
 		accountCopy := account
-		if !reflect.DeepEqual(accountCopy.Spec.RegionalServiceQuotas, parsedRegionalServiceQuotas) {
+		if !reflect.DeepEqual(accountCopy.Spec.RegionalServiceQuotas, parsedRegionalServiceQuotas) && isEnabled {
 			accountCopy.Spec.RegionalServiceQuotas = parsedRegionalServiceQuotas
-			if !isEnabled {
-				reqLogger.Info("Accountpool Validation is not enabled")
-				reqLogger.Info(fmt.Sprintf("Expected Servicequotas:%v", parsedRegionalServiceQuotas))
-				reqLogger.Info(fmt.Sprintf("Account Servicequotas:%v", accountCopy.Spec.RegionalServiceQuotas))
-				return reconcile.Result{}, nil
-			}
 
 			reqLogger.Info(fmt.Sprintf("Attempting to update the account Spec for: %v", accountCopy.Name))
 			err = r.accountSpecUpdate(reqLogger, &accountCopy)
@@ -150,6 +144,11 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 			}
 			reqLogger.Info(fmt.Sprintf("Successfully updated %v Spec", accountCopy.Name))
 			updatedAccountSpecs = append(updatedAccountSpecs, accountCopy)
+
+		} else if !reflect.DeepEqual(accountCopy.Spec.RegionalServiceQuotas, parsedRegionalServiceQuotas) && !isEnabled {
+			reqLogger.Info("Accountpool Validation is not enabled")
+			reqLogger.Info(fmt.Sprintf("Expected Servicequotas:%v", parsedRegionalServiceQuotas))
+			reqLogger.Info(fmt.Sprintf("Account Servicequotas:%v", accountCopy.Spec.RegionalServiceQuotas))
 		}
 	}
 
