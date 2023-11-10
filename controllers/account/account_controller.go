@@ -73,7 +73,7 @@ const (
 	probeSecretEnabled = false
 
 	// number of service quota requests we are allowed to open concurrently in AWS
-	maxOpenQuotaRequests = 20
+	MaxOpenQuotaRequests = 20
 )
 
 // AccountReconciler reconciles a Account object
@@ -599,41 +599,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 	if currentAcctInstance.HasOpenQuotaIncreaseRequests() {
 		switch utils.DetectDevMode {
 		case utils.DevModeProduction:
-			// First we get all request we need to get a status update on:
-			// - Requests that are not yet open on the AWS side
-			// - Requests that are open but not yet completed
-			currentInFlightCount, inFlightQuotaRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
-			_, onlyOpenRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
-			if currentInFlightCount <= maxOpenQuotaRequests {
-				reqLogger.Info(fmt.Sprintf("currentInFlightCount (%d) <= maxOpenQuotaRequests (%d)", currentInFlightCount, maxOpenQuotaRequests))
-				var maxRequestsReached = false
-				for region, onlyOpenRequest := range onlyOpenRequests {
-					if maxRequestsReached {
-						break
-					}
-					if _, ok := inFlightQuotaRequests[region]; !ok {
-						inFlightQuotaRequests[region] = awsv1alpha1.AccountServiceQuota{}
-					}
-					for quotaCode, r := range onlyOpenRequest {
-						inFlightQuotaRequests[region][quotaCode] = r
-						currentInFlightCount += 1
-						if currentInFlightCount >= maxOpenQuotaRequests {
-							maxRequestsReached = true
-							break
-						}
-					}
-				}
-			}
-			reqLogger.Info("Handling quotarequets", "current-in-flight-count", currentInFlightCount)
-			err := UpdateServiceQuotaRequests(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client, inFlightQuotaRequests, currentInFlightCount)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-			err = r.statusUpdate(currentAcctInstance)
-			if err != nil {
-				return reconcile.Result{}, err // TODO: For review, do we want to be handling the error like this?
-			}
-			return reconcile.Result{RequeueAfter: 30 * time.Second, Requeue: true}, err
+			return GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
 		}
 	}
 
@@ -652,35 +618,6 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 	}
 
 	return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
-}
-
-func UpdateServiceQuotaRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, serviceQuotaRequests awsv1alpha1.RegionalServiceQuotas, count int) error {
-	for region, quotaRequest := range serviceQuotaRequests {
-		regionLogger := reqLogger.WithValues("Region", region)
-		roleToAssume := currentAcctInstance.GetAssumeRole()
-		awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, "")
-		if err != nil {
-			reqLogger.Error(err, "Could not impersonate AWS account", "aws-account", currentAcctInstance.Spec.AwsAccountID)
-			return err
-		}
-
-		// for each open quota in this region check to see if we need to request an increase.
-		for quotaCode, openQuotaRef := range quotaRequest {
-			reqLogger.Info(fmt.Sprintf("Handling quota request for quotaCode: %s", quotaCode))
-			err = HandleServiceQuotaRequests(regionLogger, awsAssumedRoleClient, quotaCode, openQuotaRef)
-			if err != nil {
-				return err // TODO: For review, do we want to be handling the error like this?
-			}
-		}
-	}
-
-	deniedCount, _ := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestDenied)
-
-	if deniedCount > 0 {
-		utils.SetAccountStatus(currentAcctInstance, "ServiceQuota increase got denied", awsv1alpha1.AccountFailed, AccountFailed)
-	}
-
-	return nil
 }
 
 // This function takes any service quotas defined in the account CR spec and builds them out in the status. The struct for the service quoats in spec and status will differ
@@ -844,7 +781,6 @@ func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcct
 	}
 
 	reqLogger.Info("Created AWS Client for region initialization")
-
 
 	// Get a list of regions enabled in the current account
 	regionsEnabledInAccount, err := awsClient.DescribeRegions(&ec2.DescribeRegionsInput{

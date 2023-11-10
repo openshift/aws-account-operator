@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/openshift/aws-account-operator/test/fixtures"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"gopkg.in/yaml.v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -108,6 +110,58 @@ var DetectDevMode devMode = devMode(strings.ToLower(os.Getenv(envDevMode)))
 type AwsPolicy struct {
 	Version   string
 	Statement []AwsStatement
+}
+
+// GetServiceQuotasFromAccountPool retrieves and processes the account pool's service quotas from ConfigMap
+func GetServiceQuotasFromAccountPool(reqLogger logr.Logger, accountPoolName string, client client.Client) (awsv1alpha1.RegionalServiceQuotas, error) {
+	reqLogger.Info("Loading Service Quotas")
+
+	cm, err := GetOperatorConfigMap(client)
+	if err != nil {
+		reqLogger.Error(err, "failed retrieving configmap")
+		return nil, err
+	}
+
+	accountpoolString, found := cm.Data["accountpool"]
+	if !found {
+		reqLogger.Error(fixtures.NotFound, "failed getting accountpool data from configmap")
+		return nil, fixtures.NotFound
+	}
+
+	type Servicequotas map[string]string
+	type AccountPoolConfig struct {
+		IsDefault             bool                     `yaml:"default,omitempty"`
+		RegionedServicequotas map[string]Servicequotas `yaml:"servicequotas,omitempty"`
+	}
+
+	data := make(map[string]AccountPoolConfig)
+	err = yaml.Unmarshal([]byte(accountpoolString), &data)
+
+	if err != nil {
+		reqLogger.Error(err, "Failed to unmarshal yaml")
+		return nil, err
+	}
+
+	var parsedRegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
+
+	if poolData, ok := data[accountPoolName]; !ok {
+		reqLogger.Error(fixtures.NotFound, "Accountpool not found")
+		return nil, fixtures.NotFound
+	} else {
+		// for each service quota in a given region, we'll need to parse and save to use in the account spec.
+		for regionName, serviceQuotas := range poolData.RegionedServicequotas {
+			var parsedServiceQuotas = make(awsv1alpha1.AccountServiceQuota)
+			for quotaCode, quotaValue := range serviceQuotas {
+				qv, _ := strconv.Atoi(quotaValue)
+				parsedServiceQuotas[awsv1alpha1.SupportedServiceQuotas(quotaCode)] = &awsv1alpha1.ServiceQuotaStatus{
+					Value: qv,
+				}
+			}
+			parsedRegionalServiceQuotas[regionName] = parsedServiceQuotas
+		}
+	}
+
+	return parsedRegionalServiceQuotas, nil
 }
 
 // MarshalIAMPolicy converts a role CR into a JSON policy that is acceptable to AWS
