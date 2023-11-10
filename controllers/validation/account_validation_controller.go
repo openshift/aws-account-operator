@@ -58,9 +58,8 @@ const (
 	OULookupFailed
 	AWSErrorConnecting
 	SettingServiceQuotasFailed
-	StatusUpdateFailed
+	QuotaStatus
 	NotAllServicequotasApplied
-	QuotaStatusUpdated
 )
 
 type AccountValidationError struct {
@@ -459,9 +458,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		err = r.ValidateRegionalServiceQuotas(reqLogger, &account, r.awsClientBuilder)
 		if err != nil {
 			validationError, ok := err.(*AccountValidationError)
-			if ok && validationError.Type == QuotaStatusUpdated {
-				return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
-			} else if ok && validationError.Type == NotAllServicequotasApplied {
+			if ok && validationError.Type == NotAllServicequotasApplied {
 				return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
 			}
 			return utils.RequeueWithError(err)
@@ -503,13 +500,13 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 		err = r.statusUpdate(account)
 		if err != nil {
 			return &AccountValidationError{
-				Type: StatusUpdateFailed,
+				Type: QuotaStatus,
 				Err:  errors.New("failed to update account status"),
 			}
 		}
 
 		return &AccountValidationError{
-			Type: QuotaStatusUpdated,
+			Type: QuotaStatus,
 			Err:  errors.New("service quota status updated, increase request needs to be sent to aws"),
 		}
 	} else {
