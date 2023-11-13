@@ -580,6 +580,13 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logge
 		return nil
 	}
 
+  // Workaround for FleetManagers special account handling, see
+  // https://issues.redhat.com/browse/OSD-19093
+  if len(accountClaim.GetFinalizers()) > 1 {
+    reqLogger.Info("Found additional finalizers on AccountClaim. Not attempting cleanup.")
+    return nil
+  }
+
 	// Only do AWS cleanup and account reset if accountLink is not empty
 	// We will not attempt AWS cleanup if the account is BYOC since we're not going to reuse these accounts
 	if accountClaim.Spec.AccountLink != "" {

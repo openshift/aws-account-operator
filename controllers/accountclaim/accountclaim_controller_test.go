@@ -247,6 +247,21 @@ var _ = Describe("AccountClaim", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ac.Finalizers).To(Equal(accountClaim.GetFinalizers()))
 			})
+
+      It("should do nothing when there are additional finalizers present", func() {
+				accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), "another.blocking.finalizer"))
+				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
+				_, err := r.Reconcile(context.TODO(), req)
+
+				Expect(err).NotTo(HaveOccurred())
+
+        // validate that all finalizers are still there
+				ac := awsv1alpha1.AccountClaim{}
+				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ac.Finalizers).To(Equal(accountClaim.GetFinalizers()))
+         
+      })
 		})
 		When("accountClaim.Spec.FleetManagerConfig.TrustedARN & accountClaim.Spec.AccountPool defined", func() {
 			BeforeEach(func() {
