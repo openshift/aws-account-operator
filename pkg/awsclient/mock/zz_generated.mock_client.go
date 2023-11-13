@@ -342,6 +342,21 @@ func (mr *MockClientMockRecorder) DeleteRole(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRole", reflect.TypeOf((*MockClient)(nil).DeleteRole), arg0)
 }
 
+// DeleteRolePolicy mocks base method.
+func (m *MockClient) DeleteRolePolicy(input *iam.DeleteRolePolicyInput) (*iam.DeleteRolePolicyOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteRolePolicy", input)
+	ret0, _ := ret[0].(*iam.DeleteRolePolicyOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteRolePolicy indicates an expected call of DeleteRolePolicy.
+func (mr *MockClientMockRecorder) DeleteRolePolicy(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRolePolicy", reflect.TypeOf((*MockClient)(nil).DeleteRolePolicy), input)
+}
+
 // DeleteSnapshot mocks base method.
 func (m *MockClient) DeleteSnapshot(arg0 *ec2.DeleteSnapshotInput) (*ec2.DeleteSnapshotOutput, error) {
 	m.ctrl.T.Helper()

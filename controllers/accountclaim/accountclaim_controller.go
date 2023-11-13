@@ -12,7 +12,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/openshift/aws-account-operator/config"
-	account "github.com/openshift/aws-account-operator/controllers/account"
+	"github.com/openshift/aws-account-operator/controllers/account"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	controllerutils "github.com/openshift/aws-account-operator/pkg/utils"
@@ -346,9 +346,16 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 
 		// Deletes account IAM user Secret
 		if r.checkIAMSecretExists(unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace) {
-			if err = r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace); err != nil {
+			err := r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace)
+			if err != nil {
 				return reconcile.Result{}, err
 			}
+		}
+		// Remove IAM user Secret from Account Spec
+		unclaimedAccount.Spec.IAMUserSecret = ""
+		err = r.accountSpecUpdate(reqLogger, unclaimedAccount)
+		if err != nil {
+			return reconcile.Result{}, err
 		}
 
 		// Creates IAM role secret
@@ -444,7 +451,6 @@ func (r *AccountClaimReconciler) deleteIAMSecret(reqLogger logr.Logger, secretNa
 		reqLogger.Error(err, "Unable to delete IAM secret")
 		return err
 	}
-
 	reqLogger.Info("IAM secret deleted", "SecretName", secretName)
 	return nil
 }
@@ -548,9 +554,12 @@ func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Log
 
 	if err != nil {
 		// If there was an error, clean up by deleting the role
-		awsClient.DeleteRole(&iam.DeleteRoleInput{
+		_, roleDeleteErr := awsClient.DeleteRole(&iam.DeleteRoleInput{
 			RoleName: aws.String(roleName),
 		})
+		if roleDeleteErr != nil {
+			reqLogger.Error(roleDeleteErr, "Failed to delete role")
+		}
 		return ``, err
 	}
 

@@ -3,16 +3,17 @@ package accountclaim
 import (
 	"context"
 	"fmt"
-	"time"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/golang/mock/gomock"
 	apis "github.com/openshift/aws-account-operator/api"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
+	"github.com/openshift/aws-account-operator/config"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/test/fixtures"
@@ -25,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -245,6 +247,118 @@ var _ = Describe("AccountClaim", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ac.Finalizers).To(Equal(accountClaim.GetFinalizers()))
 			})
+		})
+		When("accountClaim.Spec.FleetManagerConfig.TrustedARN & accountClaim.Spec.AccountPool defined", func() {
+			BeforeEach(func() {
+				// Set up the test data to meet the condition
+				accountClaim.Spec.FleetManagerConfig.TrustedARN = "arn:aws:iam::123456789012:role/testRoleName"
+				accountClaim.Spec.AccountPool = "testAccountPool"
+				accountClaim.Spec.AccountOU = "ou-0wd6-kcuacjuw"
+
+			})
+			It("should reconcile correctly when TrustedARN and AccountPool conditions are met", func() {
+				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
+				req = reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Name:      accountClaim.Name,
+						Namespace: namespace,
+					},
+				}
+				dummySecretRef := awsv1alpha1.SecretRef{
+					Name:      awsSTSSecret,
+					Namespace: namespace,
+				}
+				accountClaim.Spec.AwsCredentialSecret = dummySecretRef
+				accounts := []*awsv1alpha1.Account{}
+				accounts = append(accounts, &awsv1alpha1.Account{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "osd-creds-mgmt-aaabbb",
+						Namespace:         "aws-account-operator",
+						CreationTimestamp: metav1.Time{},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								Kind: "AccountPool",
+							},
+						},
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						AccountPool:        "testAccountPool",
+						IAMUserSecret:      "test-secret",
+						AwsAccountID:       "123456789012",
+						ClaimLink:          accountClaim.Name,
+						ClaimLinkNamespace: accountClaim.Namespace,
+						LegalEntity: awsv1alpha1.LegalEntity{
+							Name: accountClaim.Name,
+							ID:   "abcdefg",
+						},
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State:   AccountReady,
+						Claimed: false,
+					},
+				})
+				objs := []runtime.Object{accountClaim, accounts[0]}
+
+				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
+				roleName := "testRoleName"
+				orgAccessRoleName := "OrganizationAccountAccessRole"
+				orgAccessArn := config.GetIAMArn(accounts[0].Spec.AwsAccountID, config.AwsResourceTypeRole, orgAccessRoleName)
+				roleSessionName := "awsAccountOperator"
+
+				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
+					DurationSeconds: aws.Int64(3600),
+					RoleArn:         &orgAccessArn,
+					RoleSessionName: &roleSessionName,
+				}).Return(&sts.AssumeRoleOutput{
+					AssumedRoleUser: &sts.AssumedRoleUser{
+						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
+						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
+					},
+					Credentials: &sts.Credentials{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						SessionToken:    aws.String("SESSION_TOKEN"),
+					},
+					PackedPolicySize: aws.Int64(40),
+				}, nil)
+
+				mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(&iam.GetRoleOutput{}, nil)
+				mockAWSClient.EXPECT().ListRolePolicies(gomock.Any()).Return(&iam.ListRolePoliciesOutput{}, nil)
+				mockAWSClient.EXPECT().DeleteRole(gomock.Any()).Return(&iam.DeleteRoleOutput{}, nil)
+				mockAWSClient.EXPECT().ListUsersPages(gomock.Any(), gomock.Any()).Return(nil)
+
+				expectedCreateRoleOutput := &iam.CreateRoleOutput{
+					Role: &iam.Role{
+						RoleName: aws.String(roleName),
+						Arn:      aws.String("arn:aws:iam::123456789012:role/" + roleName),
+					},
+				}
+
+				mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(expectedCreateRoleOutput, nil)
+				mockAWSClient.EXPECT().PutRolePolicy(gomock.Any()).Return(nil, nil)
+
+				for i := 0; i < 3; i++ {
+					_, err = r.Reconcile(context.TODO(), req)
+				}
+
+				ac := awsv1alpha1.AccountClaim{}
+				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				Expect(ac.Status.State).To(Equal(awsv1alpha1.ClaimStatusReady))
+
+				account := awsv1alpha1.Account{}
+				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: accounts[0].Name, Namespace: accounts[0].Namespace}, &account)
+				Expect(account.Spec.IAMUserSecret).To(Equal(""))
+
+				IAMUsersecret := v1.Secret{}
+				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: account.Spec.IAMUserSecret, Namespace: awsv1alpha1.AccountCrNamespace}, &IAMUsersecret)
+				Expect(err).To(HaveOccurred())
+
+				roleSecret := v1.Secret{}
+				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: accountClaim.Spec.AwsCredentialSecret.Name, Namespace: accountClaim.Spec.AwsCredentialSecret.Namespace}, &roleSecret)
+				Expect(err).ToNot(HaveOccurred())
+
+			})
+
 		})
 
 		When("Accountclaim is BYOC", func() {
