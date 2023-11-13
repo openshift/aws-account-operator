@@ -122,7 +122,7 @@ type AccountClaimList struct {
 	Items           []AccountClaim `json:"items"`
 }
 
-// FleetManagerConfig contains configuration specfic to account claims
+// FleetManagerConfig contains configuration specific to account claims
 type FleetManagerConfig struct {
 	TrustedARN string `json:"trustedARN"`
 }
