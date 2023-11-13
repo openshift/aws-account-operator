@@ -510,12 +510,18 @@ func schema_openshift_aws_account_operator_api_v1alpha1_AccountClaimSpec(ref com
 							Format: "",
 						},
 					},
+					"fleetManagerConfig": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/openshift/aws-account-operator/api/v1alpha1.FleetManagerConfig"),
+						},
+					},
 				},
 				Required: []string{"legalEntity", "awsCredentialSecret", "aws", "accountLink"},
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/api/v1alpha1.Aws", "github.com/openshift/aws-account-operator/api/v1alpha1.LegalEntity", "github.com/openshift/aws-account-operator/api/v1alpha1.SecretRef"},
+			"github.com/openshift/aws-account-operator/api/v1alpha1.Aws", "github.com/openshift/aws-account-operator/api/v1alpha1.FleetManagerConfig", "github.com/openshift/aws-account-operator/api/v1alpha1.LegalEntity", "github.com/openshift/aws-account-operator/api/v1alpha1.SecretRef"},
 	}
 }
 

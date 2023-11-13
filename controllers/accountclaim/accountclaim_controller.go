@@ -37,22 +37,41 @@ const (
 	// AccountUnclaimed indicates the account has not been claimed in the accountClaim status
 	AccountUnclaimed = "AccountUnclaimed"
 
-	awsCredsAccessKeyID       = "aws_access_key_id"     // #nosec G101 -- This is a false positive
-	awsCredsSecretAccessKey   = "aws_secret_access_key" // #nosec G101 -- This is a false positive
-	accountClaimFinalizer     = "finalizer.aws.managed.openshift.io"
-	byocSecretFinalizer       = accountClaimFinalizer + "/byoc"
-	waitPeriod                = 30
-	controllerName            = "accountclaim"
-	fakeAnnotation            = "managed.openshift.com/fake"
-	awsSTSSecret              = "aws-sts"
-	permissionsPolicyDocument = `
-	{
-		"Version": "2012-10-17",
-		"Statement": [
+	awsCredsAccessKeyID     = "aws_access_key_id"     // #nosec G101 -- This is a false positive
+	awsCredsSecretAccessKey = "aws_secret_access_key" // #nosec G101 -- This is a false positive
+	accountClaimFinalizer   = "finalizer.aws.managed.openshift.io"
+	byocSecretFinalizer     = accountClaimFinalizer + "/byoc"
+	waitPeriod              = 30
+	controllerName          = "accountclaim"
+	fakeAnnotation          = "managed.openshift.com/fake"
+	awsSTSSecret            = "aws-sts"
+	stsRoleName             = "managed-role-sts" //TODO is there a better name
+	stsPolicyName           = "CustomPolicy"     //TODO is there a better name
+)
+
+type Policy struct {
+	Version   string `json:"Version"`
+	Statement []struct {
+		Sid      string   `json:"Sid"`
+		Effect   string   `json:"Effect"`
+		Action   []string `json:"Action"`
+		Resource []string `json:"Resource"`
+	} `json:"Statement"`
+}
+
+func generateInlinePolicy(accountID string) (string, error) {
+	policy := Policy{
+		Version: "2012-10-17",
+		Statement: []struct {
+			Sid      string   `json:"Sid"`
+			Effect   string   `json:"Effect"`
+			Action   []string `json:"Action"`
+			Resource []string `json:"Resource"`
+		}{
 			{
-				"Sid": "VisualEditor0",
-				"Effect": "Allow",
-				"Action": [
+				Sid:    "VisualEditor0",
+				Effect: "Allow",
+				Action: []string{
 					"iam:GetPolicyVersion",
 					"iam:DeletePolicyVersion",
 					"iam:CreatePolicyVersion",
@@ -89,25 +108,34 @@ const (
 					"iam:TagOpenIDConnectProvider",
 					"secretsmanager:TagResource",
 					"sts:AssumeRoleWithWebIdentity",
-					"iam:ListRoles"
-				],
-				"Resource": [
-					"arn:aws:secretsmanager:*:<ACCOUNT_ID>:secret:*",
-					"arn:aws:iam::<ACCOUNT_ID>:instance-profile/*",
-					"arn:aws:iam::<ACCOUNT_ID>:role/*",
-					"arn:aws:iam::<ACCOUNT_ID>:oidc-provider/*",
-					"arn:aws:iam::<ACCOUNT_ID>:policy/*"
-				]
+					"iam:ListRoles",
+				},
+				Resource: []string{
+					"arn:aws:iam::" + accountID + ":instance-profile/*",
+					"arn:aws:iam::" + accountID + ":instance-profile/*",
+					"arn:aws:iam::" + accountID + ":role/*",
+					"arn:aws:iam::" + accountID + ":oidc-provider/*",
+					"arn:aws:iam::" + accountID + ":policy/*",
+				},
 			},
 			{
-				"Sid": "VisualEditor1",
-				"Effect": "Allow",
-				"Action": ["s3:*"],
-				"Resource": "*"
-			}
-		]
-	}`
-)
+				Sid:    "VisualEditor1",
+				Effect: "Allow",
+				Action: []string{
+					"s3:*",
+				},
+				Resource: []string{"*"},
+			},
+		},
+	}
+
+	policyJSON, err := json.Marshal(policy)
+	if err != nil {
+		return "", err
+	}
+
+	return string(policyJSON), nil
+}
 
 var log = logf.Log.WithName("controller_accountclaim")
 
@@ -282,11 +310,10 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		}
 	}
 
+	// This will triggers role and secret creation which will enable AccountCLaims to be able to gain access via a AWS STS tokens
 	if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" && (accountClaim.Spec.AccountPool != "" && accountClaim.Spec.AccountPool != "default") {
-		// Create role using the organization account acces role using permissions found in https://registry.terraform.io/providers/terraform-redhat/rhcs/latest/docs#:~:text=The%20following%20excerpt%20lists%20the%20minimum%20AWS%20permissions%20required%20to%20run%20Terraform
-		// the trusted arn that is passed in should be added to the trust policy
 		awsRegion := config.GetDefaultRegion()
-		// We expect this secret to exist in the same namespace Account CR's are created
+
 		awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 			SecretName: controllerutils.AwsSecretName,
 			NameSpace:  awsv1alpha1.AccountCrNamespace,
@@ -301,24 +328,44 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			reqLogger.Error(err, "failed building AWS client from assume_role")
 			return reconcile.Result{}, err
 		}
-		roleARN, err := CreateIAMRoleWithPermissions(reqLogger, awsClient, "roleName", permissionsPolicyDocument, accountClaim.Spec.FleetManagerConfig.TrustedARN)
+
+		err = r.checkIAMRoleWithPermissionsExist(reqLogger, awsClient, stsRoleName)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		roleARN, err := r.createIAMRoleWithPermissions(reqLogger, awsClient, stsRoleName, accountClaim.Spec.FleetManagerConfig.TrustedARN)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
 
 		// Implement IAM user deletion logic
-		if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil {
+		if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil { // Do I need to worry about deleteing all IAM users
 			return reconcile.Result{}, fmt.Errorf("failed deleting IAM users: %v", err)
 		}
 
-		// Implement account CR secret removal logic
-		if r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
-			if err := r.deleteIAMUserSecret(reqLogger, unclaimedAccount); err != nil {
+		// Deletes account IAM user Secret
+		if r.checkIAMSecretExists(unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace) {
+			if err = r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace); err != nil {
 				return reconcile.Result{}, err
 			}
 		}
 
-		if err := r.createIAMRoleSecret(reqLogger, accountClaim, roleARN); err != nil {
-			return reconcile.Result{}, err
+		// Creates IAM role secret
+		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+			if err := r.createIAMRoleSecret(reqLogger, accountClaim, roleARN); err != nil {
+				return reconcile.Result{}, err
+			}
+		} else {
+			err = r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			err = r.createIAMRoleSecret(reqLogger, accountClaim, roleARN)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
 		}
-
 	} else {
 
 		// Create secret for OCM to consume
@@ -339,23 +386,66 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	return reconcile.Result{}, nil
 }
 
-func (r *AccountClaimReconciler) deleteIAMUserSecret(reqLogger logr.Logger, unclaimedAccount *awsv1alpha1.Account) error {
+// checkIAMRoleWithPermissionsExist checks if an IAM role with the specified name exists.
+func (r *AccountClaimReconciler) checkIAMRoleWithPermissionsExist(reqLogger logr.Logger, awsClient awsclient.Client, roleName string) error {
+	// Retrieve the existing IAM role by its name.
+	_, err := awsClient.GetRole(&iam.GetRoleInput{
+		RoleName: aws.String(roleName),
+	})
+	if err != nil {
+		return nil
+	}
+
+	respPolicy, err := awsClient.ListRolePolicies(&iam.ListRolePoliciesInput{
+		RoleName: aws.String(roleName),
+	})
+
+	if err != nil {
+		_, err = awsClient.DeleteRole(&iam.DeleteRoleInput{
+			RoleName: aws.String(roleName),
+		})
+		return err
+	}
+
+	for _, policyName := range respPolicy.PolicyNames {
+		_, err = awsClient.DeleteRolePolicy(&iam.DeleteRolePolicyInput{
+			RoleName:   aws.String(roleName),
+			PolicyName: policyName,
+		})
+
+		if err != nil {
+			reqLogger.Error(err, "failed to delete inline policy")
+			return err
+		}
+	}
+	_, err = awsClient.DeleteRole(&iam.DeleteRoleInput{
+		RoleName: aws.String(roleName),
+	})
+	if err != nil {
+		reqLogger.Error(err, "failed to delete IAM role")
+		return err
+	}
+
+	return nil
+}
+
+func (r *AccountClaimReconciler) deleteIAMSecret(reqLogger logr.Logger, secretName string, namespace string) error {
 	accountIAMUserSecret := &corev1.Secret{}
-	objectKey := client.ObjectKey{Namespace: unclaimedAccount.Namespace, Name: unclaimedAccount.Spec.IAMUserSecret}
+	objectKey := client.ObjectKey{Namespace: namespace, Name: secretName}
 
 	err := r.Client.Get(context.TODO(), objectKey, accountIAMUserSecret)
 	if err != nil {
-		reqLogger.Error(err, "Unable to find AWS account STS secret")
+		reqLogger.Error(err, "Unable to find secret")
 		return err
 	}
 
 	err = r.Client.Delete(context.TODO(), accountIAMUserSecret)
 	if err != nil {
-		reqLogger.Error(err, "Unable to delete IAMUser secret")
+		reqLogger.Error(err, "Unable to delete IAM secret")
 		return err
 	}
 
-	reqLogger.Info("IAMUser secret deleted", "SecretName", unclaimedAccount.Spec.IAMUserSecret)
+	reqLogger.Info("IAM secret deleted", "SecretName", secretName)
 	return nil
 }
 
@@ -379,8 +469,15 @@ func newStsSecretforCR(secretName string, secretNameSpace string, arn []byte) *c
 
 // CreateOrUpdateSecret creates a secret in AWS Secrets Manager or updates it if it already exists.
 func (r *AccountClaimReconciler) createIAMRoleSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, roleARN string) error {
+	var OCMSecretNamespace string
+
 	OCMSecretName := awsSTSSecret
-	OCMSecretNamespace := accountClaim.Spec.AwsCredentialSecret.Namespace
+	if accountClaim.Spec.AwsCredentialSecret.Namespace == "" {
+		OCMSecretNamespace = accountClaim.ObjectMeta.Namespace
+
+	} else {
+		OCMSecretNamespace = accountClaim.Spec.AwsCredentialSecret.Namespace
+	}
 
 	OCMSecret := newStsSecretforCR(OCMSecretName, OCMSecretNamespace, []byte(roleARN))
 
@@ -391,7 +488,7 @@ func (r *AccountClaimReconciler) createIAMRoleSecret(reqLogger logr.Logger, acco
 	}
 	reqLogger.Info(fmt.Sprintf("Secret %s created for claim %s", OCMSecret.Name, accountClaim.Name))
 
-	accountClaim.Spec.AwsCredentialSecret.Name = "aws-sts"
+	accountClaim.Spec.AwsCredentialSecret.Name = OCMSecretName
 	err = r.Client.Update(context.TODO(), accountClaim)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("AccountClaim spec update for %s failed", accountClaim.Name))
@@ -399,9 +496,8 @@ func (r *AccountClaimReconciler) createIAMRoleSecret(reqLogger logr.Logger, acco
 	return nil
 }
 
-// CreateIAMRoleWithPermissions creates an IAM role with the specified permissions policy.
-func CreateIAMRoleWithPermissions(reqLogger logr.Logger, awsClient awsclient.Client, roleName string, permissionsPolicyDocument string, trustedARN string) (string, error) {
-	// Create the role with the specified name
+// CreateIAMRoleWithPermissions creates an IAM role with the specified permissions' policy.
+func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Logger, awsClient awsclient.Client, roleName string, trustedARN string) (string, error) {
 	type awsStatement struct {
 		Effect    string                 `json:"Effect"`
 		Action    []string               `json:"Action"`
@@ -423,7 +519,7 @@ func CreateIAMRoleWithPermissions(reqLogger logr.Logger, awsClient awsclient.Cli
 		}},
 	}
 	// Convert role to JSON
-	jsonAssumeRolePolicyDoc, err := json.Marshal(&assumeRolePolicyDoc)
+	jsonAssumeRolePolicyDoc, err := json.Marshal(assumeRolePolicyDoc)
 	if err != nil {
 		return "", err
 	}
@@ -437,16 +533,17 @@ func CreateIAMRoleWithPermissions(reqLogger logr.Logger, awsClient awsclient.Cli
 	if err != nil {
 		return "", err
 	}
+	reqLogger.Info(fmt.Sprintf("Role %s created", createRoleOutput))
 
 	arnComponents := strings.Split(*createRoleOutput.Role.Arn, ":")
 
-	permissionsPolicyDocument = strings.Replace(permissionsPolicyDocument, "<ACCOUNT_ID>", arnComponents[4], -1)
+	policyDocument, err := generateInlinePolicy(arnComponents[4])
 
 	// Attach the permissions policy to the role
 	_, err = awsClient.PutRolePolicy(&iam.PutRolePolicyInput{
-		PolicyName:     aws.String("CustomPolicy"),
+		PolicyName:     aws.String(stsPolicyName),
 		RoleName:       aws.String(roleName),
-		PolicyDocument: aws.String(permissionsPolicyDocument),
+		PolicyDocument: aws.String(policyDocument),
 	})
 
 	if err != nil {

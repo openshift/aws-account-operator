@@ -987,6 +987,21 @@ func (mr *MockClientMockRecorder) ListResourceRecordSets(arg0 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListResourceRecordSets", reflect.TypeOf((*MockClient)(nil).ListResourceRecordSets), arg0)
 }
 
+// ListRolePolicies mocks base method.
+func (m *MockClient) ListRolePolicies(input *iam.ListRolePoliciesInput) (*iam.ListRolePoliciesOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRolePolicies", input)
+	ret0, _ := ret[0].(*iam.ListRolePoliciesOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRolePolicies indicates an expected call of ListRolePolicies.
+func (mr *MockClientMockRecorder) ListRolePolicies(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRolePolicies", reflect.TypeOf((*MockClient)(nil).ListRolePolicies), input)
+}
+
 // ListRoles mocks base method.
 func (m *MockClient) ListRoles(input *iam.ListRolesInput) (*iam.ListRolesOutput, error) {
 	m.ctrl.T.Helper()
