@@ -102,7 +102,7 @@ spec:
               customTags:
                 type: string
               fleetManagerConfig:
-                description: FleetManagerConfig contains configuration specfic to
+                description: FleetManagerConfig contains configuration specific to
                   account claims
                 properties:
                   trustedARN:

@@ -544,6 +544,9 @@ func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Log
 	arnComponents := strings.Split(*createRoleOutput.Role.Arn, ":")
 
 	policyDocument, err := generateInlinePolicy(arnComponents[4])
+	if err != nil {
+		return "", err
+	}
 
 	// Attach the permissions policy to the role
 	_, err = awsClient.PutRolePolicy(&iam.PutRolePolicyInput{
