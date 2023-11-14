@@ -45,8 +45,8 @@ const (
 	controllerName          = "accountclaim"
 	fakeAnnotation          = "managed.openshift.com/fake"
 	awsSTSSecret            = "aws-sts"
-	stsRoleName             = "managed-role-sts" //TODO is there a better name
-	stsPolicyName           = "CustomPolicy"     //TODO is there a better name
+	stsRoleName             = "managed-sts-role"
+	stsPolicyName           = "AAO-CustomPolicy"
 )
 
 type Policy struct {
@@ -329,7 +329,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			return reconcile.Result{}, err
 		}
 
-		err = r.checkIAMRoleWithPermissionsExist(reqLogger, awsClient, stsRoleName)
+		err = r.CleanUpIAMRoleAndPolicies(reqLogger, awsClient, stsRoleName)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -393,8 +393,8 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	return reconcile.Result{}, nil
 }
 
-// checkIAMRoleWithPermissionsExist checks if an IAM role with the specified name exists.
-func (r *AccountClaimReconciler) checkIAMRoleWithPermissionsExist(reqLogger logr.Logger, awsClient awsclient.Client, roleName string) error {
+// CleanUpIAMRoleAndPolicies  is responsible for cleaning up existing IAM roles and their associated policies.
+func (r *AccountClaimReconciler) CleanUpIAMRoleAndPolicies(reqLogger logr.Logger, awsClient awsclient.Client, roleName string) error {
 	// Retrieve the existing IAM role by its name.
 	_, err := awsClient.GetRole(&iam.GetRoleInput{
 		RoleName: aws.String(roleName),
@@ -533,7 +533,7 @@ func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Log
 	reqLogger.Info(fmt.Sprintf("Creating role: %s", roleName))
 	createRoleOutput, err := awsClient.CreateRole(&iam.CreateRoleInput{
 		RoleName:                 aws.String(roleName),
-		Description:              aws.String(""), //description
+		Description:              aws.String("Managed by AAO"),
 		AssumeRolePolicyDocument: aws.String(string(jsonAssumeRolePolicyDoc)),
 	})
 	if err != nil {
@@ -542,8 +542,9 @@ func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Log
 	reqLogger.Info(fmt.Sprintf("Role %s created", createRoleOutput))
 
 	arnComponents := strings.Split(*createRoleOutput.Role.Arn, ":")
+	accountId := arnComponents[4]
 
-	policyDocument, err := generateInlinePolicy(arnComponents[4])
+	policyDocument, err := generateInlinePolicy(accountId)
 	if err != nil {
 		return "", err
 	}
@@ -583,12 +584,12 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logge
 		return nil
 	}
 
-  // Workaround for FleetManagers special account handling, see
-  // https://issues.redhat.com/browse/OSD-19093
-  if len(accountClaim.GetFinalizers()) > 1 {
-    reqLogger.Info("Found additional finalizers on AccountClaim. Not attempting cleanup.")
-    return nil
-  }
+	// Workaround for FleetManagers special account handling, see
+	// https://issues.redhat.com/browse/OSD-19093
+	if len(accountClaim.GetFinalizers()) > 1 {
+		reqLogger.Info("Found additional finalizers on AccountClaim. Not attempting cleanup.")
+		return nil
+	}
 
 	// Only do AWS cleanup and account reset if accountLink is not empty
 	// We will not attempt AWS cleanup if the account is BYOC since we're not going to reuse these accounts

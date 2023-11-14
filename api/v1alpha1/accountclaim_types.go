@@ -28,7 +28,7 @@ type AccountClaimSpec struct {
 	CustomTags          string             `json:"customTags,omitempty"`
 	KmsKeyId            string             `json:"kmsKeyId,omitempty"`
 	AccountPool         string             `json:"accountPool,omitempty"`
-	FleetManagerConfig  FleetManagerConfig `json:"fleetManagerConfig,omitempty"`
+	FleetManagerConfig  FleetManagerConfig `json:"fleetManagerConfig,omitempty"` // FleetmanagerConfig is exclusively designed for use by the fleet manager
 }
 
 // AccountClaimStatus defines the observed state of AccountClaim
