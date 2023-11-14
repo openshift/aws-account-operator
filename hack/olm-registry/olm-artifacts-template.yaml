@@ -49,6 +49,9 @@ parameters:
 - name: FEATURE_VALIDATE_TAG_ACCOUNT
   required: false
   value: "false"
+- name: FEATURE_ACCOUNTPOOL_VALIDATION
+  required: false
+  value: "false"
 - name: AMIOWNER
   require: false
   value: "309956199498"
@@ -107,6 +110,7 @@ objects:
     fedramp: "${FEDRAMP}"
     feature.validation_move_account: ${FEATURE_VALIDATE_MOVE_ACCOUNT}
     feature.validation_tag_account: ${FEATURE_VALIDATE_TAG_ACCOUNT}
+    feature.accountpool_validation: ${FEATURE_ACCOUNTPOOL_VALIDATION}
 
 - apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AccountPool
