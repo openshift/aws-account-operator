@@ -204,6 +204,18 @@ delete-accountclaim: ## Delete AccountClaim
 	# Delete accountclaim
 	@oc process --local -p NAME=${ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -f hack/templates/aws.managed.openshift.io_v1alpha1_accountclaim_cr.tmpl | oc delete -f -
 
+.PHONY: create-fleetmanager-accountclaim
+create-fleet-accountclaim: ## Delete AccountClaim
+	# Create fleetmanager accountclaim
+	@oc process --local -p NAME=${FM_ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -p TRUSTED_ARN=${TRUSTED_ARN} -f hack/templates/aws.managed.openshift.io_v1alpha1_fleetmanager_accountclaim_cr.tmpl | oc apply -f -
+    # Wait for accountclaim to become ready
+	@while true; do STATUS=$$(oc get accountclaim ${FM_ACCOUNT_CLAIM_NAME} -n ${ACCOUNT_CLAIM_NAMESPACE} -o json | jq -r '.status.state'); if [ "$$STATUS" == "Ready" ]; then break; elif [ "$$STATUS" == "Failed" ]; then echo "Account claim ${FM_ACCOUNT_CLAIM_NAME} failed to create"; exit 1; fi; sleep 1; done
+
+.PHONY: delete-fleetmanager-accountclaim
+delete-fleet-accountclaim: ## Delete AccountClaim
+	# Delete fleetmanager accountclaim
+	@oc process --local -p NAME=${FM_ACCOUNT_CLAIM_NAME} -p NAMESPACE=${ACCOUNT_CLAIM_NAMESPACE} -p TRUSTED_ARN=${TRUSTED_ARN} -f hack/templates/aws.managed.openshift.io_v1alpha1_fleetmanager_accountclaim_cr.tmpl | oc delete -f -
+
 .PHONY: create-awsfederatedrole
 create-awsfederatedrole: ## Create awsFederatedRole "Read Only"
 	# Create Federated role

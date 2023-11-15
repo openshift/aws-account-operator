@@ -101,6 +101,15 @@ spec:
                 type: object
               customTags:
                 type: string
+              fleetManagerConfig:
+                description: FleetManagerConfig contains configuration specific to
+                  account claims
+                properties:
+                  trustedARN:
+                    type: string
+                required:
+                - trustedARN
+                type: object
               kmsKeyId:
                 type: string
               legalEntity:

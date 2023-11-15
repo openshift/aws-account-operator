@@ -377,7 +377,7 @@ func (r *AccountReconciler) BuildIAMUser(reqLogger logr.Logger, awsClient awscli
 func CleanUpIAM(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
 
 	// We delete user policies, access keys and finally the IAM user themselves.
-	if err := deleteIAMUsers(reqLogger, awsClient, accountCR); err != nil {
+	if err := DeleteIAMUsers(reqLogger, awsClient, accountCR); err != nil {
 		return fmt.Errorf("failed deleting IAM users: %v", err)
 	}
 
@@ -426,7 +426,7 @@ var (
 	listIAMUsers = awsclient.ListIAMUsers
 )
 
-func deleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
+func DeleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
 	reqLogger.Info("Cleaning up IAM users")
 
 	users, err := listIAMUsers(reqLogger, awsClient)

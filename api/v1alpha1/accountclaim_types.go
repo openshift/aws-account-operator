@@ -13,21 +13,22 @@ import (
 // AccountClaimSpec defines the desired state of AccountClaim
 // +k8s:openapi-gen=true
 type AccountClaimSpec struct {
-	LegalEntity         LegalEntity `json:"legalEntity"`
-	AwsCredentialSecret SecretRef   `json:"awsCredentialSecret"`
-	Aws                 Aws         `json:"aws"`
-	AccountLink         string      `json:"accountLink"`
-	AccountOU           string      `json:"accountOU,omitempty"`
-	BYOC                bool        `json:"byoc,omitempty"`
-	BYOCSecretRef       SecretRef   `json:"byocSecretRef,omitempty"`
-	BYOCAWSAccountID    string      `json:"byocAWSAccountID,omitempty"`
-	ManualSTSMode       bool        `json:"manualSTSMode,omitempty"`
-	STSRoleARN          string      `json:"stsRoleARN,omitempty"`
-	STSExternalID       string      `json:"stsExternalID,omitempty"`
-	SupportRoleARN      string      `json:"supportRoleARN,omitempty"`
-	CustomTags          string      `json:"customTags,omitempty"`
-	KmsKeyId            string      `json:"kmsKeyId,omitempty"`
-	AccountPool         string      `json:"accountPool,omitempty"`
+	LegalEntity         LegalEntity        `json:"legalEntity"`
+	AwsCredentialSecret SecretRef          `json:"awsCredentialSecret"`
+	Aws                 Aws                `json:"aws"`
+	AccountLink         string             `json:"accountLink"`
+	AccountOU           string             `json:"accountOU,omitempty"`
+	BYOC                bool               `json:"byoc,omitempty"`
+	BYOCSecretRef       SecretRef          `json:"byocSecretRef,omitempty"`
+	BYOCAWSAccountID    string             `json:"byocAWSAccountID,omitempty"`
+	ManualSTSMode       bool               `json:"manualSTSMode,omitempty"`
+	STSRoleARN          string             `json:"stsRoleARN,omitempty"`
+	STSExternalID       string             `json:"stsExternalID,omitempty"`
+	SupportRoleARN      string             `json:"supportRoleARN,omitempty"`
+	CustomTags          string             `json:"customTags,omitempty"`
+	KmsKeyId            string             `json:"kmsKeyId,omitempty"`
+	AccountPool         string             `json:"accountPool,omitempty"`
+	FleetManagerConfig  FleetManagerConfig `json:"fleetManagerConfig,omitempty"` // FleetmanagerConfig is exclusively designed for use by the fleet manager
 }
 
 // AccountClaimStatus defines the observed state of AccountClaim
@@ -119,6 +120,11 @@ type AccountClaimList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []AccountClaim `json:"items"`
+}
+
+// FleetManagerConfig contains configuration specific to account claims
+type FleetManagerConfig struct {
+	TrustedARN string `json:"trustedARN"`
 }
 
 // LegalEntity contains Red Hat specific identifiers to the original creator the clusters

@@ -342,6 +342,21 @@ func (mr *MockClientMockRecorder) DeleteRole(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRole", reflect.TypeOf((*MockClient)(nil).DeleteRole), arg0)
 }
 
+// DeleteRolePolicy mocks base method.
+func (m *MockClient) DeleteRolePolicy(input *iam.DeleteRolePolicyInput) (*iam.DeleteRolePolicyOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteRolePolicy", input)
+	ret0, _ := ret[0].(*iam.DeleteRolePolicyOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteRolePolicy indicates an expected call of DeleteRolePolicy.
+func (mr *MockClientMockRecorder) DeleteRolePolicy(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRolePolicy", reflect.TypeOf((*MockClient)(nil).DeleteRolePolicy), input)
+}
+
 // DeleteSnapshot mocks base method.
 func (m *MockClient) DeleteSnapshot(arg0 *ec2.DeleteSnapshotInput) (*ec2.DeleteSnapshotOutput, error) {
 	m.ctrl.T.Helper()
@@ -987,6 +1002,21 @@ func (mr *MockClientMockRecorder) ListResourceRecordSets(arg0 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListResourceRecordSets", reflect.TypeOf((*MockClient)(nil).ListResourceRecordSets), arg0)
 }
 
+// ListRolePolicies mocks base method.
+func (m *MockClient) ListRolePolicies(input *iam.ListRolePoliciesInput) (*iam.ListRolePoliciesOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRolePolicies", input)
+	ret0, _ := ret[0].(*iam.ListRolePoliciesOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRolePolicies indicates an expected call of ListRolePolicies.
+func (mr *MockClientMockRecorder) ListRolePolicies(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRolePolicies", reflect.TypeOf((*MockClient)(nil).ListRolePolicies), input)
+}
+
 // ListRoles mocks base method.
 func (m *MockClient) ListRoles(input *iam.ListRolesInput) (*iam.ListRolesOutput, error) {
 	m.ctrl.T.Helper()
@@ -1089,6 +1119,21 @@ func (m *MockClient) MoveAccount(arg0 *organizations.MoveAccountInput) (*organiz
 func (mr *MockClientMockRecorder) MoveAccount(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MoveAccount", reflect.TypeOf((*MockClient)(nil).MoveAccount), arg0)
+}
+
+// PutRolePolicy mocks base method.
+func (m *MockClient) PutRolePolicy(input *iam.PutRolePolicyInput) (*iam.PutRolePolicyOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PutRolePolicy", input)
+	ret0, _ := ret[0].(*iam.PutRolePolicyOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PutRolePolicy indicates an expected call of PutRolePolicy.
+func (mr *MockClientMockRecorder) PutRolePolicy(input interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutRolePolicy", reflect.TypeOf((*MockClient)(nil).PutRolePolicy), input)
 }
 
 // PutUserPolicy mocks base method.
