@@ -1,0 +1,28 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+parameters:
+- name: NAME 
+- name: NAMESPACE
+- name: TRUSTED_ARN
+metadata:
+  name: test-aws-accountclaim-template
+objects:
+- apiVersion: aws.managed.openshift.io/v1alpha1
+  kind: AccountClaim
+  metadata:
+    name: ${NAME}
+    namespace: ${NAMESPACE}
+  spec:
+    accountPool: "hs-zero-size-accountpool"
+    fleetManagerConfig:
+      trustedARN: ${TRUSTED_ARN}
+    accountLink: ""
+    aws:
+      regions:
+      - name: us-east-1
+    awsCredentialSecret:
+      name: aws-sts
+      namespace: ${NAMESPACE} 
+    legalEntity:
+      id: "111111"
+      name: ${NAME}
