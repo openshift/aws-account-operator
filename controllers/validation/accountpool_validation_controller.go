@@ -26,10 +26,6 @@ var (
 	logs              = logf.Log.WithName("controller_accountpoolvalidation")
 )
 
-const (
-	ControllerName = "accountpoolvalidation"
-)
-
 type AccountPoolValidationReconciler struct {
 	Client           client.Client
 	Scheme           *runtime.Scheme
@@ -37,7 +33,7 @@ type AccountPoolValidationReconciler struct {
 }
 
 func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
-	reqLogger := logs.WithValues("Controller", ControllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
+	reqLogger := logs.WithValues("Controller", "accountpoolvalidation", "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Fetch the AccountPool instance
 	reqLogger.Info("Fetching accountpool")
@@ -183,9 +179,9 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 
 func (r *AccountPoolValidationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.awsClientBuilder = &awsclient.Builder{}
-	maxReconciles, err := utils.GetControllerMaxReconciles(controllerName)
+	maxReconciles, err := utils.GetControllerMaxReconciles("accountpoolvalidation")
 	if err != nil {
-		logs.Error(err, "missing max reconciles for controller", "controller", controllerName)
+		logs.Error(err, "missing max reconciles for controller", "controller", "accountpoolvalidation")
 	}
 
 	rwm := utils.NewReconcilerWithMetrics(r, "accountpoolvalidation")
