@@ -32,6 +32,10 @@ parameters:
   required: false
 - name: MAXCONCURRENTRECONCILES_ACCOUNT
   value: "1"
+- name: MAXCONCURRENTRECONCILES_ACCOUNTVALIDATION
+  value: "1"
+- name: MAXCONCURRENTRECONCILES_ACCOUNTPOOLVALIDATION
+  value: "1"
 - name: MAXCONCURRENTRECONCILES_ACCOUNTCLAIM
   value: "1"
 - name: MAXCONCURRENTRECONCILES_ACCOUNTPOOL
@@ -102,6 +106,8 @@ objects:
     aws-managed-tags: "${AWS_MANAGED_TAGS}"
     accountpool: "${ACCOUNT_POOL_CONFIG}"
     MaxConcurrentReconciles.account: "${MAXCONCURRENTRECONCILES_ACCOUNT}"
+    MaxConcurrentReconciles.accountvalidation: "${MAXCONCURRENTRECONCILES_ACCOUNTVALIDATION}"
+    MaxConcurrentReconciles.accountpoolvalidation: "${MAXCONCURRENTRECONCILES_ACCOUNTPOOLVALIDATION}"
     MaxConcurrentReconciles.accountclaim: "${MAXCONCURRENTRECONCILES_ACCOUNTCLAIM}"
     MaxConcurrentReconciles.accountpool: "${MAXCONCURRENTRECONCILES_ACCOUNTPOOL}"
     MaxConcurrentReconciles.awsfederatedaccountaccess: "${MAXCONCURRENTRECONCILES_AWSFEDERATEDACCOUNTACCESS}"
