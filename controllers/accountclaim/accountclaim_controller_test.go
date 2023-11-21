@@ -109,10 +109,16 @@ var _ = Describe("AccountClaim", func() {
 		Context("AccountClaim is marked for Deletion", func() {
 
 			var (
-				objs []runtime.Object
+				objs              []runtime.Object
+				orgAccessRoleName string
+				roleSessionName   string
+				orgAccessArn      string
 			)
 
 			BeforeEach(func() {
+				orgAccessRoleName = "OrganizationAccountAccessRole"
+				roleSessionName = "awsAccountOperator"
+				orgAccessArn = "arn:aws:iam:::role/OrganizationAccountAccessRole"
 				accountClaim.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 				accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), accountClaimFinalizer))
 
@@ -154,6 +160,22 @@ var _ = Describe("AccountClaim", func() {
 					Volumes: []*ec2.Volume{},
 				}
 
+				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
+					DurationSeconds: aws.Int64(3600),
+					RoleArn:         &orgAccessArn,
+					RoleSessionName: &roleSessionName,
+				}).Return(&sts.AssumeRoleOutput{
+					AssumedRoleUser: &sts.AssumedRoleUser{
+						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
+						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
+					},
+					Credentials: &sts.Credentials{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						SessionToken:    aws.String("SESSION_TOKEN"),
+					},
+					PackedPolicySize: aws.Int64(40),
+				}, nil)
 				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(lhzo, nil)
 				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(lbo, nil)
 				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(dvpcesco, nil)
@@ -207,6 +229,22 @@ var _ = Describe("AccountClaim", func() {
 					Volumes: []*ec2.Volume{},
 				}
 
+				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
+					DurationSeconds: aws.Int64(3600),
+					RoleArn:         &orgAccessArn,
+					RoleSessionName: &roleSessionName,
+				}).Return(&sts.AssumeRoleOutput{
+					AssumedRoleUser: &sts.AssumedRoleUser{
+						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
+						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
+					},
+					Credentials: &sts.Credentials{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						SessionToken:    aws.String("SESSION_TOKEN"),
+					},
+					PackedPolicySize: aws.Int64(40),
+				}, nil)
 				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(lhzo, nil)
 				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(lbo, nil)
 				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(dvpcesco, nil)
@@ -231,6 +269,22 @@ var _ = Describe("AccountClaim", func() {
 				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
 				// Use a bogus error, just so we can fail AWS calls.
 				theErr := awserr.NewBatchError("foo", "bar", []error{})
+				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
+					DurationSeconds: aws.Int64(3600),
+					RoleArn:         &orgAccessArn,
+					RoleSessionName: &roleSessionName,
+				}).Return(&sts.AssumeRoleOutput{
+					AssumedRoleUser: &sts.AssumedRoleUser{
+						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
+						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
+					},
+					Credentials: &sts.Credentials{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						SessionToken:    aws.String("SESSION_TOKEN"),
+					},
+					PackedPolicySize: aws.Int64(40),
+				}, nil)
 				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(nil, theErr)
 				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(nil, theErr)
 				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(nil, theErr)
