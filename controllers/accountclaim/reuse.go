@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openshift/aws-account-operator/config"
+	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 	"time"
 
 	"github.com/rkt/rkt/tests/testutils/logger"
@@ -59,9 +61,9 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 		return nil
 	}
 
+	var awsClient awsclient.Client
 	var awsClientInput awsclient.NewAwsClientInput
 
-	// Region comes from accountClaim
 	clusterAwsRegion := accountClaim.Spec.Aws.Regions[0].Name
 	if reusedAccount.IsBYOC() {
 		// AWS credential comes from accountclaim object osdCcsAdmin user
@@ -73,20 +75,31 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 			NameSpace:  accountClaim.Namespace,
 			AwsRegion:  clusterAwsRegion,
 		}
-	} else {
-		// AWS credential comes from account object
-		awsClientInput = awsclient.NewAwsClientInput{
-			SecretName: reusedAccount.Spec.IAMUserSecret,
-			NameSpace:  awsv1alpha1.AccountCrNamespace,
-			AwsRegion:  clusterAwsRegion,
+		awsClient, err = r.awsClientBuilder.GetClient(controllerName, r.Client, awsClientInput)
+		if err != nil {
+			connErr := fmt.Sprintf("Unable to create aws client for region %s", clusterAwsRegion)
+			reqLogger.Error(err, connErr)
+			return err
 		}
-	}
+	} else {
+		awsRegion := config.GetDefaultRegion()
+		// We expect this secret to exist in the same namespace Account CR's are created
+		awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+			SecretName: utils.AwsSecretName,
+			NameSpace:  awsv1alpha1.AccountCrNamespace,
+			AwsRegion:  awsRegion,
+		})
+		if err != nil {
+			reqLogger.Error(err, "failed building operator AWS client")
+			return err
+		}
 
-	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsClientInput)
-	if err != nil {
-		connErr := fmt.Sprintf("Unable to create aws client for region %s", clusterAwsRegion)
-		reqLogger.Error(err, connErr)
-		return err
+		awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, reusedAccount, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
+		if err != nil {
+			connErr := fmt.Sprintf("Unable to create aws client for region %s", awsRegion)
+			reqLogger.Error(err, connErr)
+			return err
+		}
 	}
 
 	if reusedAccount.IsBYOC() {

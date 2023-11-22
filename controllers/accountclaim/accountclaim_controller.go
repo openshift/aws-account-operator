@@ -44,7 +44,7 @@ const (
 	waitPeriod              = 30
 	controllerName          = "accountclaim"
 	fakeAnnotation          = "managed.openshift.com/fake"
-	awsSTSSecret            = "aws-sts"
+	awsSTSSecret            = "sts-secret"
 	stsRoleName             = "managed-sts-role"
 	stsPolicyName           = "AAO-CustomPolicy"
 )
@@ -476,8 +476,15 @@ func newStsSecretforCR(secretName string, secretNameSpace string, arn []byte) *c
 // CreateOrUpdateSecret creates a secret in AWS Secrets Manager or updates it if it already exists.
 func (r *AccountClaimReconciler) createIAMRoleSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, roleARN string) error {
 	var OCMSecretNamespace string
+	var OCMSecretName string
 
-	OCMSecretName := awsSTSSecret
+	if accountClaim.Spec.AwsCredentialSecret.Name == "" {
+		OCMSecretName = accountClaim.ObjectMeta.Name + "-" + awsSTSSecret
+
+	} else {
+		OCMSecretName = accountClaim.Spec.AwsCredentialSecret.Name
+	}
+
 	if accountClaim.Spec.AwsCredentialSecret.Namespace == "" {
 		OCMSecretNamespace = accountClaim.ObjectMeta.Namespace
 
