@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/utils"
 )
 
 const (
@@ -48,6 +50,8 @@ const (
 	stsRoleName             = "managed-sts-role"
 	stsPolicyName           = "AAO-CustomPolicy"
 )
+
+var fleetManagerCliamEnabled = false
 
 type Policy struct {
 	Version   string `json:"Version"`
@@ -309,69 +313,86 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			return reconcile.Result{}, err
 		}
 	}
+	cm, err := utils.GetOperatorConfigMap(r.Client)
+	if err != nil {
+		log.Error(err, "Could not retrieve the operator configmap")
+		return utils.RequeueAfter(5 * time.Minute)
+	}
 
-	// This will triggers role and secret creation which will enable AccountCLaims to be able to gain access via a AWS STS tokens
+	enabled, err := strconv.ParseBool(cm.Data["feature.accountcliam_fleet_manger_trusted_arn"])
+	if err != nil {
+		log.Info("Could not retrieve feature flag 'feature.accountcliam_fleet_manger_trusted_arn' - fleet manager accountcliam is disabled")
+	} else {
+		fleetManagerCliamEnabled = enabled
+	}
+	log.Info("Is fleet manager accountcliam enabled?", "enabled", fleetManagerCliamEnabled)
+
+	// This will trigger role and secret creation which will enable AccountCLaims to be able to gain access via a AWS STS tokens
 	if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" && (accountClaim.Spec.AccountPool != "" && accountClaim.Spec.AccountPool != "default") {
-		awsRegion := config.GetDefaultRegion()
+		if fleetManagerCliamEnabled {
+			awsRegion := config.GetDefaultRegion()
 
-		awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-			SecretName: controllerutils.AwsSecretName,
-			NameSpace:  awsv1alpha1.AccountCrNamespace,
-			AwsRegion:  awsRegion,
-		})
-		if err != nil {
-			reqLogger.Error(err, "failed building operator AWS client")
-			return reconcile.Result{}, err
-		}
-		awsClient, _, err := stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, unclaimedAccount, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
-		if err != nil {
-			reqLogger.Error(err, "failed building AWS client from assume_role")
-			return reconcile.Result{}, err
-		}
+			awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+				SecretName: controllerutils.AwsSecretName,
+				NameSpace:  awsv1alpha1.AccountCrNamespace,
+				AwsRegion:  awsRegion,
+			})
+			if err != nil {
+				reqLogger.Error(err, "failed building operator AWS client")
+				return reconcile.Result{}, err
+			}
+			awsClient, _, err := stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, unclaimedAccount, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
+			if err != nil {
+				reqLogger.Error(err, "failed building AWS client from assume_role")
+				return reconcile.Result{}, err
+			}
 
-		err = r.CleanUpIAMRoleAndPolicies(reqLogger, awsClient, stsRoleName)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		roleARN, err := r.createIAMRoleWithPermissions(reqLogger, awsClient, stsRoleName, accountClaim.Spec.FleetManagerConfig.TrustedARN)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Implement IAM user deletion logic
-		if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil { // Do I need to worry about deleteing all IAM users
-			return reconcile.Result{}, fmt.Errorf("failed deleting IAM users: %v", err)
-		}
-
-		// Deletes account IAM user Secret
-		if r.checkIAMSecretExists(unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace) {
-			err := r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace)
+			err = r.CleanUpIAMRoleAndPolicies(reqLogger, awsClient, stsRoleName)
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-		}
-		// Remove IAM user Secret from Account Spec
-		unclaimedAccount.Spec.IAMUserSecret = ""
-		err = r.accountSpecUpdate(reqLogger, unclaimedAccount)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
 
-		// Creates IAM role secret
-		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
-			if err := r.createIAMRoleSecret(reqLogger, accountClaim, roleARN); err != nil {
+			roleARN, err := r.createIAMRoleWithPermissions(reqLogger, awsClient, stsRoleName, accountClaim.Spec.FleetManagerConfig.TrustedARN)
+			if err != nil {
 				return reconcile.Result{}, err
+			}
+
+			// Implement IAM user deletion logic
+			if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil { // Do I need to worry about deleteing all IAM users
+				return reconcile.Result{}, fmt.Errorf("failed deleting IAM users: %v", err)
+			}
+
+			// Deletes account IAM user Secret
+			if r.checkIAMSecretExists(unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace) {
+				err := r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+			}
+			// Remove IAM user Secret from Account Spec
+			unclaimedAccount.Spec.IAMUserSecret = ""
+			err = r.accountSpecUpdate(reqLogger, unclaimedAccount)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			// Creates IAM role secret
+			if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+				if err := r.createIAMRoleSecret(reqLogger, accountClaim, roleARN); err != nil {
+					return reconcile.Result{}, err
+				}
+			} else {
+				err = r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+				err = r.createIAMRoleSecret(reqLogger, accountClaim, roleARN)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
 			}
 		} else {
-			err = r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-			err = r.createIAMRoleSecret(reqLogger, accountClaim, roleARN)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
+			log.Info("Would attempt to create IAM Role with permission here, but fleet manager accountcliam is disabled.")
 		}
 	} else {
 
