@@ -40,6 +40,7 @@ var _ = Describe("AccountClaim", func() {
 		r            *AccountClaimReconciler
 		ctrl         *gomock.Controller
 		req          reconcile.Request
+		configMap    *v1.ConfigMap
 	)
 
 	err := apis.AddToScheme(scheme.Scheme)
@@ -338,6 +339,15 @@ var _ = Describe("AccountClaim", func() {
 					Namespace: namespace,
 				}
 				accountClaim.Spec.AwsCredentialSecret = dummySecretRef
+				configMap = &v1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      awsv1alpha1.DefaultConfigMap,
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+					Data: map[string]string{
+						"feature.accountcliam_fleet_manger_trusted_arn": "true",
+					},
+				}
 				accounts := []*awsv1alpha1.Account{}
 				accounts = append(accounts, &awsv1alpha1.Account{
 					ObjectMeta: metav1.ObjectMeta{
@@ -366,7 +376,7 @@ var _ = Describe("AccountClaim", func() {
 						Claimed: false,
 					},
 				})
-				objs := []runtime.Object{accountClaim, accounts[0]}
+				objs := []runtime.Object{accountClaim, accounts[0], configMap}
 
 				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
 				roleName := "testRoleName"
