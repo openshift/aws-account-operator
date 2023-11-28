@@ -57,6 +57,7 @@ parameters:
   required: false
   value: "false"
 - name: FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN
+  required: false
   value: "false"
 - name: AMIOWNER
   require: false
