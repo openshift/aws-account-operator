@@ -120,7 +120,7 @@ objects:
     feature.validation_move_account: ${FEATURE_VALIDATE_MOVE_ACCOUNT}
     feature.validation_tag_account: ${FEATURE_VALIDATE_TAG_ACCOUNT}
     feature.accountpool_validation: ${FEATURE_ACCOUNTPOOL_VALIDATION}
-    feature.accountclaim_fleet_manger_trusted_arn: ${FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN}
+    feature.accountclaim_fleet_manager_trusted_arn: ${FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN}
 
 - apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AccountPool

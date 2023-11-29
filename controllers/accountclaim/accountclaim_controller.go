@@ -319,9 +319,9 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		return utils.RequeueAfter(5 * time.Minute)
 	}
 
-	enabled, err := strconv.ParseBool(cm.Data["feature.accountclaim_fleet_manger_trusted_arn"])
+	enabled, err := strconv.ParseBool(cm.Data["feature.accountclaim_fleet_manager_trusted_arn"])
 	if err != nil {
-		log.Info("Could not retrieve feature flag 'feature.accountclaim_fleet_manger_trusted_arn' - fleet manager accountclaim is disabled")
+		log.Info("Could not retrieve feature flag 'feature.accountclaim_fleet_manager_trusted_arn' - fleet manager accountclaim is disabled")
 	} else {
 		fleetManagerClaimEnabled = enabled
 	}

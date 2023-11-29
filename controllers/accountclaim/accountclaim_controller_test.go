@@ -345,7 +345,7 @@ var _ = Describe("AccountClaim", func() {
 						Namespace: awsv1alpha1.AccountCrNamespace,
 					},
 					Data: map[string]string{
-						"feature.accountclaim_fleet_manger_trusted_arn": "true",
+						"feature.accountclaim_fleet_manager_trusted_arn": "true",
 					},
 				}
 				accounts := []*awsv1alpha1.Account{}
