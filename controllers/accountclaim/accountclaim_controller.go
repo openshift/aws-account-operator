@@ -51,7 +51,7 @@ const (
 	stsPolicyName           = "AAO-CustomPolicy"
 )
 
-var fleetManagerCliamEnabled = false
+var fleetManagerClaimEnabled = false
 
 type Policy struct {
 	Version   string `json:"Version"`
@@ -319,17 +319,17 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		return utils.RequeueAfter(5 * time.Minute)
 	}
 
-	enabled, err := strconv.ParseBool(cm.Data["feature.accountcliam_fleet_manger_trusted_arn"])
+	enabled, err := strconv.ParseBool(cm.Data["feature.accountclaim_fleet_manger_trusted_arn"])
 	if err != nil {
-		log.Info("Could not retrieve feature flag 'feature.accountcliam_fleet_manger_trusted_arn' - fleet manager accountcliam is disabled")
+		log.Info("Could not retrieve feature flag 'feature.accountclaim_fleet_manger_trusted_arn' - fleet manager accountclaim is disabled")
 	} else {
-		fleetManagerCliamEnabled = enabled
+		fleetManagerClaimEnabled = enabled
 	}
-	log.Info("Is fleet manager accountcliam enabled?", "enabled", fleetManagerCliamEnabled)
+	log.Info("Is fleet manager accountclaim enabled?", "enabled", fleetManagerClaimEnabled)
 
 	// This will trigger role and secret creation which will enable AccountCLaims to be able to gain access via a AWS STS tokens
 	if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" && (accountClaim.Spec.AccountPool != "" && accountClaim.Spec.AccountPool != "default") {
-		if fleetManagerCliamEnabled {
+		if fleetManagerClaimEnabled {
 			awsRegion := config.GetDefaultRegion()
 
 			awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
@@ -392,7 +392,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 				}
 			}
 		} else {
-			log.Info("Would attempt to create IAM Role with permission here, but fleet manager accountcliam is disabled.")
+			log.Info("Would attempt to create IAM Role with permission here, but fleet manager accountclaim is disabled.")
 		}
 	} else {
 
