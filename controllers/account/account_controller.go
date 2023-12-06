@@ -65,7 +65,7 @@ const (
 
 	standardAdminAccessArnPrefix = "arn:aws:iam"
 	adminAccessArnSuffix         = "::aws:policy/AdministratorAccess"
-	iamUserNameUHC               = "osdManagedAdmin"
+	IamUserNameUHC               = "osdManagedAdmin"
 
 	controllerName = "account"
 	// probeSecretEnabled
@@ -311,7 +311,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 		// STS mode doesn't need IAM user init, so just get the creds necessary, init regions, and exit
 		if currentAcctInstance.Spec.ManualSTSMode {
-			accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
+			accountClaim, acctClaimErr := getAccountClaim(currentAcctInstance, r.Client)
 			if acctClaimErr != nil {
 				reqLogger.Error(acctClaimErr, "unable to get accountclaim for sts account")
 				utils.SetAccountClaimStatus(
@@ -354,8 +354,8 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			}
 
 			// Use the same ID applied to the account name for IAM usernames
-			iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
-			secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
+			iamUserUHC := fmt.Sprintf("%s-%s", IamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
+			secretName, err := BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, r.Client, iamUserUHC, request.Namespace)
 			if err != nil {
 				reason, errType := getBuildIAMUserErrorReason(err)
 				errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
@@ -409,7 +409,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		}
 
 		// Check that secret is valid and reheal it if not
-		iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
+		iamUserUHC := fmt.Sprintf("%s-%s", IamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
 
 		reqLogger.Info("probing account secret")
 		err = r.ProbeSecret(reqLogger, currentAcctInstance, awsClient, iamUserUHC, request.Namespace)
@@ -810,7 +810,7 @@ func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcct
 
 	// For non OSD accounts we check the desired region from the accountclaim and ensure that the account has
 	// that region enabled, fail otherwise
-	accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
+	accountClaim, acctClaimErr := getAccountClaim(currentAcctInstance, r.Client)
 	if acctClaimErr != nil {
 		reqLogger.Info("Accountclaim not found")
 		return acctClaimErr
@@ -1050,9 +1050,9 @@ func (r *AccountReconciler) setAccountFailed(reqLogger logr.Logger, account *aws
 	return reconcile.Result{Requeue: true}, nil
 }
 
-func (r *AccountReconciler) getAccountClaim(account *awsv1alpha1.Account) (*awsv1alpha1.AccountClaim, error) {
+func getAccountClaim(account *awsv1alpha1.Account, client client.Client) (*awsv1alpha1.AccountClaim, error) {
 	accountClaim := &awsv1alpha1.AccountClaim{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{
+	err := client.Get(context.TODO(), types.NamespacedName{
 		Name: account.Spec.ClaimLink, Namespace: account.Spec.ClaimLinkNamespace}, accountClaim)
 
 	if err != nil {
@@ -1063,7 +1063,7 @@ func (r *AccountReconciler) getAccountClaim(account *awsv1alpha1.Account) (*awsv
 
 func (r *AccountReconciler) accountClaimError(reqLogger logr.Logger, account *awsv1alpha1.Account, reason string, message string) error {
 	// Retrieve accountClaim
-	accountClaim, err := r.getAccountClaim(account)
+	accountClaim, err := getAccountClaim(account, r.Client)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			return nil
@@ -1102,7 +1102,7 @@ func (r *AccountReconciler) failAllAccountClaimStatus(accountClaim *awsv1alpha1.
 }
 
 func (r *AccountReconciler) setAccountClaimError(reqLogger logr.Logger, currentAccountInstance *awsv1alpha1.Account, message string) error {
-	accountClaim, err := r.getAccountClaim(currentAccountInstance)
+	accountClaim, err := getAccountClaim(currentAccountInstance, r.Client)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			// If the accountClaim is not found, no need to update the accountClaim
@@ -1165,11 +1165,11 @@ func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountCondition
 
 // getManagedTags retrieves a list of managed tags from the configmap
 // returns an empty list on any failure.
-func (r *AccountReconciler) getManagedTags(log logr.Logger) []awsclient.AWSTag {
+func getManagedTags(log logr.Logger, client client.Client) []awsclient.AWSTag {
 	tags := []awsclient.AWSTag{}
 
 	cm := &corev1.ConfigMap{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	err := client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
 	if err != nil {
 		log.Info("There was an error getting the default configmap.", "error", err)
 		return tags
@@ -1186,10 +1186,10 @@ func (r *AccountReconciler) getManagedTags(log logr.Logger) []awsclient.AWSTag {
 
 // getCustomTags retrieves a list of tags from the linked accountclaim
 // these tags can be tags specified by the customer or set by other pieces of the OSD stack
-func (r *AccountReconciler) getCustomTags(log logr.Logger, account *awsv1alpha1.Account) []awsclient.AWSTag {
+func getCustomTags(log logr.Logger, account *awsv1alpha1.Account, client client.Client) []awsclient.AWSTag {
 	tags := []awsclient.AWSTag{}
 
-	accountClaim, err := r.getAccountClaim(account)
+	accountClaim, err := getAccountClaim(account, client)
 	if err != nil {
 		// We expect this error for non-ccs accounts
 		if account.IsBYOC() {
@@ -1261,8 +1261,8 @@ func (r *AccountReconciler) handleCreateAdminAccessRole(
 	// Build the tags required to create the Admin Access Role
 	tags := awsclient.AWSTags.BuildTags(
 		currentAcctInstance,
-		r.getManagedTags(reqLogger),
-		r.getCustomTags(reqLogger, currentAcctInstance),
+		getManagedTags(reqLogger, r.Client),
+		getCustomTags(reqLogger, currentAcctInstance, r.Client),
 	).GetIAMTags()
 
 	// In this block we are creating the ManagedOpenShift-Support-XYZ for both CCS and non-CCS accounts.
@@ -1273,7 +1273,7 @@ func (r *AccountReconciler) handleCreateAdminAccessRole(
 		// generated from that in the handleRoleAssumption func for role validation
 
 		// Get the AccountClaim in Order to retrieve the CCSClient
-		accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
+		accountClaim, acctClaimErr := getAccountClaim(currentAcctInstance, r.Client)
 		if acctClaimErr != nil {
 			if accountClaim != nil {
 				utils.SetAccountClaimStatus(
