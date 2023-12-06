@@ -215,19 +215,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			reqLogger.Error(accountErr, "Failed to get claimed account")
 			return reconcile.Result{}, fmt.Errorf("failed to get claimed account: %w", err)
 		}
-		//if !utils.AccountCRHasIAMUserIDLabel(currentAcctInstance) {
-		//	utils.AddLabels(
-		//		currentAcctInstance,
-		//		utils.GenerateLabel(
-		//			awsv1alpha1.IAMUserIDLabel,
-		//			utils.GenerateShortUID(),
-		//		),
-		//	)
-		//	err = r.Client.Update(context.TODO(), currentAcctInstance)
-		//	if err != nil {
-		//		reqLogger.Error(err, fmt.Sprintf("Account spec update for %s failed", currentAcctInstance.Name))
-		//	}
-		//}
+
 		awsRegion := config.GetDefaultRegion()
 		// We expect this secret to exist in the same namespace Account CR's are created
 		awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
@@ -250,19 +238,8 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		iamUserUHC := fmt.Sprintf("%s-%s", account.IamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
 		secretName, err := account.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, r.Client, iamUserUHC, currentAcctInstance.Namespace)
 		if err != nil {
-			//reason, errType := getBuildIAMUserErrorReason(err)
-			errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
-			//_, stateErr := r.setAccountFailed(
-			//	reqLogger,
-			//	currentAcctInstance,
-			//	errType,
-			//	reason,
-			//	errMsg,
-			//	AccountFailed,
-			//)
-			if errMsg != "" {
-				reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
-			}
+			reqLogger.Error(err, fmt.Sprintf("Failed to build IAM UHC user %s", iamUserUHC))
+			return reconcile.Result{}, err
 		}
 		currentAcctInstance.Spec.IAMUserSecret = *secretName
 		err = r.accountSpecUpdate(reqLogger, currentAcctInstance)
