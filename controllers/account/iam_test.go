@@ -60,10 +60,10 @@ func TestIAMCreateSecret(t *testing.T) {
 
 	nullLogger := testutils.NewTestLogger().Logger()
 	account := newTestAccountBuilder().acct
-	err = r.CreateSecret(nullLogger, &account, secret)
+	err = createSecret(nullLogger, &account, r.Client, secret)
 	assert.Nil(t, err)
 
-	err = r.CreateSecret(nullLogger, &account, secret)
+	err = createSecret(nullLogger, &account, r.Client, secret)
 	assert.Error(t, err, "")
 }
 
@@ -452,7 +452,7 @@ func TestBuildIAMUser(t *testing.T) {
 	nullLogger := testutils.NewTestLogger().Logger()
 	account := newTestAccountBuilder().acct
 	account.Name = username
-	iamUserSecretName, err := r.BuildIAMUser(nullLogger, mockAWSClient, &account, username, namespace)
+	iamUserSecretName, err := BuildIAMUser(nullLogger, mockAWSClient, &account, r.Client, username, namespace)
 	assert.Equal(t, *iamUserSecretName, expectedSecretName)
 	assert.Nil(t, err)
 }
@@ -631,10 +631,10 @@ func TestRotateIAMAccessKeys(t *testing.T) {
 
 	expectedAccessKeyId := "expectedAccessKeyID"
 
-	r := AccountReconciler{
-		Client: mocks.fakeKubeClient,
-		Scheme: scheme.Scheme,
-	}
+	//r := AccountReconciler{
+	//	Client: mocks.fakeKubeClient,
+	//	Scheme: scheme.Scheme,
+	//}
 	iamUser := iam.User{
 		UserName: &expectedUsername,
 	}
@@ -678,7 +678,7 @@ func TestRotateIAMAccessKeys(t *testing.T) {
 		nil,
 	)
 
-	output, err := r.RotateIAMAccessKeys(nullLogger, mockAWSClient, &account, &iamUser)
+	output, err := RotateIAMAccessKeys(nullLogger, mockAWSClient, &account, &iamUser)
 	assert.Equal(t, output, expectedAccessKeyOutput)
 	assert.Nil(t, err)
 }
@@ -786,7 +786,7 @@ func TestCreateIAMUserSecret(t *testing.T) {
 		Name:      TestAccountName,
 	}
 
-	err = r.createIAMUserSecret(nullLogger, &acct, namespacedName, &createAccessKeyOutput)
+	err = createIAMUserSecret(nullLogger, &acct, r.Client, namespacedName, &createAccessKeyOutput)
 	assert.Nil(t, err)
 }
 
@@ -814,14 +814,14 @@ func TestDoesSecretExist(t *testing.T) {
 	}
 
 	// Secret Found
-	value, err := r.DoesSecretExist(namespace)
+	value, err := DoesSecretExist(r.Client, namespace)
 	assert.True(t, value)
 	assert.Nil(t, err)
 
 	// Secret not Found
 	namespace.Name = "invalid"
 	namespace.Namespace = "invalid"
-	value, err = r.DoesSecretExist(namespace)
+	value, err = DoesSecretExist(r.Client, namespace)
 	assert.False(t, value)
 	assert.Nil(t, err)
 }

@@ -52,7 +52,7 @@ func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, ac
 	reqLogger.Info("retrieved desired vCPU quota value from configMap", "quota.vcpu", vCPUQuota)
 
 	var kmsKeyId string
-	accountClaim, accountClaimError := r.getAccountClaim(account)
+	accountClaim, accountClaimError := getAccountClaim(account, r.Client)
 	if accountClaimError != nil {
 		reqLogger.Info("Could not retrieve account claim for account.", "account", account.Name)
 		kmsKeyId = ""
@@ -60,8 +60,8 @@ func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, ac
 		kmsKeyId = accountClaim.Spec.KmsKeyId
 		reqLogger.Info("Retrieved KMS key to use", "KmsKeyID", kmsKeyId)
 	}
-	managedTags := r.getManagedTags(reqLogger)
-	customerTags := r.getCustomTags(reqLogger, account)
+	managedTags := getManagedTags(reqLogger, r.Client)
+	customerTags := getCustomTags(reqLogger, account, r.Client)
 
 	// Create go routines to initialize regions in parallel
 	for _, region := range regions {
