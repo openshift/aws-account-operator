@@ -631,10 +631,6 @@ func TestRotateIAMAccessKeys(t *testing.T) {
 
 	expectedAccessKeyId := "expectedAccessKeyID"
 
-	//r := AccountReconciler{
-	//	Client: mocks.fakeKubeClient,
-	//	Scheme: scheme.Scheme,
-	//}
 	iamUser := iam.User{
 		UserName: &expectedUsername,
 	}
