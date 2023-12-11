@@ -127,6 +127,9 @@ var _ = Describe("AccountClaim", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "osd-creds-mgmt-aaabbb",
 						Namespace: "aws-account-operator",
+						Labels: map[string]string{
+							"iamUserId": "aaabbb",
+						},
 					},
 					Spec: awsv1alpha1.AccountSpec{
 						LegalEntity: awsv1alpha1.LegalEntity{
@@ -160,7 +163,60 @@ var _ = Describe("AccountClaim", func() {
 				dvo := &ec2.DescribeVolumesOutput{
 					Volumes: []*ec2.Volume{},
 				}
+				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
+					DurationSeconds: aws.Int64(3600),
+					RoleArn:         &orgAccessArn,
+					RoleSessionName: &roleSessionName,
+				}).Return(&sts.AssumeRoleOutput{
+					AssumedRoleUser: &sts.AssumedRoleUser{
+						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
+						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
+					},
+					Credentials: &sts.Credentials{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						SessionToken:    aws.String("SESSION_TOKEN"),
+					},
+					PackedPolicySize: aws.Int64(40),
+				}, nil)
 
+				adminAccessArn := config.GetIAMArn("aws", config.AwsResourceTypePolicy, config.AwsResourceIDAdministratorAccessRole)
+				roleCreate := time.Now()
+				userName := "osdManagedAdmin-aaabbb"
+				mockAWSClient.EXPECT().GetUser(&iam.GetUserInput{
+					UserName: &userName,
+				}).Return(nil, awserr.New(iam.ErrCodeNoSuchEntityException, "", nil))
+
+				mockAWSClient.EXPECT().CreateUser(gomock.Any()).Return(&iam.CreateUserOutput{
+					User: &iam.User{
+						Arn:      aws.String(fmt.Sprintf("aws:::%s", userName)),
+						UserId:   &userName,
+						UserName: &userName,
+					},
+				}, nil)
+
+				mockAWSClient.EXPECT().AttachUserPolicy(&iam.AttachUserPolicyInput{
+					UserName:  &userName,
+					PolicyArn: &adminAccessArn,
+				}).Return(nil, nil)
+
+				mockAWSClient.EXPECT().ListAccessKeys(&iam.ListAccessKeysInput{
+					UserName: &userName,
+				}).Return(&iam.ListAccessKeysOutput{
+					AccessKeyMetadata: []*iam.AccessKeyMetadata{},
+				}, nil)
+
+				mockAWSClient.EXPECT().CreateAccessKey(&iam.CreateAccessKeyInput{
+					UserName: &userName,
+				}).Return(&iam.CreateAccessKeyOutput{
+					AccessKey: &iam.AccessKey{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						CreateDate:      &roleCreate,
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						Status:          aws.String("Valid"),
+						UserName:        &userName,
+					},
+				}, nil)
 				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
 					DurationSeconds: aws.Int64(3600),
 					RoleArn:         &orgAccessArn,
@@ -206,11 +262,28 @@ var _ = Describe("AccountClaim", func() {
 			})
 
 			It("should retry on a conflict error", func() {
+				account := &awsv1alpha1.Account{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "osd-creds-mgmt-aaabbb",
+						Namespace: "aws-account-operator",
+						Labels: map[string]string{
+							"iamUserId": "aaabbb",
+						},
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						LegalEntity: awsv1alpha1.LegalEntity{
+							Name: "LegalCorp. Inc.",
+							ID:   "abcdefg123456",
+						},
+						IAMUserSecret: "osd-creds-mgmt-aaabbb-secret",
+					},
+				}
+
+				objs = []runtime.Object{accountClaim, account}
 				r.Client = &possiblyErroringFakeCtrlRuntimeClient{
 					fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build(),
 					true,
 				}
-
 				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
 				// Create empty empy aws responses.
 				lhzo := &route53.ListHostedZonesOutput{
@@ -246,12 +319,64 @@ var _ = Describe("AccountClaim", func() {
 					},
 					PackedPolicySize: aws.Int64(40),
 				}, nil)
+				adminAccessArn := config.GetIAMArn("aws", config.AwsResourceTypePolicy, config.AwsResourceIDAdministratorAccessRole)
+				roleCreate := time.Now()
+				userName := "osdManagedAdmin-aaabbb"
+				mockAWSClient.EXPECT().GetUser(&iam.GetUserInput{
+					UserName: &userName,
+				}).Return(nil, awserr.New(iam.ErrCodeNoSuchEntityException, "", nil))
+
+				mockAWSClient.EXPECT().CreateUser(gomock.Any()).Return(&iam.CreateUserOutput{
+					User: &iam.User{
+						Arn:      aws.String(fmt.Sprintf("aws:::%s", userName)),
+						UserId:   &userName,
+						UserName: &userName,
+					},
+				}, nil)
+
+				mockAWSClient.EXPECT().AttachUserPolicy(&iam.AttachUserPolicyInput{
+					UserName:  &userName,
+					PolicyArn: &adminAccessArn,
+				}).Return(nil, nil)
+
+				mockAWSClient.EXPECT().ListAccessKeys(&iam.ListAccessKeysInput{
+					UserName: &userName,
+				}).Return(&iam.ListAccessKeysOutput{
+					AccessKeyMetadata: []*iam.AccessKeyMetadata{},
+				}, nil)
+
+				mockAWSClient.EXPECT().CreateAccessKey(&iam.CreateAccessKeyInput{
+					UserName: &userName,
+				}).Return(&iam.CreateAccessKeyOutput{
+					AccessKey: &iam.AccessKey{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						CreateDate:      &roleCreate,
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						Status:          aws.String("Valid"),
+						UserName:        &userName,
+					},
+				}, nil)
+				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
+					DurationSeconds: aws.Int64(3600),
+					RoleArn:         &orgAccessArn,
+					RoleSessionName: &roleSessionName,
+				}).Return(&sts.AssumeRoleOutput{
+					AssumedRoleUser: &sts.AssumedRoleUser{
+						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
+						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
+					},
+					Credentials: &sts.Credentials{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						SessionToken:    aws.String("SESSION_TOKEN"),
+					},
+					PackedPolicySize: aws.Int64(40),
+				}, nil)
 				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(lhzo, nil)
 				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(lbo, nil)
 				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(dvpcesco, nil)
 				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any()).Return(dso, nil)
 				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any()).Return(dvo, nil)
-
 				_, err := r.Reconcile(context.TODO(), req)
 
 				Expect(err).To(HaveOccurred())
@@ -270,6 +395,60 @@ var _ = Describe("AccountClaim", func() {
 				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
 				// Use a bogus error, just so we can fail AWS calls.
 				theErr := awserr.NewBatchError("foo", "bar", []error{})
+				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
+					DurationSeconds: aws.Int64(3600),
+					RoleArn:         &orgAccessArn,
+					RoleSessionName: &roleSessionName,
+				}).Return(&sts.AssumeRoleOutput{
+					AssumedRoleUser: &sts.AssumedRoleUser{
+						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
+						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
+					},
+					Credentials: &sts.Credentials{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						SessionToken:    aws.String("SESSION_TOKEN"),
+					},
+					PackedPolicySize: aws.Int64(40),
+				}, nil)
+
+				adminAccessArn := config.GetIAMArn("aws", config.AwsResourceTypePolicy, config.AwsResourceIDAdministratorAccessRole)
+				roleCreate := time.Now()
+				userName := "osdManagedAdmin-aaabbb"
+				mockAWSClient.EXPECT().GetUser(&iam.GetUserInput{
+					UserName: &userName,
+				}).Return(nil, awserr.New(iam.ErrCodeNoSuchEntityException, "", nil))
+
+				mockAWSClient.EXPECT().CreateUser(gomock.Any()).Return(&iam.CreateUserOutput{
+					User: &iam.User{
+						Arn:      aws.String(fmt.Sprintf("aws:::%s", userName)),
+						UserId:   &userName,
+						UserName: &userName,
+					},
+				}, nil)
+
+				mockAWSClient.EXPECT().AttachUserPolicy(&iam.AttachUserPolicyInput{
+					UserName:  &userName,
+					PolicyArn: &adminAccessArn,
+				}).Return(nil, nil)
+
+				mockAWSClient.EXPECT().ListAccessKeys(&iam.ListAccessKeysInput{
+					UserName: &userName,
+				}).Return(&iam.ListAccessKeysOutput{
+					AccessKeyMetadata: []*iam.AccessKeyMetadata{},
+				}, nil)
+
+				mockAWSClient.EXPECT().CreateAccessKey(&iam.CreateAccessKeyInput{
+					UserName: &userName,
+				}).Return(&iam.CreateAccessKeyOutput{
+					AccessKey: &iam.AccessKey{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						CreateDate:      &roleCreate,
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						Status:          aws.String("Valid"),
+						UserName:        &userName,
+					},
+				}, nil)
 				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
 					DurationSeconds: aws.Int64(3600),
 					RoleArn:         &orgAccessArn,
@@ -306,6 +485,63 @@ var _ = Describe("AccountClaim", func() {
 			It("should do nothing when there are additional finalizers present", func() {
 				accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), "another.blocking.finalizer"))
 				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
+				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
+
+				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
+					DurationSeconds: aws.Int64(3600),
+					RoleArn:         &orgAccessArn,
+					RoleSessionName: &roleSessionName,
+				}).Return(&sts.AssumeRoleOutput{
+					AssumedRoleUser: &sts.AssumedRoleUser{
+						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
+						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
+					},
+					Credentials: &sts.Credentials{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						SessionToken:    aws.String("SESSION_TOKEN"),
+					},
+					PackedPolicySize: aws.Int64(40),
+				}, nil)
+
+				adminAccessArn := config.GetIAMArn("aws", config.AwsResourceTypePolicy, config.AwsResourceIDAdministratorAccessRole)
+				roleCreate := time.Now()
+				userName := "osdManagedAdmin-aaabbb"
+				mockAWSClient.EXPECT().GetUser(&iam.GetUserInput{
+					UserName: &userName,
+				}).Return(nil, awserr.New(iam.ErrCodeNoSuchEntityException, "", nil))
+
+				mockAWSClient.EXPECT().CreateUser(gomock.Any()).Return(&iam.CreateUserOutput{
+					User: &iam.User{
+						Arn:      aws.String(fmt.Sprintf("aws:::%s", userName)),
+						UserId:   &userName,
+						UserName: &userName,
+					},
+				}, nil)
+
+				mockAWSClient.EXPECT().AttachUserPolicy(&iam.AttachUserPolicyInput{
+					UserName:  &userName,
+					PolicyArn: &adminAccessArn,
+				}).Return(nil, nil)
+
+				mockAWSClient.EXPECT().ListAccessKeys(&iam.ListAccessKeysInput{
+					UserName: &userName,
+				}).Return(&iam.ListAccessKeysOutput{
+					AccessKeyMetadata: []*iam.AccessKeyMetadata{},
+				}, nil)
+
+				mockAWSClient.EXPECT().CreateAccessKey(&iam.CreateAccessKeyInput{
+					UserName: &userName,
+				}).Return(&iam.CreateAccessKeyOutput{
+					AccessKey: &iam.AccessKey{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						CreateDate:      &roleCreate,
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						Status:          aws.String("Valid"),
+						UserName:        &userName,
+					},
+				}, nil)
+
 				_, err := r.Reconcile(context.TODO(), req)
 
 				Expect(err).NotTo(HaveOccurred())

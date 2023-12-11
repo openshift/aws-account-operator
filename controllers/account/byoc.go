@@ -44,7 +44,7 @@ func claimBYOCAccount(r *AccountReconciler, reqLogger logr.Logger, currentAcctIn
 }
 
 func (r *AccountReconciler) initializeNewCCSAccount(reqLogger logr.Logger, account *awsv1alpha1.Account) (reconcile.Result, error) {
-	accountClaim, acctClaimErr := r.getAccountClaim(account)
+	accountClaim, acctClaimErr := getAccountClaim(account, r.Client)
 	if acctClaimErr != nil {
 		// TODO: Unrecoverable
 		// TODO: set helpful error message
