@@ -3,7 +3,6 @@ package account
 import (
 	"context"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"time"
 
@@ -56,18 +55,18 @@ var (
 // CreateSecret creates a secret for placing IAM Credentials
 // Takes a logger, the desired name of the secret, the Account CR
 // that will own the secret, and pointer to an empty secret object to fill
-func createSecret(reqLogger logr.Logger, account *awsv1alpha1.Account, client client.Client, secret *corev1.Secret) error {
+func (r *AccountReconciler) CreateSecret(reqLogger logr.Logger, account *awsv1alpha1.Account, secret *corev1.Secret) error {
 
 	// Set controller as owner of secret
-	if err := controllerutil.SetControllerReference(account, secret, client.Scheme()); err != nil {
+	if err := controllerutil.SetControllerReference(account, secret, r.Scheme); err != nil {
 		return err
 	}
 
-	createErr := client.Create(context.TODO(), secret)
+	createErr := r.Client.Create(context.TODO(), secret)
 	if createErr != nil {
 		failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret %s", secret.Name)
 		utils.SetAccountStatus(account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
-		err := client.Status().Update(context.TODO(), account)
+		err := r.Client.Status().Update(context.TODO(), account)
 		if err != nil {
 			return err
 		}
@@ -303,7 +302,7 @@ func CreateUserAccessKey(client awsclient.Client, iamUser *iam.User) (*iam.Creat
 
 // BuildIAMUser creates and initializes all resources needed for a new IAM user
 // Takes a logger, an AWS client, an Account CR, the desired IAM username and a namespace to create resources in
-func BuildIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, client client.Client, iamUserName string, nameSpace string) (*string, error) {
+func (r *AccountReconciler) BuildIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUserName string, nameSpace string) (*string, error) {
 	var iamUserSecretName string
 	var createdIAMUser *iam.User
 
@@ -314,8 +313,8 @@ func BuildIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, account *aw
 	}
 
 	// Get list of managed tags.
-	managedTags := getManagedTags(reqLogger, client)
-	customTags := getCustomTags(reqLogger, account, client)
+	managedTags := r.getManagedTags(reqLogger)
+	customTags := r.getCustomTags(reqLogger, account)
 
 	// Create IAM user in AWS if it doesn't exist
 	if iamUserExists {
@@ -349,21 +348,21 @@ func BuildIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, account *aw
 	// Create a NamespacedName for the secret
 	secretNamespacedName := types.NamespacedName{Name: iamUserSecretName, Namespace: nameSpace}
 
-	secretExists, err := DoesSecretExist(client, secretNamespacedName)
+	secretExists, err := r.DoesSecretExist(secretNamespacedName)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Unable check if secret: %s exists", secretNamespacedName.String()))
 		return nil, err
 	}
 
 	if !secretExists {
-		iamAccessKeyOutput, err := RotateIAMAccessKeys(reqLogger, awsClient, account, createdIAMUser)
+		iamAccessKeyOutput, err := r.RotateIAMAccessKeys(reqLogger, awsClient, account, createdIAMUser)
 		if err != nil {
 			errMsg := fmt.Sprintf("Unable to rotate access keys for IAM user: %s", aws.StringValue(createdIAMUser.UserName))
 			reqLogger.Error(err, errMsg)
 			return nil, err
 		}
 
-		err = createIAMUserSecret(reqLogger, account, client, secretNamespacedName, iamAccessKeyOutput)
+		err = r.createIAMUserSecret(reqLogger, account, secretNamespacedName, iamAccessKeyOutput)
 		if err != nil {
 			errMsg := fmt.Sprintf("Unable to create secret: %s", secretNamespacedName.Name)
 			reqLogger.Error(err, errMsg)
@@ -554,7 +553,7 @@ func detachRolePolicies(awsClient awsclient.Client, roleName string) error {
 }
 
 // RotateIAMAccessKeys will delete all AWS access keys assigned to the user and recreate them
-func RotateIAMAccessKeys(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUser *iam.User) (*iam.CreateAccessKeyOutput, error) {
+func (r *AccountReconciler) RotateIAMAccessKeys(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUser *iam.User) (*iam.CreateAccessKeyOutput, error) {
 
 	// Delete all current access keys
 	err := deleteAllAccessKeys(awsClient, iamUser)
@@ -573,7 +572,7 @@ func RotateIAMAccessKeys(reqLogger logr.Logger, awsClient awsclient.Client, acco
 }
 
 // createIAMUserSecret creates a K8s secret from iam.createAccessKeyOuput and sets the owner reference to the controller
-func createIAMUserSecret(reqLogger logr.Logger, account *awsv1alpha1.Account, client client.Client, secretName types.NamespacedName, createAccessKeyOutput *iam.CreateAccessKeyOutput) error {
+func (r *AccountReconciler) createIAMUserSecret(reqLogger logr.Logger, account *awsv1alpha1.Account, secretName types.NamespacedName, createAccessKeyOutput *iam.CreateAccessKeyOutput) error {
 
 	// Fill in the secret data
 	userSecretData := map[string][]byte{
@@ -586,19 +585,19 @@ func createIAMUserSecret(reqLogger logr.Logger, account *awsv1alpha1.Account, cl
 	iamUserSecret := CreateSecret(secretName.Name, secretName.Namespace, userSecretData)
 
 	// Set controller as owner of secret
-	if err := controllerutil.SetControllerReference(account, iamUserSecret, client.Scheme()); err != nil {
+	if err := controllerutil.SetControllerReference(account, iamUserSecret, r.Scheme); err != nil {
 		return err
 	}
 
 	// Return nil or err if we're unable to create the k8s secret
-	return createSecret(reqLogger, account, client, iamUserSecret)
+	return r.CreateSecret(reqLogger, account, iamUserSecret)
 }
 
 // DoesSecretExist checks to see if a given secret exists
-func DoesSecretExist(client client.Client, namespacedName types.NamespacedName) (bool, error) {
+func (r *AccountReconciler) DoesSecretExist(namespacedName types.NamespacedName) (bool, error) {
 
 	secret := &corev1.Secret{}
-	err := client.Get(context.TODO(), namespacedName, secret)
+	err := r.Client.Get(context.TODO(), namespacedName, secret)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			return false, nil
@@ -690,7 +689,7 @@ func (r *AccountReconciler) ProbeSecret(reqLogger logr.Logger, currentAcctInstan
 	iamUserSecretName := createIAMUserSecretName(currentAcctInstance.Name)
 	kubeSecretNamespacedName := types.NamespacedName{Name: iamUserSecretName, Namespace: nameSpace}
 	// Check if secret exist in Kubernetes
-	secretExists, err := DoesSecretExist(r.Client, kubeSecretNamespacedName)
+	secretExists, err := r.DoesSecretExist(kubeSecretNamespacedName)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Unable check if secret: %s exists", kubeSecretNamespacedName.String()))
 		return err
@@ -698,7 +697,7 @@ func (r *AccountReconciler) ProbeSecret(reqLogger logr.Logger, currentAcctInstan
 
 	if !secretExists {
 		// If secret doesn't exist, create new one
-		secretName, err := BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, r.Client, iamUserUHC, nameSpace)
+		secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, nameSpace)
 		if err != nil {
 			reason, errType := getBuildIAMUserErrorReason(err)
 			errMsg := fmt.Sprintf("Failed to recreate IAM UHC user %s: %s", iamUserUHC, err)
@@ -793,8 +792,8 @@ func (r *AccountReconciler) ValidateIAMSecret(reqLogger logr.Logger, awsClient a
 	}
 
 	// Get list of managed tags.
-	managedTags := getManagedTags(reqLogger, r.Client)
-	customTags := getCustomTags(reqLogger, account, r.Client)
+	managedTags := r.getManagedTags(reqLogger)
+	customTags := r.getCustomTags(reqLogger, account)
 
 	var iamAccessKeyOutput *iam.CreateAccessKeyOutput
 
@@ -828,7 +827,7 @@ func (r *AccountReconciler) ValidateIAMSecret(reqLogger logr.Logger, awsClient a
 	} else {
 		// If user exists extract iam.User pointer and rotate access key
 		currentIAMUser := iamUserExistsOutput.User
-		iamAccessKeyOutput, err = RotateIAMAccessKeys(reqLogger, awsClient, account, currentIAMUser)
+		iamAccessKeyOutput, err = r.RotateIAMAccessKeys(reqLogger, awsClient, account, currentIAMUser)
 		if err != nil {
 			errMsg := fmt.Sprintf("Unable to rotate access keys for IAM user: %s", aws.StringValue(currentIAMUser.UserName))
 			reqLogger.Error(err, errMsg)
