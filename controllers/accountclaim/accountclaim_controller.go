@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"strconv"
 	"strings"
 	"time"
@@ -947,13 +948,26 @@ func (r *AccountClaimReconciler) createIAMSecret(reqLogger logr.Logger, accountC
 	return nil
 }
 
+//	func (r *AccountClaimReconciler) checkIAMSecretExists(name string, namespace string) bool {
+//		// Need to check if the secret exists AND that it matches what we're expecting
+//		secret := corev1.Secret{}
+//		secretObjectKey := client.ObjectKey{Name: name, Namespace: namespace}
+//		err := r.Client.Get(context.TODO(), secretObjectKey, &secret)
+//		//nolint:gosimple // Ignores false-positive S1008 gosimple notice
+//		return err == nil
+//	}
 func (r *AccountClaimReconciler) checkIAMSecretExists(name string, namespace string) bool {
 	secret := corev1.Secret{}
 	secretObjectKey := client.ObjectKey{Name: name, Namespace: namespace}
 	if err := r.Client.Get(context.TODO(), secretObjectKey, &secret); err != nil {
-		// The secret does not exist
-		return false
+		if errors.IsNotFound(err) {
+			// The secret does not exist
+			return false //, nil
+		}
+		// An error occurred while fetching the secret
+		return false //, fmt.Errorf("error fetching secret: %v", err)
 	}
+	// The secret exists
 	return true
 }
 
