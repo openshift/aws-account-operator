@@ -7,7 +7,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/iam"
 	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"strconv"
 	"strings"
 	"time"
@@ -209,70 +208,6 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	}
 
 	if accountClaim.DeletionTimestamp != nil {
-		// Get account claimed by deleted accountclaim
-		currentAcctInstance, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
-		if accountErr != nil {
-			reqLogger.Error(accountErr, "Failed to get claimed account")
-			return reconcile.Result{}, fmt.Errorf("failed to get claimed account: %w", err)
-		}
-		//if !utils.AccountCRHasIAMUserIDLabel(currentAcctInstance) {
-		//	utils.AddLabels(
-		//		currentAcctInstance,
-		//		utils.GenerateLabel(
-		//			awsv1alpha1.IAMUserIDLabel,
-		//			utils.GenerateShortUID(),
-		//		),
-		//	)
-		//	err = r.Client.Update(context.TODO(), currentAcctInstance)
-		//	if err != nil {
-		//		reqLogger.Error(err, fmt.Sprintf("Account spec update for %s failed", currentAcctInstance.Name))
-		//	}
-		//}
-		awsRegion := config.GetDefaultRegion()
-		// We expect this secret to exist in the same namespace Account CR's are created
-		awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-			SecretName: utils.AwsSecretName,
-			NameSpace:  awsv1alpha1.AccountCrNamespace,
-			AwsRegion:  awsRegion,
-		})
-		if err != nil {
-			reqLogger.Error(err, "failed building operator AWS client")
-			return reconcile.Result{}, err
-		}
-		roleToAssume := currentAcctInstance.GetAssumeRole()
-		awsAssumedRoleClient, _, err := stsclient.AssumeRoleAndCreateClient(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
-
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Use the same ID applied to the account name for IAM usernames
-		iamUserUHC := fmt.Sprintf("%s-%s", account.IamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
-		secretName, err := account.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, r.Client, iamUserUHC, currentAcctInstance.Namespace)
-		if err != nil {
-			//reason, errType := getBuildIAMUserErrorReason(err)
-			errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
-			//_, stateErr := r.setAccountFailed(
-			//	reqLogger,
-			//	currentAcctInstance,
-			//	errType,
-			//	reason,
-			//	errMsg,
-			//	AccountFailed,
-			//)
-			if errMsg != "" {
-				reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
-			}
-		}
-		currentAcctInstance.Spec.IAMUserSecret = *secretName
-		err = r.accountSpecUpdate(reqLogger, currentAcctInstance)
-		if err != nil {
-			reqLogger.Error(err, "Error updating Secret Ref in Account CR")
-			return reconcile.Result{}, err
-		}
-
-		reqLogger.Info("IAM User created and saved", "user", iamUserUHC)
-
 		return reconcile.Result{}, r.handleAccountClaimDeletion(reqLogger, accountClaim)
 	}
 
@@ -423,7 +358,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			}
 
 			// Implement IAM user deletion logic
-			if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil {
+			if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil { // Do I need to worry about deleteing all IAM users
 				return reconcile.Result{}, fmt.Errorf("failed deleting IAM users: %v", err)
 			}
 
@@ -447,7 +382,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 					return reconcile.Result{}, err
 				}
 			} else {
-				err = r.deleteIAMSecret(reqLogger, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace)
+				err = r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace)
 				if err != nil {
 					return reconcile.Result{}, err
 				}
@@ -971,27 +906,13 @@ func (r *AccountClaimReconciler) createIAMSecret(reqLogger logr.Logger, accountC
 	return nil
 }
 
-//	func (r *AccountClaimReconciler) checkIAMSecretExists(name string, namespace string) bool {
-//		// Need to check if the secret exists AND that it matches what we're expecting
-//		secret := corev1.Secret{}
-//		secretObjectKey := client.ObjectKey{Name: name, Namespace: namespace}
-//		err := r.Client.Get(context.TODO(), secretObjectKey, &secret)
-//		//nolint:gosimple // Ignores false-positive S1008 gosimple notice
-//		return err == nil
-//	}
 func (r *AccountClaimReconciler) checkIAMSecretExists(name string, namespace string) bool {
+	// Need to check if the secret exists AND that it matches what we're expecting
 	secret := corev1.Secret{}
 	secretObjectKey := client.ObjectKey{Name: name, Namespace: namespace}
-	if err := r.Client.Get(context.TODO(), secretObjectKey, &secret); err != nil {
-		if errors.IsNotFound(err) {
-			// The secret does not exist
-			return false //, nil
-		}
-		// An error occurred while fetching the secret
-		return false //, fmt.Errorf("error fetching secret: %v", err)
-	}
-	// The secret exists
-	return true
+	err := r.Client.Get(context.TODO(), secretObjectKey, &secret)
+	//nolint:gosimple // Ignores false-positive S1008 gosimple notice
+	return err == nil
 }
 
 func (r *AccountClaimReconciler) statusUpdate(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
