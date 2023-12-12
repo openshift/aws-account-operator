@@ -240,14 +240,11 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			reqLogger.Error(err, fmt.Sprintf("Failed to build IAM UHC user %s", iamUserUHC))
 			return reconcile.Result{}, err
 		}
-		// Checks if the Account Spec contains the IAMUserSecret already
-		if currentAcctInstance.Spec.IAMUserSecret != *secretName {
-			currentAcctInstance.Spec.IAMUserSecret = *secretName
-			err = r.accountSpecUpdate(reqLogger, currentAcctInstance)
-			if err != nil {
-				reqLogger.Error(err, "Error updating Secret Ref in Account CR")
-				return reconcile.Result{}, err
-			}
+		currentAcctInstance.Spec.IAMUserSecret = *secretName
+		err = r.accountSpecUpdate(reqLogger, currentAcctInstance)
+		if err != nil {
+			reqLogger.Error(err, "Error updating Secret Ref in Account CR")
+			return reconcile.Result{}, err
 		}
 
 		reqLogger.Info("IAM User created and saved", "user", iamUserUHC)
