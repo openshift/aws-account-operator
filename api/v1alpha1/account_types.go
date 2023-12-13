@@ -252,7 +252,7 @@ func (a *Account) GetQuotaRequestsByStatus(stati ...ServiceRequestStatus) (int, 
 	return count, returnRegionalServiceQuotaRequest
 }
 
-// IsReusedAccountMissingIAMuser true if the account is in a ready state and a reused non-byoc account without a IAMUser secret and claimlink
+// IsReusedAccountMissingIAMUser returns true if the account is in a ready state and a reused non-byoc account without a IAMUser secret and claimlink
 func (a *Account) IsReusedAccountMissingIAMUser() bool {
 	if a.IsReady() && a.Status.Reused == true && a.Spec.IAMUserSecret == "" && !a.IsBYOC() && !a.HasClaimLink() {
 		return true
