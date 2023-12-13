@@ -358,7 +358,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			}
 
 			// Implement IAM user deletion logic
-			if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil { // Do I need to worry about deleteing all IAM users
+			if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil {
 				return reconcile.Result{}, fmt.Errorf("failed deleting IAM users: %v", err)
 			}
 
@@ -382,7 +382,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 					return reconcile.Result{}, err
 				}
 			} else {
-				err = r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace)
+				err = r.deleteIAMSecret(reqLogger, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace)
 				if err != nil {
 					return reconcile.Result{}, err
 				}
@@ -910,9 +910,11 @@ func (r *AccountClaimReconciler) checkIAMSecretExists(name string, namespace str
 	// Need to check if the secret exists AND that it matches what we're expecting
 	secret := corev1.Secret{}
 	secretObjectKey := client.ObjectKey{Name: name, Namespace: namespace}
-	err := r.Client.Get(context.TODO(), secretObjectKey, &secret)
-	//nolint:gosimple // Ignores false-positive S1008 gosimple notice
-	return err == nil
+	if err := r.Client.Get(context.TODO(), secretObjectKey, &secret); err != nil {
+		// The secret does not exist
+		return false
+	}
+	return true
 }
 
 func (r *AccountClaimReconciler) statusUpdate(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
