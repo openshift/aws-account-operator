@@ -32,6 +32,7 @@ var log = logf.Log.WithName("controller_accountvalidation")
 
 var accountMoveEnabled = false
 var accountTagEnabled = false
+var accountDeletionEnabled = false
 
 const (
 	controllerName = "accountvalidation"
@@ -60,6 +61,7 @@ const (
 	SettingServiceQuotasFailed
 	QuotaStatus
 	NotAllServicequotasApplied
+	AccountNotForCleanup
 )
 
 type AccountValidationError struct {
@@ -357,6 +359,22 @@ func (r *AccountValidationReconciler) GetOUIDFromName(client awsclient.Client, p
 	return ouID, nil
 }
 
+func ValidateRemoval(account awsv1alpha1.Account) error {
+	if account.Status.State != string(awsv1alpha1.AccountFailed) {
+		return &AccountValidationError{
+			Type: AccountNotForCleanup,
+			Err:  errors.New("non-failed accounts are never to be cleaned up"),
+		}
+	}
+	if err := ValidateAwsAccountId(account); err == nil {
+		return &AccountValidationError{
+			Type: AccountNotForCleanup,
+			Err:  errors.New("accounts with an associated AWS account are never cleaned up"),
+		}
+	}
+	return nil
+}
+
 func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
@@ -395,6 +413,14 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	}
 	log.Info("Is tagging accounts enabled?", "enabled", accountTagEnabled)
 
+	enabled, err = strconv.ParseBool(cm.Data["feature.validation_delete_account"])
+	if err != nil {
+		log.Info("Could not retrieve feature flag 'feature.validation_delete_account' - account deletion is disabled")
+	} else {
+		accountDeletionEnabled = enabled
+	}
+	log.Info("Is deleting accounts enabled?", "enabled", accountDeletionEnabled)
+
 	awsClientInput := awsclient.NewAwsClientInput{
 		AwsRegion:  config.GetDefaultRegion(),
 		SecretName: utils.AwsSecretName,
@@ -405,7 +431,21 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		log.Error(err, "Could not retrieve AWS client.")
 	}
 
-	// Perform any checks we want
+	// Here the actual checks start:
+
+	if err := ValidateRemoval(account); err == nil {
+		if accountDeletionEnabled {
+			log.Info("Cleaning up account that is failed & has no AWS account", "account", account)
+			err := r.Client.Delete(ctx, &account)
+			if err != nil {
+				log.Error(err, "failed to delete account", "account", account.Name)
+				return utils.RequeueWithError(err)
+			}
+		} else {
+			log.Info("Not cleaning up account that is failed & has no AWS account (dry run)", "account", account.Name)
+		}
+	}
+
 	err = ValidateAccountOrigin(account)
 	if err != nil {
 		// Decide who we will requeue now

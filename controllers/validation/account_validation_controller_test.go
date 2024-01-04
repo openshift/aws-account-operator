@@ -740,6 +740,47 @@ func TestValidateAccount_Reconcile(t *testing.T) {
 				},
 			},
 		}, want: reconcile.Result{Requeue: false}, wantErr: false},
+		{
+			name: "When an account has no AWS account ID and is failed it stop reconciliation",
+			fields: fields{
+				Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
+					&awsv1alpha1.Account{
+						TypeMeta: v1.TypeMeta{
+							Kind:       "Account",
+							APIVersion: "v1alpha1",
+						},
+						ObjectMeta: v1.ObjectMeta{
+							Name:      "test",
+							Namespace: "default",
+							DeletionTimestamp: &v1.Time{
+								Time: time.Now(),
+							},
+						},
+						Spec: awsv1alpha1.AccountSpec{
+							AwsAccountID: "",
+						},
+						Status: awsv1alpha1.AccountStatus{
+							State: string(awsv1alpha1.AccountFailed),
+						},
+					},
+					&corev1.ConfigMap{
+						ObjectMeta: v1.ObjectMeta{
+							Name:      awsv1alpha1.DefaultConfigMap,
+							Namespace: awsv1alpha1.AccountCrNamespace,
+						},
+					}}...).Build(),
+				scheme:           scheme.Scheme,
+				awsClientBuilder: nil,
+			},
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: "default",
+						Name:      "test",
+					},
+				},
+			},
+			want: reconcile.Result{Requeue: false}, wantErr: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -803,6 +844,71 @@ func TestValidateAwsAccountId(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := ValidateAwsAccountId(tt.args.account); (err != nil) != tt.wantErr {
 				t.Errorf("ValidateAwsAccountAssociated() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateRemoval(t *testing.T) {
+	type args struct {
+		account awsv1alpha1.Account
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "will not remove a non-failed account",
+			args: args{
+				account: awsv1alpha1.Account{
+					TypeMeta:   v1.TypeMeta{},
+					ObjectMeta: v1.ObjectMeta{},
+					Spec:       awsv1alpha1.AccountSpec{},
+					Status: awsv1alpha1.AccountStatus{
+						State: "Ready",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "will not remove an account with an AWS account ID",
+			args: args{
+				account: awsv1alpha1.Account{
+					TypeMeta:   v1.TypeMeta{},
+					ObjectMeta: v1.ObjectMeta{},
+					Spec: awsv1alpha1.AccountSpec{
+						AwsAccountID: "1234567",
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State: "Failed",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "will remove a failed account without AWS account ID",
+			args: args{
+				account: awsv1alpha1.Account{
+					TypeMeta:   v1.TypeMeta{},
+					ObjectMeta: v1.ObjectMeta{},
+					Spec: awsv1alpha1.AccountSpec{
+						AwsAccountID: "",
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State: "Failed",
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidateRemoval(tt.args.account); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateRemoval() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
