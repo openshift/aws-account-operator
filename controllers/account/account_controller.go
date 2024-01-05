@@ -933,6 +933,8 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 		var returnErr error
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
+      case organizations.ErrCodeConcurrentModificationException:
+        returnErr = awsv1alpha1.ErrAwsConcurrentModification 
 			case organizations.ErrCodeConstraintViolationException:
 				returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
 			case organizations.ErrCodeServiceException:
