@@ -905,7 +905,6 @@ func (r *AccountReconciler) BuildAccount(reqLogger logr.Logger, awsClient awscli
 			log.Error(orgErr, "Failed to create AWS Account nonfatal error")
 			return "", orgErr
 		}
-
 	}
 
 	accountObjectKey := client.ObjectKeyFromObject(account)
@@ -933,8 +932,8 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 		var returnErr error
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
-      case organizations.ErrCodeConcurrentModificationException:
-        returnErr = awsv1alpha1.ErrAwsConcurrentModification 
+			case organizations.ErrCodeConcurrentModificationException:
+				returnErr = awsv1alpha1.ErrAwsConcurrentModification
 			case organizations.ErrCodeConstraintViolationException:
 				returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
 			case organizations.ErrCodeServiceException:
