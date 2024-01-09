@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -263,7 +263,7 @@ func TestReconcileAccountPool(t *testing.T) {
 			})
 
 			assert.NoError(t, err, "Unexpected Error")
-			assert.True(t, test.verifyAccountFunction(mocks.fakeKubeClient, &test.expectedAccountPool))
+			assert.True(t, test.verifyAccountFunction(mocks.fakeKubeClient, &test.expectedAccountPool)) // #nosec G601
 		})
 	}
 }

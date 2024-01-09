@@ -8,7 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/organizations"
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	mockAWS "github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
@@ -363,7 +363,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 			func(t *testing.T) {
 				localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
 
-				objs := []runtime.Object{&test.configMap}
+				objs := []runtime.Object{&test.configMap} // #nosec G601
 				mocks := setupDefaultMocks(t, objs)
 				test.setupAWSMock(mocks.mockAWSClient.EXPECT())
 				nullLogger := testutils.NewTestLogger().Logger()

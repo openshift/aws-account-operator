@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/go-logr/logr"
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 	apis "github.com/openshift/aws-account-operator/api"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
@@ -523,7 +523,7 @@ func TestGetSREAccessARN(t *testing.T) {
 			test.name,
 			func(t *testing.T) {
 
-				objs := []runtime.Object{&test.configMap}
+				objs := []runtime.Object{&test.configMap} // #nosec G601
 				mocks := setupDefaultMocks(t, objs)
 				nullLogger := testutils.NewTestLogger().Logger()
 				defer mocks.mockCtrl.Finish()
