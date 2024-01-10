@@ -824,8 +824,9 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 
   var unusedAccount *awsv1alpha1.Account
 
-  for _, account := range accountList.Items {
-
+  for _, loopAccount := range accountList.Items {
+    // assign to new variable to prevent issues with using a pointer to the loop var later
+    account := loopAccount
     if ! IsSameAccountPoolNames(account.Spec.AccountPool, accountClaim.Spec.AccountPool, defaultAccountPoolName) {
       continue
     }
@@ -838,8 +839,7 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 			reqLogger.Info(fmt.Sprintf("Reusing account: %s", account.ObjectMeta.Name))
       return &account, nil
     } else {
-      accountCopy := account
-      unusedAccount = &accountCopy
+      unusedAccount = &account
     }
   }
 
