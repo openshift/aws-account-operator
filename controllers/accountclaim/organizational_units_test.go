@@ -7,7 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/go-logr/logr"
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -403,7 +403,7 @@ func TestFindOUIDFromName(t *testing.T) {
 			defer ctrl.Finish()
 			mocks := mock.NewMockClient(ctrl)
 			mocks.EXPECT().ListOrganizationalUnitsForParent(&organizations.ListOrganizationalUnitsForParentInput{
-				ParentId: &test.parentID,
+				ParentId: &test.parentID, // #nosec G601
 			}).Return(test.listOUForParentOut, test.listOUForParentErr)
 			reqLogger := log.WithValues()
 			// Test
@@ -466,7 +466,7 @@ func TestCheckOUMapping(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, _, err := test.checkOUMappingFunc(&test.localObjects)
+			_, _, err := test.checkOUMappingFunc(&test.localObjects) // #nosec G601
 			assert.EqualValues(t, test.expectedError, err)
 		})
 	}
@@ -559,7 +559,7 @@ func TestValidateOrganizationalUnitInput(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Test
-			out := test.function(&test.localObjects)
+			out := test.function(&test.localObjects) // #nosec G601
 			assert.EqualValues(t, test.expectedError, out)
 		})
 	}
@@ -615,7 +615,7 @@ func TestValidateListChildrenInput(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Test
-			out := test.function(&test.localObjects)
+			out := test.function(&test.localObjects) // #nosec G601
 			assert.EqualValues(t, test.expectedError, out)
 		})
 	}
@@ -716,7 +716,7 @@ func TestValidateMoveAccount(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Test
-			out := test.function(&test.localObjects)
+			out := test.function(&test.localObjects) // #nosec G601
 			assert.EqualValues(t, test.expectedError, out)
 		})
 	}

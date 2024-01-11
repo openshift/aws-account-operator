@@ -156,7 +156,7 @@ type AccountClaimReconciler struct {
 
 // NewReconcileAccountClaim initializes ReconcileAccountClaim
 //
-//go:generate mockgen -destination ./mock/cr-client.go -package mock sigs.k8s.io/controller-runtime/pkg/client Client
+//go:generate mockgen -build_flags --mod=mod -destination ./mock/cr-client.go -package mock sigs.k8s.io/controller-runtime/pkg/client Client 
 func NewAccountClaimReconciler(client client.Client, scheme *runtime.Scheme, awsClientBuilder awsclient.IBuilder) *AccountClaimReconciler {
 	return &AccountClaimReconciler{
 		Client:           client,

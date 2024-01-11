@@ -1,7 +1,7 @@
 package mock
 
 import (
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

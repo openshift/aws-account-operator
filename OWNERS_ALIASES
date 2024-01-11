@@ -19,13 +19,12 @@ aliases:
     - robotmaxtron
     - rojasreinold
   srep-functional-team-hulk:
-    - mrbarge
     - a7vicky
-    - jwai7
     - rendhalver
     - ravitri
     - shitaljante
     - weherdh
+    - devppratik
   srep-functional-team-orange:
     - bng0y
     - typeid
@@ -34,7 +33,6 @@ aliases:
     - ninabauer
     - RaphaelBut
     - Tessg22
-    - thavlice
   srep-functional-team-rocket:
     - aliceh
     - anispate
@@ -44,7 +42,6 @@ aliases:
     - tnierman
     - yithian
   srep-functional-team-security:
-    - karthikperu7
     - gsleeman
     - jaybeeunix
     - sam-nguyen7
@@ -54,7 +51,6 @@ aliases:
     - MitaliBhalla
     - hectorakemp
     - feichashao
-    - supreeth7
     - Tafhim
     - samanthajayasinghe
   srep-functional-team-v1alpha1:
@@ -66,20 +62,17 @@ aliases:
     - reedcort
     - mrWinston
   srep-functional-leads:
-    - mrbarge
     - rafael-azevedo
     - iamkirkbater
     - bng0y
     - tonytheleg
-    - karthikperu7
     - bmeng
     - mjlshen
+    - sam-nguyen7
+    - ravitri
   srep-team-leads:
-    - cblecker
-    - jharrington22
     - NautiluX
     - rogbas
-    - jewzaam
     - fahlmant
     - dustman9000
     - wanghaoran1988

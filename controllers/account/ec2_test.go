@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
@@ -547,7 +547,7 @@ func TestDeleteFedrampInitializationResources(t *testing.T) {
 					{
 						Name: aws.String("vpc-id"),
 						Values: []*string{
-							&test.VpcID,
+							&test.VpcID, // #nosec G601
 						},
 					},
 					{
@@ -660,7 +660,7 @@ func TestCleanFedrampInitializationResources(t *testing.T) {
 				Filters: []*ec2.Filter{
 					{
 						Name:   aws.String("vpc-id"),
-						Values: []*string{&test.VpcID},
+						Values: []*string{&test.VpcID}, // #nosec G601
 					},
 					{
 						Name:   aws.String("tag-key"),
