@@ -107,6 +107,8 @@ const (
 // in production or a development environment.
 var DetectDevMode devMode = devMode(strings.ToLower(os.Getenv(envDevMode)))
 
+var IsUsingCrudClient bool = os.Getenv("FORCE_CRUD_CLIENT") == "yes"
+
 type AwsPolicy struct {
 	Version   string
 	Statement []AwsStatement

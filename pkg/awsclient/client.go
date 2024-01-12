@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/endpoints"
@@ -24,6 +25,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/aws/aws-sdk-go/service/servicequotas"
 	"github.com/aws/aws-sdk-go/service/servicequotas/servicequotasiface"
+	"github.com/mrWinston/aws-crud-mock-go"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -47,6 +49,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubeclientpkg "sigs.k8s.io/controller-runtime/pkg/client"
+
+	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 )
 
 const (
@@ -577,6 +581,15 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 	}, nil
 }
 
+func CreateAwsClientBuilder() IBuilder {
+
+	if os.Getenv("FORCE_CRUD_CLIENT") == "no" {
+		return &Builder{}
+	} else {
+		return &CrudBuilder{}
+	}
+}
+
 // IBuilder implementations know how to produce a Client.
 type IBuilder interface {
 	GetClient(controllerName string, kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error)
@@ -636,4 +649,73 @@ func (rp *Builder) GetClient(controllerName string, kubeClient kubeclientpkg.Cli
 		return nil, err
 	}
 	return awsClient, nil
+}
+
+type CrudBuilder struct {
+}
+
+func (cr *CrudBuilder) GetClient(controllerName string, kubeClient kubeclientpkg.Client, input NewAwsClientInput) (Client, error) {
+	accountID := "000000000"
+
+	accessKey := ""
+
+	if input.SecretName != "" && input.NameSpace != "" {
+		secret := &corev1.Secret{}
+		err := kubeClient.Get(context.TODO(),
+			types.NamespacedName{
+				Name:      input.SecretName,
+				Namespace: input.NameSpace,
+			},
+			secret)
+		if err != nil {
+			return nil, err
+		}
+		accessKeyID, ok := secret.Data[awsCredsSecretIDKey]
+		if !ok {
+			return nil, fmt.Errorf("AWS credentials secret %v did not contain key %v",
+				input.SecretName, awsCredsSecretIDKey)
+		}
+
+		accessKey = string(accessKeyID)
+	}
+
+	client := &awsClient{
+		ec2Client: &goawscrudclient.Ec2Crud{
+			AccountId: accountID,
+			Region:    input.AwsRegion,
+		},
+		iamClient: &goawscrudclient.IamCrud{
+			AccountId:   accountID,
+			AccessKeyId: accessKey,
+		},
+		orgClient: &goawscrudclient.OrganizationsCrud{
+			Accountid: accountID,
+		},
+		stsClient: &goawscrudclient.StsCrud{
+			AccountId: accountID,
+		},
+		supportClient: &goawscrudclient.SupportCrud{},
+		s3Client: &goawscrudclient.S3Crud{
+			AccountId: accountID,
+		},
+		route53client:       &goawscrudclient.Route53Crud{},
+		serviceQuotasClient: &goawscrudclient.ServiceQuotasCrud{},
+	}
+
+	// init stuff
+	_, _ = client.CreateRole(&iam.CreateRoleInput{
+		Description: aws.String("SRE Access Role"),
+		RoleName:    aws.String(awsv1alpha1.SREAccessRoleName),
+		Path:        aws.String("/"),
+		Tags:        []*iam.Tag{},
+	})
+  cvo, _ := client.CreateVpc(&ec2.CreateVpcInput{
+		CidrBlock: aws.String("10.0.0.0/16"),
+	})
+	_, _ = client.CreateSubnet(&ec2.CreateSubnetInput{
+		CidrBlock:          aws.String("10.10.0.0/24"),
+		VpcId:              cvo.Vpc.VpcId,
+	})
+
+	return client, nil
 }

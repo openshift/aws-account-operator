@@ -52,7 +52,7 @@ func initialize(client client.Client, watchInterval time.Duration) *AccountWatch
 	// NOTE(efried): This is a snowflake use of awsclient.IBuilder. Everyone else puts the
 	// IBuilder in their struct and uses it to GetClient() dynamically as needed. This one grabs a
 	// single client one time and stores it in a global.
-	builder := &awsclient.Builder{}
+	builder := awsclient.CreateAwsClientBuilder()
 	awsClient, err := builder.GetClient("", client, awsclient.NewAwsClientInput{
 		SecretName: controllerutils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,

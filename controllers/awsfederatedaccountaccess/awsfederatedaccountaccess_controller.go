@@ -860,7 +860,7 @@ func getPolicyNameWithUID(crPolicyName string, uidLabel string) string {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AWSFederatedAccountAccessReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.awsClientBuilder = &awsclient.Builder{}
+	r.awsClientBuilder = awsclient.CreateAwsClientBuilder()
 	maxReconciles, err := controllerutils.GetControllerMaxReconciles(controllerName)
 	if err != nil {
 		log.Error(err, "missing max reconciles for controller", "controller", controllerName)

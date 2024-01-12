@@ -97,19 +97,28 @@ deploy-aws-account-operator-credentials:  ## Deploy the operator secrets, CRDs a
 .PHONY: predeploy-aws-account-operator
 predeploy-aws-account-operator: ## Predeploy AWS Account Operator
 	# Create aws-account-operator namespace
-	@oc get namespace ${NAMESPACE} && oc project ${NAMESPACE} || oc create namespace ${NAMESPACE}
+	@oc get namespace ${NAMESPACE} || oc create namespace ${NAMESPACE}
 	# Create aws-account-operator CRDs
 	@ls deploy/crds/*.yaml | xargs -L1 oc apply -f
 	# Create zero size account pool
-	@oc process --local -p NAME="zero-size-accountpool" -p SIZE=0 -p TYPE="Default" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountpool.tmpl | oc apply -f -	
+	@oc process --local -p NAME="zero-size-accountpool" -p SIZE=0 -p TYPE="Default" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountpool.tmpl | oc -n ${NAMESPACE} apply -f -	
 	# Create zero size account pool
-	@oc process --local -p NAME="hs-zero-size-accountpool" -p SIZE=1 -p TYPE="Hypershift" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountpool.tmpl | oc apply -f -
+	@oc process --local -p NAME="hs-zero-size-accountpool" -p SIZE=1 -p TYPE="Hypershift" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountpool.tmpl | oc -n ${NAMESPACE} apply -f -
 
 .PHONY: validate-deployment
 validate-deployment: check-aws-account-id-env check-sts-setup ## Validates deployment configuration
 
 .PHONY: predeploy
 predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map validate-deployment ## Predeploy Operator
+
+.PHONY: predeploy-crud
+predeploy-crud: predeploy-aws-account-operator
+	@OPERATOR_ACCESS_KEY_ID="OPERATOR_KEY" OPERATOR_SECRET_ACCESS_KEY="OPERATOR_SECRET" hack/scripts/set_operator_credentials.sh osd-staging-1
+	@hack/scripts/set_operator_configmap.sh -a 0 -v 1 -r "r-12345" -o "ou-123456" -s "arn:aws:iam::0000001234:role/StsJumpRole" -m "arn:aws:iam::0000001234:role/SupportJumpRole" -a "50"
+
+.PHONY: deploy-local-crud
+deploy-local-crud: ## Deploy Operator locally
+	@FORCE_DEV_MODE=local FORCE_CRUD_CLIENT="yes" OPERATOR_NAMESPACE="$(OPERATOR_NAMESPACE)" WATCH_NAMESPACE="$(OPERATOR_NAMESPACE)" go run ./main.go --zap-devel
 
 .PHONY: deploy-local
 deploy-local: ## Deploy Operator locally

@@ -285,7 +285,7 @@ func initOperatorConfigMapVars(kubeClient client.Client) {
 	awsRegion := aaoconfig.GetDefaultRegion()
 
 	// Get aws client
-	builder := &awsclient.Builder{}
+	builder := awsclient.CreateAwsClientBuilder()
 	awsClient, err := builder.GetClient("", kubeClient, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,

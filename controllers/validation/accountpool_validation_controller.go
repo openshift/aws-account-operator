@@ -182,7 +182,7 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 }
 
 func (r *AccountPoolValidationReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.awsClientBuilder = &awsclient.Builder{}
+	r.awsClientBuilder = awsclient.CreateAwsClientBuilder()
 	maxReconciles, err := utils.GetControllerMaxReconciles(validationControllerName)
 	if err != nil {
 		logs.Error(err, "missing max reconciles for controller", "controller", validationControllerName)

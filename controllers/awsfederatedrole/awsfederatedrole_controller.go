@@ -312,7 +312,7 @@ func policyInSlice(policy string, policyList []string) bool {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AWSFederatedRoleReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.awsClientBuilder = &awsclient.Builder{}
+	r.awsClientBuilder = awsclient.CreateAwsClientBuilder()
 	maxReconciles, err := utils.GetControllerMaxReconciles(controllerName)
 	if err != nil {
 		log.Error(err, "missing max reconciles for controller", "controller", controllerName)

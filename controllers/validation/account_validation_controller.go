@@ -510,7 +510,7 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 			Err:  errors.New("service quota status updated, increase request needs to be sent to aws"),
 		}
 	} else {
-		if account.HasOpenQuotaIncreaseRequests() && utils.DetectDevMode == utils.DevModeProduction {
+		if account.HasOpenQuotaIncreaseRequests() && (utils.DetectDevMode == utils.DevModeProduction || utils.IsUsingCrudClient ) {
 			_, err = accountcontroller.GetServiceQuotaRequest(reqLogger, awsClientBuilder, awsSetupClient, account, r.Client)
 			if err != nil {
 				return &AccountValidationError{
@@ -531,7 +531,7 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AccountValidationReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.awsClientBuilder = &awsclient.Builder{}
+	r.awsClientBuilder = awsclient.CreateAwsClientBuilder()
 	r.OUNameIDMap = map[string]string{}
 	maxReconciles, err := utils.GetControllerMaxReconciles(controllerName)
 	if err != nil {

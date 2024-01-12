@@ -542,8 +542,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 		return reconcile.Result{}, err
 	}
 	if !currentAcctInstance.HasSupportCaseID() {
-		switch utils.DetectDevMode {
-		case utils.DevModeProduction:
+		if utils.DetectDevMode == utils.DevModeProduction || utils.IsUsingCrudClient {
 			caseID, err := createCase(reqLogger, currentAcctInstance, awsSetupClient)
 			if err != nil {
 				return reconcile.Result{}, err
@@ -577,28 +576,26 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 
 			// This will requeue verification for between 30 and 60 (30+30) seconds, depending on the account
 			return reconcile.Result{RequeueAfter: time.Duration(intervalAfterCaseCreationSecs+randomInterval) * time.Second}, nil
-		default:
+		} else {
 			log.Info("Running in development mode, Skipping Support Case Creation.")
 		}
 	}
 
 	var supportCaseResolved bool
-	switch utils.DetectDevMode {
-	case utils.DevModeProduction:
+	if utils.DetectDevMode == utils.DevModeProduction || utils.IsUsingCrudClient {
 		resolvedScoped, err := checkCaseResolution(reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
 		if err != nil {
 			reqLogger.Error(err, "Error checking for Case Resolution")
 			return reconcile.Result{}, err
 		}
 		supportCaseResolved = resolvedScoped
-	default:
+	} else {
 		log.Info("Running in development mode, Skipping case resolution check")
 		supportCaseResolved = true
 	}
 
 	if currentAcctInstance.HasOpenQuotaIncreaseRequests() {
-		switch utils.DetectDevMode {
-		case utils.DevModeProduction:
+    if utils.DetectDevMode == utils.DevModeProduction || utils.IsUsingCrudClient {
 			return GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
 		}
 	}
@@ -709,14 +706,13 @@ func (r *AccountReconciler) nonCCSAssignAccountID(reqLogger logr.Logger, current
 	// Build Aws Account
 	var awsAccountID string
 
-	switch utils.DetectDevMode {
-	case utils.DevModeProduction:
+  if utils.DetectDevMode == utils.DevModeProduction || utils.IsUsingCrudClient {
 		var err error
 		awsAccountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
 		if err != nil {
 			return err
 		}
-	default:
+  } else {
 		log.Info("Running in development mode, skipping account creation")
 		awsAccountID = "123456789012"
 	}
@@ -729,7 +725,7 @@ func (r *AccountReconciler) nonCCSAssignAccountID(reqLogger logr.Logger, current
 		return err
 	}
 
-	if utils.DetectDevMode != utils.DevModeProduction {
+	if utils.DetectDevMode != utils.DevModeProduction && !utils.IsUsingCrudClient {
 		log.Info("Running in development mode, manually creating a case ID number: 11111111")
 		currentAcctInstance.Status.SupportCaseID = "11111111"
 	}
@@ -1346,7 +1342,7 @@ func (r *AccountReconciler) handleCreateAdminAccessRole(
 // SetupWithManager sets up the controller with the Manager.
 func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
-	r.awsClientBuilder = &awsclient.Builder{}
+	r.awsClientBuilder = awsclient.CreateAwsClientBuilder()
 
 	maxReconciles, err := utils.GetControllerMaxReconciles(controllerName)
 	if err != nil {
