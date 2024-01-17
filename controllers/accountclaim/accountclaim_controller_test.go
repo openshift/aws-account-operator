@@ -685,6 +685,78 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 				})
 			})
 
+			When("Multiple accounts are available", func() {
+				BeforeEach(func() {
+					legalEntity := awsv1alpha1.LegalEntity{
+						Name: "test1",
+						ID:   "abcdefg",
+					}
+
+					accounts[0].Spec.LegalEntity = legalEntity
+					accounts[0].Status.Reused = true
+					accounts = append(accounts, &awsv1alpha1.Account{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:              "a-not-me",
+							Namespace:         namespace,
+							CreationTimestamp: metav1.Time{},
+							OwnerReferences: []metav1.OwnerReference{
+								{
+									Kind: "AccountPool",
+								},
+							},
+						},
+						Spec: awsv1alpha1.AccountSpec{
+							AccountPool: "",
+							LegalEntity: legalEntity,
+						},
+						Status: awsv1alpha1.AccountStatus{
+							State:   AccountReady,
+							Claimed: false,
+							Reused:  false,
+						},
+					})
+
+					accountClaims = append(accountClaims, &awsv1alpha1.AccountClaim{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:              defaultClaimName,
+							Namespace:         namespace,
+							CreationTimestamp: metav1.Time{},
+							Finalizers:        []string{accountClaimFinalizer},
+						},
+						Spec: awsv1alpha1.AccountClaimSpec{
+							LegalEntity: legalEntity,
+						},
+					})
+
+					objs := []runtime.Object{configMap, accountClaims[0], accounts[0], accounts[1]}
+					// for _, a := range accounts {
+					//   objs = append(objs, a)
+					// }
+
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
+				})
+				It("Should claim the reused account instead of the unused", func() {
+					req = reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Name:      defaultClaimName,
+							Namespace: namespace,
+						},
+					}
+
+					for i := 0; i < reconcileCount; i++ {
+						_, err := r.Reconcile(context.TODO(), req)
+						Expect(err).NotTo(HaveOccurred())
+					}
+
+					acc := awsv1alpha1.Account{}
+					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(acc.Spec.ClaimLink).To(Equal(defaultClaimName))
+					Expect(acc.Spec.ClaimLinkNamespace).To(Equal(namespace))
+					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
+				})
+			})
+
 			When("We create a non-default claim", func() {
 				It("should NOT claim the default account", func() {
 					accountClaims = append(accountClaims, &awsv1alpha1.AccountClaim{

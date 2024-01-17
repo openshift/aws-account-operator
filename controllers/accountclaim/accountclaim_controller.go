@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/iam"
-	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/iam"
+	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 
 	"github.com/go-logr/logr"
 	"github.com/openshift/aws-account-operator/config"
@@ -821,57 +822,95 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 		reqLogger.Info(fmt.Sprintf("defaultAccountPoolName: %s", defaultAccountPoolName))
 	}
 
-	if accountClaim.Spec.AccountPool == defaultAccountPoolName || accountClaim.Spec.AccountPool == "" {
-		for _, account := range accountList.Items {
-			// Ensure we're pulling accounts from the default accountPool
-			if account.Spec.AccountPool == defaultAccountPoolName || (account.IsOwnedByAccountPool() && account.Spec.AccountPool == "") {
-				acc, _ := CheckClaimAccountValidity(reqLogger, account, accountClaim)
-				if acc != nil {
-					return acc, nil
-				}
-			}
+	var unusedAccount *awsv1alpha1.Account
+
+	for _, loopAccount := range accountList.Items {
+		// assign to new variable to prevent issues with using a pointer to the loop var later
+		account := loopAccount
+		if !IsSameAccountPoolNames(account.Spec.AccountPool, accountClaim.Spec.AccountPool, defaultAccountPoolName) {
+			continue
 		}
-	} else {
-		for _, account := range accountList.Items {
-			if account.Spec.AccountPool == accountClaim.Spec.AccountPool {
-				acc, _ := CheckClaimAccountValidity(reqLogger, account, accountClaim)
-				if acc != nil {
-					return acc, nil
-				}
-			}
+
+		if !CanAccountBeClaimedByAccountClaim(&account, accountClaim) {
+			continue
+		}
+
+		if account.Status.Reused {
+			reqLogger.Info(fmt.Sprintf("Reusing account: %s", account.ObjectMeta.Name))
+			return &account, nil
+		} else {
+			unusedAccount = &account
 		}
 	}
 
+	if unusedAccount != nil {
+		reqLogger.Info(fmt.Sprintf("Claiming account: %s", unusedAccount.ObjectMeta.Name))
+		return unusedAccount, nil
+	}
 	return nil, fmt.Errorf("can't find a suitable account to claim")
 }
 
-func CheckClaimAccountValidity(reqLogger logr.Logger, account awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
-
-	var unclaimedAccount awsv1alpha1.Account
-	var unclaimedAccountFound = false
-
-	if !account.Status.Claimed && account.Spec.ClaimLink == "" && account.Status.State == "Ready" {
-		// Check for a reused account with matching legalEntity
-		if account.Status.Reused {
-			if matchAccountForReuse(&account, accountClaim) {
-				reqLogger.Info(fmt.Sprintf("Reusing account: %s", account.ObjectMeta.Name))
-				return &account, nil
-			}
-		} else {
-			// If account is not reused, and we didn't claim one yet, do it
-			if !unclaimedAccountFound {
-				unclaimedAccount = account
-				unclaimedAccountFound = true
-			}
-		}
+// IsSameAccountPoolNames is used to determine if two accountpool names
+// reference the same accountpool, given a defaultAccountPool name. When
+// referencing an accountpool using the empty string as the name, the aao uses
+// the default accounpool instead. So we can not just check, weather the two
+// pool names match, we also first need to subsitute "" with the default
+// accountpool name, before comparing the strings. This function does exactly
+// that.
+//
+// Note that it returns false when no default accountpool is given
+func IsSameAccountPoolNames(first string, second string, defaultAccountPool string) bool {
+	// when the default defaultAccountPool isn't specifies, we default to false
+	if defaultAccountPool == "" {
+		return false
 	}
-	// Go for unclaimed accounts
-	if unclaimedAccountFound {
-		reqLogger.Info(fmt.Sprintf("Claiming account: %s", unclaimedAccount.ObjectMeta.Name))
-		return &unclaimedAccount, nil
+
+	// now, we just treat "" as defaultAccountPool and compare the strings
+	var firstDefault string
+	var secondDefault string
+	if first == "" {
+		firstDefault = defaultAccountPool
+	} else {
+		firstDefault = first
 	}
-	// Neither unclaimed nor reused accounts found
-	return nil, fmt.Errorf("can't find a ready account to claim")
+
+	if second == "" {
+		secondDefault = defaultAccountPool
+	} else {
+		secondDefault = second
+	}
+
+	return firstDefault == secondDefault
+}
+
+// CanAccountBeClaimedByAccountClaim returns true when the account matches the
+// given accountclaim. This is the case when the account is currently unclaimed
+// and ready and additionally, one of the following applies:
+// * The account has never been used before and therefore has it's LegalEntityID unset, or
+// * The account has been used before and has the same legalEntityID as the accountclaim
+// In all other cases, this Function returns false.
+func CanAccountBeClaimedByAccountClaim(account *awsv1alpha1.Account, accountclaim *awsv1alpha1.AccountClaim) bool {
+	// nil accounts can't be claimed
+	if account == nil || accountclaim == nil {
+		return false
+	}
+
+	// Accounts that aren't ready can't be claimed
+	if account.Status.State != AccountReady {
+		return false
+	}
+
+	// claimed accounts can't be claimed
+	if account.Status.Claimed || account.Spec.ClaimLink != "" {
+		return false
+	}
+
+	// Unused accounts always match
+	if !account.Status.Reused {
+		return true
+	}
+
+	return account.Spec.LegalEntity.ID == accountclaim.Spec.LegalEntity.ID
 }
 
 func (r *AccountClaimReconciler) createIAMSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {

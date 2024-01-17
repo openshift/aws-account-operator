@@ -496,7 +496,3 @@ func (r *AccountClaimReconciler) accountStatusUpdate(reqLogger logr.Logger, acco
 	}
 	return err
 }
-
-func matchAccountForReuse(account *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) bool {
-	return account.Spec.LegalEntity.ID == accountClaim.Spec.LegalEntity.ID
-}
