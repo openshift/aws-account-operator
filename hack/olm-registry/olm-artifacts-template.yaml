@@ -53,6 +53,9 @@ parameters:
 - name: FEATURE_VALIDATE_TAG_ACCOUNT
   required: false
   value: "false"
+- name: FEATURE_VALIDATE_DELETE_ACCOUNT
+  required: false
+  value: "false"
 - name: FEATURE_ACCOUNTPOOL_VALIDATION
   required: false
   value: "false"
@@ -119,6 +122,7 @@ objects:
     fedramp: "${FEDRAMP}"
     feature.validation_move_account: ${FEATURE_VALIDATE_MOVE_ACCOUNT}
     feature.validation_tag_account: ${FEATURE_VALIDATE_TAG_ACCOUNT}
+    feature.validation_delete_account: ${FEATURE_VALIDATE_DELETE_ACCOUNT}
     feature.accountpool_validation: ${FEATURE_ACCOUNTPOOL_VALIDATION}
     feature.accountclaim_fleet_manager_trusted_arn: ${FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN}
 
