@@ -694,27 +694,27 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 
 					accounts[0].Spec.LegalEntity = legalEntity
 					accounts[0].Status.Reused = true
-          accounts = append(accounts, &awsv1alpha1.Account{
-            ObjectMeta: metav1.ObjectMeta{
-              Name:              "a-not-me",
-              Namespace:         namespace,
-              CreationTimestamp: metav1.Time{},
-              OwnerReferences: []metav1.OwnerReference{
-                {
-                  Kind: "AccountPool",
-                },
-              },
-            },
-            Spec: awsv1alpha1.AccountSpec{
-              AccountPool: "",
-              LegalEntity: legalEntity,
-            },
-            Status: awsv1alpha1.AccountStatus{
-              State:   AccountReady,
-              Claimed: false,
-              Reused:  false,
-            },
-          })
+					accounts = append(accounts, &awsv1alpha1.Account{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:              "a-not-me",
+							Namespace:         namespace,
+							CreationTimestamp: metav1.Time{},
+							OwnerReferences: []metav1.OwnerReference{
+								{
+									Kind: "AccountPool",
+								},
+							},
+						},
+						Spec: awsv1alpha1.AccountSpec{
+							AccountPool: "",
+							LegalEntity: legalEntity,
+						},
+						Status: awsv1alpha1.AccountStatus{
+							State:   AccountReady,
+							Claimed: false,
+							Reused:  false,
+						},
+					})
 
 					accountClaims = append(accountClaims, &awsv1alpha1.AccountClaim{
 						ObjectMeta: metav1.ObjectMeta{
@@ -729,9 +729,9 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 					})
 
 					objs := []runtime.Object{configMap, accountClaims[0], accounts[0], accounts[1]}
-          // for _, a := range accounts {
-          //   objs = append(objs, a)
-          // }
+					// for _, a := range accounts {
+					//   objs = append(objs, a)
+					// }
 
 					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
 				})
@@ -748,7 +748,7 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 						Expect(err).NotTo(HaveOccurred())
 					}
 
-          acc := awsv1alpha1.Account{}
+					acc := awsv1alpha1.Account{}
 					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(acc.Spec.ClaimLink).To(Equal(defaultClaimName))

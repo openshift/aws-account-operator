@@ -800,7 +800,7 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 	listOpts := []client.ListOption{
 		client.InNamespace(awsv1alpha1.AccountCrNamespace),
 	}
-  
+
 	if err := r.Client.List(context.TODO(), accountList, listOpts...); err != nil {
 		reqLogger.Error(err, "Unable to get accountList")
 		return nil, err
@@ -822,31 +822,31 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 		reqLogger.Info(fmt.Sprintf("defaultAccountPoolName: %s", defaultAccountPoolName))
 	}
 
-  var unusedAccount *awsv1alpha1.Account
+	var unusedAccount *awsv1alpha1.Account
 
-  for _, loopAccount := range accountList.Items {
-    // assign to new variable to prevent issues with using a pointer to the loop var later
-    account := loopAccount
-    if ! IsSameAccountPoolNames(account.Spec.AccountPool, accountClaim.Spec.AccountPool, defaultAccountPoolName) {
-      continue
-    }
+	for _, loopAccount := range accountList.Items {
+		// assign to new variable to prevent issues with using a pointer to the loop var later
+		account := loopAccount
+		if !IsSameAccountPoolNames(account.Spec.AccountPool, accountClaim.Spec.AccountPool, defaultAccountPoolName) {
+			continue
+		}
 
-    if ! CanAccountBeClaimedByAccountClaim(&account, accountClaim) {
-      continue
-    }
+		if !CanAccountBeClaimedByAccountClaim(&account, accountClaim) {
+			continue
+		}
 
-    if account.Status.Reused {
+		if account.Status.Reused {
 			reqLogger.Info(fmt.Sprintf("Reusing account: %s", account.ObjectMeta.Name))
-      return &account, nil
-    } else {
-      unusedAccount = &account
-    }
-  }
+			return &account, nil
+		} else {
+			unusedAccount = &account
+		}
+	}
 
-  if unusedAccount != nil {
+	if unusedAccount != nil {
 		reqLogger.Info(fmt.Sprintf("Claiming account: %s", unusedAccount.ObjectMeta.Name))
-    return unusedAccount, nil
-  }
+		return unusedAccount, nil
+	}
 	return nil, fmt.Errorf("can't find a suitable account to claim")
 }
 
@@ -860,27 +860,27 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 //
 // Note that it returns false when no default accountpool is given
 func IsSameAccountPoolNames(first string, second string, defaultAccountPool string) bool {
-  // when the default defaultAccountPool isn't specifies, we default to false
-  if defaultAccountPool == "" {
-    return false
-  }
+	// when the default defaultAccountPool isn't specifies, we default to false
+	if defaultAccountPool == "" {
+		return false
+	}
 
-  // now, we just treat "" as defaultAccountPool and compare the strings
-  var firstDefault string
-  var secondDefault string
-  if first == "" {
-    firstDefault = defaultAccountPool
-  } else {
-    firstDefault = first
-  }
+	// now, we just treat "" as defaultAccountPool and compare the strings
+	var firstDefault string
+	var secondDefault string
+	if first == "" {
+		firstDefault = defaultAccountPool
+	} else {
+		firstDefault = first
+	}
 
-  if second == "" {
-    secondDefault = defaultAccountPool
-  } else {
-    secondDefault = second
-  }
+	if second == "" {
+		secondDefault = defaultAccountPool
+	} else {
+		secondDefault = second
+	}
 
-  return firstDefault == secondDefault
+	return firstDefault == secondDefault
 }
 
 // CanAccountBeClaimedByAccountClaim returns true when the account matches the
@@ -890,27 +890,27 @@ func IsSameAccountPoolNames(first string, second string, defaultAccountPool stri
 // * The account has been used before and has the same legalEntityID as the accountclaim
 // In all other cases, this Function returns false.
 func CanAccountBeClaimedByAccountClaim(account *awsv1alpha1.Account, accountclaim *awsv1alpha1.AccountClaim) bool {
-  // nil accounts can't be claimed
-  if account == nil || accountclaim == nil {
-    return false
-  } 
-  
-  // Accounts that aren't ready can't be claimed
-  if account.Status.State != AccountReady {
-    return false
-  }
-  
-  // claimed accounts can't be claimed
-  if account.Status.Claimed || account.Spec.ClaimLink != "" {
-    return false
-  }
+	// nil accounts can't be claimed
+	if account == nil || accountclaim == nil {
+		return false
+	}
 
-  // Unused accounts always match
-  if ! account.Status.Reused {
-    return true
-  }
+	// Accounts that aren't ready can't be claimed
+	if account.Status.State != AccountReady {
+		return false
+	}
 
-  return account.Spec.LegalEntity.ID == accountclaim.Spec.LegalEntity.ID
+	// claimed accounts can't be claimed
+	if account.Status.Claimed || account.Spec.ClaimLink != "" {
+		return false
+	}
+
+	// Unused accounts always match
+	if !account.Status.Reused {
+		return true
+	}
+
+	return account.Spec.LegalEntity.ID == accountclaim.Spec.LegalEntity.ID
 }
 
 func (r *AccountClaimReconciler) createIAMSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {
