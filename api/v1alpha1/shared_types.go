@@ -23,6 +23,9 @@ var ErrAwsInternalFailure = errors.New("InternalFailure")
 // ErrAwsFailedCreateAccount indicates that an account creation failed
 var ErrAwsFailedCreateAccount = errors.New("FailedCreateAccount")
 
+// ErrAwsConcurrentModification indicates that a resource is currently being modified and the request should be retried
+var ErrAwsConcurrentModification = errors.New("ConcurrentModificationOfOU")
+
 // ErrAwsTooManyRequests indicates that to many requests were sent in a short period
 var ErrAwsTooManyRequests = errors.New("TooManyRequestsException")
 

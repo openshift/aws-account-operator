@@ -1361,6 +1361,16 @@ var _ = Describe("Account Controller", func() {
 			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeDuplicateAccountException)))
 		})
 
+		It("AWS returns ErrCodeConcurrentModificationException from CreateAccount", func() {
+			// ErrCodeConcurrentModificationException is mapped to awsv1alpha1.ErrAwsConcurrentModification in CreateAccount
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeConcurrentModificationException, "Error String", nil))
+			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			Expect(err).To(HaveOccurred())
+			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
+			Expect(awsv1alpha1.ErrAwsConcurrentModification).To(Equal(err))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeConcurrentModificationException)))
+		})
+
 		It("AWS returns an error from DescribeCreateAccountStatus", func() {
 			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(
 				&organizations.CreateAccountOutput{
@@ -1420,6 +1430,42 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).To(Succeed())
 			Expect(createAccountOutput).To(Equal(describeCreateAccountStatusOutput))
 			Expect(err).Should(BeNil())
+		})
+	})
+	Context("Testing BuildAccount", func() {
+		var (
+			knownErrors map[string]error = map[string]error{
+				organizations.ErrCodeConcurrentModificationException: awsv1alpha1.ErrAwsConcurrentModification,
+				organizations.ErrCodeConstraintViolationException:    awsv1alpha1.ErrAwsAccountLimitExceeded,
+				organizations.ErrCodeServiceException:                awsv1alpha1.ErrAwsInternalFailure,
+				organizations.ErrCodeTooManyRequestsException:        awsv1alpha1.ErrAwsTooManyRequests,
+			}
+		)
+		It("Should not modify the AccountCR when encountering a known error during Account Creation", func() {
+			account = &newTestAccountBuilder().WithoutState().acct
+			account.Name = accountName
+			for errCode, knownErr := range knownErrors {
+				mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(errCode, "Error String", nil))
+				acctId, actualErr := r.BuildAccount(nullLogger, mockAWSClient, account)
+				Expect(actualErr).To(HaveOccurred())
+				Expect(acctId).To(BeEmpty())
+				Expect(actualErr).To(MatchError(knownErr))
+				Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(errCode)))
+				Expect(account.Status.State).To(BeEmpty())
+			}
+		})
+
+		It("Should set the Account to failed when encountering an Unknown error during Account Creation", func() {
+			account = &newTestAccountBuilder().WithoutState().acct
+			account.Name = accountName
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account}...).Build()
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeAccessDeniedException, "Error String", nil))
+			acctId, actualErr := r.BuildAccount(nullLogger, mockAWSClient, account)
+			Expect(actualErr).To(HaveOccurred())
+			Expect(acctId).To(BeEmpty())
+			Expect(actualErr).To(MatchError(awsv1alpha1.ErrAwsFailedCreateAccount))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeAccessDeniedException)))
+			Expect(account.Status.State).To(BeEquivalentTo(awsv1alpha1.AccountFailed))
 		})
 	})
 
@@ -1489,7 +1535,7 @@ var _ = Describe("Account Controller", func() {
 		})
 
 		It("Should try reconciliation again when region init failed due to an OptInError", func() {
-      // run GetClient once so the cached client is actually populated
+			// run GetClient once so the cached client is actually populated
 			tmpcli, _ := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
 			mockAWSClient = tmpcli.(*mock.MockClient)
 
@@ -1520,7 +1566,7 @@ var _ = Describe("Account Controller", func() {
 			orgAccessRoleName := "OrganizationAccountAccessRole"
 			orgAccessArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, config.AwsResourceTypeRole, orgAccessRoleName)
 			roleSessionName := "awsAccountOperator"
-      // Assume org access role in account
+			// Assume org access role in account
 			mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
 				DurationSeconds: aws.Int64(3600),
 				RoleArn:         &orgAccessArn,
@@ -1539,8 +1585,8 @@ var _ = Describe("Account Controller", func() {
 				PackedPolicySize: aws.Int64(40),
 			}, nil)
 
-      aaoRootIamUserName := "aao-root"
-      aaoRootIamUserArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, "user", aaoRootIamUserName)
+			aaoRootIamUserName := "aao-root"
+			aaoRootIamUserArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, "user", aaoRootIamUserName)
 			mockAWSClient.EXPECT().GetUser(gomock.Any()).Return(&iam.GetUserOutput{
 				User: &iam.User{
 					Arn:      &aaoRootIamUserArn,
@@ -1548,7 +1594,7 @@ var _ = Describe("Account Controller", func() {
 				},
 			}, nil)
 			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(&iam.GetRoleOutput{}, nil)
-      
+
 			rolePolicyDoc := fmt.Sprintf("{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"sts:AssumeRole\"],\"Principal\":{\"AWS\":[\"%s\",\"arn:::support-jump-role\"]}}]}", aaoRootIamUserArn)
 			roleDesc := "AdminAccess for BYOC"
 			roleName := "ManagedOpenShift-Support-abcdef"
