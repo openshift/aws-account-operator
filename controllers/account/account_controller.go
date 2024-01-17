@@ -304,7 +304,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	// Account init for both BYOC and Non-BYOC
-	if currentAcctInstance.ReadyForInitialization() {
+	if currentAcctInstance.ReadyForInitialization() || currentAcctInstance.IsReusedAccountMissingIAMUser() {
 		reqLogger.Info("initializing account", "awsAccountID", currentAcctInstance.Spec.AwsAccountID)
 
 		var creds *sts.AssumeRoleOutput

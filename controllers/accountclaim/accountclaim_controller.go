@@ -31,7 +31,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
-	"github.com/openshift/aws-account-operator/pkg/utils"
 )
 
 const (
@@ -209,6 +208,41 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	}
 
 	if accountClaim.DeletionTimestamp != nil {
+		if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" {
+			if r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+				err = r.deleteIAMSecret(reqLogger, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+			}
+
+			currentAcctInstance, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+			if accountErr != nil {
+				reqLogger.Error(accountErr, "Unable to get claimed account")
+			}
+			if currentAcctInstance != nil && !currentAcctInstance.IsBYOC() {
+				awsRegion := config.GetDefaultRegion()
+
+				awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+					SecretName: controllerutils.AwsSecretName,
+					NameSpace:  awsv1alpha1.AccountCrNamespace,
+					AwsRegion:  awsRegion,
+				})
+				if err != nil {
+					reqLogger.Error(err, "failed building operator AWS client")
+					return reconcile.Result{}, err
+				}
+				awsClient, _, err := stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
+				if err != nil {
+					reqLogger.Error(err, "failed building AWS client from assume_role")
+					return reconcile.Result{}, err
+				}
+				err = r.CleanUpIAMRoleAndPolicies(reqLogger, awsClient, stsRoleName)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
+			}
+		}
 		return reconcile.Result{}, r.handleAccountClaimDeletion(reqLogger, accountClaim)
 	}
 
@@ -314,10 +348,10 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			return reconcile.Result{}, err
 		}
 	}
-	cm, err := utils.GetOperatorConfigMap(r.Client)
+	cm, err := controllerutils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Could not retrieve the operator configmap")
-		return utils.RequeueAfter(5 * time.Minute)
+		return controllerutils.RequeueAfter(5 * time.Minute)
 	}
 
 	enabled, err := strconv.ParseBool(cm.Data["feature.accountclaim_fleet_manager_trusted_arn"])
@@ -359,7 +393,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			}
 
 			// Implement IAM user deletion logic
-			if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil { // Do I need to worry about deleteing all IAM users
+			if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil {
 				return reconcile.Result{}, fmt.Errorf("failed deleting IAM users: %v", err)
 			}
 
@@ -383,7 +417,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 					return reconcile.Result{}, err
 				}
 			} else {
-				err = r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace)
+				err = r.deleteIAMSecret(reqLogger, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace)
 				if err != nil {
 					return reconcile.Result{}, err
 				}
@@ -949,9 +983,11 @@ func (r *AccountClaimReconciler) checkIAMSecretExists(name string, namespace str
 	// Need to check if the secret exists AND that it matches what we're expecting
 	secret := corev1.Secret{}
 	secretObjectKey := client.ObjectKey{Name: name, Namespace: namespace}
-	err := r.Client.Get(context.TODO(), secretObjectKey, &secret)
-	//nolint:gosimple // Ignores false-positive S1008 gosimple notice
-	return err == nil
+	if err := r.Client.Get(context.TODO(), secretObjectKey, &secret); err != nil {
+		// The secret does not exist
+		return false
+	}
+	return true
 }
 
 func (r *AccountClaimReconciler) statusUpdate(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
