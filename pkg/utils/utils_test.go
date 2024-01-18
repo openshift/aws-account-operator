@@ -6,10 +6,20 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/go-logr/logr"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	apis "github.com/openshift/aws-account-operator/api"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/testutils"
+	"k8s.io/client-go/kubernetes/scheme"
 )
 
 func createRoleMock(statements []awsv1alpha1.StatementEntry) awsv1alpha1.AWSFederatedRole {
@@ -345,3 +355,105 @@ func TestJoinLabelMaps(t *testing.T) {
 		})
 	}
 }
+
+var _ = Describe("Utils", func() {
+	var (
+		nullTestLogger testutils.TestLogger
+		nullLogger     logr.Logger
+		ctrl           *gomock.Controller
+		configMap      *v1.ConfigMap
+	)
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		fmt.Printf("failed adding apis to scheme in utils test")
+	}
+	BeforeEach(func() {
+		ctrl = gomock.NewController(GinkgoT())
+		nullTestLogger = testutils.NewTestLogger()
+		nullLogger = nullTestLogger.Logger()
+		configMap = &v1.ConfigMap{
+			TypeMeta: metav1.TypeMeta{},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        awsv1alpha1.DefaultConfigMap,
+				Namespace:   awsv1alpha1.AccountCrNamespace,
+				Labels:      map[string]string{},
+				Annotations: map[string]string{},
+			},
+			Data: map[string]string{
+				"ami-owner": "12345",
+			},
+		}
+	})
+
+	AfterEach(func() {
+		ctrl.Finish()
+	})
+
+	Context("GetServiceQuotasFromAccountpool", func() {
+		BeforeEach(func() {
+			configMap = &v1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        awsv1alpha1.DefaultConfigMap,
+					Namespace:   awsv1alpha1.AccountCrNamespace,
+					Labels:      map[string]string{},
+					Annotations: map[string]string{},
+				},
+				Data: map[string]string{
+					"ami-owner": "12345",
+				},
+			}
+		})
+		It("Should return an Empty map when accountpool not found in configmap", func() {
+			configMap.Data["accountpool"] = `testpool:
+  default: true
+`
+			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
+			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			Expect(err).To(BeNil())
+			Expect(quotas).To(BeEmpty())
+		})
+		It("Should return an Error when the aao configmap isn't found", func() {
+			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects().Build()
+			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			Expect(err).ToNot(BeNil())
+			Expect(quotas).To(BeEmpty())
+		})
+		It("Should return an Error when there is no accountpool key in the configmap", func() {
+			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
+			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			Expect(err).ToNot(BeNil())
+			Expect(quotas).To(BeEmpty())
+		})
+		It("Should return an Error when the accoutpool data is malformed", func() {
+			configMap.Data["accountpool"] = `invalid: true`
+			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
+			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			Expect(err).ToNot(BeNil())
+			Expect(quotas).To(BeEmpty())
+		})
+		It("Should return an Error when the accoutpool data is malformed", func() {
+			configMap.Data["accountpool"] = `invalid: true`
+			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
+			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			Expect(err).ToNot(BeNil())
+			Expect(quotas).To(BeEmpty())
+		})
+		It("Should return the Regional Servicequotas defined in the cm", func() {
+			configMap.Data["accountpool"] = `hives02ue1:
+  default: true
+fm-accountpool:
+  servicequotas:
+    default:
+      L-1216C47A: '2500'
+      L-0EA8095F: '200'
+      L-69A177A2: '255'
+`
+			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
+			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			Expect(err).ToNot(BeNil())
+			Expect(quotas).To(BeEmpty())
+		})
+	})
+
+})
