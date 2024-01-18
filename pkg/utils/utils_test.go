@@ -450,9 +450,10 @@ fm-accountpool:
       L-69A177A2: '255'
 `
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
-			Expect(err).ToNot(BeNil())
-			Expect(quotas).To(BeEmpty())
+			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "fm-accountpool", client)
+			Expect(err).To(BeNil())
+			Expect(quotas).ToNot(BeEmpty())
+      Expect(quotas).To(HaveKey("default"))
 		})
 	})
 
