@@ -381,6 +381,11 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			}
 
 			reqLogger.Info("IAM User created and saved", "user", iamUserUHC)
+
+			// Exit account init when the reused account has IAMUserSecret recreated and is in ready state
+			if currentAcctInstance.IsReusedAccountWithIAMUserSecret() {
+				return reconcile.Result{}, err
+			}
 		}
 
 		err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner)
