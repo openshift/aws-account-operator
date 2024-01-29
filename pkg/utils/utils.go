@@ -145,7 +145,7 @@ func GetServiceQuotasFromAccountPool(reqLogger logr.Logger, accountPoolName stri
 	var parsedRegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
 
 	if poolData, ok := data[accountPoolName]; !ok {
-    reqLogger.Info("Accountpool not found in configmap. Not setting servicequotas.")
+		reqLogger.Info("Accountpool not found in configmap. Not setting servicequotas.")
 		return parsedRegionalServiceQuotas, nil
 	} else {
 		// for each service quota in a given region, we'll need to parse and save to use in the account spec.

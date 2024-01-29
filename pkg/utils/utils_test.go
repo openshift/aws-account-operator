@@ -453,7 +453,7 @@ fm-accountpool:
 			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "fm-accountpool", client)
 			Expect(err).To(BeNil())
 			Expect(quotas).ToNot(BeEmpty())
-      Expect(quotas).To(HaveKey("default"))
+			Expect(quotas).To(HaveKey("default"))
 		})
 	})
 
