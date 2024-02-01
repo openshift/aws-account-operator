@@ -192,6 +192,17 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return reconcile.Result{}, nil
 	}
 
+	// Handles IAM user and secret recreation for accounts that are reused, non-BYOC, and in a ready state
+	// This function is essential because a Fleet Manager AWS account should not possess any long-lived IAM credentials; instead, it should only require STS IAM access.
+	// However, once a Fleet Manager account claim is deleted, the AWS account no longer has long-lived IAM credentials and cannot be claimed by non-Fleet Manager account claims.
+	if currentAcctInstance.IsReusedAccountMissingIAMUser() {
+		if _, _, err = r.handleIAMUserCreation(reqLogger, currentAcctInstance, awsSetupClient, request.Namespace); err != nil {
+			reqLogger.Error(err, "Error during IAM user creation for reused account")
+			return reconcile.Result{}, err
+		}
+		reqLogger.Info(fmt.Sprintf("Account %s IAM user and secret has been recreated.", currentAcctInstance.Name))
+	}
+
 	// Log accounts that have failed and don't attempt to reconcile them
 	if currentAcctInstance.IsFailed() {
 		reqLogger.Info(fmt.Sprintf("Account %s is failed. Ignoring.", currentAcctInstance.Name))
@@ -304,7 +315,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	// Account init for both BYOC and Non-BYOC
-	if currentAcctInstance.ReadyForInitialization() || currentAcctInstance.IsReusedAccountMissingIAMUser() {
+	if currentAcctInstance.ReadyForInitialization() {
 		reqLogger.Info("initializing account", "awsAccountID", currentAcctInstance.Spec.AwsAccountID)
 
 		var creds *sts.AssumeRoleOutput
@@ -335,7 +346,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			}
 
 		} else {
-
 			// Set IAMUserIDLabel if not there, and requeue
 			if !utils.AccountCRHasIAMUserIDLabel(currentAcctInstance) {
 				utils.AddLabels(
@@ -347,45 +357,14 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				)
 				return reconcile.Result{Requeue: true}, r.Client.Update(context.TODO(), currentAcctInstance)
 			}
-			var awsAssumedRoleClient awsclient.Client
-			awsAssumedRoleClient, creds, err = r.handleCreateAdminAccessRole(reqLogger, currentAcctInstance, awsSetupClient)
+
+			_, newCredentials, err := r.handleIAMUserCreation(reqLogger, currentAcctInstance, awsSetupClient, request.Namespace)
 			if err != nil {
+				reqLogger.Error(err, "Error during IAM user creation")
 				return reconcile.Result{}, err
 			}
+			creds = newCredentials
 
-			// Use the same ID applied to the account name for IAM usernames
-			iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
-			secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, request.Namespace)
-			if err != nil {
-				reason, errType := getBuildIAMUserErrorReason(err)
-				errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
-				_, stateErr := r.setAccountFailed(
-					reqLogger,
-					currentAcctInstance,
-					errType,
-					reason,
-					errMsg,
-					AccountFailed,
-				)
-				if stateErr != nil {
-					reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
-				}
-				return reconcile.Result{}, err
-			}
-
-			currentAcctInstance.Spec.IAMUserSecret = *secretName
-			err = r.accountSpecUpdate(reqLogger, currentAcctInstance)
-			if err != nil {
-				reqLogger.Error(err, "Error updating Secret Ref in Account CR")
-				return reconcile.Result{}, err
-			}
-
-			reqLogger.Info("IAM User created and saved", "user", iamUserUHC)
-
-			// Exit account init when the reused account has IAMUserSecret recreated and is in ready state
-			if currentAcctInstance.IsReusedAccountWithIAMUserSecret() {
-				return reconcile.Result{}, err
-			}
 		}
 
 		err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner)
@@ -446,6 +425,43 @@ func isAwsOptInError(err error) bool {
 	}
 
 	return awsError.Code() == "OptInRequired"
+}
+
+func (r *AccountReconciler) handleIAMUserCreation(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, namespace string) (reconcile.Result, *sts.AssumeRoleOutput, error) {
+	var awsAssumedRoleClient awsclient.Client
+	awsAssumedRoleClient, creds, err := r.handleCreateAdminAccessRole(reqLogger, currentAcctInstance, awsSetupClient)
+	if err != nil {
+		return reconcile.Result{}, nil, err
+	}
+
+	// Use the same ID applied to the account name for IAM usernames
+	iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
+	secretName, err := r.BuildIAMUser(reqLogger, awsAssumedRoleClient, currentAcctInstance, iamUserUHC, namespace)
+	if err != nil {
+		reason, errType := getBuildIAMUserErrorReason(err)
+		errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
+		_, stateErr := r.setAccountFailed(
+			reqLogger,
+			currentAcctInstance,
+			errType,
+			reason,
+			errMsg,
+			AccountFailed,
+		)
+		if stateErr != nil {
+			reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
+		}
+		return reconcile.Result{}, nil, err
+	}
+
+	currentAcctInstance.Spec.IAMUserSecret = *secretName
+	err = r.accountSpecUpdate(reqLogger, currentAcctInstance)
+	if err != nil {
+		reqLogger.Error(err, "Error updating Secret Ref in Account CR")
+		return reconcile.Result{}, nil, err
+	}
+	reqLogger.Info("IAM User created and saved", "user", iamUserUHC)
+	return reconcile.Result{}, creds, nil
 }
 
 func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, err error) (reconcile.Result, error) {

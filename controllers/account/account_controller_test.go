@@ -15,7 +15,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/aws/aws-sdk-go/service/support"
 	"github.com/go-logr/logr"
-	"go.uber.org/mock/gomock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -26,6 +25,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"github.com/openshift/aws-account-operator/pkg/utils"
+	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -1470,6 +1470,167 @@ var _ = Describe("Account Controller", func() {
 	})
 
 	Context("Testing Reconciliation", func() {
+		It("Should recreate the IAM user and secret for a non-CCS account that is ready for reuse but missing the IAM user and secret.", func() {
+			tmpcli, _ := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
+			mockAWSClient = tmpcli.(*mock.MockClient)
+
+			testAccount := &newTestAccountBuilder().WithSpec(awsv1alpha1.AccountSpec{
+				AwsAccountID:       "123456789012",
+				IAMUserSecret:      "",
+				BYOC:               false,
+				ClaimLink:          "",
+				ClaimLinkNamespace: "",
+				LegalEntity:        awsv1alpha1.LegalEntity{},
+				ManualSTSMode:      false,
+			}).WithStatus(awsv1alpha1.AccountStatus{
+				Claimed: false,
+				Reused:  true,
+			}).BYOC(false).WithState(AccountReady).acct
+
+			testAccount.Labels[awsv1alpha1.IAMUserIDLabel] = "abcdef"
+			configMap.Data[awsv1alpha1.SupportJumpRole] = "arn:::support-jump-role"
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{testAccount, configMap}...).Build()
+
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: testAccount.Namespace,
+					Name:      testAccount.Name,
+				},
+			}
+
+			validUntil := time.Now().Add(time.Hour)
+			orgAccessRoleName := "OrganizationAccountAccessRole"
+			orgAccessArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, config.AwsResourceTypeRole, orgAccessRoleName)
+			roleSessionName := "awsAccountOperator"
+			// Assume org access role in account
+			mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
+				DurationSeconds: aws.Int64(3600),
+				RoleArn:         &orgAccessArn,
+				RoleSessionName: &roleSessionName,
+			}).Return(&sts.AssumeRoleOutput{
+				AssumedRoleUser: &sts.AssumedRoleUser{
+					Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
+					AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
+				},
+				Credentials: &sts.Credentials{
+					AccessKeyId:     aws.String("ACCESS_KEY"),
+					Expiration:      &validUntil,
+					SecretAccessKey: aws.String("SECRET_KEY"),
+					SessionToken:    aws.String("SESSION_TOKEN"),
+				},
+				PackedPolicySize: aws.Int64(40),
+			}, nil)
+
+			aaoRootIamUserName := "aao-root"
+			aaoRootIamUserArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, "user", aaoRootIamUserName)
+			mockAWSClient.EXPECT().GetUser(gomock.Any()).Return(&iam.GetUserOutput{
+				User: &iam.User{
+					Arn:      &aaoRootIamUserArn,
+					UserName: &aaoRootIamUserName,
+				},
+			}, nil)
+			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(&iam.GetRoleOutput{}, nil)
+
+			rolePolicyDoc := fmt.Sprintf("{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"sts:AssumeRole\"],\"Principal\":{\"AWS\":[\"%s\",\"arn:::support-jump-role\"]}}]}", aaoRootIamUserArn)
+			roleDesc := "AdminAccess for BYOC"
+			roleName := "ManagedOpenShift-Support-abcdef"
+			roleCreate := time.Now()
+			roleTags := []*iam.Tag{
+				{
+					Key:   aws.String("clusterAccountName"),
+					Value: aws.String("testaccount"),
+				},
+				{
+					Key:   aws.String("clusterNamespace"),
+					Value: aws.String("testnamespace"),
+				},
+				{
+					Key:   aws.String("clusterClaimLink"),
+					Value: aws.String(""),
+				},
+				{
+					Key:   aws.String("clusterClaimLinkNamespace"),
+					Value: aws.String(""),
+				},
+			}
+			mockAWSClient.EXPECT().CreateRole(&iam.CreateRoleInput{
+				AssumeRolePolicyDocument: &rolePolicyDoc,
+				Description:              &roleDesc,
+				RoleName:                 &roleName,
+				Tags:                     roleTags,
+			}).Return(&iam.CreateRoleOutput{
+				Role: &iam.Role{
+					Arn:                      aws.String(fmt.Sprintf("aws:::%s", roleName)),
+					AssumeRolePolicyDocument: &rolePolicyDoc,
+					CreateDate:               &roleCreate,
+					Description:              &roleDesc,
+					MaxSessionDuration:       aws.Int64(1000000),
+					RoleId:                   &roleName,
+					RoleName:                 &roleName,
+					Tags:                     roleTags,
+				},
+			}, nil)
+
+			adminAccessArn := config.GetIAMArn("aws", config.AwsResourceTypePolicy, config.AwsResourceIDAdministratorAccessRole)
+			mockAWSClient.EXPECT().AttachRolePolicy(&iam.AttachRolePolicyInput{
+				PolicyArn: &adminAccessArn,
+				RoleName:  &roleName,
+			}).Return(nil, nil)
+			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(&iam.ListAttachedRolePoliciesOutput{
+				AttachedPolicies: []*iam.AttachedPolicy{{
+					PolicyArn:  &adminAccessArn,
+					PolicyName: aws.String(config.AwsResourceIDAdministratorAccessRole),
+				}},
+			}, nil)
+
+			userName := "osdManagedAdmin-abcdef"
+			mockAWSClient.EXPECT().GetUser(&iam.GetUserInput{
+				UserName: &userName,
+			}).Return(nil, awserr.New(iam.ErrCodeNoSuchEntityException, "", nil))
+
+			mockAWSClient.EXPECT().CreateUser(gomock.Any()).Return(&iam.CreateUserOutput{
+				User: &iam.User{
+					Arn:      aws.String(fmt.Sprintf("aws:::%s", userName)),
+					Tags:     roleTags,
+					UserId:   &userName,
+					UserName: &userName,
+				},
+			}, nil)
+
+			mockAWSClient.EXPECT().AttachUserPolicy(&iam.AttachUserPolicyInput{
+				UserName:  &userName,
+				PolicyArn: &adminAccessArn,
+			}).Return(nil, nil)
+
+			mockAWSClient.EXPECT().ListAccessKeys(&iam.ListAccessKeysInput{
+				UserName: &userName,
+			}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []*iam.AccessKeyMetadata{},
+			}, nil)
+
+			mockAWSClient.EXPECT().CreateAccessKey(&iam.CreateAccessKeyInput{
+				UserName: &userName,
+			}).Return(&iam.CreateAccessKeyOutput{
+				AccessKey: &iam.AccessKey{
+					AccessKeyId:     aws.String("ACCESS_KEY"),
+					CreateDate:      &roleCreate,
+					SecretAccessKey: aws.String("SECRET_KEY"),
+					Status:          aws.String("Valid"),
+					UserName:        &userName,
+				},
+			}, nil)
+
+			_, err := r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+
+			ac := &awsv1alpha1.Account{}
+			err = r.Client.Get(context.TODO(), types.NamespacedName{Name: account.Name, Namespace: account.Namespace}, ac)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ac.Status.State).To(Equal("Ready"))
+			Expect(ac.Status.Reused).To(BeTrue())
+			Expect(ac.Spec.IAMUserSecret).ToNot(BeNil())
+		})
 		It("A ready account being claimed adds a claimed status condition", func() {
 			account = &newTestAccountBuilder().WithState(AccountReady).WithClaimLink("claimedaccount").acct
 
