@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/openshift/aws-account-operator/config"
 	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
-	"time"
 
 	"github.com/rkt/rkt/tests/testutils/logger"
 
@@ -82,21 +83,23 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 			return err
 		}
 	} else {
-		awsRegion := config.GetDefaultRegion()
+		defaultRegion := config.GetDefaultRegion()
 		// We expect this secret to exist in the same namespace Account CR's are created
 		awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 			SecretName: utils.AwsSecretName,
 			NameSpace:  awsv1alpha1.AccountCrNamespace,
-			AwsRegion:  awsRegion,
+			AwsRegion:  defaultRegion,
 		})
 		if err != nil {
 			reqLogger.Error(err, "failed building operator AWS client")
 			return err
 		}
 
-		awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, reusedAccount, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
+		// This can not be the default region us-east-1 when cleaning up S3 buckets that live in other regions (if the cluster is not in us-east-1):
+		// e.g. https://github.com/parallelworks/interactive_session/pull/65
+		awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, reusedAccount, r.Client, awsSetupClient, clusterAwsRegion, awsv1alpha1.AccountOperatorIAMRole, "")
 		if err != nil {
-			connErr := fmt.Sprintf("Unable to create aws client for region %s", awsRegion)
+			connErr := fmt.Sprintf("Unable to create aws client for region %s", clusterAwsRegion)
 			reqLogger.Error(err, connErr)
 			return err
 		}
@@ -440,7 +443,6 @@ func (r *AccountClaimReconciler) cleanUpAwsRoute53(reqLogger logr.Logger, awsCli
 						return changeErr
 					}
 				}
-
 				if *recordSet.IsTruncated {
 					nextRecordName = recordSet.NextRecordName
 				} else {
