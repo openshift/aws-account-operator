@@ -62,9 +62,14 @@ parameters:
 - name: FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN
   required: false
   value: "false"
+- name: FEATURE_OPT_IN_REGIONS
+  required: false
+  value: "false"
 - name: AMIOWNER
   require: false
   value: "309956199498"
+- name: OPT_IN_REGIONS
+  required: "false"
 
 objects:
 - apiVersion: operators.coreos.com/v1alpha1
@@ -125,6 +130,8 @@ objects:
     feature.validation_delete_account: ${FEATURE_VALIDATE_DELETE_ACCOUNT}
     feature.accountpool_validation: ${FEATURE_ACCOUNTPOOL_VALIDATION}
     feature.accountclaim_fleet_manager_trusted_arn: ${FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN}
+    feature.opt_in_regions: ${FEATURE_OPT_IN_REGIONS}
+    opt-in-regions: "${OPT_IN_REGIONS}"
 
 - apiVersion: aws.managed.openshift.io/v1alpha1
   kind: AccountPool

@@ -130,6 +130,18 @@ spec:
                       type: string
                   type: object
                 type: array
+              optInRegions:
+                additionalProperties:
+                  properties:
+                    regionCode:
+                      type: string
+                    status:
+                      type: string
+                  required:
+                  - status
+                  - regionCode
+                  type: object
+                type: object
               regionalServiceQuotas:
                 additionalProperties:
                   additionalProperties:
