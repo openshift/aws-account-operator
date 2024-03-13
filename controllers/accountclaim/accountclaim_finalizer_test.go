@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"go.uber.org/mock/gomock"
+	"github.com/golang/mock/gomock"
 	apis "github.com/openshift/aws-account-operator/api"
 	"github.com/openshift/aws-account-operator/api/v1alpha1"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
