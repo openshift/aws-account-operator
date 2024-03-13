@@ -19,7 +19,7 @@ import (
 func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client, optInRegion *awsv1alpha1.OptInRegionStatus, currentAcctInstance *awsv1alpha1.Account) error {
 	reqLogger.Info("Handling Opt-In Region Requests")
 
-	regionOptInRequired, err := RegionNeedsOptIn(reqLogger, awsClient, optInRegion.RegionCode, currentAcctInstance.Spec.AwsAccountID)
+	regionOptInRequired, err := RegionNeedsOptIn(reqLogger, awsClient, optInRegion.RegionCode)
 	if err != nil {
 		reqLogger.Error(err, "failed retrieving current vCPU quota from AWS")
 		return err
@@ -33,7 +33,7 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 		)
 
 		// Checks to see if region enablement was already requested
-		requestStatus, err := checkOptInRegionStatus(reqLogger, awsClient, optInRegion.RegionCode, currentAcctInstance.Spec.AwsAccountID)
+		requestStatus, err := checkOptInRegionStatus(reqLogger, awsClient, optInRegion.RegionCode)
 		if err != nil {
 			reqLogger.Error(err, "failed to get quota change history")
 			return err
@@ -55,7 +55,7 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 			optInRegion.Status = awsv1alpha1.OptInRequestEnabling
 			return nil
 		case awsv1alpha1.OptInRequestTodo:
-			submitted, err := enableOptInRegions(reqLogger, awsClient, optInRegion.RegionCode, currentAcctInstance.Spec.AwsAccountID)
+			submitted, err := enableOptInRegions(reqLogger, awsClient, optInRegion.RegionCode)
 			if err != nil {
 				reqLogger.Error(err, "failed to opt-in region", "RegionCode", optInRegion.RegionCode)
 			}
@@ -145,7 +145,7 @@ func updateOptInRegionRequests(reqLogger logr.Logger, awsClientBuilder awsclient
 	return nil
 }
 
-func enableOptInRegions(reqLogger logr.Logger, client awsclient.Client, regionCode string, accountId string) (bool, error) {
+func enableOptInRegions(reqLogger logr.Logger, client awsclient.Client, regionCode string) (bool, error) {
 	var result *account.EnableRegionOutput
 	var alreadySubmitted bool
 
@@ -210,7 +210,7 @@ func enableOptInRegions(reqLogger logr.Logger, client awsclient.Client, regionCo
 	return true, nil
 }
 
-func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode string, accountId string) (bool, error) {
+func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode string) (bool, error) {
 	var result *account.GetRegionOptStatusOutput
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
@@ -220,7 +220,6 @@ func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode
 	err := retry.Do(
 		func() (err error) {
 			result, err = client.GetRegionOptStatus(&account.GetRegionOptStatusInput{
-				//AccountId:  aws.String(accountId),
 				RegionName: aws.String(regionCode),
 			})
 			return err
@@ -259,7 +258,7 @@ func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode
 	return false, err
 }
 
-func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, regionCode string, accountId string) (awsv1alpha1.OptInRequestStatus, error) {
+func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, regionCode string) (awsv1alpha1.OptInRequestStatus, error) {
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
@@ -333,7 +332,7 @@ func IsSupportedRegion(region string) (awsv1alpha1.SupportedOptInRegions, bool) 
 	r := awsv1alpha1.SupportedOptInRegions(region)
 
 	regionMap := map[awsv1alpha1.SupportedOptInRegions]awsv1alpha1.SupportedOptInRegions{
-		awsv1alpha1.CapeTownRegion: "CapeTownRegion",
+		awsv1alpha1.CapeTownRegion: "CapeTown",
 	}
 	v, found := regionMap[r]
 	return v, found

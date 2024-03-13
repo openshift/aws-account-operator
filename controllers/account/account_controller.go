@@ -467,7 +467,7 @@ func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, c
 
 		}
 	}
-	if currentAcctInstance.Status.OptInRegions == nil && regionMap != nil {
+	if currentAcctInstance.Status.OptInRegions == nil && len(regionMap) != 0 {
 		switch utils.DetectDevMode {
 		case utils.DevModeProduction:
 			if numberOfAccountsOptingIn > MaxAccountRegionEnablement {

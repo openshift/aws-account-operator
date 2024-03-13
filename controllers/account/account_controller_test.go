@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	acct "github.com/aws/aws-sdk-go/service/account"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/organizations"
@@ -15,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/aws/aws-sdk-go/service/support"
 	"github.com/go-logr/logr"
+	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -25,7 +27,6 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"github.com/openshift/aws-account-operator/pkg/utils"
-	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -1908,6 +1909,77 @@ var _ = Describe("Account Controller", func() {
 						Expect(err).NotTo(HaveOccurred())
 						return []string{account.Status.State, account.Status.SupportCaseID}
 					}).Should(Equal([]string{AccountReady, "123456"}))
+				})
+			})
+			When("Opt-In are defined in the ConfigMap and feature flag is enabled", func() {
+				BeforeEach(func() {
+					account = &newTestAccountBuilder().BYOC(false).Claimed(false).WithState(awsv1alpha1.AccountCreating).WithAwsAccountID("4321").acct
+					configMap = &v1.ConfigMap{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:        awsv1alpha1.DefaultConfigMap,
+							Namespace:   awsv1alpha1.AccountCrNamespace,
+							Labels:      map[string]string{},
+							Annotations: map[string]string{},
+						},
+						Data: map[string]string{
+							"opt-in-regions":         "af-south-1",
+							"feature.opt_in_regions": "false",
+						},
+					}
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
+				})
+				It("Enables supported Opt in regions", func() {
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRoleAndCreateClient = func(
+						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
+						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+					optInRegions := "af-south-1"
+					subClient.EXPECT().GetRegionOptStatus(gomock.Any()).Return(
+						&acct.GetRegionOptStatusOutput{
+							RegionName:      aws.String("af-south-1"),
+							RegionOptStatus: aws.String("DISABLED"),
+						},
+						nil)
+
+					subClient.EXPECT().GetRegionOptStatus(gomock.Any()).Return(
+						&acct.GetRegionOptStatusOutput{
+							RegionName:      aws.String("af-south-1"),
+							RegionOptStatus: aws.String("DISABLED"),
+						},
+						nil,
+					)
+
+					subClient.EXPECT().EnableRegion(gomock.Any()).Return(
+						&acct.EnableRegionOutput{},
+						nil,
+					)
+					_, err := r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions, 0)
+					Expect(err).To(Not(HaveOccurred()))
+				})
+				It("Handles unsupported opt-in region", func() {
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRoleAndCreateClient = func(
+						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
+						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+					optInRegions := "ap-east-2"
+					_, err := r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions, 0)
+					Expect(err).To(Not(HaveOccurred()))
 				})
 			})
 			When("Service quotas are defined for the account", func() {
