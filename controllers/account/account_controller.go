@@ -402,19 +402,17 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 		optInRegions, ok := configMap.Data["opt-in-regions"]
 		// handles region enablement for supported Opt-In regions
-		if (ok && optInRegions != "" && isEnabled) && (currentAcctInstance.Status.State == AccountCreating || currentAcctInstance.Status.State == AccountOptingInRegions) {
+		if (ok && optInRegions != "" && isEnabled && !currentAcctInstance.Spec.BYOC) && (currentAcctInstance.Status.State == AccountCreating || currentAcctInstance.Status.State == AccountOptingInRegions) {
 			return r.handleOptInRegionEnablement(reqLogger, currentAcctInstance, awsSetupClient, optInRegions, numberOfAccountsOptingIn)
 		}
-		//TODO find better way to handle condition
-		if (ok && optInRegions != "" && currentAcctInstance.Status.OptInRegions != nil) || (ok && optInRegions != "" && !currentAcctInstance.HasOpenOptInRegionRequests()) || (!ok || optInRegions == "" || !isEnabled) {
-			err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner)
 
-			if isAwsOptInError(err) {
-				reqLogger.Info("Aws Account not ready yet, requeuing.")
-				return reconcile.Result{
-					RequeueAfter: awsAccountInitRequeueDuration,
-				}, nil
-			}
+		err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner)
+
+		if isAwsOptInError(err) {
+			reqLogger.Info("Aws Account not ready yet, requeuing.")
+			return reconcile.Result{
+				RequeueAfter: awsAccountInitRequeueDuration,
+			}, nil
 		}
 
 		return reconcile.Result{}, err
@@ -451,12 +449,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 }
 
 func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string, numberOfAccountsOptingIn int) (reconcile.Result, error) {
-	if currentAcctInstance.Spec.BYOC {
-		err := errors.New("account is BYOC - should not be handled in NonCCS method")
-		reqLogger.Error(err, "a BYOC account passed to non-CCS function", "account", currentAcctInstance.Name)
-		return reconcile.Result{}, err
-	}
-
 	// Find out if we support that opt in region
 	regionMap := make(map[string]string)
 	regions := strings.Split(optInRegions, ",")
@@ -483,7 +475,7 @@ func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, c
 
 			err = r.statusUpdate(currentAcctInstance)
 			if err != nil {
-				reqLogger.Error(err, "failed to update account status, retryin")
+				reqLogger.Error(err, "failed to update account status, retrying")
 				return reconcile.Result{}, err
 			}
 
