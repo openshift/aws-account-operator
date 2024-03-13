@@ -332,7 +332,10 @@ func IsSupportedRegion(region string) (awsv1alpha1.SupportedOptInRegions, bool) 
 	r := awsv1alpha1.SupportedOptInRegions(region)
 
 	regionMap := map[awsv1alpha1.SupportedOptInRegions]awsv1alpha1.SupportedOptInRegions{
-		awsv1alpha1.CapeTownRegion: "CapeTown",
+		awsv1alpha1.CapeTownRegion:  "CapeTown",
+		awsv1alpha1.MelbourneRegion: "Melbourne",
+		awsv1alpha1.HyderabadRegion: "Hyderabad",
+		awsv1alpha1.MilanRegion:     "Milan",
 	}
 	v, found := regionMap[r]
 	return v, found

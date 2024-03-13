@@ -100,7 +100,10 @@ const (
 type SupportedOptInRegions string
 
 const (
-	CapeTownRegion SupportedOptInRegions = "af-south-1"
+	CapeTownRegion  SupportedOptInRegions = "af-south-1"
+	MelbourneRegion SupportedOptInRegions = "ap-southeast-4"
+	HyderabadRegion SupportedOptInRegions = "ap-south-2"
+	MilanRegion     SupportedOptInRegions = "eu-south-1"
 )
 
 // AccountStatus defines the observed state of Account

@@ -1911,7 +1911,7 @@ var _ = Describe("Account Controller", func() {
 					}).Should(Equal([]string{AccountReady, "123456"}))
 				})
 			})
-			When("Opt-In are defined in the ConfigMap and feature flag is enabled", func() {
+			When("Opt-In regions are defined in the ConfigMap and feature flag is enabled", func() {
 				BeforeEach(func() {
 					account = &newTestAccountBuilder().BYOC(false).Claimed(false).WithState(awsv1alpha1.AccountCreating).WithAwsAccountID("4321").acct
 					configMap = &v1.ConfigMap{
