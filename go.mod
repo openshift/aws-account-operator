@@ -18,7 +18,6 @@ require (
 	github.com/prometheus/client_golang v1.12.1
 	github.com/rkt/rkt v1.30.0
 	github.com/stretchr/testify v1.7.0
-	go.uber.org/mock v0.4.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.24.0
 	k8s.io/apimachinery v0.24.0
