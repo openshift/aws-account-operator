@@ -85,18 +85,13 @@ func GetOptInRegionStatus(reqLogger logr.Logger, awsClientBuilder awsclient.IBui
 	_, onlyOpenOptInRequests := currentAcctInstance.GetOptInRequestsByStatus(awsv1alpha1.OptInRequestTodo)
 	if currentInFlightCount <= MaxOptInRegionRequest {
 		reqLogger.Info(fmt.Sprintf("currentInFlightCount (%d) <= maxOpenOptInRegionRequests (%d)", currentInFlightCount, MaxOptInRegionRequest))
-		var maxRequestsReached = false
 		for region, onlyOpenOptInRequest := range onlyOpenOptInRequests {
-			if maxRequestsReached {
-				break
-			}
 			if _, ok := inFlightOptInRequests[region]; !ok {
 				inFlightOptInRequests[region] = &awsv1alpha1.OptInRegionStatus{}
 			}
 			inFlightOptInRequests[region] = onlyOpenOptInRequest
 			currentInFlightCount += 1
 			if currentInFlightCount >= MaxOptInRegionRequest {
-				maxRequestsReached = true
 				break
 			}
 		}
@@ -299,7 +294,6 @@ func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, r
 				return awsv1alpha1.OptInRequestEnabled, nil
 			}
 		}
-		return awsv1alpha1.OptInRequestTodo, nil
 	}
 }
 

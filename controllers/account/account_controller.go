@@ -466,7 +466,6 @@ func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, c
 		regionName, found := IsSupportedRegion(strings.TrimSpace(region))
 		if found {
 			regionMap[string(regionName)] = strings.TrimSpace(region)
-
 		}
 	}
 	if currentAcctInstance.Status.OptInRegions == nil && len(regionMap) != 0 {
