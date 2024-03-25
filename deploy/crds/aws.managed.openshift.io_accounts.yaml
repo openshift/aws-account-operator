@@ -138,8 +138,8 @@ spec:
                     status:
                       type: string
                   required:
-                  - status
                   - regionCode
+                  - status
                   type: object
                 type: object
               regionalServiceQuotas:
