@@ -6,16 +6,17 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/go-logr/logr"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	"github.com/openshift/aws-account-operator/controllers/accountclaim"
-	"go.uber.org/mock/gomock"
-	//mock "github.com/openshift/aws-account-operator/controllers/accountclaim/mock"
+	mock "github.com/openshift/aws-account-operator/controllers/accountclaim/mock"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	awsmock "github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
+	"go.uber.org/mock/gomock"
 	"k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	kclient "sigs.k8s.io/controller-runtime/pkg/client"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 type cleanupfunc func(logr.Logger, awsclient.Client, chan string, chan string) error
@@ -49,13 +50,13 @@ var _ = Describe("Account Reuse", func() {
 		ctrl             *gomock.Controller
 		awsClientBuilder *awsmock.Builder
 		mockAwsClient    *awsmock.MockClient
-		kubeClient       client.Client
+		kubeClient       kclient.Client
 	)
 
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
 		awsClientBuilder = &awsmock.Builder{MockController: ctrl}
-		//kubeClient = mock.NewMockClient(ctrl)
+		kubeClient = mock.NewMockClient(ctrl)
 
 		// Create the reconciler with a mocking AWS client IBuilder.
 		r = accountclaim.NewAccountClaimReconciler(
