@@ -1923,7 +1923,7 @@ var _ = Describe("Account Controller", func() {
 						},
 						Data: map[string]string{
 							"opt-in-regions":         "af-south-1",
-							"feature.opt_in_regions": "false",
+							"feature.opt_in_regions": "true",
 						},
 					}
 					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()

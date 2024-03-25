@@ -292,6 +292,8 @@ func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, r
 				return awsv1alpha1.OptInRequestEnabling, nil
 			case "ENABLED", "ENABLED_BY_DEFAULT":
 				return awsv1alpha1.OptInRequestEnabled, nil
+			case "DISABLED":
+				return awsv1alpha1.OptInRequestTodo, nil
 			}
 		}
 	}
