@@ -14,149 +14,161 @@ spec:
     singular: account
   scope: Namespaced
   versions:
-  - additionalPrinterColumns:
-    - description: Status the account
-      jsonPath: .status.state
-      name: State
-      type: string
-    - description: True if the account has been claimed
-      jsonPath: .status.claimed
-      name: Claimed
-      type: boolean
-    - description: Link to the account claim CR
-      jsonPath: .spec.claimLink
-      name: Claim
-      type: string
-    - description: Age since the account was created
-      jsonPath: .metadata.creationTimestamp
-      name: Age
-      type: date
-    name: v1alpha1
-    schema:
-      openAPIV3Schema:
-        description: Account is the Schema for the accounts API
-        properties:
-          apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
+    - additionalPrinterColumns:
+        - description: Status the account
+          jsonPath: .status.state
+          name: State
+          type: string
+        - description: True if the account has been claimed
+          jsonPath: .status.claimed
+          name: Claimed
+          type: boolean
+        - description: Link to the account claim CR
+          jsonPath: .spec.claimLink
+          name: Claim
+          type: string
+        - description: Age since the account was created
+          jsonPath: .metadata.creationTimestamp
+          name: Age
+          type: date
+      name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          description: Account is the Schema for the accounts API
+          properties:
+            apiVersion:
+              description: 'APIVersion defines the versioned schema of this representation
               of an object. Servers should convert recognized schemas to the latest
               internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
-            type: string
-          kind:
-            description: 'Kind is a string value representing the REST resource this
+              type: string
+            kind:
+              description: 'Kind is a string value representing the REST resource this
               object represents. Servers may infer this from the endpoint the client
               submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
-            type: string
-          metadata:
-            type: object
-          spec:
-            description: AccountSpec defines the desired state of Account
-            properties:
-              accountPool:
-                type: string
-              awsAccountID:
-                type: string
-              byoc:
-                type: boolean
-              claimLink:
-                type: string
-              claimLinkNamespace:
-                type: string
-              iamUserSecret:
-                type: string
-              legalEntity:
-                description: LegalEntity contains Red Hat specific identifiers to
-                  the original creator the clusters
-                properties:
-                  id:
-                    type: string
-                  name:
-                    type: string
-                required:
-                - id
-                - name
-                type: object
-              manualSTSMode:
-                type: boolean
-              regionalServiceQuotas:
-                additionalProperties:
-                  additionalProperties:
-                    properties:
-                      status:
-                        type: string
-                      value:
-                        type: integer
-                    required:
-                    - status
-                    - value
-                    type: object
-                  type: object
-                type: object
-            required:
-            - awsAccountID
-            - iamUserSecret
-            type: object
-          status:
-            description: AccountStatus defines the observed state of Account
-            properties:
-              claimed:
-                type: boolean
-              conditions:
-                items:
-                  description: AccountCondition contains details for the current condition
-                    of a AWS account
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: AccountSpec defines the desired state of Account
+              properties:
+                accountPool:
+                  type: string
+                awsAccountID:
+                  type: string
+                byoc:
+                  type: boolean
+                claimLink:
+                  type: string
+                claimLinkNamespace:
+                  type: string
+                iamUserSecret:
+                  type: string
+                legalEntity:
+                  description: LegalEntity contains Red Hat specific identifiers to
+                    the original creator the clusters
                   properties:
-                    lastProbeTime:
-                      description: LastProbeTime is the last time we probed the condition.
-                      format: date-time
+                    id:
                       type: string
-                    lastTransitionTime:
-                      description: LastTransitionTime is the laste time the condition
-                        transitioned from one status to another.
-                      format: date-time
+                    name:
                       type: string
-                    message:
-                      description: Message is a human-readable message indicating
-                        details about last transition.
-                      type: string
-                    reason:
-                      description: Reason is a unique, one-word, CamelCase reason
-                        for the condition's last transition.
-                      type: string
-                    status:
-                      description: Status is the status of the condition
-                      type: string
-                    type:
-                      description: Type is the type of the condition.
-                      type: string
+                  required:
+                    - id
+                    - name
                   type: object
-                type: array
-              regionalServiceQuotas:
-                additionalProperties:
+                manualSTSMode:
+                  type: boolean
+                regionalServiceQuotas:
                   additionalProperties:
-                    properties:
-                      status:
-                        type: string
-                      value:
-                        type: integer
-                    required:
-                    - status
-                    - value
+                    additionalProperties:
+                      properties:
+                        status:
+                          type: string
+                        value:
+                          type: integer
+                      required:
+                        - status
+                        - value
+                      type: object
                     type: object
                   type: object
-                type: object
-              reused:
-                type: boolean
-              rotateConsoleCredentials:
-                type: boolean
-              rotateCredentials:
-                type: boolean
-              state:
-                type: string
-              supportCaseID:
-                type: string
-            type: object
-        type: object
-    served: true
-    storage: true
-    subresources:
-      status: {}
+              required:
+                - awsAccountID
+                - iamUserSecret
+              type: object
+            status:
+              description: AccountStatus defines the observed state of Account
+              properties:
+                claimed:
+                  type: boolean
+                conditions:
+                  items:
+                    description: AccountCondition contains details for the current condition
+                      of a AWS account
+                    properties:
+                      lastProbeTime:
+                        description: LastProbeTime is the last time we probed the condition.
+                        format: date-time
+                        type: string
+                      lastTransitionTime:
+                        description: LastTransitionTime is the laste time the condition
+                          transitioned from one status to another.
+                        format: date-time
+                        type: string
+                      message:
+                        description: Message is a human-readable message indicating
+                          details about last transition.
+                        type: string
+                      reason:
+                        description: Reason is a unique, one-word, CamelCase reason
+                          for the condition's last transition.
+                        type: string
+                      status:
+                        description: Status is the status of the condition
+                        type: string
+                      type:
+                        description: Type is the type of the condition.
+                        type: string
+                    type: object
+                  type: array
+                optInRegions:
+                  additionalProperties:
+                    properties:
+                      regionCode:
+                        type: string
+                      status:
+                        type: string
+                    required:
+                      - regionCode
+                      - status
+                    type: object
+                  type: object
+                regionalServiceQuotas:
+                  additionalProperties:
+                    additionalProperties:
+                      properties:
+                        status:
+                          type: string
+                        value:
+                          type: integer
+                      required:
+                        - status
+                        - value
+                      type: object
+                    type: object
+                  type: object
+                reused:
+                  type: boolean
+                rotateConsoleCredentials:
+                  type: boolean
+                rotateCredentials:
+                  type: boolean
+                state:
+                  type: string
+                supportCaseID:
+                  type: string
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}

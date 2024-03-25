@@ -62,7 +62,10 @@ const (
 	AccountReady = "Ready"
 	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
 	AccountPendingVerification = "PendingVerification"
-
+	// AccountOptingInRegions indicates region enablement for supported Opt-In regions is in progress
+	AccountOptingInRegions = "OptingInRegions"
+	// AccountOptInRegionEnabled indicates that supported Opt-In regions have been enabled
+	AccountOptInRegionEnabled    = "OptInRegionsEnabled"
 	standardAdminAccessArnPrefix = "arn:aws:iam"
 	adminAccessArnSuffix         = "::aws:policy/AdministratorAccess"
 	iamUserNameUHC               = "osdManagedAdmin"
@@ -74,6 +77,11 @@ const (
 
 	// number of service quota requests we are allowed to open concurrently in AWS
 	MaxOpenQuotaRequests = 20
+
+	// maximum number of regions that AWS allows to be concurrently enabled
+	MaxOptInRegionRequest = 6
+	// maximum number of AWS accounts allowed to enable all regions simultaneously
+	MaxAccountRegionEnablement = 9
 )
 
 // AccountReconciler reconciles a Account object
@@ -106,11 +114,46 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return reconcile.Result{}, err
 	}
 
+	// Retrieve a list of accounts with region enablement in progress for supported Opt-In regions
+	accountList := &awsv1alpha1.AccountList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(awsv1alpha1.AccountCrNamespace),
+	}
+
+	if err = r.Client.List(context.TODO(), accountList, listOpts...); err != nil {
+		if k8serr.IsNotFound(err) {
+			// Request object not found, could have been deleted after reconcile request.
+			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
+			// Return and don't requeue
+			return reconcile.Result{}, nil
+		}
+		// Error reading the object - requeue the request.
+		return reconcile.Result{}, err
+	}
+
+	// since it's not possible to filter on custom field values when listing using the golang client
+	// manual filtering of accounts opting-in is required to ensure the account limit is not reached
+	numberOfAccountsOptingIn := 0
+	for _, account := range accountList.Items {
+		if account.Status.State == "OptingInRegions" {
+			numberOfAccountsOptingIn += 1
+		}
+	}
+
 	configMap, err := utils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
 		return reconcile.Result{}, err
 	}
+
+	var isEnabled = false
+	enabled, err := strconv.ParseBool(configMap.Data["feature.opt_in_regions"])
+	if err != nil {
+		reqLogger.Info("Could not retrieve feature flag 'feature.opt_in_regions' - region Opt-In is disabled")
+	} else {
+		isEnabled = enabled
+	}
+	reqLogger.Info("Is feature.opt_in_regions enabled?", "enabled", isEnabled)
 
 	awsRegion := config.GetDefaultRegion()
 	// We expect this secret to exist in the same namespace Account CR's are created
@@ -367,6 +410,12 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 		}
 
+		optInRegions, ok := configMap.Data["opt-in-regions"]
+		// handles region enablement for supported Opt-In regions
+		if (ok && optInRegions != "" && isEnabled && !currentAcctInstance.Spec.BYOC) && (currentAcctInstance.Status.State == AccountCreating || currentAcctInstance.Status.State == AccountOptingInRegions) {
+			return r.handleOptInRegionEnablement(reqLogger, currentAcctInstance, awsSetupClient, optInRegions, numberOfAccountsOptingIn)
+		}
+
 		err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner)
 
 		if isAwsOptInError(err) {
@@ -407,6 +456,59 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string, numberOfAccountsOptingIn int) (reconcile.Result, error) {
+	// Find out if we support that opt in region
+	regionMap := make(map[string]string)
+	regions := strings.Split(optInRegions, ",")
+	for _, region := range regions {
+		regionName, found := IsSupportedRegion(strings.TrimSpace(region))
+		if found {
+			regionMap[string(regionName)] = strings.TrimSpace(region)
+		}
+	}
+	if currentAcctInstance.Status.OptInRegions == nil && len(regionMap) != 0 {
+		switch utils.DetectDevMode {
+		case utils.DevModeProduction:
+			if numberOfAccountsOptingIn >= MaxAccountRegionEnablement {
+				return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
+			}
+			//updates account status to indicate supported opt-in region are pending enablement
+			utils.SetAccountStatus(currentAcctInstance, "Opting-In Regions", awsv1alpha1.AccountOptingInRegions, AccountOptingInRegions)
+			err := SetOptRegionStatus(reqLogger, regionMap, currentAcctInstance)
+			if err != nil {
+				reqLogger.Error(err, "failed to set account opt-in region status")
+				return reconcile.Result{}, err
+			}
+
+			err = r.statusUpdate(currentAcctInstance)
+			if err != nil {
+				reqLogger.Error(err, "failed to update account status, retrying")
+				return reconcile.Result{}, err
+			}
+
+		default:
+			log.Info("Running in development mode, Skipping Opt-In Region Enablement.")
+		}
+	}
+
+	if currentAcctInstance.HasOpenOptInRegionRequests() {
+		switch utils.DetectDevMode {
+		case utils.DevModeProduction:
+			return GetOptInRegionStatus(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
+		}
+	}
+
+	openCaseCount, _ := currentAcctInstance.GetOptInRequestsByStatus(awsv1alpha1.OptInRequestEnabling)
+
+	if openCaseCount == 0 {
+		reqLogger.Info("All Opt-In Regions have been enabled", "AccountID", currentAcctInstance.Spec.AwsAccountID)
+		utils.SetAccountStatus(currentAcctInstance, "Opting-In Regions", awsv1alpha1.AccountOptInRegionEnabled, AccountOptInRegionEnabled)
+		_ = r.statusUpdate(currentAcctInstance)
+		return reconcile.Result{}, nil
+	}
+	return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
 }
 
 // isAwsOptInError checks weather the error passed in is an instance of an Aws
