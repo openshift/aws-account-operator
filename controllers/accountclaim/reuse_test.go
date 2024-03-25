@@ -6,10 +6,10 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/go-logr/logr"
-	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openshift/aws-account-operator/controllers/accountclaim"
+	"go.uber.org/mock/gomock"
 	//mock "github.com/openshift/aws-account-operator/controllers/accountclaim/mock"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	awsmock "github.com/openshift/aws-account-operator/pkg/awsclient/mock"

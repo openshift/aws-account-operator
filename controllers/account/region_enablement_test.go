@@ -5,11 +5,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/account"
 	"github.com/go-logr/logr"
-	"github.com/golang/mock/gomock"
 	apis "github.com/openshift/aws-account-operator/api"
 	"github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
+	"go.uber.org/mock/gomock"
 	"k8s.io/client-go/kubernetes/scheme"
 	"testing"
 )

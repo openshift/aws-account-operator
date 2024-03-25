@@ -9,12 +9,12 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/organizations"
-	"github.com/golang/mock/gomock"
 	"github.com/google/go-cmp/cmp"
 	apis "github.com/openshift/aws-account-operator/api"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"

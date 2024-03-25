@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/golang/mock/gomock"
 	apis "github.com/openshift/aws-account-operator/api"
 	"github.com/openshift/aws-account-operator/api/v1alpha1"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
@@ -12,6 +11,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"github.com/openshift/aws-account-operator/pkg/utils"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
