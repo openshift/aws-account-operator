@@ -10,7 +10,6 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"github.com/openshift/aws-account-operator/pkg/utils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"time"
@@ -21,8 +20,7 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 
 	regionOptInRequired, err := RegionNeedsOptIn(reqLogger, awsClient, optInRegion.RegionCode)
 	if err != nil {
-		reqLogger.Error(err, "failed retrieving current vCPU quota from AWS")
-		return err
+		reqLogger.Error(err, "failed retrieving region Opt-In status from AWS")
 	}
 
 	// Region enablement is required
@@ -35,8 +33,7 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 		// Checks to see if region enablement was already requested
 		requestStatus, err := checkOptInRegionStatus(reqLogger, awsClient, optInRegion.RegionCode)
 		if err != nil {
-			reqLogger.Error(err, "failed to get quota change history")
-			return err
+			reqLogger.Error(err, "failed to get Opt-In status ")
 		}
 
 		switch requestStatus {
@@ -46,14 +43,12 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 					optInRegion.RegionCode),
 			)
 			optInRegion.Status = awsv1alpha1.OptInRequestEnabled
-			return nil
 		case awsv1alpha1.OptInRequestEnabling:
 			reqLogger.Info(
 				fmt.Sprintf("Region Enablement IN_PROGRESS for for RegionCode [%s]",
 					optInRegion.RegionCode),
 			)
 			optInRegion.Status = awsv1alpha1.OptInRequestEnabling
-			return nil
 		case awsv1alpha1.OptInRequestTodo:
 			submitted, err := enableOptInRegions(reqLogger, awsClient, optInRegion.RegionCode)
 			if err != nil {
@@ -64,8 +59,8 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 					fmt.Sprintf("Opt-IN REQUESTED for RegionCode [%s]",
 						optInRegion.RegionCode),
 				)
+				optInRegion.Status = awsv1alpha1.OptInRequestEnabling
 			}
-			optInRegion.Status = awsv1alpha1.OptInRequestEnabling
 		}
 
 	} else {
@@ -89,7 +84,7 @@ func GetOptInRegionStatus(reqLogger logr.Logger, awsClientBuilder awsclient.IBui
 	currentInFlightCount, inFlightOptInRequests := currentAcctInstance.GetOptInRequestsByStatus(awsv1alpha1.OptInRequestEnabling)
 	_, onlyOpenOptInRequests := currentAcctInstance.GetOptInRequestsByStatus(awsv1alpha1.OptInRequestTodo)
 	if currentInFlightCount <= MaxOptInRegionRequest {
-		reqLogger.Info(fmt.Sprintf("currentInFlightCount (%d) <= maxOpenQuotaRequests (%d)", currentInFlightCount, MaxOptInRegionRequest))
+		reqLogger.Info(fmt.Sprintf("currentInFlightCount (%d) <= maxOpenOptInRegionRequests (%d)", currentInFlightCount, MaxOptInRegionRequest))
 		var maxRequestsReached = false
 		for region, onlyOpenOptInRequest := range onlyOpenOptInRequests {
 			if maxRequestsReached {
@@ -106,7 +101,7 @@ func GetOptInRegionStatus(reqLogger logr.Logger, awsClientBuilder awsclient.IBui
 			}
 		}
 	}
-	reqLogger.Info("Handling quotarequets", "current-in-flight-count", currentInFlightCount)
+	reqLogger.Info("Handling region request", "current-in-flight-count", currentInFlightCount)
 	err := updateOptInRegionRequests(reqLogger, awsClientBuilder, awsSetupClient, currentAcctInstance, client, inFlightOptInRequests, currentInFlightCount)
 	if err != nil {
 		return reconcile.Result{}, err
@@ -135,13 +130,6 @@ func updateOptInRegionRequests(reqLogger logr.Logger, awsClientBuilder awsclient
 		}
 
 	}
-
-	deniedCount, _ := currentAcctInstance.GetOptInRequestsByStatus(awsv1alpha1.OptInRequestDenied) //TODO is this needed
-
-	if deniedCount > 0 {
-		utils.SetAccountStatus(currentAcctInstance, "Opt-In Region Request got denied", awsv1alpha1.AccountFailed, AccountFailed)
-	}
-
 	return nil
 }
 
@@ -271,7 +259,6 @@ func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, r
 
 		err := retry.Do(
 			func() (err error) {
-				// Get a (possibly paginated) list of quota change requests by quota
 				result, err = awsClient.GetRegionOptStatus(&account.GetRegionOptStatusInput{
 					RegionName: aws.String(regionCode),
 				})
@@ -304,7 +291,7 @@ func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, r
 			return awsv1alpha1.OptInRequestTodo, err
 		}
 
-		if optInRequestMatches(result, regionCode) {
+		if result.RegionOptStatus != nil {
 			switch *result.RegionOptStatus {
 			case "ENABLING":
 				return awsv1alpha1.OptInRequestEnabling, nil
@@ -316,18 +303,6 @@ func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, r
 	}
 }
 
-func optInRequestMatches(change *account.GetRegionOptStatusOutput, regionCode string) bool {
-	if *change.RegionName != regionCode {
-		return false
-	}
-
-	if *change.RegionOptStatus != "ENABLED" {
-		return false
-	}
-
-	return true
-}
-
 func IsSupportedRegion(region string) (awsv1alpha1.SupportedOptInRegions, bool) {
 	r := awsv1alpha1.SupportedOptInRegions(region)
 
@@ -336,12 +311,19 @@ func IsSupportedRegion(region string) (awsv1alpha1.SupportedOptInRegions, bool) 
 		awsv1alpha1.MelbourneRegion: "Melbourne",
 		awsv1alpha1.HyderabadRegion: "Hyderabad",
 		awsv1alpha1.MilanRegion:     "Milan",
+
+		awsv1alpha1.JakartaRegion:  "Jakarta",
+		awsv1alpha1.ZurichRegion:   "Zurich",
+		awsv1alpha1.HongKongRegion: "HongKong",
+		awsv1alpha1.SpainRegion:    "Spain",
+		awsv1alpha1.BahrainRegion:  "Bahrain",
+		awsv1alpha1.UAERegion:      "UAE",
 	}
 	v, found := regionMap[r]
 	return v, found
 }
 func SetOptRegionStatus(reqLogger logr.Logger, optInRegions map[string]string, currentAcctInstance *awsv1alpha1.Account) error {
-	// TODO add debug statement
+	reqLogger.Info("Setting Opt-In region status to todo of all Supported Opt-In regions")
 	currentAcctInstance.Status.OptInRegions = make(awsv1alpha1.OptInRegions)
 	for key, value := range optInRegions {
 		currentAcctInstance.Status.OptInRegions[key] = &awsv1alpha1.OptInRegionStatus{

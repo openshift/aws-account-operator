@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"k8s.io/apimachinery/pkg/fields"
 	"regexp"
 	"strconv"
 	"strings"
@@ -117,18 +116,29 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	// Retrieve a list of accounts with region enablement in progress for supported Opt-In regions
 	accountList := &awsv1alpha1.AccountList{}
-	fieldSelector := fields.OneTermEqualSelector("status.state", "OptingInRegions")
 	listOpts := []client.ListOption{
 		client.InNamespace(awsv1alpha1.AccountCrNamespace),
-		client.MatchingFieldsSelector{fieldSelector},
 	}
-	//_ = r.Client.List(context.TODO(), accountList, listOpts...)
+
 	if err = r.Client.List(context.TODO(), accountList, listOpts...); err != nil {
-		// TODO error handling
 		if k8serr.IsNotFound(err) {
+			// Request object not found, could have been deleted after reconcile request.
+			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
+			// Return and don't requeue
+			return reconcile.Result{}, nil
+		}
+		// Error reading the object - requeue the request.
+		return reconcile.Result{}, err
+	}
+
+	// since it's not possible to filter on custom field values when listing using the golang client
+	// manual filtering of accounts opting-in is required to ensure the account limit is not reached
+	numberOfAccountsOptingIn := 0
+	for _, account := range accountList.Items {
+		if account.Status.State == "OptingInRegions" {
+			numberOfAccountsOptingIn += 1
 		}
 	}
-	numberOfAccountsOptingIn := len(accountList.Items)
 
 	configMap, err := utils.GetOperatorConfigMap(r.Client)
 	if err != nil {
@@ -453,16 +463,16 @@ func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, c
 	regionMap := make(map[string]string)
 	regions := strings.Split(optInRegions, ",")
 	for _, region := range regions {
-		regionName, found := IsSupportedRegion(region)
+		regionName, found := IsSupportedRegion(strings.TrimSpace(region))
 		if found {
-			regionMap[string(regionName)] = region
+			regionMap[string(regionName)] = strings.TrimSpace(region)
 
 		}
 	}
 	if currentAcctInstance.Status.OptInRegions == nil && len(regionMap) != 0 {
 		switch utils.DetectDevMode {
 		case utils.DevModeProduction:
-			if numberOfAccountsOptingIn > MaxAccountRegionEnablement {
+			if numberOfAccountsOptingIn >= MaxAccountRegionEnablement {
 				return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
 			}
 			//updates account status to indicate supported opt-in region are pending enablement

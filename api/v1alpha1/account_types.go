@@ -94,7 +94,6 @@ const (
 	OptInRequestTodo     OptInRequestStatus = "TODO"
 	OptInRequestEnabling OptInRequestStatus = "ENABLING"
 	OptInRequestEnabled  OptInRequestStatus = "ENABLED"
-	OptInRequestDenied   OptInRequestStatus = "DENIED"
 )
 
 type SupportedOptInRegions string
@@ -104,6 +103,12 @@ const (
 	MelbourneRegion SupportedOptInRegions = "ap-southeast-4"
 	HyderabadRegion SupportedOptInRegions = "ap-south-2"
 	MilanRegion     SupportedOptInRegions = "eu-south-1"
+	ZurichRegion    SupportedOptInRegions = "eu-central-2"
+	HongKongRegion  SupportedOptInRegions = "ap-east-1"
+	UAERegion       SupportedOptInRegions = "me-central-1"
+	SpainRegion     SupportedOptInRegions = "eu-south-2"
+	BahrainRegion   SupportedOptInRegions = "me-south-1"
+	JakartaRegion   SupportedOptInRegions = "ap-southeast-3"
 )
 
 // AccountStatus defines the observed state of Account
