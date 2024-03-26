@@ -1961,7 +1961,7 @@ var _ = Describe("Account Controller", func() {
 						&acct.EnableRegionOutput{},
 						nil,
 					)
-					_, err := r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions, 0)
+					_, err := r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions)
 					Expect(err).To(Not(HaveOccurred()))
 				})
 				It("Handles unsupported opt-in region", func() {
@@ -1978,8 +1978,12 @@ var _ = Describe("Account Controller", func() {
 						return subClient, &sts.AssumeRoleOutput{}, nil
 					}
 					optInRegions := "ap-east-2"
-					_, err := r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions, 0)
-					Expect(err).To(Not(HaveOccurred()))
+					subClient.EXPECT().GetRegionOptStatus(gomock.Any()).Return(
+						&acct.GetRegionOptStatusOutput{},
+						nil)
+
+					_, err = r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions)
+					Expect(err).ToNot(HaveOccurred())
 				})
 			})
 			When("Service quotas are defined for the account", func() {

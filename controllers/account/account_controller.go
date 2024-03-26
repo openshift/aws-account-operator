@@ -114,46 +114,23 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return reconcile.Result{}, err
 	}
 
-	// Retrieve a list of accounts with region enablement in progress for supported Opt-In regions
-	accountList := &awsv1alpha1.AccountList{}
-	listOpts := []client.ListOption{
-		client.InNamespace(awsv1alpha1.AccountCrNamespace),
-	}
-
-	if err = r.Client.List(context.TODO(), accountList, listOpts...); err != nil {
-		if k8serr.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-			// Return and don't requeue
-			return reconcile.Result{}, nil
-		}
-		// Error reading the object - requeue the request.
-		return reconcile.Result{}, err
-	}
-
-	// since it's not possible to filter on custom field values when listing using the golang client
-	// manual filtering of accounts opting-in is required to ensure the account limit is not reached
-	numberOfAccountsOptingIn := 0
-	for _, account := range accountList.Items {
-		if account.Status.State == "OptingInRegions" {
-			numberOfAccountsOptingIn += 1
-		}
-	}
-
 	configMap, err := utils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
 		return reconcile.Result{}, err
 	}
 
-	var isEnabled = false
-	enabled, err := strconv.ParseBool(configMap.Data["feature.opt_in_regions"])
+	isOptInRegionFeatureEnabled, err := GetFeatureFlagValue(configMap, "feature.opt_in_regions")
 	if err != nil {
 		reqLogger.Info("Could not retrieve feature flag 'feature.opt_in_regions' - region Opt-In is disabled")
-	} else {
-		isEnabled = enabled
+		isOptInRegionFeatureEnabled = false
 	}
-	reqLogger.Info("Is feature.opt_in_regions enabled?", "enabled", isEnabled)
+	reqLogger.Info("Is feature.opt_in_regions enabled?", "enabled", isOptInRegionFeatureEnabled)
+
+	optInRegions, ok := configMap.Data["opt-in-regions"]
+	if !ok {
+		reqLogger.Info("Could not retrieve opt-in-regions from configMap")
+	}
 
 	awsRegion := config.GetDefaultRegion()
 	// We expect this secret to exist in the same namespace Account CR's are created
@@ -346,6 +323,11 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		}
 	}
 
+	// Handles account region enablement for non-BYOC accounts
+	if (currentAcctInstance.ReadyForRegionEnablement() || currentAcctInstance.IsEnablingOptInRegions()) && isOptInRegionFeatureEnabled && optInRegions != "" {
+		return r.handleOptInRegionEnablement(reqLogger, currentAcctInstance, awsSetupClient, optInRegions)
+	}
+
 	// Get the owner of the Red Hat amis from the configmap
 	amiOwner, ok := configMap.Data["ami-owner"]
 	if !ok {
@@ -410,12 +392,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 		}
 
-		optInRegions, ok := configMap.Data["opt-in-regions"]
-		// handles region enablement for supported Opt-In regions
-		if (ok && optInRegions != "" && isEnabled && !currentAcctInstance.Spec.BYOC) && (currentAcctInstance.Status.State == AccountCreating || currentAcctInstance.Status.State == AccountOptingInRegions) {
-			return r.handleOptInRegionEnablement(reqLogger, currentAcctInstance, awsSetupClient, optInRegions, numberOfAccountsOptingIn)
-		}
-
 		err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner)
 
 		if isAwsOptInError(err) {
@@ -458,29 +434,30 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	return reconcile.Result{}, nil
 }
 
-func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string, numberOfAccountsOptingIn int) (reconcile.Result, error) {
-	// Find out if we support that opt in region
-	regionMap := make(map[string]string)
-	regions := strings.Split(optInRegions, ",")
-	for _, region := range regions {
-		regionName, found := IsSupportedRegion(strings.TrimSpace(region))
-		if found {
-			regionMap[string(regionName)] = strings.TrimSpace(region)
-		}
+func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string) (reconcile.Result, error) {
+	numberOfAccountsOptingIn, err := CalculateOptingInRegionAccounts(r.Client)
+	if err != nil {
+		return reconcile.Result{}, nil
 	}
-	if currentAcctInstance.Status.OptInRegions == nil && len(regionMap) != 0 {
+
+	if currentAcctInstance.Status.OptInRegions == nil {
 		switch utils.DetectDevMode {
 		case utils.DevModeProduction:
 			if numberOfAccountsOptingIn >= MaxAccountRegionEnablement {
 				return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
 			}
+			var regionList []string
+			regions := strings.Split(optInRegions, ",")
+			for _, region := range regions {
+				regionList = append(regionList, strings.TrimSpace(region))
+			}
 			//updates account status to indicate supported opt-in region are pending enablement
-			utils.SetAccountStatus(currentAcctInstance, "Opting-In Regions", awsv1alpha1.AccountOptingInRegions, AccountOptingInRegions)
-			err := SetOptRegionStatus(reqLogger, regionMap, currentAcctInstance)
+			err = SetOptRegionStatus(reqLogger, regionList, currentAcctInstance)
 			if err != nil {
 				reqLogger.Error(err, "failed to set account opt-in region status")
 				return reconcile.Result{}, err
 			}
+			utils.SetAccountStatus(currentAcctInstance, "Opting-In Regions", awsv1alpha1.AccountOptingInRegions, AccountOptingInRegions)
 
 			err = r.statusUpdate(currentAcctInstance)
 			if err != nil {

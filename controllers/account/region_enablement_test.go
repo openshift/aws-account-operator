@@ -33,15 +33,13 @@ func TestAccountReconciler_HandleOptInRegionRequests(t *testing.T) {
 		{
 			name: "Valid Region Enablement Request",
 			optInRegion: &v1alpha1.OptInRegionStatus{
-				RegionCode: "af-south-1",
-				Status:     v1alpha1.OptInRequestTodo,
+				Status: v1alpha1.OptInRequestTodo,
 			},
 			currentAcctInstance: &v1alpha1.Account{
 				Status: v1alpha1.AccountStatus{
 					OptInRegions: v1alpha1.OptInRegions{
-						"CapeTown": &v1alpha1.OptInRegionStatus{
-							RegionCode: "af-south-1",
-							Status:     v1alpha1.OptInRequestTodo,
+						"af-south-1": &v1alpha1.OptInRegionStatus{
+							Status: v1alpha1.OptInRequestTodo,
 						},
 					},
 				},
@@ -80,7 +78,7 @@ func TestAccountReconciler_HandleOptInRegionRequests(t *testing.T) {
 				nil,
 			)
 
-			if err := HandleOptInRegionRequests(test.reqLogger, mockAWSClient, test.optInRegion, test.currentAcctInstance); (err != nil) != test.wantErr {
+			if err := HandleOptInRegionRequests(test.reqLogger, mockAWSClient, "af-south-1", test.optInRegion, test.currentAcctInstance); (err != nil) != test.wantErr {
 				t.Errorf("AccountReconciler.HandleOptInRegionRequests() error = %v, wantErr %v", err, test.wantErr)
 			}
 		})

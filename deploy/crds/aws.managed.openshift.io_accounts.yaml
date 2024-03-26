@@ -133,12 +133,9 @@ spec:
               optInRegions:
                 additionalProperties:
                   properties:
-                    regionCode:
-                      type: string
                     status:
                       type: string
                   required:
-                  - regionCode
                   - status
                   type: object
                 type: object
