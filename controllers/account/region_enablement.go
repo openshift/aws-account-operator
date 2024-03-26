@@ -105,7 +105,7 @@ func GetOptInRegionStatus(reqLogger logr.Logger, awsClientBuilder awsclient.IBui
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	return reconcile.Result{RequeueAfter: 30 * time.Second, Requeue: true}, err
+	return reconcile.Result{RequeueAfter: 60 * time.Second, Requeue: true}, err
 }
 
 func updateOptInRegionRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, optInRequests awsv1alpha1.OptInRegions, count int) error {
@@ -292,7 +292,7 @@ func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, r
 				return awsv1alpha1.OptInRequestEnabling, nil
 			case "ENABLED", "ENABLED_BY_DEFAULT":
 				return awsv1alpha1.OptInRequestEnabled, nil
-			case "DISABLED":
+			case "DISABLED", "DISABLING":
 				return awsv1alpha1.OptInRequestTodo, nil
 			}
 		}
