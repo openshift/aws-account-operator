@@ -10,11 +10,9 @@ import (
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -348,15 +346,4 @@ func CalculateOptingInRegionAccounts(c client.Client) (int, error) {
 		}
 	}
 	return numberOfAccountsOptingIn, nil
-}
-
-func GetFeatureFlagValue(configMap *corev1.ConfigMap, key string) (bool, error) {
-	if valStr, ok := configMap.Data[key]; ok {
-		enabled, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return false, err
-		}
-		return enabled, nil
-	}
-	return false, nil // Default to false if key not found
 }

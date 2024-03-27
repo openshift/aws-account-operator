@@ -291,6 +291,18 @@ func GetEnvironmentBool(key string, fallback bool) bool {
 	return cast
 }
 
+// GetFeatureFlagValue returns feature flag value from configMap data
+func GetFeatureFlagValue(configMap *corev1.ConfigMap, key string) (bool, error) {
+	if valStr, ok := configMap.Data[key]; ok {
+		enabled, err := strconv.ParseBool(valStr)
+		if err != nil {
+			return false, err
+		}
+		return enabled, nil
+	}
+	return false, nil // Default to false if key not found
+}
+
 func DoNotRequeue() (reconcile.Result, error) {
 	return reconcile.Result{Requeue: false}, nil
 }

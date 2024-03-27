@@ -120,7 +120,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return reconcile.Result{}, err
 	}
 
-	isOptInRegionFeatureEnabled, err := GetFeatureFlagValue(configMap, "feature.opt_in_regions")
+	isOptInRegionFeatureEnabled, err := utils.GetFeatureFlagValue(configMap, "feature.opt_in_regions")
 	if err != nil {
 		reqLogger.Info("Could not retrieve feature flag 'feature.opt_in_regions' - region Opt-In is disabled")
 		isOptInRegionFeatureEnabled = false
