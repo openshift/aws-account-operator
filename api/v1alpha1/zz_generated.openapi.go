@@ -920,10 +920,23 @@ func schema_openshift_aws_account_operator_api_v1alpha1_AccountStatus(ref common
 							},
 						},
 					},
+					"optInRegions": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/openshift/aws-account-operator/api/v1alpha1.OptInRegionStatus"),
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/api/v1alpha1.AccountCondition", "github.com/openshift/aws-account-operator/api/v1alpha1.ServiceQuotaStatus"},
+			"github.com/openshift/aws-account-operator/api/v1alpha1.AccountCondition", "github.com/openshift/aws-account-operator/api/v1alpha1.OptInRegionStatus", "github.com/openshift/aws-account-operator/api/v1alpha1.ServiceQuotaStatus"},
 	}
 }

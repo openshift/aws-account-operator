@@ -16,6 +16,8 @@ package awsclient
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go/service/account"
+	"github.com/aws/aws-sdk-go/service/account/accountiface"
 	"net/http"
 	"time"
 
@@ -58,6 +60,10 @@ const (
 
 // Client is a wrapper object for actual AWS SDK clients to allow for easier testing.
 type Client interface {
+	//Account
+	EnableRegion(*account.EnableRegionInput) (*account.EnableRegionOutput, error)
+	GetRegionOptStatus(input *account.GetRegionOptStatusInput) (*account.GetRegionOptStatusOutput, error)
+
 	//EC2
 	RunInstances(*ec2.RunInstancesInput) (*ec2.Reservation, error)
 	DescribeInstanceStatus(*ec2.DescribeInstanceStatusInput) (*ec2.DescribeInstanceStatusOutput, error)
@@ -155,6 +161,7 @@ type Client interface {
 }
 
 type awsClient struct {
+	acctClient          accountiface.AccountAPI
 	ec2Client           ec2iface.EC2API
 	iamClient           iamiface.IAMAPI
 	orgClient           organizationsiface.OrganizationsAPI
@@ -173,6 +180,14 @@ type NewAwsClientInput struct {
 	AwsRegion               string
 	SecretName              string
 	NameSpace               string
+}
+
+func (c *awsClient) EnableRegion(input *account.EnableRegionInput) (*account.EnableRegionOutput, error) {
+	return c.acctClient.EnableRegion(input)
+}
+
+func (c *awsClient) GetRegionOptStatus(input *account.GetRegionOptStatusInput) (*account.GetRegionOptStatusOutput, error) {
+	return c.acctClient.GetRegionOptStatus(input)
 }
 
 func (c *awsClient) RunInstances(input *ec2.RunInstancesInput) (*ec2.Reservation, error) {
@@ -566,6 +581,7 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 	}
 
 	return &awsClient{
+		acctClient:          account.New(s),
 		iamClient:           iam.New(s),
 		ec2Client:           ec2.New(ec2Sess),
 		orgClient:           organizations.New(s),

@@ -82,6 +82,21 @@ const (
 	Elasticloadbalancing SupportedServiceQuotaServices = "elasticloadbalancing"
 )
 
+type OptInRegions map[string]*OptInRegionStatus
+
+type OptInRegionStatus struct {
+	Status OptInRequestStatus `json:"status"`
+}
+type OptInRequestStatus string
+
+const (
+	OptInRequestTodo     OptInRequestStatus = "TODO"
+	OptInRequestEnabling OptInRequestStatus = "ENABLING"
+	OptInRequestEnabled  OptInRequestStatus = "ENABLED"
+)
+
+type SupportedOptInRegions string
+
 // AccountStatus defines the observed state of Account
 // +k8s:openapi-gen=true
 type AccountStatus struct {
@@ -94,6 +109,7 @@ type AccountStatus struct {
 	RotateConsoleCredentials bool                  `json:"rotateConsoleCredentials,omitempty"`
 	Reused                   bool                  `json:"reused,omitempty"`
 	RegionalServiceQuotas    RegionalServiceQuotas `json:"regionalServiceQuotas,omitempty"`
+	OptInRegions             OptInRegions          `json:"optInRegions,omitempty"`
 }
 
 // AccountCondition contains details for the current condition of a AWS account
@@ -152,6 +168,10 @@ const (
 	// AccountInitializingRegions indicates we've kicked off the process of creating and terminating
 	// instances in all supported regions
 	AccountInitializingRegions = "InitializingRegions"
+	// AccountOptingInRegions indicates region enablement for supported Opt-In regions is in progress
+	AccountOptingInRegions AccountConditionType = "OptingInRegions"
+	// AccountOptInRegionEnabled indicates that supported Opt-In regions have been enabled
+	AccountOptInRegionEnabled AccountConditionType = "OptInRegionsEnabled"
 )
 
 // +genclient
@@ -217,6 +237,35 @@ func (a *Account) HasSupportCaseID() bool {
 	return a.Status.SupportCaseID != ""
 }
 
+// HasOpenOptInRegionRequests returns true if an account has any supported regions have not been enabled
+func (a *Account) HasOpenOptInRegionRequests() bool {
+	for _, region := range a.Status.OptInRegions {
+		if region.Status != OptInRequestEnabled {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *Account) GetOptInRequestsByStatus(stati OptInRequestStatus) (int, OptInRegions) {
+	var returnRegionalOptInRequest = make(OptInRegions)
+	var count = 0
+	for region, optInRegionStatus := range a.Status.OptInRegions {
+		if optInRegionStatus.Status == stati {
+			_, ok := returnRegionalOptInRequest[region]
+			if !ok {
+				returnRegionalOptInRequest[region] = &OptInRegionStatus{
+					Status: optInRegionStatus.Status,
+				}
+			} else {
+				returnRegionalOptInRequest[region].Status = optInRegionStatus.Status
+			}
+			count++
+		}
+	}
+	return count, returnRegionalOptInRequest
+}
+
 // HasOpenQuotaIncreaseRequests returns true if an account has any open quota increase requests
 func (a *Account) HasOpenQuotaIncreaseRequests() bool {
 	for _, accountServiceQuotas := range a.Status.RegionalServiceQuotas {
@@ -260,6 +309,16 @@ func (a *Account) IsReusedAccountMissingIAMUser() bool {
 // IsPendingVerification returns true if the account is in a PendingVerification state
 func (a *Account) IsPendingVerification() bool {
 	return a.Status.State == string(AccountPendingVerification)
+}
+
+// IsOptingInRegions returns true if an account is in a OptingInRegions state
+func (a *Account) IsOptingInRegions() bool {
+	return a.Status.State == string(AccountOptingInRegions)
+}
+
+// HasOptedInRegions returns true if an account is in a OptInRegionsEnabled state
+func (a *Account) HasOptedInRegions() bool {
+	return a.Status.State == string(AccountOptInRegionEnabled)
 }
 
 // IsReady returns true if an account is ready
@@ -341,12 +400,25 @@ func (a *Account) IsBYOCAndNotReady() bool {
 // accout state is creating, and has not been claimed
 func (a *Account) ReadyForInitialization() bool {
 	return a.IsBYOCAndNotReady() ||
-		a.IsUnclaimedAndIsCreating()
+		a.IsUnclaimedAndIsCreating() ||
+		a.IsUnclaimedAndHasOptedInRegion()
+}
+
+// ReadyForRegionEnablement returns if account is not BYOC Account and the state is Creating and unclaimed
+func (a *Account) ReadyForRegionEnablement() bool {
+	return a.IsUnclaimedAndIsCreating() &&
+		!a.IsBYOC()
 }
 
 // IsUnclaimedAndHasNoState returns true if account has not set state and has not been claimed
 func (a *Account) IsUnclaimedAndHasNoState() bool {
 	return !a.HasState() &&
+		!a.IsClaimed()
+}
+
+// IsUnclaimedAndHasOptedInRegion returns true if account state is OptInRegionsEnabled and has not been claimed
+func (a *Account) IsUnclaimedAndHasOptedInRegion() bool {
+	return a.HasOptedInRegions() &&
 		!a.IsClaimed()
 }
 
@@ -359,6 +431,11 @@ func (a *Account) IsUnclaimedAndIsCreating() bool {
 // IsInitializingRegions returns true if the account state is InitalizingRegions
 func (a *Account) IsInitializingRegions() bool {
 	return a.Status.State == AccountInitializingRegions
+}
+
+// IsEnablingOptInRegions returns true if the account state is OptingInRegions
+func (a *Account) IsEnablingOptInRegions() bool {
+	return a.Status.State == string(AccountOptingInRegions)
 }
 
 // IsProgressing returns true if the account state is Creating, Pending Verification, or InitializingRegions
