@@ -2,6 +2,7 @@ package account
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/avast/retry-go"
 	"github.com/aws/aws-sdk-go/aws"
@@ -138,6 +139,7 @@ func updateOptInRegionRequests(reqLogger logr.Logger, awsClientBuilder awsclient
 func enableOptInRegions(reqLogger logr.Logger, client awsclient.Client, regionCode string) (bool, error) {
 	var result *account.EnableRegionOutput
 	var alreadySubmitted bool
+	var aerr awserr.Error
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
@@ -149,7 +151,7 @@ func enableOptInRegions(reqLogger logr.Logger, client awsclient.Client, regionCo
 				RegionName: aws.String(regionCode),
 			})
 			if err != nil {
-				if aerr, ok := err.(awserr.Error); ok {
+				if errors.As(err, &aerr) {
 					if aerr.Code() == "ResourceAlreadyExistsException" {
 						alreadySubmitted = true
 						return nil
@@ -160,7 +162,7 @@ func enableOptInRegions(reqLogger logr.Logger, client awsclient.Client, regionCo
 		},
 
 		retry.RetryIf(func(err error) bool {
-			if aerr, ok := err.(awserr.Error); ok {
+			if errors.As(err, &aerr) {
 				switch aerr.Code() {
 				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
 				case "AccessDeniedException":
@@ -202,6 +204,7 @@ func enableOptInRegions(reqLogger logr.Logger, client awsclient.Client, regionCo
 
 func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode string) (bool, error) {
 	var result *account.GetRegionOptStatusOutput
+	var aerr awserr.Error
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
@@ -217,7 +220,7 @@ func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode
 
 		// Retry if we receive some specific errors: access denied, rate limit or server-side error
 		retry.RetryIf(func(err error) bool {
-			if aerr, ok := err.(awserr.Error); ok {
+			if errors.As(err, &aerr) {
 				switch aerr.Code() {
 				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
 				case "AccessDeniedException":
@@ -249,7 +252,7 @@ func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode
 }
 
 func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, regionCode string) (awsv1alpha1.OptInRequestStatus, error) {
-
+	var aerr awserr.Error
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
 	retry.DefaultDelay = 3 * time.Second
@@ -269,7 +272,7 @@ func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, r
 
 			// Retry if we receive some specific errors: access denied, rate limit or server-side error
 			retry.RetryIf(func(err error) bool {
-				if aerr, ok := err.(awserr.Error); ok {
+				if errors.As(err, &aerr) {
 					switch aerr.Code() {
 					// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
 					case "AccessDeniedException":

@@ -78,9 +78,9 @@ const (
 	// number of service quota requests we are allowed to open concurrently in AWS
 	MaxOpenQuotaRequests = 20
 
-	// maximum number of regions that AWS allows to be concurrently enabled
+	// MaxOptInRegionRequest maximum number of regions that AWS allows to be concurrently enabled
 	MaxOptInRegionRequest = 6
-	// maximum number of AWS accounts allowed to enable all regions simultaneously
+	// MaxAccountRegionEnablement maximum number of AWS accounts allowed to enable all regions simultaneously
 	MaxAccountRegionEnablement = 9
 )
 
