@@ -4,331 +4,338 @@ metadata:
   name: olm-artifacts-template
 
 parameters:
-- name: REGISTRY_IMG
-  required: true
-- name: CHANNEL
-  value: staging
-- name: IMAGE_DIGEST
-  required: true
-- name: ACCOUNT_LIMIT
-  required: true
-- name: ROOT_OU_ID
-  required: true
-- name: BASE_OU_ID
-  required: true
-- name: ACCOUNT_POOL_SIZE
-  required: true
-- name: ACCOUNT_POOL_NAME
-  required: true
-- name: ACCOUNT_POOL_CONFIG
-  required: true
-- name: STS_JUMP_ROLE
-  required: true
-- name: SUPPORT_JUMP_ROLE
-  required: true
-- name: SHARD_NAME
-  required: true
-- name: AWS_MANAGED_TAGS
-  required: false
-- name: MAXCONCURRENTRECONCILES_ACCOUNT
-  value: "1"
-- name: MAXCONCURRENTRECONCILES_ACCOUNTVALIDATION
-  value: "1"
-- name: MAXCONCURRENTRECONCILES_ACCOUNTPOOLVALIDATION
-  value: "1"
-- name: MAXCONCURRENTRECONCILES_ACCOUNTCLAIM
-  value: "1"
-- name: MAXCONCURRENTRECONCILES_ACCOUNTPOOL
-  value: "1"
-- name: MAXCONCURRENTRECONCILES_AWSFEDERATEDACCOUNTACCESS
-  value: "1"
-- name: MAXCONCURRENTRECONCILES_AWSFEDERATEDROLE
-  value: "1"
-- name: FEDRAMP
-  required: false
-  value: "false"
-- name: FEATURE_VALIDATE_MOVE_ACCOUNT
-  required: false
-  value: "false"
-- name: FEATURE_VALIDATE_TAG_ACCOUNT
-  required: false
-  value: "false"
-- name: FEATURE_VALIDATE_DELETE_ACCOUNT
-  required: false
-  value: "false"
-- name: FEATURE_ACCOUNTPOOL_VALIDATION
-  required: false
-  value: "false"
-- name: FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN
-  required: false
-  value: "false"
-- name: AMIOWNER
-  require: false
-  value: "309956199498"
+  - name: REGISTRY_IMG
+    required: true
+  - name: CHANNEL
+    value: staging
+  - name: IMAGE_DIGEST
+    required: true
+  - name: ACCOUNT_LIMIT
+    required: true
+  - name: ROOT_OU_ID
+    required: true
+  - name: BASE_OU_ID
+    required: true
+  - name: ACCOUNT_POOL_SIZE
+    required: true
+  - name: ACCOUNT_POOL_NAME
+    required: true
+  - name: ACCOUNT_POOL_CONFIG
+    required: true
+  - name: STS_JUMP_ROLE
+    required: true
+  - name: SUPPORT_JUMP_ROLE
+    required: true
+  - name: SHARD_NAME
+    required: true
+  - name: AWS_MANAGED_TAGS
+    required: false
+  - name: MAXCONCURRENTRECONCILES_ACCOUNT
+    value: "1"
+  - name: MAXCONCURRENTRECONCILES_ACCOUNTVALIDATION
+    value: "1"
+  - name: MAXCONCURRENTRECONCILES_ACCOUNTPOOLVALIDATION
+    value: "1"
+  - name: MAXCONCURRENTRECONCILES_ACCOUNTCLAIM
+    value: "1"
+  - name: MAXCONCURRENTRECONCILES_ACCOUNTPOOL
+    value: "1"
+  - name: MAXCONCURRENTRECONCILES_AWSFEDERATEDACCOUNTACCESS
+    value: "1"
+  - name: MAXCONCURRENTRECONCILES_AWSFEDERATEDROLE
+    value: "1"
+  - name: FEDRAMP
+    required: false
+    value: "false"
+  - name: FEATURE_VALIDATE_MOVE_ACCOUNT
+    required: false
+    value: "false"
+  - name: FEATURE_VALIDATE_TAG_ACCOUNT
+    required: false
+    value: "false"
+  - name: FEATURE_VALIDATE_DELETE_ACCOUNT
+    required: false
+    value: "false"
+  - name: FEATURE_ACCOUNTPOOL_VALIDATION
+    required: false
+    value: "false"
+  - name: FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN
+    required: false
+    value: "false"
+  - name: FEATURE_OPT_IN_REGIONS
+    required: false
+    value: "false"
+  - name: AMIOWNER
+    require: false
+    value: "309956199498"
+  - name: OPT_IN_REGIONS
+    required: "false"
 
 objects:
-- apiVersion: operators.coreos.com/v1alpha1
-  kind: CatalogSource
-  metadata:
-    name: aws-account-operator-catalog
-  spec:
-    sourceType: grpc
-    grpcPodConfig:
-      securityContextConfig: restricted
-    image: ${REGISTRY_IMG}@${IMAGE_DIGEST}
-    displayName: aws-account-operator Registry
-    publisher: SRE
+  - apiVersion: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    metadata:
+      name: aws-account-operator-catalog
+    spec:
+      sourceType: grpc
+      grpcPodConfig:
+        securityContextConfig: restricted
+      image: ${REGISTRY_IMG}@${IMAGE_DIGEST}
+      displayName: aws-account-operator Registry
+      publisher: SRE
 
-- apiVersion: operators.coreos.com/v1alpha2
-  kind: OperatorGroup
-  metadata:
-    name: aws-account-operator-og
-  spec:
-    targetNamespaces:
-    - aws-account-operator
+  - apiVersion: operators.coreos.com/v1alpha2
+    kind: OperatorGroup
+    metadata:
+      name: aws-account-operator-og
+    spec:
+      targetNamespaces:
+        - aws-account-operator
 
-- apiVersion: operators.coreos.com/v1alpha1
-  kind: Subscription
-  metadata:
-    name: aws-account-operator
-  spec:
-    channel: ${CHANNEL}
-    name: aws-account-operator
-    source: aws-account-operator-catalog
-    sourceNamespace: aws-account-operator
+  - apiVersion: operators.coreos.com/v1alpha1
+    kind: Subscription
+    metadata:
+      name: aws-account-operator
+    spec:
+      channel: ${CHANNEL}
+      name: aws-account-operator
+      source: aws-account-operator-catalog
+      sourceNamespace: aws-account-operator
 
-- apiVersion: v1
-  kind: ConfigMap
-  metadata:
-    name: aws-account-operator-configmap
-    namespace: aws-account-operator
-  data:
-    account-limit: "${ACCOUNT_LIMIT}"
-    root: ${ROOT_OU_ID}
-    base: ${BASE_OU_ID}
-    sts-jump-role: ${STS_JUMP_ROLE}
-    support-jump-role: ${SUPPORT_JUMP_ROLE}
-    shard-name: ${SHARD_NAME}
-    aws-managed-tags: "${AWS_MANAGED_TAGS}"
-    accountpool: "${ACCOUNT_POOL_CONFIG}"
-    MaxConcurrentReconciles.account: "${MAXCONCURRENTRECONCILES_ACCOUNT}"
-    MaxConcurrentReconciles.accountvalidation: "${MAXCONCURRENTRECONCILES_ACCOUNTVALIDATION}"
-    MaxConcurrentReconciles.accountpoolvalidation: "${MAXCONCURRENTRECONCILES_ACCOUNTPOOLVALIDATION}"
-    MaxConcurrentReconciles.accountclaim: "${MAXCONCURRENTRECONCILES_ACCOUNTCLAIM}"
-    MaxConcurrentReconciles.accountpool: "${MAXCONCURRENTRECONCILES_ACCOUNTPOOL}"
-    MaxConcurrentReconciles.awsfederatedaccountaccess: "${MAXCONCURRENTRECONCILES_AWSFEDERATEDACCOUNTACCESS}"
-    MaxConcurrentReconciles.awsfederatedrole: "${MAXCONCURRENTRECONCILES_AWSFEDERATEDROLE}"
-    ami-owner: "${AMIOWNER}"
-    fedramp: "${FEDRAMP}"
-    feature.validation_move_account: ${FEATURE_VALIDATE_MOVE_ACCOUNT}
-    feature.validation_tag_account: ${FEATURE_VALIDATE_TAG_ACCOUNT}
-    feature.validation_delete_account: ${FEATURE_VALIDATE_DELETE_ACCOUNT}
-    feature.accountpool_validation: ${FEATURE_ACCOUNTPOOL_VALIDATION}
-    feature.accountclaim_fleet_manager_trusted_arn: ${FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN}
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: aws-account-operator-configmap
+      namespace: aws-account-operator
+    data:
+      account-limit: "${ACCOUNT_LIMIT}"
+      root: ${ROOT_OU_ID}
+      base: ${BASE_OU_ID}
+      sts-jump-role: ${STS_JUMP_ROLE}
+      support-jump-role: ${SUPPORT_JUMP_ROLE}
+      shard-name: ${SHARD_NAME}
+      aws-managed-tags: "${AWS_MANAGED_TAGS}"
+      accountpool: "${ACCOUNT_POOL_CONFIG}"
+      MaxConcurrentReconciles.account: "${MAXCONCURRENTRECONCILES_ACCOUNT}"
+      MaxConcurrentReconciles.accountvalidation: "${MAXCONCURRENTRECONCILES_ACCOUNTVALIDATION}"
+      MaxConcurrentReconciles.accountpoolvalidation: "${MAXCONCURRENTRECONCILES_ACCOUNTPOOLVALIDATION}"
+      MaxConcurrentReconciles.accountclaim: "${MAXCONCURRENTRECONCILES_ACCOUNTCLAIM}"
+      MaxConcurrentReconciles.accountpool: "${MAXCONCURRENTRECONCILES_ACCOUNTPOOL}"
+      MaxConcurrentReconciles.awsfederatedaccountaccess: "${MAXCONCURRENTRECONCILES_AWSFEDERATEDACCOUNTACCESS}"
+      MaxConcurrentReconciles.awsfederatedrole: "${MAXCONCURRENTRECONCILES_AWSFEDERATEDROLE}"
+      ami-owner: "${AMIOWNER}"
+      fedramp: "${FEDRAMP}"
+      feature.validation_move_account: ${FEATURE_VALIDATE_MOVE_ACCOUNT}
+      feature.validation_tag_account: ${FEATURE_VALIDATE_TAG_ACCOUNT}
+      feature.validation_delete_account: ${FEATURE_VALIDATE_DELETE_ACCOUNT}
+      feature.accountpool_validation: ${FEATURE_ACCOUNTPOOL_VALIDATION}
+      feature.accountclaim_fleet_manager_trusted_arn: ${FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN}
+      feature.opt_in_regions: ${FEATURE_OPT_IN_REGIONS}
+      opt-in-regions: "${OPT_IN_REGIONS}"
 
-- apiVersion: aws.managed.openshift.io/v1alpha1
-  kind: AccountPool
-  metadata:
-    name: ${ACCOUNT_POOL_NAME}
-    namespace: aws-account-operator
-  spec:
-    poolSize: ${{ACCOUNT_POOL_SIZE}}
+  - apiVersion: aws.managed.openshift.io/v1alpha1
+    kind: AccountPool
+    metadata:
+      name: ${ACCOUNT_POOL_NAME}
+      namespace: aws-account-operator
+    spec:
+      poolSize: ${{ACCOUNT_POOL_SIZE}}
 
-- apiVersion: aws.managed.openshift.io/v1alpha1
-  kind: AWSFederatedRole
-  metadata:
-    name: network-mgmt
-    namespace: aws-account-operator
-  spec:
-    roleDisplayName: Network management
-    roleDescription: User can view all AWS resources, and can edit VPC related resources to enable services such as IPsec VPN and VPC peering.
-    awsCustomPolicy:
-      name:  CustomerAdministratorAccess
-      description: Description of CustomerAdministratorAccess
-      awsStatements:
-        - effect: Allow
-          action:
-            - "ec2:AcceptVpcPeeringConnection"
-            - "ec2:AttachVpnGateway"
-            - "ec2:CreateCustomerGateway"
-            - "ec2:CreateRoute"
-            - "ec2:CreateTags"
-            - "ec2:CreateVPCEndpoint"
-            - "ec2:CreateVpcPeeringConnection"
-            - "ec2:CreateVpnConnection"
-            - "ec2:CreateVpnConnectionRoute"
-            - "ec2:CreateVpnGateway"
-            - "ec2:CreateVpcEndpointServiceConfiguration"
-            - "ec2:ModifyVpcEndpointServicePermissions"
-            - "ec2:DeleteVpcPeeringConnection"
-            - "ec2:DeleteVpnConnection"
-            - "ec2:DeleteVpnConnectionRoute"
-            - "ec2:DeleteVpnGateway"
-            - "ec2:DeleteVpcEndpointServiceConfigurations"
-            - "ec2:DescribeAvailabilityZones"
-            - "ec2:DescribeRouteTables"
-            - "ec2:DescribeSubnets"
-            - "ec2:DescribeTransitGatewayAttachments"
-            - "ec2:DescribeTransitGatewayVpcAttachments"
-            - "ec2:DescribeTransitGateways"
-            - "ec2:DescribeVPCEndpoints"
-            - "ec2:DescribeVpcPeeringConnections"
-            - "ec2:DescribeVpcs"
-            - "ec2:DescribeVpnConnections"
-            - "ec2:DescribeVpnGateways"
-            - "ec2:DescribeVpcEndpointServiceConfigurations"
-            - "ec2:CreateVpnConnection"
-            - "ec2:CreateTags"
-            - "ec2:CreateRoute"
-            - "ec2:DescribeRouteTables"
-            - "ec2:DetachVpnGateway"
-            - "ec2:ModifyVpcPeeringConnectionOptions"
-            - "ec2:RejectVpcPeeringConnection"
-            - "ec2:DisableVgwRoutePropagation"
-            - "ec2:EnableVgwRoutePropagation"
-            - "ec2:CreateNetworkInterface"
-            - "ec2:ModifyNetworkInterfaceAttribute"
-            - "ec2:DeleteNetworkInterface"
-            - "ec2:CreateNetworkInterfacePermission"
-            - "elasticloadbalancing:DescribeLoadBalancers"
-            - "guardduty:GetDetector"
-            - "guardduty:GetFindings"
-            - "guardduty:GetFindingsStatistics"
-            - "guardduty:GetIPSet"
-            - "guardduty:GetInvitationsCount"
-            - "guardduty:GetMasterAccount"
-            - "guardduty:GetMembers"
-            - "guardduty:GetThreatIntelSet"
-            - "guardduty:ListDetectors"
-            - "guardduty:ListFilters"
-            - "guardduty:ListFindings"
-            - "guardduty:ListIPSets"
-            - "guardduty:ListInvitations"
-            - "guardduty:ListMembers"
-            - "guardduty:ListThreatIntelSets"
-            - "ram:AcceptResourceShareInvitation"
-            - "ram:DeleteResourceShare"
-            - "ram:GetResourcePolicies"
-            - "ram:GetResourceShareAssociations"
-            - "ram:GetResourceShareInvitations"
-            - "ram:GetResourceShares"
-            - "ram:ListPendingInvitationResources"
-            - "ram:ListPrincipals"
-            - "ram:ListResources"
-            - "ram:RejectResourceShareInvitation"
-            - "route53:ListHostedZonesByVPC"
-            - "route53resolver:AssociateResolverRule"
-            - "route53resolver:DeleteResolverRule"
-            - "route53resolver:DisassociateResolverRule"
-            - "route53resolver:GetResolverRule"
-            - "route53resolver:GetResolverRuleAssociation"
-            - "route53resolver:ListResolverRuleAssociations"
-            - "route53resolver:ListResolverRules"
-            - "route53:AssociateVPCWithHostedZone"
-            - "route53:DisassociateVPCFromHostedZone"
-            - "directconnect:*"
-          resource:
-            - "*"
-        - effect: Allow
-          action:
-            - "ram:*"
-          resource:
-            - "*"
-          condition:
-            StringEquals:
-              ram:RequestedResourceType: route53resolver:ResolverRule
-        - effect: Allow
-          action:
-            - "ec2:CreateTransitGatewayVpcAttachment"
-          resource:
-            - "arn:aws:ec2:*:*:subnet/*"
-            - "arn:aws:ec2:*:*:transit-gateway/*"
-            - "arn:aws:ec2:*:*:vpc/*"
-            - "arn:aws:ec2:*:*:transit-gateway-attachment/*"
-        - effect: Allow
-          action:
-            - "ec2:CreateCustomerGateway"
-            - "ec2:DeleteCustomerGateway"
-            - "ec2:CreateVpnGateway"
-            - "ec2:AttachVpnGateway"
-            - "ec2:DetachVpnGateway"
-            - "ec2:DeleteVpnGateway"
-            - "ec2:CreateVpnConnection"
-            - "ec2:ModifyVpnConnection"
-            - "ec2:ModifyVpnTunnelOptions"
-            - "ec2:DeleteVpnConnection"
-            - "ec2:EnableVgwRoutePropagation"
-            - "ec2:DisableVgwRoutePropagation"
-            - "ec2:GetVpnConnectionDeviceTypes"
-            - "ec2:GetVpnConnectionDeviceSampleConfiguration"
-          resource:
-            - "*"
-        - effect: Allow
-          action:
-            - "ec2:CreateRoute"
-            - "ec2:CreateVpcPeeringConnection"
-            - "ec2:DeleteRoute"
-            - "ec2:DeleteVpcPeeringConnection"
-          resource:
-            - "*"
-        - effect: Allow
-          action:
-            - "ec2:CreateVpnGateway"
-            - "directconnect:*"
-            - "ec2:DeleteVpnGateway"
-            - "ec2:AttachVpnGateway"
-            - "ec2:DetachVpnGateway"
-          resource:
-            - "*"
-        - effect: Allow
-          action:
-            - "ec2:CreateTags"
-            - "ec2:DeleteTags"
-          resource:
-            - "arn:aws:ec2:*:*:customer-gateway/*"
-            - "arn:aws:ec2:*:*:vpn-gateway/*"
-            - "arn:aws:ec2:*:*:vpn-connection/*"
-            - "arn:aws:ec2:*:*:vpc-peering-connection/*"
-            - "arn:aws:ec2:*:*:vpn-gateway/*"
-            - "arn:aws:ec2:*:*:transit-gateway-attachment/*"
-        - effect: Allow
-          action:
-            - "iam:CreateServiceLinkedRole"
-          resource:
-            - "arn:aws:iam::*:role/aws-service-role/transitgateway.amazonaws.com/AWSServiceRoleForVPCTransitGateway*"
-          condition:
-            StringLike:
-              iam:AWSServiceName: transitgateway.amazonaws.com
-        - effect: Allow
-          action:
-            - "iam:AttachRolePolicy"
-            - "iam:PutRolePolicy"
-          resource:
-            - "arn:aws:iam::*:role/aws-service-role/transitgateway.amazonaws.com/AWSServiceRoleForVPCTransitGateway*"
-    awsManagedPolicies:
-      - "AmazonEC2ReadOnlyAccess"
+  - apiVersion: aws.managed.openshift.io/v1alpha1
+    kind: AWSFederatedRole
+    metadata:
+      name: network-mgmt
+      namespace: aws-account-operator
+    spec:
+      roleDisplayName: Network management
+      roleDescription: User can view all AWS resources, and can edit VPC related resources to enable services such as IPsec VPN and VPC peering.
+      awsCustomPolicy:
+        name:  CustomerAdministratorAccess
+        description: Description of CustomerAdministratorAccess
+        awsStatements:
+          - effect: Allow
+            action:
+              - "ec2:AcceptVpcPeeringConnection"
+              - "ec2:AttachVpnGateway"
+              - "ec2:CreateCustomerGateway"
+              - "ec2:CreateRoute"
+              - "ec2:CreateTags"
+              - "ec2:CreateVPCEndpoint"
+              - "ec2:CreateVpcPeeringConnection"
+              - "ec2:CreateVpnConnection"
+              - "ec2:CreateVpnConnectionRoute"
+              - "ec2:CreateVpnGateway"
+              - "ec2:CreateVpcEndpointServiceConfiguration"
+              - "ec2:ModifyVpcEndpointServicePermissions"
+              - "ec2:DeleteVpcPeeringConnection"
+              - "ec2:DeleteVpnConnection"
+              - "ec2:DeleteVpnConnectionRoute"
+              - "ec2:DeleteVpnGateway"
+              - "ec2:DeleteVpcEndpointServiceConfigurations"
+              - "ec2:DescribeAvailabilityZones"
+              - "ec2:DescribeRouteTables"
+              - "ec2:DescribeSubnets"
+              - "ec2:DescribeTransitGatewayAttachments"
+              - "ec2:DescribeTransitGatewayVpcAttachments"
+              - "ec2:DescribeTransitGateways"
+              - "ec2:DescribeVPCEndpoints"
+              - "ec2:DescribeVpcPeeringConnections"
+              - "ec2:DescribeVpcs"
+              - "ec2:DescribeVpnConnections"
+              - "ec2:DescribeVpnGateways"
+              - "ec2:DescribeVpcEndpointServiceConfigurations"
+              - "ec2:CreateVpnConnection"
+              - "ec2:CreateTags"
+              - "ec2:CreateRoute"
+              - "ec2:DescribeRouteTables"
+              - "ec2:DetachVpnGateway"
+              - "ec2:ModifyVpcPeeringConnectionOptions"
+              - "ec2:RejectVpcPeeringConnection"
+              - "ec2:DisableVgwRoutePropagation"
+              - "ec2:EnableVgwRoutePropagation"
+              - "ec2:CreateNetworkInterface"
+              - "ec2:ModifyNetworkInterfaceAttribute"
+              - "ec2:DeleteNetworkInterface"
+              - "ec2:CreateNetworkInterfacePermission"
+              - "elasticloadbalancing:DescribeLoadBalancers"
+              - "guardduty:GetDetector"
+              - "guardduty:GetFindings"
+              - "guardduty:GetFindingsStatistics"
+              - "guardduty:GetIPSet"
+              - "guardduty:GetInvitationsCount"
+              - "guardduty:GetMasterAccount"
+              - "guardduty:GetMembers"
+              - "guardduty:GetThreatIntelSet"
+              - "guardduty:ListDetectors"
+              - "guardduty:ListFilters"
+              - "guardduty:ListFindings"
+              - "guardduty:ListIPSets"
+              - "guardduty:ListInvitations"
+              - "guardduty:ListMembers"
+              - "guardduty:ListThreatIntelSets"
+              - "ram:AcceptResourceShareInvitation"
+              - "ram:DeleteResourceShare"
+              - "ram:GetResourcePolicies"
+              - "ram:GetResourceShareAssociations"
+              - "ram:GetResourceShareInvitations"
+              - "ram:GetResourceShares"
+              - "ram:ListPendingInvitationResources"
+              - "ram:ListPrincipals"
+              - "ram:ListResources"
+              - "ram:RejectResourceShareInvitation"
+              - "route53:ListHostedZonesByVPC"
+              - "route53resolver:AssociateResolverRule"
+              - "route53resolver:DeleteResolverRule"
+              - "route53resolver:DisassociateResolverRule"
+              - "route53resolver:GetResolverRule"
+              - "route53resolver:GetResolverRuleAssociation"
+              - "route53resolver:ListResolverRuleAssociations"
+              - "route53resolver:ListResolverRules"
+              - "route53:AssociateVPCWithHostedZone"
+              - "route53:DisassociateVPCFromHostedZone"
+              - "directconnect:*"
+            resource:
+              - "*"
+          - effect: Allow
+            action:
+              - "ram:*"
+            resource:
+              - "*"
+            condition:
+              StringEquals:
+                ram:RequestedResourceType: route53resolver:ResolverRule
+          - effect: Allow
+            action:
+              - "ec2:CreateTransitGatewayVpcAttachment"
+            resource:
+              - "arn:aws:ec2:*:*:subnet/*"
+              - "arn:aws:ec2:*:*:transit-gateway/*"
+              - "arn:aws:ec2:*:*:vpc/*"
+              - "arn:aws:ec2:*:*:transit-gateway-attachment/*"
+          - effect: Allow
+            action:
+              - "ec2:CreateCustomerGateway"
+              - "ec2:DeleteCustomerGateway"
+              - "ec2:CreateVpnGateway"
+              - "ec2:AttachVpnGateway"
+              - "ec2:DetachVpnGateway"
+              - "ec2:DeleteVpnGateway"
+              - "ec2:CreateVpnConnection"
+              - "ec2:ModifyVpnConnection"
+              - "ec2:ModifyVpnTunnelOptions"
+              - "ec2:DeleteVpnConnection"
+              - "ec2:EnableVgwRoutePropagation"
+              - "ec2:DisableVgwRoutePropagation"
+              - "ec2:GetVpnConnectionDeviceTypes"
+              - "ec2:GetVpnConnectionDeviceSampleConfiguration"
+            resource:
+              - "*"
+          - effect: Allow
+            action:
+              - "ec2:CreateRoute"
+              - "ec2:CreateVpcPeeringConnection"
+              - "ec2:DeleteRoute"
+              - "ec2:DeleteVpcPeeringConnection"
+            resource:
+              - "*"
+          - effect: Allow
+            action:
+              - "ec2:CreateVpnGateway"
+              - "directconnect:*"
+              - "ec2:DeleteVpnGateway"
+              - "ec2:AttachVpnGateway"
+              - "ec2:DetachVpnGateway"
+            resource:
+              - "*"
+          - effect: Allow
+            action:
+              - "ec2:CreateTags"
+              - "ec2:DeleteTags"
+            resource:
+              - "arn:aws:ec2:*:*:customer-gateway/*"
+              - "arn:aws:ec2:*:*:vpn-gateway/*"
+              - "arn:aws:ec2:*:*:vpn-connection/*"
+              - "arn:aws:ec2:*:*:vpc-peering-connection/*"
+              - "arn:aws:ec2:*:*:vpn-gateway/*"
+              - "arn:aws:ec2:*:*:transit-gateway-attachment/*"
+          - effect: Allow
+            action:
+              - "iam:CreateServiceLinkedRole"
+            resource:
+              - "arn:aws:iam::*:role/aws-service-role/transitgateway.amazonaws.com/AWSServiceRoleForVPCTransitGateway*"
+            condition:
+              StringLike:
+                iam:AWSServiceName: transitgateway.amazonaws.com
+          - effect: Allow
+            action:
+              - "iam:AttachRolePolicy"
+              - "iam:PutRolePolicy"
+            resource:
+              - "arn:aws:iam::*:role/aws-service-role/transitgateway.amazonaws.com/AWSServiceRoleForVPCTransitGateway*"
+      awsManagedPolicies:
+        - "AmazonEC2ReadOnlyAccess"
 
-- apiVersion: aws.managed.openshift.io/v1alpha1
-  kind: AWSFederatedRole
-  metadata:
-    name: read-only
-    namespace: aws-account-operator
-  spec:
-    roleDisplayName: Read only
-    roleDescription: User may view all AWS resources for this cluster, but not modify, create or delete resources.
-    awsCustomPolicy:
-      name:  BillingReadOnlyAccess
-      description: Description of BillingReadOnlyAccess
-      awsStatements:
-        - effect: Allow
-          action:
-          - "aws-portal:ViewAccount"
-          - "aws-portal:ViewBilling"
-          resource:
-          - "*"
-    awsManagedPolicies:
-    - "AWSAccountUsageReportAccess"
-    - "AmazonEC2ReadOnlyAccess"
-    - "AmazonS3ReadOnlyAccess"
-    - "IAMReadOnlyAccess"
-    - "CloudWatchReadOnlyAccess"
+  - apiVersion: aws.managed.openshift.io/v1alpha1
+    kind: AWSFederatedRole
+    metadata:
+      name: read-only
+      namespace: aws-account-operator
+    spec:
+      roleDisplayName: Read only
+      roleDescription: User may view all AWS resources for this cluster, but not modify, create or delete resources.
+      awsCustomPolicy:
+        name:  BillingReadOnlyAccess
+        description: Description of BillingReadOnlyAccess
+        awsStatements:
+          - effect: Allow
+            action:
+              - "aws-portal:ViewAccount"
+              - "aws-portal:ViewBilling"
+            resource:
+              - "*"
+      awsManagedPolicies:
+        - "AWSAccountUsageReportAccess"
+        - "AmazonEC2ReadOnlyAccess"
+        - "AmazonS3ReadOnlyAccess"
+        - "IAMReadOnlyAccess"
+        - "CloudWatchReadOnlyAccess"

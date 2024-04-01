@@ -62,7 +62,10 @@ const (
 	AccountReady = "Ready"
 	// AccountPendingVerification indicates verification (of AWS limits and Enterprise Support) is pending
 	AccountPendingVerification = "PendingVerification"
-
+	// AccountOptingInRegions indicates region enablement for supported Opt-In regions is in progress
+	AccountOptingInRegions = "OptingInRegions"
+	// AccountOptInRegionEnabled indicates that supported Opt-In regions have been enabled
+	AccountOptInRegionEnabled    = "OptInRegionsEnabled"
 	standardAdminAccessArnPrefix = "arn:aws:iam"
 	adminAccessArnSuffix         = "::aws:policy/AdministratorAccess"
 	iamUserNameUHC               = "osdManagedAdmin"
@@ -74,6 +77,11 @@ const (
 
 	// number of service quota requests we are allowed to open concurrently in AWS
 	MaxOpenQuotaRequests = 20
+
+	// MaxOptInRegionRequest maximum number of regions that AWS allows to be concurrently enabled
+	MaxOptInRegionRequest = 6
+	// MaxAccountRegionEnablement maximum number of AWS accounts allowed to enable all regions simultaneously
+	MaxAccountRegionEnablement = 9
 )
 
 // AccountReconciler reconciles a Account object
@@ -110,6 +118,18 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
 		return reconcile.Result{}, err
+	}
+
+	isOptInRegionFeatureEnabled, err := utils.GetFeatureFlagValue(configMap, "feature.opt_in_regions")
+	if err != nil {
+		reqLogger.Info("Could not retrieve feature flag 'feature.opt_in_regions' - region Opt-In is disabled")
+		isOptInRegionFeatureEnabled = false
+	}
+	reqLogger.Info("Is feature.opt_in_regions enabled?", "enabled", isOptInRegionFeatureEnabled)
+
+	optInRegions, ok := configMap.Data["opt-in-regions"]
+	if !ok {
+		reqLogger.Info("Could not retrieve opt-in-regions from configMap")
 	}
 
 	awsRegion := config.GetDefaultRegion()
@@ -303,6 +323,11 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		}
 	}
 
+	// Handles account region enablement for non-BYOC accounts
+	if (currentAcctInstance.ReadyForRegionEnablement() || currentAcctInstance.IsEnablingOptInRegions()) && isOptInRegionFeatureEnabled && optInRegions != "" {
+		return r.handleOptInRegionEnablement(reqLogger, currentAcctInstance, awsSetupClient, optInRegions)
+	}
+
 	// Get the owner of the Red Hat amis from the configmap
 	amiOwner, ok := configMap.Data["ami-owner"]
 	if !ok {
@@ -407,6 +432,60 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string) (reconcile.Result, error) {
+	numberOfAccountsOptingIn, err := CalculateOptingInRegionAccounts(r.Client)
+	if err != nil {
+		return reconcile.Result{}, nil
+	}
+
+	if currentAcctInstance.Status.OptInRegions == nil {
+		switch utils.DetectDevMode {
+		case utils.DevModeProduction:
+			if numberOfAccountsOptingIn >= MaxAccountRegionEnablement {
+				return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
+			}
+			var regionList []string
+			regions := strings.Split(optInRegions, ",")
+			for _, region := range regions {
+				regionList = append(regionList, strings.TrimSpace(region))
+			}
+			//updates account status to indicate supported opt-in region are pending enablement
+			err = SetOptRegionStatus(reqLogger, regionList, currentAcctInstance)
+			if err != nil {
+				reqLogger.Error(err, "failed to set account opt-in region status")
+				return reconcile.Result{}, err
+			}
+			utils.SetAccountStatus(currentAcctInstance, "Opting-In Regions", awsv1alpha1.AccountOptingInRegions, AccountOptingInRegions)
+
+			err = r.statusUpdate(currentAcctInstance)
+			if err != nil {
+				reqLogger.Error(err, "failed to update account status, retrying")
+				return reconcile.Result{}, err
+			}
+
+		default:
+			log.Info("Running in development mode, Skipping Opt-In Region Enablement.")
+		}
+	}
+
+	if currentAcctInstance.HasOpenOptInRegionRequests() {
+		switch utils.DetectDevMode {
+		case utils.DevModeProduction:
+			return GetOptInRegionStatus(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
+		}
+	}
+
+	openCaseCount, _ := currentAcctInstance.GetOptInRequestsByStatus(awsv1alpha1.OptInRequestEnabling)
+
+	if openCaseCount == 0 {
+		reqLogger.Info("All Opt-In Regions have been enabled", "AccountID", currentAcctInstance.Spec.AwsAccountID)
+		utils.SetAccountStatus(currentAcctInstance, "Opting-In Regions", awsv1alpha1.AccountOptInRegionEnabled, AccountOptInRegionEnabled)
+		_ = r.statusUpdate(currentAcctInstance)
+		return reconcile.Result{}, nil
+	}
+	return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
 }
 
 // isAwsOptInError checks weather the error passed in is an instance of an Aws

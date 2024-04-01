@@ -11,6 +11,7 @@ package mock
 import (
 	reflect "reflect"
 
+	account "github.com/aws/aws-sdk-go/service/account"
 	ec2 "github.com/aws/aws-sdk-go/service/ec2"
 	iam "github.com/aws/aws-sdk-go/service/iam"
 	organizations "github.com/aws/aws-sdk-go/service/organizations"
@@ -676,6 +677,21 @@ func (mr *MockClientMockRecorder) DetachUserPolicy(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetachUserPolicy", reflect.TypeOf((*MockClient)(nil).DetachUserPolicy), arg0)
 }
 
+// EnableRegion mocks base method.
+func (m *MockClient) EnableRegion(arg0 *account.EnableRegionInput) (*account.EnableRegionOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnableRegion", arg0)
+	ret0, _ := ret[0].(*account.EnableRegionOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// EnableRegion indicates an expected call of EnableRegion.
+func (mr *MockClientMockRecorder) EnableRegion(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnableRegion", reflect.TypeOf((*MockClient)(nil).EnableRegion), arg0)
+}
+
 // GetCallerIdentity mocks base method.
 func (m *MockClient) GetCallerIdentity(arg0 *sts.GetCallerIdentityInput) (*sts.GetCallerIdentityOutput, error) {
 	m.ctrl.T.Helper()
@@ -734,6 +750,21 @@ func (m *MockClient) GetPolicyVersion(input *iam.GetPolicyVersionInput) (*iam.Ge
 func (mr *MockClientMockRecorder) GetPolicyVersion(input any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPolicyVersion", reflect.TypeOf((*MockClient)(nil).GetPolicyVersion), input)
+}
+
+// GetRegionOptStatus mocks base method.
+func (m *MockClient) GetRegionOptStatus(input *account.GetRegionOptStatusInput) (*account.GetRegionOptStatusOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRegionOptStatus", input)
+	ret0, _ := ret[0].(*account.GetRegionOptStatusOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRegionOptStatus indicates an expected call of GetRegionOptStatus.
+func (mr *MockClientMockRecorder) GetRegionOptStatus(input any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRegionOptStatus", reflect.TypeOf((*MockClient)(nil).GetRegionOptStatus), input)
 }
 
 // GetRole mocks base method.
