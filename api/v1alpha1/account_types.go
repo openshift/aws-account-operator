@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	"fmt"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -60,6 +61,7 @@ const (
 	ServiceRequestInProgress ServiceRequestStatus = "IN_PROGRESS"
 	ServiceRequestCompleted  ServiceRequestStatus = "COMPLETED"
 	ServiceRequestDenied     ServiceRequestStatus = "DENIED"
+	ServiceRequestUnknown    ServiceRequestStatus = "MANUAL_ACTION"
 )
 
 type SupportedServiceQuotas string
@@ -270,7 +272,7 @@ func (a *Account) GetOptInRequestsByStatus(stati OptInRequestStatus) (int, OptIn
 func (a *Account) HasOpenQuotaIncreaseRequests() bool {
 	for _, accountServiceQuotas := range a.Status.RegionalServiceQuotas {
 		for _, v := range accountServiceQuotas {
-			if v.Status != ServiceRequestCompleted {
+			if v.Status != ServiceRequestCompleted || v.Status == ServiceRequestUnknown {
 				return true
 			}
 		}

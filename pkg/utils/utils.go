@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/openshift/aws-account-operator/test/fixtures"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/openshift/aws-account-operator/test/fixtures"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"gopkg.in/yaml.v2"
@@ -92,7 +93,7 @@ const (
 	// DevModeProduction (aka non-development mode) is the default running mode. Metrics are
 	// served from the operator at the /metrics path under the route it creates. AWS support cases
 	// are managed for real.
-	DevModeProduction devMode = ""
+	DevModeProduction devMode = "local"
 	// DevModeLocal should be used when running via operator-sdk in "local" mode. Metrics are
 	// served up at http://localhost:${metricsPort}/${metricsPath} (metricsP* defined in main.go).
 	// All AWS support case interactions are skipped.

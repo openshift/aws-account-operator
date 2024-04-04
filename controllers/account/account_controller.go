@@ -746,9 +746,12 @@ func SetCurrentAccountServiceQuotas(reqLogger logr.Logger, awsClientBuilder awsc
 	}
 
 	// Get a list of regions enabled in the current account
+
 	regionsEnabledInAccount, err := awsAssumedRoleClient.DescribeRegions(&ec2.DescribeRegionsInput{
 		AllRegions: aws.Bool(false),
 	})
+	fmt.Println("====== LUIS DEBUG =======")
+	fmt.Println(regionsEnabledInAccount.Regions)
 	if err != nil {
 		// Retry on failures related to the slow AWS API
 		if aerr, ok := err.(awserr.Error); ok {
