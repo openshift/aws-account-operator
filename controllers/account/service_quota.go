@@ -4,9 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
-
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	retry "github.com/avast/retry-go"
 	"github.com/aws/aws-sdk-go/aws"
@@ -18,6 +17,7 @@ import (
 	controllerutils "github.com/openshift/aws-account-operator/pkg/utils"
 	"github.com/openshift/aws-account-operator/test/fixtures"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Client, quotaCode awsv1alpha1.SupportedServiceQuotas, serviceQuotaStatus *awsv1alpha1.ServiceQuotaStatus) error {
@@ -32,8 +32,7 @@ func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Clien
 	quotaIncreaseRequired, err := serviceQuotaNeedsIncrease(reqLogger, awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
 	if err != nil {
 		reqLogger.Error(err, "failed retrieving current vCPU quota from AWS")
-		reqLogger.Error(err, "failed requesting quota increase", "QuotaCode", string(quotaCode))
-		if err.(awserr.Error).Code() == " NoSuchResourceException" {
+		if strings.Contains(err.Error(), "NoSuchResourceException") {
 			serviceQuotaStatus.Status = awsv1alpha1.ServiceRequestUnknown
 			return nil
 		}
@@ -77,11 +76,9 @@ func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Clien
 			return nil
 		case awsv1alpha1.ServiceRequestTodo:
 			submitted, err := setServiceQuota(reqLogger, awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
-			fmt.Println("=== LUIS 1 : ")
 			if err != nil {
 				reqLogger.Error(err, "failed requesting quota increase", "QuotaCode", string(quotaCode))
 			}
-			fmt.Println("=== LUIS 2 : ")
 			if submitted {
 				reqLogger.Info(
 					fmt.Sprintf("Quota Increase REQUESTED for QuotaCode [%s] ServiceCode [%s] Requested Value [%d]",
@@ -202,7 +199,6 @@ func setServiceQuota(reqLogger logr.Logger, client awsclient.Client, quotaCode s
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
 	retry.DefaultDelay = 3 * time.Second
 	retry.DefaultAttempts = uint(5)
-	fmt.Println("=== LUIS 3 : ")
 	err := retry.Do(
 		func() (err error) {
 			result, err = client.RequestServiceQuotaIncrease(
@@ -254,7 +250,6 @@ func setServiceQuota(reqLogger logr.Logger, client awsclient.Client, quotaCode s
 	}
 
 	// Otherwise, if there is an error, return the error to be handled
-	fmt.Println("=== LUIS 4 : ")
 	if err != nil {
 		return false, err
 	}
