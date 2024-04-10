@@ -69,7 +69,7 @@ parameters:
     require: false
     value: "309956199498"
   - name: OPT_IN_REGIONS
-    required: "false"
+    required: false
 
 objects:
   - apiVersion: operators.coreos.com/v1alpha1
