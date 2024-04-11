@@ -236,7 +236,6 @@ func setServiceQuota(reqLogger logr.Logger, client awsclient.Client, quotaCode s
 				case "UnrecognizedClientException":
 					return true
 				}
-
 			}
 			// Otherwise, do not retry
 			return false
