@@ -272,7 +272,7 @@ func (a *Account) GetOptInRequestsByStatus(stati OptInRequestStatus) (int, OptIn
 func (a *Account) HasOpenQuotaIncreaseRequests() bool {
 	for _, accountServiceQuotas := range a.Status.RegionalServiceQuotas {
 		for _, v := range accountServiceQuotas {
-			if v.Status == ServiceRequestUnknown {
+			if v.Status != ServiceRequestCompleted || v.Status != ServiceRequestUnknown {
 				return true
 			}
 		}
