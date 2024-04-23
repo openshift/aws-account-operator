@@ -3,8 +3,8 @@ package account
 import (
 	"context"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strconv"
+	"strings"
 	"time"
 
 	retry "github.com/avast/retry-go"
@@ -17,6 +17,7 @@ import (
 	controllerutils "github.com/openshift/aws-account-operator/pkg/utils"
 	"github.com/openshift/aws-account-operator/test/fixtures"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Client, quotaCode awsv1alpha1.SupportedServiceQuotas, serviceQuotaStatus *awsv1alpha1.ServiceQuotaStatus) error {
@@ -31,6 +32,10 @@ func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Clien
 	quotaIncreaseRequired, err := serviceQuotaNeedsIncrease(reqLogger, awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
 	if err != nil {
 		reqLogger.Error(err, "failed retrieving current vCPU quota from AWS")
+		if strings.Contains(err.Error(), "NoSuchResourceException") {
+			serviceQuotaStatus.Status = awsv1alpha1.ServiceRequestUnknown
+			return nil
+		}
 		return err
 	}
 
