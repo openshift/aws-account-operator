@@ -29,7 +29,7 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 	// Region enablement is required
 	if regionOptInRequired {
 		reqLogger.Info(
-			fmt.Sprintf("Region Enablement Require for RegionCode [%s]",
+			fmt.Sprintf("Region Enablement Required for RegionCode [%s]",
 				optInRegion),
 		)
 

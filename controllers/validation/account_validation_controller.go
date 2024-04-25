@@ -532,16 +532,6 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	return utils.DoNotRequeue()
 }
 func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder, optInRegions string) error {
-	// Find out if we support that opt in region
-	//regionMap := make(map[string]string)
-	//regions := strings.Split(optInRegions, ",")
-	//for _, region := range regions {
-	//	regionName, found := accountcontroller.IsSupportedRegion(strings.TrimSpace(region))
-	//	if found {
-	//		regionMap[string(regionName)] = strings.TrimSpace(region)
-	//	}
-	//}
-
 	var regionList []string
 	regions := strings.Split(optInRegions, ",")
 	for _, region := range regions {
@@ -556,25 +546,13 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 		}
 	}
 
-	if len(regionList) != 0 {
+	if currentAcctInstance.Status.OptInRegions == nil || !currentAcctInstance.AllRegionsExistInOptInRegions(regionList) { //len(regionList) != 0 &&
 		if numberOfAccountsOptingIn >= accountcontroller.MaxAccountRegionEnablement {
 			return &AccountValidationError{
 				Type: NotAllOptInRegionsEnabled, //TODO
 				Err:  err,
 			}
 		}
-		//for regionName, _ := range regionMap {
-		//	if _, ok := currentAcctInstance.Status.OptInRegions[regionName]; !ok {
-		//		err := accountcontroller.SetOptRegionStatus(reqLogger, regionMap, currentAcctInstance)
-		//		if err != nil {
-		//			return &AccountValidationError{
-		//				Type: OptInRegionStatus,
-		//				Err:  errors.New("failed to set account opt-in region status"),
-		//			}
-		//		}
-		//		break
-		//	}
-		//}
 		//updates account status to indicate supported opt-in region are pending enablement
 		err = accountcontroller.SetOptRegionStatus(reqLogger, regionList, currentAcctInstance)
 		if err != nil {
@@ -583,8 +561,19 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 				Err:  errors.New("failed to set account opt-in region status"),
 			}
 		}
-	} else {
-		return nil
+		utils.SetAccountStatus(currentAcctInstance, "Opting-In Regions", awsv1alpha1.AccountOptingInRegions, accountcontroller.AccountOptingInRegions)
+
+		if currentAcctInstance.Spec.RegionalServiceQuotas != nil {
+			currentAcctInstance.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
+
+		}
+		err = r.statusUpdate(currentAcctInstance)
+		if err != nil {
+			return &AccountValidationError{
+				Type: OptInRegionStatus, //TODO
+				Err:  errors.New("failed to set account opt-in region status"),
+			}
+		}
 	}
 	awsRegion := config.GetDefaultRegion()
 	awsSetupClient, err := awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
@@ -612,6 +601,16 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 		return &AccountValidationError{
 			Type: NotAllOptInRegionsEnabled,
 			Err:  errors.New("not all Opt-In regions have been enabled yet"),
+		}
+	}
+	if currentAcctInstance.Status.State != accountcontroller.AccountReady {
+		utils.SetAccountStatus(currentAcctInstance, "Completed Opting-In Regions", awsv1alpha1.AccountReady, accountcontroller.AccountReady)
+		err = r.statusUpdate(currentAcctInstance)
+		if err != nil {
+			return &AccountValidationError{
+				Type: OptInRegionStatus, //TODO
+				Err:  errors.New("failed to set account opt-in region status"),
+			}
 		}
 	}
 	return nil
