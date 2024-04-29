@@ -65,6 +65,8 @@ const (
 	AccountNotForCleanup
 	OptInRegionStatus
 	NotAllOptInRegionsEnabled
+	AccountState
+	TooManyActiveAccountRegionEnablements
 )
 
 type AccountValidationError struct {
@@ -239,7 +241,7 @@ func ValidateAccountOrigin(account awsv1alpha1.Account) error {
 			Err:  errors.New("Account is a CCS account"),
 		}
 	}
-	if !account.IsReady() {
+	if !account.IsReadyOrOptingInRegion() {
 		log.Info("Will not validate account not in a ready state")
 		return &AccountValidationError{
 			Type: InvalidAccount,
@@ -541,16 +543,16 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 	numberOfAccountsOptingIn, err := accountcontroller.CalculateOptingInRegionAccounts(r.Client)
 	if err != nil {
 		return &AccountValidationError{
-			Type: NotAllOptInRegionsEnabled, // TODO
+			Type: NotAllOptInRegionsEnabled,
 			Err:  err,
 		}
 	}
 
-	if currentAcctInstance.Status.OptInRegions == nil || !currentAcctInstance.AllRegionsExistInOptInRegions(regionList) { //len(regionList) != 0 &&
+	if currentAcctInstance.Status.OptInRegions == nil || !currentAcctInstance.AllRegionsExistInOptInRegions(regionList) {
 		if numberOfAccountsOptingIn >= accountcontroller.MaxAccountRegionEnablement {
 			return &AccountValidationError{
-				Type: NotAllOptInRegionsEnabled, //TODO
-				Err:  err,
+				Type: TooManyActiveAccountRegionEnablements,
+				Err:  errors.New("the request quota for the number of concurrent account region-OptIn requests has been reached"),
 			}
 		}
 		//updates account status to indicate supported opt-in region are pending enablement
@@ -561,7 +563,7 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 				Err:  errors.New("failed to set account opt-in region status"),
 			}
 		}
-		utils.SetAccountStatus(currentAcctInstance, "Opting-In Regions", awsv1alpha1.AccountOptingInRegions, accountcontroller.AccountOptingInRegions)
+		utils.SetAccountStatus(currentAcctInstance, "Opting-In Regions", awsv1alpha1.AccountOptingInRegions, accountcontroller.ReadyAccountOptingInRegions)
 
 		if currentAcctInstance.Spec.RegionalServiceQuotas != nil {
 			currentAcctInstance.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
@@ -570,7 +572,7 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 		err = r.statusUpdate(currentAcctInstance)
 		if err != nil {
 			return &AccountValidationError{
-				Type: OptInRegionStatus, //TODO
+				Type: OptInRegionStatus,
 				Err:  errors.New("failed to set account opt-in region status"),
 			}
 		}
@@ -608,8 +610,8 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 		err = r.statusUpdate(currentAcctInstance)
 		if err != nil {
 			return &AccountValidationError{
-				Type: OptInRegionStatus, //TODO
-				Err:  errors.New("failed to set account opt-in region status"),
+				Type: AccountState,
+				Err:  errors.New("failed to change account state from ReadyAccountOptingInRegions to Ready "),
 			}
 		}
 	}

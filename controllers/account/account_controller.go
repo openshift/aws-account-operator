@@ -64,6 +64,8 @@ const (
 	AccountPendingVerification = "PendingVerification"
 	// AccountOptingInRegions indicates region enablement for supported Opt-In regions is in progress
 	AccountOptingInRegions = "OptingInRegions"
+	// ReadyAccountOptingInRegions indicates that an account already in a Ready state is Opting into additional regions
+	ReadyAccountOptingInRegions = "ReadyAccountOptingInRegions"
 	// AccountOptInRegionEnabled indicates that supported Opt-In regions have been enabled
 	AccountOptInRegionEnabled    = "OptInRegionsEnabled"
 	standardAdminAccessArnPrefix = "arn:aws:iam"
