@@ -344,11 +344,6 @@ func (a *Account) IsReady() bool {
 	return a.Status.State == string(AccountReady)
 }
 
-// IsReadyOrOptingInRegion returns true if an account is ready or optingIn regions
-func (a *Account) IsReadyOrOptingInRegion() bool {
-	return a.Status.State == string(AccountReady) || a.Status.State == "ReadyAccountOptingInRegions"
-}
-
 // IsCreating returns true if an account is creating
 func (a *Account) IsCreating() bool {
 	return a.Status.State == string(AccountCreating)

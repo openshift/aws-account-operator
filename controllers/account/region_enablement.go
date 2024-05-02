@@ -344,7 +344,7 @@ func CalculateOptingInRegionAccounts(c client.Client) (int, error) {
 	// manual filtering of accounts opting-in is required to ensure the account limit is not reached
 
 	for _, acct := range accountList.Items {
-		if acct.Status.State == "OptingInRegions" || acct.Status.State == "ReadyAccountOptingInRegions" {
+		if acct.Status.State == "OptingInRegions" || (acct.IsReady() && acct.HasOpenOptInRegionRequests()) {
 			numberOfAccountsOptingIn += 1
 		}
 	}

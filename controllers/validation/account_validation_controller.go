@@ -241,7 +241,7 @@ func ValidateAccountOrigin(account awsv1alpha1.Account) error {
 			Err:  errors.New("Account is a CCS account"),
 		}
 	}
-	if !account.IsReadyOrOptingInRegion() {
+	if !account.IsReady() {
 		log.Info("Will not validate account not in a ready state")
 		return &AccountValidationError{
 			Type: InvalidAccount,
@@ -563,7 +563,6 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 				Err:  errors.New("failed to set account opt-in region status"),
 			}
 		}
-		utils.SetAccountStatus(currentAcctInstance, "Opting-In Regions", awsv1alpha1.AccountOptingInRegions, accountcontroller.ReadyAccountOptingInRegions)
 
 		if currentAcctInstance.Spec.RegionalServiceQuotas != nil {
 			currentAcctInstance.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
