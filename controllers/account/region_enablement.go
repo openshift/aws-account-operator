@@ -29,7 +29,7 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 	// Region enablement is required
 	if regionOptInRequired {
 		reqLogger.Info(
-			fmt.Sprintf("Region Enablement Require for RegionCode [%s]",
+			fmt.Sprintf("Region Enablement Required for RegionCode [%s]",
 				optInRegion),
 		)
 
@@ -344,7 +344,7 @@ func CalculateOptingInRegionAccounts(c client.Client) (int, error) {
 	// manual filtering of accounts opting-in is required to ensure the account limit is not reached
 
 	for _, acct := range accountList.Items {
-		if acct.Status.State == "OptingInRegions" {
+		if acct.Status.State == "OptingInRegions" || (acct.IsReady() && acct.HasOpenOptInRegionRequests()) {
 			numberOfAccountsOptingIn += 1
 		}
 	}

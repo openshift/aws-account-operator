@@ -249,6 +249,22 @@ func (a *Account) HasOpenOptInRegionRequests() bool {
 	return false
 }
 
+func (a *Account) AllRegionsExistInOptInRegions(regionList []string) bool {
+	for _, regionListValue := range regionList {
+		found := false
+		for region := range a.Status.OptInRegions {
+			if region == regionListValue {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
 func (a *Account) GetOptInRequestsByStatus(stati OptInRequestStatus) (int, OptInRegions) {
 	var returnRegionalOptInRequest = make(OptInRegions)
 	var count = 0
