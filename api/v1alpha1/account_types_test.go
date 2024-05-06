@@ -80,3 +80,103 @@ func Test_Account_IsOwnedByAccountPool(t *testing.T) {
 		})
 	}
 }
+
+func TestAccount_AllRegionsExistInOptInRegions(t *testing.T) {
+	type fields struct {
+		TypeMeta   metav1.TypeMeta
+		ObjectMeta metav1.ObjectMeta
+		Spec       AccountSpec
+		Status     AccountStatus
+	}
+	type args struct {
+		regionList []string
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+		want   bool
+	}{
+		{
+			name: "Testing When Region List Is Nil",
+			fields: fields{
+				// Set the necessary field values for the test case
+				ObjectMeta: metav1.ObjectMeta{OwnerReferences: nil},
+				Spec:       AccountSpec{AccountPool: ""},
+				Status: AccountStatus{
+					OptInRegions: OptInRegions{
+						"af-south-1": &OptInRegionStatus{
+							Status: OptInRequestTodo,
+						},
+					},
+				},
+			},
+			want: true,
+			args: args{regionList: nil},
+		},
+		{
+			name: "Testing When All Regions Present In Region List Exist In Account.Status.OptInRegions",
+			fields: fields{
+				// Set the necessary field values for the test case
+				ObjectMeta: metav1.ObjectMeta{OwnerReferences: nil},
+				Spec:       AccountSpec{AccountPool: ""},
+				Status: AccountStatus{
+					OptInRegions: OptInRegions{
+						"af-south-1": &OptInRegionStatus{
+							Status: OptInRequestTodo,
+						},
+					},
+				},
+			},
+			want: true,
+			args: args{
+				regionList: []string{"af-south-1"},
+			},
+		},
+		{
+			name: "Testing When Region Is Present In Region List But Absent in Account.Status.OptInRegions",
+			fields: fields{
+				// Set the necessary field values for the test case
+				ObjectMeta: metav1.ObjectMeta{OwnerReferences: nil},
+				Spec:       AccountSpec{AccountPool: ""},
+				Status: AccountStatus{
+					OptInRegions: OptInRegions{
+						"af-south-1": &OptInRegionStatus{
+							Status: OptInRequestEnabled,
+						},
+					},
+				},
+			},
+			want: false,
+			args: args{
+				regionList: []string{"af-south-1", "ap-southeast-4"},
+			},
+		},
+		{
+			name: "Testing Nil Account.Status against Multiple Regions Present in Region List",
+			fields: fields{
+				// Set the necessary field values for the test case
+				ObjectMeta: metav1.ObjectMeta{OwnerReferences: nil},
+				Spec:       AccountSpec{AccountPool: ""},
+				Status:     AccountStatus{},
+			},
+			want: false,
+			args: args{
+				regionList: []string{"af-south-1", "ap-east-1", "ca-west-1"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &Account{
+				TypeMeta:   tt.fields.TypeMeta,
+				ObjectMeta: tt.fields.ObjectMeta,
+				Spec:       tt.fields.Spec,
+				Status:     tt.fields.Status,
+			}
+			if got := a.AllRegionsExistInOptInRegions(tt.args.regionList); got != tt.want {
+				t.Errorf("AllRegionsExistInOptInRegions() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
