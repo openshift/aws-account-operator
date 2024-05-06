@@ -65,7 +65,6 @@ const (
 	AccountNotForCleanup
 	OptInRegionStatus
 	NotAllOptInRegionsEnabled
-	AccountState
 	TooManyActiveAccountRegionEnablements
 )
 
@@ -602,16 +601,6 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 		return &AccountValidationError{
 			Type: NotAllOptInRegionsEnabled,
 			Err:  errors.New("not all Opt-In regions have been enabled yet"),
-		}
-	}
-	if currentAcctInstance.Status.State != accountcontroller.AccountReady {
-		utils.SetAccountStatus(currentAcctInstance, "Completed Opting-In Regions", awsv1alpha1.AccountReady, accountcontroller.AccountReady)
-		err = r.statusUpdate(currentAcctInstance)
-		if err != nil {
-			return &AccountValidationError{
-				Type: AccountState,
-				Err:  errors.New("failed to change account state from ReadyAccountOptingInRegions to Ready "),
-			}
 		}
 	}
 	return nil
