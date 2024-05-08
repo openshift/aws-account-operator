@@ -26,7 +26,6 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 		reqLogger.Error(err, "failed retrieving region Opt-In status from AWS")
 		if strings.Contains(err.Error(), "AccessDeniedException") {
 			optInRegionRequest.Status = awsv1alpha1.OptInRequestUnknown
-			return nil
 		}
 	}
 
