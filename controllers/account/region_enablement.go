@@ -353,7 +353,7 @@ func CalculateOptingInRegionAccounts(reqLogger logr.Logger, c client.Client) (in
 		}
 	}
 	reqLogger.Info(
-		fmt.Sprintf("Current number of accounts opting into regions: [%i]",
+		fmt.Sprintf("Current number of accounts opting into regions: [%d]",
 			numberOfAccountsOptingIn),
 	)
 
