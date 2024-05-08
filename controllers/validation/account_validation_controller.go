@@ -539,7 +539,7 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 		regionList = append(regionList, strings.TrimSpace(region))
 	}
 
-	numberOfAccountsOptingIn, err := accountcontroller.CalculateOptingInRegionAccounts(r.Client)
+	numberOfAccountsOptingIn, err := accountcontroller.CalculateOptingInRegionAccounts(reqLogger, r.Client)
 	if err != nil {
 		return &AccountValidationError{
 			Type: NotAllOptInRegionsEnabled,

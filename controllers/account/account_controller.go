@@ -435,7 +435,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 }
 
 func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string) (reconcile.Result, error) {
-	numberOfAccountsOptingIn, err := CalculateOptingInRegionAccounts(r.Client)
+	numberOfAccountsOptingIn, err := CalculateOptingInRegionAccounts(reqLogger, r.Client)
 	if err != nil {
 		return reconcile.Result{}, nil
 	}
