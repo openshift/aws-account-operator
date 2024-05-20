@@ -24,6 +24,9 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 	regionOptInRequired, err := RegionNeedsOptIn(reqLogger, awsClient, optInRegion)
 	if err != nil {
 		reqLogger.Error(err, "failed retrieving region Opt-In status from AWS")
+		if strings.Contains(err.Error(), "AccessDeniedException") {
+			optInRegionRequest.Status = awsv1alpha1.OptInRequestUnknown
+		}
 	}
 
 	// Region enablement is required
@@ -320,7 +323,7 @@ func SetOptRegionStatus(reqLogger logr.Logger, optInRegions []string, currentAcc
 	return nil
 }
 
-func CalculateOptingInRegionAccounts(c client.Client) (int, error) {
+func CalculateOptingInRegionAccounts(reqLogger logr.Logger, c client.Client) (int, error) {
 	// Retrieve a list of accounts with region enablement in progress for supported Opt-In regions
 	accountList := &awsv1alpha1.AccountList{}
 	listOpts := []client.ListOption{
@@ -348,5 +351,10 @@ func CalculateOptingInRegionAccounts(c client.Client) (int, error) {
 			numberOfAccountsOptingIn += 1
 		}
 	}
+	reqLogger.Info(
+		fmt.Sprintf("Current number of accounts opting into regions: [%d]",
+			numberOfAccountsOptingIn),
+	)
+
 	return numberOfAccountsOptingIn, nil
 }
