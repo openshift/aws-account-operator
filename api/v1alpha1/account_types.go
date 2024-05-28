@@ -95,6 +95,7 @@ const (
 	OptInRequestTodo     OptInRequestStatus = "TODO"
 	OptInRequestEnabling OptInRequestStatus = "ENABLING"
 	OptInRequestEnabled  OptInRequestStatus = "ENABLED"
+	OptInRequestUnknown  OptInRequestStatus = "MANUAL_ACTION"
 )
 
 type SupportedOptInRegions string
@@ -242,11 +243,27 @@ func (a *Account) HasSupportCaseID() bool {
 // HasOpenOptInRegionRequests returns true if an account has any supported regions have not been enabled
 func (a *Account) HasOpenOptInRegionRequests() bool {
 	for _, region := range a.Status.OptInRegions {
-		if region.Status != OptInRequestEnabled {
+		if region.Status != OptInRequestEnabled && region.Status != OptInRequestUnknown {
 			return true
 		}
 	}
 	return false
+}
+
+func (a *Account) AllRegionsExistInOptInRegions(regionList []string) bool {
+	for _, regionListValue := range regionList {
+		found := false
+		for region := range a.Status.OptInRegions {
+			if region == regionListValue {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *Account) GetOptInRequestsByStatus(stati OptInRequestStatus) (int, OptInRegions) {
