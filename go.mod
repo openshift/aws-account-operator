@@ -1,6 +1,6 @@
 module github.com/openshift/aws-account-operator
 
-go 1.18
+go 1.21
 
 require (
 	github.com/avast/retry-go v2.6.1+incompatible
