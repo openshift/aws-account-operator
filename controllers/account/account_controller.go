@@ -404,7 +404,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return reconcile.Result{}, err
 	}
 
-	if currentAcctInstance.IsReady() && probeSecretEnabled {
+	/*if currentAcctInstance.IsReady() && probeSecretEnabled {
 
 		roleToAssume := currentAcctInstance.GetAssumeRole()
 		awsClient, _, err := stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
@@ -429,7 +429,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			// infinite loop.  So we just log the error and exit.
 			// TODO maybe there's a better way to handle this?
 		}
-	}
+	}*/
 
 	return reconcile.Result{}, nil
 }
