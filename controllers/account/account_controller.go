@@ -404,33 +404,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return reconcile.Result{}, err
 	}
 
-	/*if currentAcctInstance.IsReady() && probeSecretEnabled {
-
-		roleToAssume := currentAcctInstance.GetAssumeRole()
-		awsClient, _, err := stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
-		if err != nil {
-			reqLogger.Error(err, "failed building BYOC client from assume_role")
-			result, _ := r.handleAWSClientError(reqLogger, currentAcctInstance, err)
-			// We don't want to error here as erroring will requeue and we will end in an
-			// infinite loop.  So we just log the error and exit.
-			// TODO maybe there's a better way to handle this?
-			return result, nil
-		}
-
-		// Check that secret is valid and reheal it if not
-		iamUserUHC := fmt.Sprintf("%s-%s", iamUserNameUHC, currentAcctInstance.Labels[awsv1alpha1.IAMUserIDLabel])
-
-		reqLogger.Info("probing account secret")
-		err = r.ProbeSecret(reqLogger, currentAcctInstance, awsClient, iamUserUHC, request.Namespace)
-		if err != nil {
-			reqLogger.Error(err, "failed to probe secret")
-			return reconcile.Result{}, nil
-			// We don't want to error here as erroring will requeue and we will end in an
-			// infinite loop.  So we just log the error and exit.
-			// TODO maybe there's a better way to handle this?
-		}
-	}*/
-
 	return reconcile.Result{}, nil
 }
 
