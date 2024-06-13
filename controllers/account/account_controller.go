@@ -71,9 +71,6 @@ const (
 	iamUserNameUHC               = "osdManagedAdmin"
 
 	controllerName = "account"
-	// probeSecretEnabled
-	// Currently disabled because it significantly increases reconcile time in production
-	probeSecretEnabled = false
 
 	// number of service quota requests we are allowed to open concurrently in AWS
 	MaxOpenQuotaRequests = 20
