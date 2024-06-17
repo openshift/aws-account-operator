@@ -9,7 +9,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
@@ -681,100 +680,6 @@ func (r *AccountReconciler) createManagedOpenShiftSupportRole(reqLogger logr.Log
 	err = attachAndEnsureRolePolicies(reqLogger, client, managedSupRoleWithID, policyArn)
 
 	return roleID, err
-}
-
-func (r *AccountReconciler) IsKubeSecretValid(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) (bool, error) {
-
-	// Build new aws client with credentials inside secret
-	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-		SecretName: currentAcctInstance.Spec.IAMUserSecret,
-		NameSpace:  currentAcctInstance.Namespace,
-		AwsRegion:  "us-east-1",
-	})
-	if err != nil {
-		reqLogger.Error(err, "Unable to create aws client")
-		return false, err
-	}
-
-	// Make aws call to check if credentials are valid
-	_, err = awsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case "AccessDenied", "InvalidClientToken":
-				reqLogger.Error(err, "invalid credentials provided")
-				return false, err
-			}
-			reqLogger.Error(err, "failed to get caller identity")
-			return false, err
-		}
-	}
-
-	return true, nil
-}
-
-func (r *AccountReconciler) ValidateIAMSecret(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account,
-	iamUserName string, kubeSecretNamespacedName types.NamespacedName) error {
-
-	// Check if osdadmin User exists for this aws account
-	iamUserExists, iamUserExistsOutput, err := awsclient.CheckIAMUserExists(reqLogger, awsClient, iamUserName)
-	if err != nil {
-		return err
-	}
-
-	// Get list of managed tags.
-	managedTags := r.getManagedTags(reqLogger)
-	customTags := r.getCustomTags(reqLogger, account)
-
-	var iamAccessKeyOutput *iam.CreateAccessKeyOutput
-
-	if !iamUserExists {
-		// If user doesn't exist, create new IAM user
-		CreateUserOutput, err := awsclient.CreateIAMUser(reqLogger, awsClient, account, iamUserName, managedTags, customTags)
-		// Err is handled within the function and returns a error message
-		if err != nil {
-			return err
-		}
-
-		// Extract iam.User as pointer
-		newIAMUser := CreateUserOutput.User
-
-		reqLogger.Info(fmt.Sprintf("Attaching Admin Policy to IAM user %s", aws.StringValue(newIAMUser.UserName)))
-
-		// Setting IAM user policy
-		_, err = AttachAdminUserPolicy(awsClient, newIAMUser)
-		if err != nil {
-			errMsg := fmt.Sprintf("Failed to attach admin policy to IAM user %s", aws.StringValue(newIAMUser.UserName))
-			reqLogger.Error(err, errMsg)
-			return err
-		}
-
-		// Create new access key
-		iamAccessKeyOutput, err = CreateUserAccessKey(awsClient, newIAMUser)
-		if err != nil {
-			reqLogger.Error(err, "failed to create IAM access key", "IAMUser", newIAMUser.UserName)
-			return err
-		}
-	} else {
-		// If user exists extract iam.User pointer and rotate access key
-		currentIAMUser := iamUserExistsOutput.User
-		iamAccessKeyOutput, err = r.RotateIAMAccessKeys(reqLogger, awsClient, account, currentIAMUser)
-		if err != nil {
-			errMsg := fmt.Sprintf("Unable to rotate access keys for IAM user: %s", aws.StringValue(currentIAMUser.UserName))
-			reqLogger.Error(err, errMsg)
-			return err
-		}
-	}
-	// Update access keys on kubernetes secrets
-	err = r.updateIAMUserSecret(reqLogger, account, kubeSecretNamespacedName, iamAccessKeyOutput)
-	if err != nil {
-		errMsg := fmt.Sprintf("Unable to update kubernetes secret: %s", kubeSecretNamespacedName.Name)
-		reqLogger.Error(err, errMsg)
-		return err
-	}
-
-	// Return secret name
-	return nil
 }
 
 func (r *AccountReconciler) updateIAMUserSecret(reqLogger logr.Logger, account *awsv1alpha1.Account, secretName types.NamespacedName, createAccessKeyOutput *iam.CreateAccessKeyOutput) error {
