@@ -681,37 +681,3 @@ func (r *AccountReconciler) createManagedOpenShiftSupportRole(reqLogger logr.Log
 
 	return roleID, err
 }
-
-func (r *AccountReconciler) updateIAMUserSecret(reqLogger logr.Logger, account *awsv1alpha1.Account, secretName types.NamespacedName, createAccessKeyOutput *iam.CreateAccessKeyOutput) error {
-
-	// Fill in the secret data
-	userSecretData := map[string][]byte{
-		"aws_user_name":         []byte(*createAccessKeyOutput.AccessKey.UserName),
-		"aws_access_key_id":     []byte(*createAccessKeyOutput.AccessKey.AccessKeyId),
-		"aws_secret_access_key": []byte(*createAccessKeyOutput.AccessKey.SecretAccessKey),
-	}
-
-	// Create new secret
-	iamUserSecret := CreateSecret(secretName.Name, secretName.Namespace, userSecretData)
-
-	// Set controller as owner of secret
-	if err := controllerutil.SetControllerReference(account, iamUserSecret, r.Scheme); err != nil {
-		return err
-	}
-
-	// Update secret
-	updateErr := r.Client.Update(context.TODO(), iamUserSecret)
-	if updateErr != nil {
-		failedToUpdateUserSecretMsg := fmt.Sprintf("Failed to update secret %s", iamUserSecret.Name)
-		utils.SetAccountStatus(account, failedToUpdateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
-		err := r.Client.Status().Update(context.TODO(), account)
-		if err != nil {
-			reqLogger.Error(updateErr, failedToUpdateUserSecretMsg)
-			return err
-		}
-		reqLogger.Info(failedToUpdateUserSecretMsg)
-		return updateErr
-	}
-	reqLogger.Info(fmt.Sprintf("Updated secret %s", iamUserSecret.Name))
-	return nil
-}
