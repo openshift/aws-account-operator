@@ -1,9 +1,13 @@
 package utils
 
 import (
+	"fmt"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+var log = logf.Log.WithName("status")
 
 // SetAccountStatus sets the condition and state of an account
 func SetAccountStatus(awsAccount *awsv1alpha1.Account, message string, ctype awsv1alpha1.AccountConditionType, state string) {
@@ -17,6 +21,7 @@ func SetAccountStatus(awsAccount *awsv1alpha1.Account, message string, ctype aws
 		awsAccount.Spec.BYOC,
 	)
 	awsAccount.Status.State = state
+	log.Info(fmt.Sprintf("Transitioned account %v/%v to state %v", awsAccount.Namespace, awsAccount.Name, awsAccount.Status.State))
 }
 
 // SetAccountClaimStatus sets the condition and state of an accountClaim
