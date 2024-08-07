@@ -593,14 +593,12 @@ func schema_openshift_aws_account_operator_api_v1alpha1_AccountCondition(ref com
 					"lastProbeTime": {
 						SchemaProps: spec.SchemaProps{
 							Description: "LastProbeTime is the last time we probed the condition.",
-							Default:     map[string]interface{}{},
 							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
 						},
 					},
 					"lastTransitionTime": {
 						SchemaProps: spec.SchemaProps{
 							Description: "LastTransitionTime is the laste time the condition transitioned from one status to another.",
-							Default:     map[string]interface{}{},
 							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
 						},
 					},

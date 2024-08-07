@@ -1,4 +1,4 @@
-FROM quay.io/app-sre/boilerplate:image-v4.0.2 AS builder
+FROM quay.io/app-sre/boilerplate:image-v5.0.1 AS builder
 
 ENV OPERATOR_PATH=/go/src/github.com/openshift/aws-account-operator
 ENV GO111MODULE=on
