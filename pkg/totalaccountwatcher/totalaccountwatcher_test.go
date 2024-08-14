@@ -8,11 +8,11 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/organizations"
-	"go.uber.org/mock/gomock"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	mockAWS "github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -87,8 +87,24 @@ func TestTotalAwsAccounts(t *testing.T) {
 				r.ListAccounts(gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []*organizations.Account{
-							{Name: aws.String("test1")},
-							{Name: aws.String("test2")},
+							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
+							{Name: aws.String("test2"), Status: aws.String(organizations.AccountStatusActive)},
+						},
+					},
+					nil).Times(1)
+			},
+			validateTotal: func(t *testing.T, total int) {
+				assert.Equal(t, 2, total)
+			}}, {
+			name:          "3 accounts total 2 are ACTIVE and 1 is SUSPENDED",
+			errorExpected: false,
+			setupAWSMock: func(r *mockAWS.MockClientMockRecorder) {
+				r.ListAccounts(gomock.Any()).Return(
+					&organizations.ListAccountsOutput{
+						Accounts: []*organizations.Account{
+							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
+							{Name: aws.String("test2"), Status: aws.String(organizations.AccountStatusActive)},
+							{Name: aws.String("test3"), Status: aws.String(organizations.AccountStatusSuspended)},
 						},
 					},
 					nil).Times(1)
@@ -97,7 +113,7 @@ func TestTotalAwsAccounts(t *testing.T) {
 				assert.Equal(t, 2, total)
 			}},
 		{
-			name:          "AccountList with NextToken, return 4 accounts",
+			name:          "AccountList with NextToken, return 4 Active accounts",
 			errorExpected: false,
 			setupAWSMock: func(r *mockAWS.MockClientMockRecorder) {
 				gomock.InOrder(
@@ -105,15 +121,43 @@ func TestTotalAwsAccounts(t *testing.T) {
 						&organizations.ListAccountsOutput{
 							NextToken: aws.String("NextToken"),
 							Accounts: []*organizations.Account{
-								{Name: aws.String("test1")},
-								{Name: aws.String("test2")},
+								{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
+								{Name: aws.String("test2"), Status: aws.String(organizations.AccountStatusActive)},
 							}},
 						nil).Times(1),
 					r.ListAccounts(gomock.Any()).Return(
 						&organizations.ListAccountsOutput{
 							Accounts: []*organizations.Account{
-								{Name: aws.String("test2")},
-								{Name: aws.String("test3")},
+								{Name: aws.String("test2"), Status: aws.String(organizations.AccountStatusActive)},
+								{Name: aws.String("test3"), Status: aws.String(organizations.AccountStatusActive)},
+							}},
+						nil).Times(1),
+				)
+			},
+			validateTotal: func(t *testing.T, total int) {
+				assert.Equal(t, 4, total)
+			},
+		},
+		{
+			name:          "AccountList with NextToken, return 6 accounts total 4 Active and 2 Suspend",
+			errorExpected: false,
+			setupAWSMock: func(r *mockAWS.MockClientMockRecorder) {
+				gomock.InOrder(
+					r.ListAccounts(gomock.Any()).Return(
+						&organizations.ListAccountsOutput{
+							NextToken: aws.String("NextToken"),
+							Accounts: []*organizations.Account{
+								{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
+								{Name: aws.String("test2"), Status: aws.String(organizations.AccountStatusSuspended)},
+							}},
+						nil).Times(1),
+					r.ListAccounts(gomock.Any()).Return(
+						&organizations.ListAccountsOutput{
+							Accounts: []*organizations.Account{
+								{Name: aws.String("test2"), Status: aws.String(organizations.AccountStatusActive)},
+								{Name: aws.String("test3"), Status: aws.String(organizations.AccountStatusActive)},
+								{Name: aws.String("test4"), Status: aws.String(organizations.AccountStatusSuspended)},
+								{Name: aws.String("test5"), Status: aws.String(organizations.AccountStatusActive)},
 							}},
 						nil).Times(1),
 				)
@@ -239,7 +283,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				r.ListAccounts(gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []*organizations.Account{
-							{Name: aws.String("test1")},
+							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
 						}},
 					nil)
 			},
@@ -261,7 +305,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				r.ListAccounts(gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []*organizations.Account{
-							{Name: aws.String("test1")},
+							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
 						}},
 					nil)
 			},
@@ -283,7 +327,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				r.ListAccounts(gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []*organizations.Account{
-							{Name: aws.String("test1")},
+							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
 						}},
 					nil)
 			},
@@ -327,8 +371,8 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				r.ListAccounts(gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []*organizations.Account{
-							{Name: aws.String("test1")},
-							{Name: aws.String("test2")},
+							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
+							{Name: aws.String("test2"), Status: aws.String(organizations.AccountStatusActive)},
 						}},
 					nil)
 			},
@@ -350,7 +394,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				r.ListAccounts(gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []*organizations.Account{
-							{Name: aws.String("test1")},
+							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
 						}},
 					nil)
 			},
