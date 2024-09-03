@@ -16,10 +16,11 @@ package awsclient
 import (
 	"context"
 	"fmt"
-	"github.com/aws/aws-sdk-go/service/account"
-	"github.com/aws/aws-sdk-go/service/account/accountiface"
 	"net/http"
 	"time"
+
+	"github.com/aws/aws-sdk-go/service/account"
+	"github.com/aws/aws-sdk-go/service/account/accountiface"
 
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/service/route53/route53iface"
@@ -123,6 +124,7 @@ type Client interface {
 	ListAccounts(*organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error)
 	CreateAccount(*organizations.CreateAccountInput) (*organizations.CreateAccountOutput, error)
 	DescribeCreateAccountStatus(*organizations.DescribeCreateAccountStatusInput) (*organizations.DescribeCreateAccountStatusOutput, error)
+	ListCreateAccountStatus(*organizations.ListCreateAccountStatusInput) (*organizations.ListCreateAccountStatusOutput, error)
 	MoveAccount(*organizations.MoveAccountInput) (*organizations.MoveAccountOutput, error)
 	CreateOrganizationalUnit(*organizations.CreateOrganizationalUnitInput) (*organizations.CreateOrganizationalUnitOutput, error)
 	ListOrganizationalUnitsForParent(*organizations.ListOrganizationalUnitsForParentInput) (*organizations.ListOrganizationalUnitsForParentOutput, error)
@@ -395,6 +397,10 @@ func (c *awsClient) ListRoles(input *iam.ListRolesInput) (*iam.ListRolesOutput, 
 
 func (c *awsClient) ListAccounts(input *organizations.ListAccountsInput) (*organizations.ListAccountsOutput, error) {
 	return c.orgClient.ListAccounts(input)
+}
+
+func (c *awsClient) ListCreateAccountStatus(input *organizations.ListCreateAccountStatusInput) (*organizations.ListCreateAccountStatusOutput, error) {
+	return c.orgClient.ListCreateAccountStatus(input)
 }
 
 func (c *awsClient) CreateAccount(input *organizations.CreateAccountInput) (*organizations.CreateAccountOutput, error) {
