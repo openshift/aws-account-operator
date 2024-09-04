@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"github.com/go-logr/logr"
@@ -140,7 +141,7 @@ func (s *AccountWatcher) getTotalAwsAccounts() (int, error) {
 	var nextToken *string
 
 	accountTotal := 0
-	// Ensure we paginate through the account list
+	// Ensure we paginate through the created account list
 	for {
 		awsAccountList, err := s.awsClient.ListAccounts(&organizations.ListAccountsInput{NextToken: nextToken})
 		if err != nil {
@@ -160,6 +161,30 @@ func (s *AccountWatcher) getTotalAwsAccounts() (int, error) {
 
 		if awsAccountList.NextToken != nil {
 			nextToken = awsAccountList.NextToken
+		} else {
+			break
+		}
+	}
+	// Now we count the accounts still being created (OSD-17066)
+	nextToken = nil
+	for {
+		// Request a list of "in progress" account creations
+		awsAccountCreatingList, err := s.awsClient.ListCreateAccountStatus(&organizations.ListCreateAccountStatusInput{
+			NextToken: nextToken,
+			States:    []*string{aws.String(organizations.CreateAccountStateInProgress)},
+		})
+		if err != nil {
+			errMsg := "Error getting a list of account creation statuses"
+			if aerr, ok := err.(awserr.Error); ok {
+				errMsg = aerr.Message()
+			}
+			return s.total, errors.New(errMsg)
+		}
+		// Add list length to total
+		accountTotal += len(awsAccountCreatingList.CreateAccountStatuses)
+
+		if awsAccountCreatingList.NextToken != nil {
+			nextToken = awsAccountCreatingList.NextToken
 		} else {
 			break
 		}

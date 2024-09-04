@@ -92,6 +92,9 @@ func TestTotalAwsAccounts(t *testing.T) {
 						},
 					},
 					nil).Times(1)
+				r.ListCreateAccountStatus(gomock.Any()).Return(
+					&organizations.ListCreateAccountStatusOutput{},
+					nil).Times(1)
 			},
 			validateTotal: func(t *testing.T, total int) {
 				assert.Equal(t, 2, total)
@@ -108,9 +111,36 @@ func TestTotalAwsAccounts(t *testing.T) {
 						},
 					},
 					nil).Times(1)
+				r.ListCreateAccountStatus(gomock.Any()).Return(
+					&organizations.ListCreateAccountStatusOutput{},
+					nil).Times(1)
 			},
 			validateTotal: func(t *testing.T, total int) {
 				assert.Equal(t, 2, total)
+			}},
+		{
+			name:          "4 accounts total 2 ACTIVE and 2 CREATING-IN_PROGRESS",
+			errorExpected: false,
+			setupAWSMock: func(r *mockAWS.MockClientMockRecorder) {
+				r.ListAccounts(gomock.Any()).Return(
+					&organizations.ListAccountsOutput{
+						Accounts: []*organizations.Account{
+							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
+							{Name: aws.String("test2"), Status: aws.String(organizations.AccountStatusActive)},
+						},
+					},
+					nil).Times(1)
+				r.ListCreateAccountStatus(gomock.Any()).Return(
+					&organizations.ListCreateAccountStatusOutput{
+						CreateAccountStatuses: []*organizations.CreateAccountStatus{
+							{AccountName: aws.String("testA"), State: aws.String(organizations.CreateAccountStateInProgress)},
+							{AccountName: aws.String("testB"), State: aws.String(organizations.CreateAccountStateInProgress)},
+						},
+					},
+					nil).Times(1)
+			},
+			validateTotal: func(t *testing.T, total int) {
+				assert.Equal(t, 4, total)
 			}},
 		{
 			name:          "AccountList with NextToken, return 4 Active accounts",
@@ -133,6 +163,9 @@ func TestTotalAwsAccounts(t *testing.T) {
 							}},
 						nil).Times(1),
 				)
+				r.ListCreateAccountStatus(gomock.Any()).Return(
+					&organizations.ListCreateAccountStatusOutput{},
+					nil).Times(1)
 			},
 			validateTotal: func(t *testing.T, total int) {
 				assert.Equal(t, 4, total)
@@ -161,11 +194,49 @@ func TestTotalAwsAccounts(t *testing.T) {
 							}},
 						nil).Times(1),
 				)
+				r.ListCreateAccountStatus(gomock.Any()).Return(
+					&organizations.ListCreateAccountStatusOutput{},
+					nil).Times(1)
 			},
 			validateTotal: func(t *testing.T, total int) {
 				assert.Equal(t, 4, total)
 			},
 		},
+		{
+			name:          "AccountCreatingList with NextToken, 2 ACTIVE and 4 CREATING-IN_PROGRESS",
+			errorExpected: false,
+			setupAWSMock: func(r *mockAWS.MockClientMockRecorder) {
+				r.ListAccounts(gomock.Any()).Return(
+					&organizations.ListAccountsOutput{
+						Accounts: []*organizations.Account{
+							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
+							{Name: aws.String("test2"), Status: aws.String(organizations.AccountStatusActive)},
+						},
+					},
+					nil).Times(1)
+				gomock.InOrder(
+					r.ListCreateAccountStatus(gomock.Any()).Return(
+						&organizations.ListCreateAccountStatusOutput{
+							NextToken: aws.String("NextToken"),
+							CreateAccountStatuses: []*organizations.CreateAccountStatus{
+								{AccountName: aws.String("testA"), State: aws.String(organizations.CreateAccountStateInProgress)},
+								{AccountName: aws.String("testB"), State: aws.String(organizations.CreateAccountStateInProgress)},
+							},
+						},
+						nil).Times(1),
+					r.ListCreateAccountStatus(gomock.Any()).Return(
+						&organizations.ListCreateAccountStatusOutput{
+							CreateAccountStatuses: []*organizations.CreateAccountStatus{
+								{AccountName: aws.String("testC"), State: aws.String(organizations.CreateAccountStateInProgress)},
+								{AccountName: aws.String("testD"), State: aws.String(organizations.CreateAccountStateInProgress)},
+							},
+						},
+						nil).Times(1),
+				)
+			},
+			validateTotal: func(t *testing.T, total int) {
+				assert.Equal(t, 6, total)
+			}},
 	}
 
 	for _, test := range tests {
@@ -286,6 +357,9 @@ func TestTotalAccountsUpdate(t *testing.T) {
 							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
 						}},
 					nil)
+				r.ListCreateAccountStatus(gomock.Any()).Return(
+					&organizations.ListCreateAccountStatusOutput{},
+					nil).Times(1)
 			},
 		},
 		{
@@ -308,6 +382,9 @@ func TestTotalAccountsUpdate(t *testing.T) {
 							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
 						}},
 					nil)
+				r.ListCreateAccountStatus(gomock.Any()).Return(
+					&organizations.ListCreateAccountStatusOutput{},
+					nil).Times(1)
 			},
 		},
 		{
@@ -330,6 +407,9 @@ func TestTotalAccountsUpdate(t *testing.T) {
 							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
 						}},
 					nil)
+				r.ListCreateAccountStatus(gomock.Any()).Return(
+					&organizations.ListCreateAccountStatusOutput{},
+					nil).Times(1)
 			},
 		},
 		{
@@ -375,6 +455,9 @@ func TestTotalAccountsUpdate(t *testing.T) {
 							{Name: aws.String("test2"), Status: aws.String(organizations.AccountStatusActive)},
 						}},
 					nil)
+				r.ListCreateAccountStatus(gomock.Any()).Return(
+					&organizations.ListCreateAccountStatusOutput{},
+					nil).Times(1)
 			},
 		},
 		{
@@ -397,6 +480,70 @@ func TestTotalAccountsUpdate(t *testing.T) {
 							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
 						}},
 					nil)
+				r.ListCreateAccountStatus(gomock.Any()).Return(
+					&organizations.ListCreateAccountStatusOutput{},
+					nil).Times(1)
+			},
+		},
+		{
+			name:      "Returns Limit above Current Accounts but below Current+Creating Accounts",
+			expected:  false,
+			expectErr: false,
+			configMap: corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      awsv1alpha1.DefaultConfigMap,
+					Namespace: awsv1alpha1.AccountCrNamespace,
+				},
+				Data: map[string]string{
+					"account-limit": "3",
+				},
+			},
+			setupAWSMock: func(r *mockAWS.MockClientMockRecorder) {
+				r.ListAccounts(gomock.Any()).Return(
+					&organizations.ListAccountsOutput{
+						Accounts: []*organizations.Account{
+							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
+							{Name: aws.String("test2"), Status: aws.String(organizations.AccountStatusActive)},
+						}},
+					nil)
+				r.ListCreateAccountStatus(gomock.Any()).Return(
+					&organizations.ListCreateAccountStatusOutput{
+						CreateAccountStatuses: []*organizations.CreateAccountStatus{
+							{AccountName: aws.String("testA"), State: aws.String(organizations.CreateAccountStateInProgress)},
+							{AccountName: aws.String("testB"), State: aws.String(organizations.CreateAccountStateInProgress)},
+						},
+					},
+					nil).Times(1)
+			},
+		},
+		{
+			name:      "Returns Limit above Current+Creating Accounts",
+			expected:  true,
+			expectErr: false,
+			configMap: corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      awsv1alpha1.DefaultConfigMap,
+					Namespace: awsv1alpha1.AccountCrNamespace,
+				},
+				Data: map[string]string{
+					"account-limit": "10",
+				},
+			},
+			setupAWSMock: func(r *mockAWS.MockClientMockRecorder) {
+				r.ListAccounts(gomock.Any()).Return(
+					&organizations.ListAccountsOutput{
+						Accounts: []*organizations.Account{
+							{Name: aws.String("test1"), Status: aws.String(organizations.AccountStatusActive)},
+							{Name: aws.String("test2"), Status: aws.String(organizations.AccountStatusActive)},
+						}},
+					nil)
+				r.ListCreateAccountStatus(gomock.Any()).Return(
+					&organizations.ListCreateAccountStatusOutput{
+						CreateAccountStatuses: []*organizations.CreateAccountStatus{
+							{AccountName: aws.String("testA"), State: aws.String(organizations.CreateAccountStateInProgress)},
+						},
+					},
+					nil).Times(1)
 			},
 		},
 	}
