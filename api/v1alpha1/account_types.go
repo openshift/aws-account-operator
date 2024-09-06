@@ -106,6 +106,7 @@ type AccountStatus struct {
 	Claimed       bool   `json:"claimed,omitempty"`
 	SupportCaseID string `json:"supportCaseID,omitempty"`
 	// +optional
+	// +listType=atomic
 	Conditions               []AccountCondition    `json:"conditions,omitempty"`
 	State                    string                `json:"state,omitempty"`
 	RotateCredentials        bool                  `json:"rotateCredentials,omitempty"`

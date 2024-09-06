@@ -135,6 +135,7 @@ spec:
                       type: string
                   type: object
                 type: array
+                x-kubernetes-list-type: atomic
               optInRegions:
                 additionalProperties:
                   properties:
