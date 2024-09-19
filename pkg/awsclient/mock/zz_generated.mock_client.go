@@ -903,6 +903,21 @@ func (mr *MockClientMockRecorder) ListChildren(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListChildren", reflect.TypeOf((*MockClient)(nil).ListChildren), arg0)
 }
 
+// ListCreateAccountStatus mocks base method.
+func (m *MockClient) ListCreateAccountStatus(arg0 *organizations.ListCreateAccountStatusInput) (*organizations.ListCreateAccountStatusOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListCreateAccountStatus", arg0)
+	ret0, _ := ret[0].(*organizations.ListCreateAccountStatusOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListCreateAccountStatus indicates an expected call of ListCreateAccountStatus.
+func (mr *MockClientMockRecorder) ListCreateAccountStatus(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListCreateAccountStatus", reflect.TypeOf((*MockClient)(nil).ListCreateAccountStatus), arg0)
+}
+
 // ListHostedZones mocks base method.
 func (m *MockClient) ListHostedZones(arg0 *route53.ListHostedZonesInput) (*route53.ListHostedZonesOutput, error) {
 	m.ctrl.T.Helper()
