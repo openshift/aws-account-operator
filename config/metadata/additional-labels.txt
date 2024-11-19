@@ -1,0 +1,1 @@
+LABEL com.redhat.component="openshift-aws-account-operator"       io.k8s.description="..."       description="..."       distribution-scope="public"       name="openshift/aws-account-operator"       url="https://github.com/openshift/aws-account-operator"       vendor="Red Hat, Inc."       release="v0.0.0"       version="v0.0.0"
