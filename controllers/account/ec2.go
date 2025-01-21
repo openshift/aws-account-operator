@@ -67,6 +67,13 @@ func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, ac
 		go r.InitializeRegion(reqLogger, account, region.Name, amiOwner, vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags, kmsKeyId) //nolint:errcheck // Unable to do anything with the returned error
 	}
 
+	// Create go routine to clean up fedramp initialization resources
+	if config.IsFedramp() {
+		for _, region := range regions {
+			go r.cleanFedrampAWSResources(reqLogger, account, region.Name, ec2Notifications, ec2Errors, creds)
+		}
+	}
+
 	var regionInitFailedRegion []string
 	regionInitFailed := false
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished
@@ -203,16 +210,42 @@ func (r *AccountReconciler) InitializeRegion(
 
 	successMsg := fmt.Sprintf("EC2 instance created and terminated successfully in region: %s", region)
 
-	// If in fedramp cleans up VPC and attached resources
-	if config.IsFedramp() {
-		_, err = cleanFedrampInitializationResources(reqLogger, awsClient, account.Name, region)
-		if err != nil {
-			fedrampCleanedErr := fmt.Sprintf("Error while attempting to clean fedramp region: %v", err.Error())
-			ec2Errors <- regionInitializationError{ErrorMsg: fedrampCleanedErr, Region: region}
-			return err
-		}
+	// Notify Notifications channel that an instance has successfully been created and terminated and to move on
+	ec2Notifications <- successMsg
+
+	return nil
+}
+
+func (r *AccountReconciler) cleanFedrampAWSResources(
+	reqLogger logr.Logger,
+	account *awsv1alpha1.Account,
+	region string,
+	ec2Notifications chan string,
+	ec2Errors chan regionInitializationError,
+	creds *sts.AssumeRoleOutput) error {
+	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+		AwsCredsSecretIDKey:     *creds.Credentials.AccessKeyId,
+		AwsCredsSecretAccessKey: *creds.Credentials.SecretAccessKey,
+		AwsToken:                *creds.Credentials.SessionToken,
+		AwsRegion:               region,
+	})
+
+	if err != nil {
+		connErr := fmt.Sprintf("unable to connect to region %s when attempting to initialize it", region)
+		reqLogger.Error(err, connErr)
+		// Notify Error channel that this region has errored and to move on
+		ec2Errors <- regionInitializationError{ErrorMsg: connErr, Region: region}
+		return err
 	}
 
+	//  Cleanup VPC and attached resources
+	_, err = cleanFedrampInitializationResources(reqLogger, awsClient, account.Name, region)
+	if err != nil {
+		fedrampCleanedErr := fmt.Sprintf("Error while attempting to clean fedramp region: %v", err.Error())
+		ec2Errors <- regionInitializationError{ErrorMsg: fedrampCleanedErr, Region: region}
+		return err
+	}
+	successMsg := fmt.Sprintf("Initialization resources terminated successfully in region: %s", region)
 	// Notify Notifications channel that an instance has successfully been created and terminated and to move on
 	ec2Notifications <- successMsg
 
