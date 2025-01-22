@@ -142,6 +142,7 @@ func (r *AccountReconciler) InitializeRegion(
 
 	// If in fedramp, create vpc
 	if config.IsFedramp() {
+		reqLogger.Info("Performing region initialization pre-cleanup of resources", "account", account.Name, "region", region)
 		// Attempt to clean the region from any hanging fedramp resources
 		fedrampCleaned, err := cleanFedrampInitializationResources(reqLogger, awsClient, account.Name, region)
 		if err != nil {
@@ -154,6 +155,7 @@ func (r *AccountReconciler) InitializeRegion(
 			return nil
 		}
 
+		reqLogger.Info("Creating vpc", "account", account.Name, "region", region)
 		vpcID, err := createVpc(reqLogger, awsClient, account, managedTags, customerTags)
 		if err != nil {
 			vpcErr := fmt.Sprintf("Error while attempting to create VPC: %s", vpcID)
@@ -202,9 +204,9 @@ func (r *AccountReconciler) InitializeRegion(
 	}
 
 	successMsg := fmt.Sprintf("EC2 instance created and terminated successfully in region: %s", region)
-
 	// If in fedramp cleans up VPC and attached resources
 	if config.IsFedramp() {
+		reqLogger.Info("Performing region post-initialization cleanup of resources", "account", account.Name, "region", region)
 		_, err = cleanFedrampInitializationResources(reqLogger, awsClient, account.Name, region)
 		if err != nil {
 			fedrampCleanedErr := fmt.Sprintf("Error while attempting to clean fedramp region: %v", err.Error())
@@ -352,7 +354,7 @@ func deleteFedrampInitializationResources(reqLogger logr.Logger, client awsclien
 		}
 		totalWait -= currentWait
 		time.Sleep(time.Duration(currentWait) * time.Second)
-
+		reqLogger.Info("Attempting to delete", "vpc", vpcIDtoDelete)
 		_, vpcErr := client.DeleteVpc(&ec2.DeleteVpcInput{
 			VpcId: aws.String(vpcIDtoDelete),
 		})
@@ -434,6 +436,7 @@ func cleanFedrampInitializationResources(reqLogger logr.Logger, client awsclient
 	if err != nil {
 		return cleaned, err
 	}
+	reqLogger.Info("Retrieved %v vpcs", len(result.Vpcs))
 
 	for _, vpc := range result.Vpcs {
 		cleaned = true
