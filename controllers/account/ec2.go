@@ -143,6 +143,28 @@ func (r *AccountReconciler) InitializeRegion(
 		return nil
 	}
 
+	// Attempt to gather data needed to launch the init EC2 instance. We do this here before FedRamp initialization,
+	// as they require a VPC to be created and if we hit an error here we want to bail before then to reduce possible
+	// cleanup.
+	instanceType, err := RetrieveAvailableMicroInstanceType(reqLogger, awsClient)
+	if err != nil {
+		determineTypesErr := fmt.Sprintf("Unable to determine available instance types in region: %s", region)
+		controllerutils.LogAwsError(reqLogger, determineTypesErr, nil, err)
+		ec2Errors <- regionInitializationError{ErrorMsg: determineTypesErr, Region: region}
+		return err
+	}
+	ami, err := RetrieveAmi(awsClient, amiOwner)
+	if err != nil {
+		retrieveAmiErr := fmt.Sprintf("Unable to find suitable AMI in region: %s", region)
+		controllerutils.LogAwsError(reqLogger, retrieveAmiErr, nil, err)
+		ec2Errors <- regionInitializationError{ErrorMsg: retrieveAmiErr, Region: region}
+		return err
+	}
+	instanceInfo := awsv1alpha1.AmiSpec{
+		Ami:          ami,
+		InstanceType: instanceType,
+	}
+
 	// If in fedramp, create vpc
 	if config.IsFedramp() {
 		reqLogger.Info("Performing region initialization pre-cleanup of resources", "account", account.Name, "region", region)
@@ -178,25 +200,6 @@ func (r *AccountReconciler) InitializeRegion(
 		if err != nil {
 			return err
 		}
-	}
-
-	instanceType, err := RetrieveAvailableMicroInstanceType(reqLogger, awsClient)
-	if err != nil {
-		determineTypesErr := fmt.Sprintf("Unable to determine available instance types in region: %s", region)
-		controllerutils.LogAwsError(reqLogger, determineTypesErr, nil, err)
-		ec2Errors <- regionInitializationError{ErrorMsg: determineTypesErr, Region: region}
-		return err
-	}
-	ami, err := RetrieveAmi(awsClient, amiOwner)
-	if err != nil {
-		retrieveAmiErr := fmt.Sprintf("Unable to find suitable AMI in region: %s", region)
-		controllerutils.LogAwsError(reqLogger, retrieveAmiErr, nil, err)
-		ec2Errors <- regionInitializationError{ErrorMsg: retrieveAmiErr, Region: region}
-		return err
-	}
-	instanceInfo := awsv1alpha1.AmiSpec{
-		Ami:          ami,
-		InstanceType: instanceType,
 	}
 
 	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, instanceInfo, managedTags, customerTags, kmsKeyId)
