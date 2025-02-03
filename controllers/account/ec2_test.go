@@ -11,12 +11,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
-	"go.uber.org/mock/gomock"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -134,7 +134,7 @@ func TestCreateSubnet(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			expectedSubnetInputTags := []awsclient.AWSTag{}
+			var expectedSubnetInputTags []awsclient.AWSTag
 			expectedSubnetInputTags = append(expectedSubnetInputTags, awsclient.AWSTag{
 				Key:   "clusterAccountName",
 				Value: test.AwsAccount.Name,
@@ -311,7 +311,7 @@ func TestCreateEC2Instance(t *testing.T) {
 				RequesterId:   aws.String("aao"),
 				ReservationId: aws.String("1"),
 			},
-			instanceOutputError: awserr.New("Test", "Test", fmt.Errorf("Test")),
+			instanceOutputError: awserr.New("Test", "Test", fmt.Errorf("test")),
 		}, "", true},
 	}
 	for _, tt := range tests {
@@ -399,29 +399,29 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 				awsClientBuilder: mockAWSBuilder,
 				shardName:        "test",
 			}, args{
-				reqLogger: testutils.NewTestLogger(),
-				account: &awsv1alpha1.Account{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      TestAccountName,
-						Namespace: TestAccountNamespace,
-					},
+			reqLogger: testutils.NewTestLogger(),
+			account: &awsv1alpha1.Account{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      TestAccountName,
+					Namespace: TestAccountNamespace,
 				},
-				regions: []awsv1alpha1.AwsRegions{
-					{
-						Name: "us-east-1",
-					}},
-				creds: &sts.AssumeRoleOutput{
-					AssumedRoleUser: &sts.AssumedRoleUser{},
-					Credentials: &sts.Credentials{
-						AccessKeyId:     aws.String("123456"),
-						Expiration:      &time.Time{},
-						SecretAccessKey: aws.String("123456"),
-						SessionToken:    aws.String("123456"),
-					},
-					PackedPolicySize: new(int64),
+			},
+			regions: []awsv1alpha1.AwsRegions{
+				{
+					Name: "us-east-1",
+				}},
+			creds: &sts.AssumeRoleOutput{
+				AssumedRoleUser: &sts.AssumedRoleUser{},
+				Credentials: &sts.Credentials{
+					AccessKeyId:     aws.String("123456"),
+					Expiration:      &time.Time{},
+					SecretAccessKey: aws.String("123456"),
+					SessionToken:    aws.String("123456"),
 				},
-				amiOwner: "",
-			}},
+				PackedPolicySize: new(int64),
+			},
+			amiOwner: "",
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

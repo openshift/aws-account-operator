@@ -64,11 +64,14 @@ func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, ac
 
 	// Create go routines to initialize regions in parallel
 	for _, region := range regions {
-		go r.InitializeRegion(reqLogger, account, region.Name, amiOwner, vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags, kmsKeyId) //nolint:errcheck // Unable to do anything with the returned error
+		go func() {
+			// Errors are returned on the ec2Errors channel
+			_ = r.InitializeRegion(reqLogger, account, region.Name, amiOwner, vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags, kmsKeyId)
+		}()
 	}
 
 	var regionInitFailedRegion []string
-	regionInitFailed := false
+	var regionInitFailed bool
 	// Wait for all go routines to send a message or error to notify that the region initialization has finished
 	for i := 0; i < len(regions); i++ {
 		select {
@@ -116,7 +119,7 @@ func (r *AccountReconciler) InitializeRegion(
 	})
 
 	if err != nil {
-		connErr := fmt.Sprintf("unable to connect to region %s when attempting to initialize it", region)
+		connErr := fmt.Sprintf("unable to get AWS client when attempting to initialize region %s", region)
 		reqLogger.Error(err, connErr)
 		// Notify Error channel that this region has errored and to move on
 		ec2Errors <- regionInitializationError{ErrorMsg: connErr, Region: region}
@@ -136,7 +139,7 @@ func (r *AccountReconciler) InitializeRegion(
 	if cleaned {
 		// Getting here indicates that the current region is already initialized
 		// and had hanging t2.micro instances that were cleaned. We can forgo creating any new resources
-		ec2Notifications <- fmt.Sprintf("Region %s was already innitialized", region)
+		ec2Notifications <- fmt.Sprintf("Region %s was already initialized", region)
 		return nil
 	}
 
@@ -182,12 +185,14 @@ func (r *AccountReconciler) InitializeRegion(
 		determineTypesErr := fmt.Sprintf("Unable to determine available instance types in region: %s", region)
 		controllerutils.LogAwsError(reqLogger, determineTypesErr, nil, err)
 		ec2Errors <- regionInitializationError{ErrorMsg: determineTypesErr, Region: region}
+		return err
 	}
 	ami, err := RetrieveAmi(awsClient, amiOwner)
 	if err != nil {
 		retrieveAmiErr := fmt.Sprintf("Unable to find suitable AMI in region: %s", region)
 		controllerutils.LogAwsError(reqLogger, retrieveAmiErr, nil, err)
 		ec2Errors <- regionInitializationError{ErrorMsg: retrieveAmiErr, Region: region}
+		return err
 	}
 	instanceInfo := awsv1alpha1.AmiSpec{
 		Ami:          ami,
@@ -203,7 +208,6 @@ func (r *AccountReconciler) InitializeRegion(
 		return err
 	}
 
-	successMsg := fmt.Sprintf("EC2 instance created and terminated successfully in region: %s", region)
 	// If in fedramp cleans up VPC and attached resources
 	if config.IsFedramp() {
 		reqLogger.Info("Performing region post-initialization cleanup of resources", "account", account.Name, "region", region)
@@ -216,7 +220,7 @@ func (r *AccountReconciler) InitializeRegion(
 	}
 
 	// Notify Notifications channel that an instance has successfully been created and terminated and to move on
-	ec2Notifications <- successMsg
+	ec2Notifications <- fmt.Sprintf("EC2 instance created and terminated successfully in region: %s", region)
 
 	return nil
 }
@@ -247,7 +251,8 @@ func createVpc(reqLogger logr.Logger, client awsclient.Client, account *awsv1alp
 		}
 		result, vpcErr := client.CreateVpc(input)
 		if vpcErr != nil {
-			if aerr, ok := vpcErr.(awserr.Error); ok {
+			var aerr awserr.Error
+			if errors.As(vpcErr, &aerr) {
 				if *result.Vpc.VpcId != "" {
 					timeoutVpcID = *result.Vpc.VpcId
 				}
@@ -277,7 +282,8 @@ func cleanFedrampSubnet(reqLogger logr.Logger, client awsclient.Client, vpcIDtoD
 	})
 
 	// If we receive AuthFailure, do not attempt to clean resources
-	if aerr, ok := err.(awserr.Error); ok {
+	var aerr awserr.Error
+	if errors.As(err, &aerr) {
 		if aerr.Code() == "AuthFailure" {
 			reqLogger.Error(err, "We do not have the correct authentication to clean or initialize region. Backing out gracefully")
 			return err
@@ -359,7 +365,8 @@ func deleteFedrampInitializationResources(reqLogger logr.Logger, client awsclien
 			VpcId: aws.String(vpcIDtoDelete),
 		})
 		if vpcErr != nil {
-			if aerr, ok := vpcErr.(awserr.Error); ok {
+			var aerr awserr.Error
+			if errors.As(vpcErr, &aerr) {
 				switch aerr.Code() {
 				case "PendingVerification", "OptInRequired", "DependencyViolation":
 					continue
@@ -377,18 +384,18 @@ func deleteFedrampInitializationResources(reqLogger logr.Logger, client awsclien
 }
 
 // retrieveVpcs list of all VPCs with appropriate tag
-func retrieveVpcs(reqLogger logr.Logger, client awsclient.Client, region string) (*ec2.DescribeVpcsOutput, bool, error) {
-	cleaned := false
+func retrieveVpcs(reqLogger logr.Logger, client awsclient.Client, region string) (*ec2.DescribeVpcsOutput, error) {
 	// Make dry run to certify required authentication
 	_, err := client.DescribeVpcs(&ec2.DescribeVpcsInput{
 		DryRun: aws.Bool(true),
 	})
 
 	// If we receive AuthFailure, do not attempt to clean resources
-	if aerr, ok := err.(awserr.Error); ok {
+	var aerr awserr.Error
+	if errors.As(err, &aerr) {
 		if aerr.Code() == "AuthFailure" {
 			reqLogger.Error(err, fmt.Sprintf("We do not have the correct authentication to clean or initialize region: %s backing out gracefully", region))
-			return nil, cleaned, err
+			return nil, err
 		}
 	}
 
@@ -424,33 +431,33 @@ func retrieveVpcs(reqLogger logr.Logger, client awsclient.Client, region string)
 	})
 	if err != nil {
 		reqLogger.Error(err, "Error while describing VPCs")
-		return nil, cleaned, err
+		return nil, err
 	}
-	return result, cleaned, err
+	return result, err
 }
 
 // cleanFedrampInitializationResources removes all hanging fedramp resources
 func cleanFedrampInitializationResources(reqLogger logr.Logger, client awsclient.Client, accountName, region string) (bool, error) {
-	cleaned := false
-	result, cleaned, err := retrieveVpcs(reqLogger, client, region)
+	var cleaned bool
+	result, err := retrieveVpcs(reqLogger, client, region)
 	if err != nil {
 		return cleaned, err
 	}
-	reqLogger.Info("Retrieved %v vpcs", len(result.Vpcs))
+	reqLogger.Info(fmt.Sprintf("Found %v vpcs for region", len(result.Vpcs)), "region", region)
 
 	for _, vpc := range result.Vpcs {
-		cleaned = true
-		reqLogger.Info("Delete hanging resources", "vpc", vpc.VpcId, "account", accountName)
+		reqLogger.Info("Deleting initialization resources", "vpc", vpc.VpcId, "account", accountName)
 		err = deleteFedrampInitializationResources(reqLogger, client, *vpc.VpcId)
 		if err != nil {
 			reqLogger.Error(err, "Error while attempting to delete fedramp initialization resources", "vpcID", *vpc.VpcId)
 			return false, err
 		}
+		cleaned = true
 	}
 	return cleaned, nil
 }
 
-// createSubnet takes in a cirdBlock and vpcID and returns the subnetID
+// createSubnet takes in a cidrBlock and vpcID and returns the subnetID
 func createSubnet(reqLogger logr.Logger, client awsclient.Client, account *awsv1alpha1.Account, managedTags []awsclient.AWSTag, customTags []awsclient.AWSTag, cirdBlock, vpcID string) (string, error) {
 	tags := awsclient.AWSTags.BuildTags(account, managedTags, customTags).GetEC2Tags()
 	input := &ec2.CreateSubnetInput{
@@ -466,7 +473,8 @@ func createSubnet(reqLogger logr.Logger, client awsclient.Client, account *awsv1
 
 	result, subnetErr := client.CreateSubnet(input)
 	if subnetErr != nil {
-		if aerr, ok := subnetErr.(awserr.Error); ok {
+		var aerr awserr.Error
+		if errors.As(subnetErr, &aerr) {
 			switch aerr.Code() {
 			default:
 				subnetCreateFailed := fmt.Sprintf("Error while attempting to create subnet: %v", *result.Subnet.SubnetId)
@@ -495,7 +503,8 @@ func deleteSubnet(reqLogger logr.Logger, client awsclient.Client, subnetToDelete
 			SubnetId: aws.String(subnetToDelete),
 		})
 		if subnetErr != nil {
-			if aerr, ok := subnetErr.(awserr.Error); ok {
+			var aerr awserr.Error
+			if errors.As(subnetErr, &aerr) {
 				switch aerr.Code() {
 				case "PendingVerification", "OptInRequired", "DependencyViolation":
 					continue
@@ -566,7 +575,8 @@ func (r *AccountReconciler) BuildAndDestroyEC2Instances(
 		// Log an error and make sure that instance is terminated
 		DescErrorMsg := fmt.Sprintf("Could not get EC2 instance state, terminating instance %s", instanceID)
 
-		if DescError, ok := err.(awserr.Error); ok {
+		var DescError awserr.Error
+		if errors.As(err, &DescError) {
 			DescErrorMsg = fmt.Sprintf("Could not get EC2 instance state: %s, terminating instance %s", DescError.Code(), instanceID)
 		}
 
@@ -640,7 +650,7 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 		// If fedramp, create subnet and set value for RunInstancesInput
 		if config.IsFedramp() {
 			// Get a list of all VPCs with appropriate tag
-			result, _, err := retrieveVpcs(reqLogger, client, "")
+			result, err := retrieveVpcs(reqLogger, client, "")
 			if err != nil {
 				controllerutils.LogAwsError(reqLogger, "Error finding vpcID", nil, err)
 			}
@@ -659,7 +669,8 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 
 		// Return on unexpected errors:
 		if runErr != nil {
-			if aerr, ok := runErr.(awserr.Error); ok {
+			var aerr awserr.Error
+			if errors.As(runErr, &aerr) {
 				// We want to ensure that we don't leave any instances around when there is an error
 				// possible that there is no instance here
 				if len(runResult.Instances) > 0 {
@@ -701,7 +712,8 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instan
 
 	if err != nil {
 		controllerutils.LogAwsError(reqLogger, "New AWS Error while describing EC2 instance", nil, err)
-		if aerr, ok := err.(awserr.Error); ok {
+		var aerr awserr.Error
+		if errors.As(err, &aerr) {
 			if aerr.Code() == "UnauthorizedOperation" {
 				return 401, err
 			}
@@ -732,32 +744,23 @@ func TerminateEC2Instance(reqLogger logr.Logger, client awsclient.Client, instan
 	return nil
 }
 
-// ListEC2InstanceStatus returns a slice of EC2 instance statuses
-func ListEC2InstanceStatus(reqLogger logr.Logger, client awsclient.Client) (*ec2.DescribeInstanceStatusOutput, error) {
-	result, err := client.DescribeInstanceStatus(nil)
-
-	if err != nil {
-		controllerutils.LogAwsError(reqLogger, "New AWS Error Listing EC2 instance status", nil, err)
-		return nil, err
-	}
-
-	return result, nil
-}
-
 // cleanRegion will remove all hanging account creation t2.micro instances running in the current region
 func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string, region string) (bool, error) {
-	cleaned := false
+	var cleaned bool
 	// Make a dry run to certify we have required authentication
 	_, err := client.DescribeInstances(&ec2.DescribeInstancesInput{
 		DryRun: aws.Bool(true),
 	})
+
 	// If we receive an AuthFailure alert we do not attempt to clean this region
-	if aerr, ok := err.(awserr.Error); ok {
+	var aerr awserr.Error
+	if errors.As(err, &aerr) {
 		if aerr.Code() == "AuthFailure" {
 			logger.Error(err, fmt.Sprintf("We do not have the correct authentication to clean or initialize region: %s backing out gracefully", region))
 			return cleaned, err
 		}
 	}
+
 	// Get the instance type that will be used for this region and filter by that one.
 	instanceType, err := RetrieveAvailableMicroInstanceType(logger, client)
 	if err != nil {
@@ -809,23 +812,23 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 		logger.Error(err, "Error while describing instances")
 		return cleaned, err
 	}
-	// Remove any hanging instances
 
+	// Remove any hanging instances
 	for _, reservation := range output.Reservations {
 		for _, instance := range reservation.Instances {
-			cleaned = true
 			logger.Info("Terminating hanging instance", "instance", instance.InstanceId, "account", accountName)
 			err = TerminateEC2Instance(logger, client, *instance.InstanceId)
 			if err != nil {
 				logger.Error(err, "Error while attempting to terminate instance", "instance", *instance.InstanceId)
 				return false, err
 			}
+			cleaned = true
 		}
 	}
 	return cleaned, nil
 }
 
-// Get the free instance type for the client's region
+// RetrieveAvailableMicroInstanceType finds the EC2 free tier instance type for a given region
 func RetrieveAvailableMicroInstanceType(logger logr.Logger, awsClient awsclient.Client) (string, error) {
 	// FIXME: For unknown reasons attempting to use the free-tier-eligible
 	// filter from go returns *nothing*, but works fine from the CLI.
@@ -834,7 +837,8 @@ func RetrieveAvailableMicroInstanceType(logger logr.Logger, awsClient awsclient.
 		InstanceTypes: []*string{aws.String(T3INSTANCETYPE)},
 	})
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
+		var aerr awserr.Error
+		if errors.As(err, &aerr) {
 			switch aerr.Code() {
 			case "InvalidInstanceType":
 				logger.Info("Did not find t3.micro - falling back to t2.micro")
@@ -855,30 +859,33 @@ func RetrieveAvailableMicroInstanceType(logger logr.Logger, awsClient awsclient.
 }
 
 func RetrieveAmi(awsClient awsclient.Client, amiOwner string) (string, error) {
-	var ami string
+	var imageId string
 	input := ec2.DescribeImagesInput{
 		ExecutableUsers: []*string{aws.String(EXECUTABLEBY)},
 		Owners:          []*string{&amiOwner},
+		Filters: []*ec2.Filter{
+			{
+				Name: aws.String("architecture"),
+				Values: []*string{
+					aws.String("x86_64"),
+				},
+			},
+		},
 	}
 	availableAmis, err := awsClient.DescribeImages(&input)
 	if err != nil {
 		return "", err
 	}
 	for _, image := range availableAmis.Images {
-		if *image.Architecture != "x86_64" {
+		if strings.Contains(*image.Name, "SAP") || strings.Contains(*image.Name, "BETA") {
 			continue
 		}
-		if strings.Contains(*image.Name, "SAP") {
-			continue
-		}
-		if strings.Contains(*image.Name, "BETA") {
-			continue
-		}
-		ami = *image.ImageId
+
+		imageId = *image.ImageId
 		break
 	}
-	if ami == "" {
-		return "", errors.New("Could not find a matching AMI.")
+	if imageId == "" {
+		return "", errors.New("could not find a valid AMI")
 	}
-	return ami, nil
+	return imageId, nil
 }
