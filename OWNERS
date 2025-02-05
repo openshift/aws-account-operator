@@ -1,15 +1,11 @@
 reviewers:
-- bergmannf
 - iamkirkbater
 - joshbranham
 - jharrington22
-- mrWinston
-- NautiluX
 - reedcort
-- T0MASD
 approvers:
-- bergmannf
 - iamkirkbater
 - jharrington22
-- NautiluX
+- joshbranham
+- reedcort
 maintainers:
