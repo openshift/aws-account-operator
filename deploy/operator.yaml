@@ -21,6 +21,10 @@ spec:
           command:
           - aws-account-operator
           imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: "200m"
+              memory: "2Gi"
           env:
             - name: WATCH_NAMESPACE
               value: ""
