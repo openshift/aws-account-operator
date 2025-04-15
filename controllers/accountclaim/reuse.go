@@ -54,7 +54,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 
 	// If the reused account is STS, then we don't have to clean up
 	if reusedAccount.Spec.ManualSTSMode {
-		err := r.Client.Delete(context.TODO(), reusedAccount)
+		err := r.Delete(context.TODO(), reusedAccount)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete STS account from accountclaim cleanup")
 			return err
@@ -106,7 +106,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 	}
 
 	if reusedAccount.IsBYOC() {
-		err := r.Client.Delete(context.TODO(), reusedAccount)
+		err := r.Delete(context.TODO(), reusedAccount)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete BYOC account from accountclaim cleanup")
 			return err

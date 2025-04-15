@@ -60,7 +60,7 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 		return utils.RequeueAfter(5 * time.Minute)
 	}
 
-	var isEnabled bool = false
+	var isEnabled = false
 
 	enabled, err := strconv.ParseBool(cm.Data["feature.accountpool_validation"])
 	if err != nil {
@@ -166,7 +166,7 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 
 	for _, updatedAccount := range updatedAccountList {
 		updatedAccountCopy := updatedAccount
-		if exists := updatedAccountMap[updatedAccountCopy.ObjectMeta.Name]; exists {
+		if exists := updatedAccountMap[updatedAccountCopy.Name]; exists {
 			updatedAccountCopy.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
 			reqLogger.Info(fmt.Sprintf("Attempting to update the account status for: %v", updatedAccountCopy.Name))
 			err = r.accountStatusUpdate(reqLogger, &updatedAccountCopy)

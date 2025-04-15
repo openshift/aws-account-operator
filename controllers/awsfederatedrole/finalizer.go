@@ -18,7 +18,7 @@ func (r *AWSFederatedRoleReconciler) addFinalizer(reqLogger logr.Logger, awsFede
 	awsFederatedRole.SetFinalizers(append(awsFederatedRole.GetFinalizers(), utils.Finalizer))
 
 	// Update CR
-	err := r.Client.Update(context.TODO(), awsFederatedRole)
+	err := r.Update(context.TODO(), awsFederatedRole)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update AccountClaim with finalizer")
 		return err
@@ -31,7 +31,7 @@ func (r *AWSFederatedRoleReconciler) removeFinalizer(reqLogger logr.Logger, awsF
 	awsFederatedRole.SetFinalizers(utils.Remove(awsFederatedRole.GetFinalizers(), finalizerName))
 
 	// Update CR
-	err := r.Client.Update(context.TODO(), awsFederatedRole)
+	err := r.Update(context.TODO(), awsFederatedRole)
 	if err != nil {
 		reqLogger.Error(err, "Failed to remove AWSFederatedAccountAccess finalizer")
 		return err
@@ -45,14 +45,14 @@ func (r *AWSFederatedRoleReconciler) finalizeFederateRole(reqLogger logr.Logger,
 	awsFederatedAccountAccessList := &awsv1alpha1.AWSFederatedAccountAccessList{}
 
 	listOpts := []client.ListOption{}
-	if err := r.Client.List(context.TODO(), awsFederatedAccountAccessList, listOpts...); err != nil {
+	if err := r.List(context.TODO(), awsFederatedAccountAccessList, listOpts...); err != nil {
 		reqLogger.Error(err, "unable to list AWS Federated Account Accesses")
 		return err
 	}
 
 	for i := range awsFederatedAccountAccessList.Items {
 		if isFederatedRoleReferenced(&awsFederatedAccountAccessList.Items[i], awsFederatedRole) {
-			deleteAccessErr := r.Client.Delete(context.TODO(), &awsFederatedAccountAccessList.Items[i])
+			deleteAccessErr := r.Delete(context.TODO(), &awsFederatedAccountAccessList.Items[i])
 			if deleteAccessErr != nil {
 				reqLogger.Error(deleteAccessErr, fmt.Sprintf("unable to delete AWS Federated Account Accesses %s\n", awsFederatedAccountAccessList.Items[i].Name))
 				return deleteAccessErr

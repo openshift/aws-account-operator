@@ -87,7 +87,7 @@ var _ = Describe("AccountPool Validation", func() {
 	Context("Testing AccountPool Validation", func() {
 		When("Configmap Service Quota and Account Spec ServiceQuota are the same", func() {
 			It("Does nothing", func() {
-				var accountPoolConfig string = `
+				var accountPoolConfig = `
 testaccount:
   servicequotas:
     us-east-1:
@@ -127,7 +127,7 @@ testaccount:
 		})
 		When(" Configmap SerivceQuota is greater than Account Spec ServiceQuota", func() {
 			It("Increases ServiceQuota in Account Spec", func() {
-				var accountPoolConfig string = `
+				var accountPoolConfig = `
 testaccount:
   servicequotas:
     us-east-1:
@@ -165,7 +165,7 @@ testaccount:
 		})
 		When("ConfigMap ServiceQuota is Decreased", func() {
 			It("Decreases Account Spec ServiceQuota", func() {
-				var accountPoolConfig string = `
+				var accountPoolConfig = `
 testaccount:
   servicequotas:
     us-east-1:

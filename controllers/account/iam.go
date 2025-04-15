@@ -61,7 +61,7 @@ func (r *AccountReconciler) CreateSecret(reqLogger logr.Logger, account *awsv1al
 		return err
 	}
 
-	createErr := r.Client.Create(context.TODO(), secret)
+	createErr := r.Create(context.TODO(), secret)
 	if createErr != nil {
 		failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret %s", secret.Name)
 		utils.SetAccountStatus(account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
@@ -596,7 +596,7 @@ func (r *AccountReconciler) createIAMUserSecret(reqLogger logr.Logger, account *
 func (r *AccountReconciler) DoesSecretExist(namespacedName types.NamespacedName) (bool, error) {
 
 	secret := &corev1.Secret{}
-	err := r.Client.Get(context.TODO(), namespacedName, secret)
+	err := r.Get(context.TODO(), namespacedName, secret)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			return false, nil

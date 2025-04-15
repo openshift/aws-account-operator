@@ -32,12 +32,12 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 			// Need to check if the secret exists AND that it matches what we're expecting
 			secret := corev1.Secret{}
 			secretObjectKey := client.ObjectKey{Name: accountClaim.Spec.AwsCredentialSecret.Name, Namespace: accountClaim.Spec.AwsCredentialSecret.Namespace}
-			err := r.Client.Get(context.TODO(), secretObjectKey, &secret)
+			err := r.Get(context.TODO(), secretObjectKey, &secret)
 			if err != nil { //nolint; gosimple // Ignores false-positive S1008 gosimple notice
 				return true, err
 			}
 
-			err = r.Client.Delete(context.TODO(), &secret)
+			err = r.Delete(context.TODO(), &secret)
 			if err != nil {
 				reqLogger.Error(err, "failed to fake secret during fake cleanup")
 				return true, err
@@ -54,7 +54,7 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 
 	// Create Fake Secret if it doesnt exist
 	if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
-		err := r.Client.Create(context.TODO(), newSecretforCR(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace, []byte("fakeAccessKey"), []byte("FakeSecretAccesskey")))
+		err := r.Create(context.TODO(), newSecretforCR(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace, []byte("fakeAccessKey"), []byte("FakeSecretAccesskey")))
 		if err != nil {
 			reqLogger.Error(err, "Unable to create secret for OCM")
 			return true, err

@@ -69,7 +69,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 
 	// Fetch the AWSFederatedAccountAccess instance
 	currentFAA := &awsv1alpha1.AWSFederatedAccountAccess{}
-	err := r.Client.Get(context.TODO(), request.NamespacedName, currentFAA)
+	err := r.Get(context.TODO(), request.NamespacedName, currentFAA)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -82,7 +82,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 	}
 
 	requestedRole := &awsv1alpha1.AWSFederatedRole{}
-	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AWSFederatedRole.Name, Namespace: currentFAA.Spec.AWSFederatedRole.Namespace}, requestedRole)
+	err = r.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AWSFederatedRole.Name, Namespace: currentFAA.Spec.AWSFederatedRole.Namespace}, requestedRole)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			SetStatuswithCondition(currentFAA, "Requested role does not exist", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
@@ -150,7 +150,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 			// Join the new UID label with any current labels
 			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
-			err = r.Client.Update(context.TODO(), currentFAA)
+			err = r.Update(context.TODO(), currentFAA)
 			if err != nil {
 				reqLogger.Error(err, fmt.Sprintf("Failed to update label %s for %s/%s", awsv1alpha1.FederatedRoleNameLabel, currentFAA.Namespace, currentFAA.Name))
 				return reconcile.Result{}, err
@@ -182,7 +182,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
 		// Update the CR with new labels
-		err = r.Client.Update(context.TODO(), currentFAA)
+		err = r.Update(context.TODO(), currentFAA)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("Failed to update label %s for %s/%s", awsv1alpha1.UIDLabel, currentFAA.Namespace, currentFAA.Name))
 			return reconcile.Result{}, err
@@ -220,7 +220,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
 		// Update the CR with new labels
-		err = r.Client.Update(context.TODO(), currentFAA)
+		err = r.Update(context.TODO(), currentFAA)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("Label update for %s failed", currentFAA.Name))
 			return reconcile.Result{}, err
@@ -601,7 +601,7 @@ func (r *AWSFederatedAccountAccessReconciler) addFinalizer(reqLogger logr.Logger
 	awsFederatedAccountAccess.SetFinalizers(append(awsFederatedAccountAccess.GetFinalizers(), controllerutils.Finalizer))
 
 	// Update CR
-	err := r.Client.Update(context.TODO(), awsFederatedAccountAccess)
+	err := r.Update(context.TODO(), awsFederatedAccountAccess)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update AccountClaim with finalizer")
 		return err
@@ -614,7 +614,7 @@ func (r *AWSFederatedAccountAccessReconciler) removeFinalizer(reqLogger logr.Log
 	AWSFederatedAccountAccess.SetFinalizers(controllerutils.Remove(AWSFederatedAccountAccess.GetFinalizers(), finalizerName))
 
 	// Update CR
-	err := r.Client.Update(context.TODO(), AWSFederatedAccountAccess)
+	err := r.Update(context.TODO(), AWSFederatedAccountAccess)
 	if err != nil {
 		reqLogger.Error(err, "Failed to remove AWSFederatedAccountAccess finalizer")
 		return err
