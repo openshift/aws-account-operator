@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"go.uber.org/mock/gomock"
 	apis "github.com/openshift/aws-account-operator/api"
 	"github.com/openshift/aws-account-operator/api/v1alpha1"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"github.com/openshift/aws-account-operator/pkg/utils"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -25,7 +24,7 @@ import (
 )
 
 func helperValidateAccClaimFinalizer(client *client.Client, namespacedName types.NamespacedName, expectedLen int, expectErr bool) {
-	acValidator := &awsv1alpha1.AccountClaim{}
+	acValidator := &v1alpha1.AccountClaim{}
 	testErr := (*client).Get(
 		context.TODO(), namespacedName, acValidator,
 	)
@@ -62,7 +61,7 @@ var _ = Describe("AccountClaim", func() {
 			Name:      name,
 			Namespace: namespace,
 		}
-		accountClaim *awsv1alpha1.AccountClaim
+		accountClaim *v1alpha1.AccountClaim
 		r            *AccountClaimReconciler
 		ctrl         *gomock.Controller
 	)
@@ -76,19 +75,19 @@ var _ = Describe("AccountClaim", func() {
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
 
-		accountClaim = &awsv1alpha1.AccountClaim{
+		accountClaim = &v1alpha1.AccountClaim{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: namespace,
 			},
-			Spec: awsv1alpha1.AccountClaimSpec{
-				LegalEntity: awsv1alpha1.LegalEntity{
+			Spec: v1alpha1.AccountClaimSpec{
+				LegalEntity: v1alpha1.LegalEntity{
 					Name: "LegalCorp. Inc.",
 					ID:   "abcdefg123456",
 				},
 				AccountLink: "osd-creds-mgmt-aaabbb",
-				Aws: awsv1alpha1.Aws{
-					Regions: []awsv1alpha1.AwsRegions{
+				Aws: v1alpha1.Aws{
+					Regions: []v1alpha1.AwsRegions{
 						{
 							Name: "us-east-1",
 						},

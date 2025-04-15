@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-logr/logr"
-	accountcontroller "github.com/openshift/aws-account-operator/controllers/account"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strconv"
 	"strings"
@@ -539,7 +538,7 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 		regionList = append(regionList, strings.TrimSpace(region))
 	}
 
-	numberOfAccountsOptingIn, err := accountcontroller.CalculateOptingInRegionAccounts(reqLogger, r.Client)
+	numberOfAccountsOptingIn, err := account.CalculateOptingInRegionAccounts(reqLogger, r.Client)
 	if err != nil {
 		return &AccountValidationError{
 			Type: NotAllOptInRegionsEnabled,
@@ -548,14 +547,14 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 	}
 
 	if currentAcctInstance.Status.OptInRegions == nil || !currentAcctInstance.AllRegionsExistInOptInRegions(regionList) {
-		if numberOfAccountsOptingIn >= accountcontroller.MaxAccountRegionEnablement {
+		if numberOfAccountsOptingIn >= account.MaxAccountRegionEnablement {
 			return &AccountValidationError{
 				Type: TooManyActiveAccountRegionEnablements,
 				Err:  errors.New("the request quota for the number of concurrent account region-OptIn requests has been reached"),
 			}
 		}
 		//updates account status to indicate supported opt-in region are pending enablement
-		err = accountcontroller.SetOptRegionStatus(reqLogger, regionList, currentAcctInstance)
+		err = account.SetOptRegionStatus(reqLogger, regionList, currentAcctInstance)
 		if err != nil {
 			return &AccountValidationError{
 				Type: OptInRegionStatus,
@@ -591,7 +590,7 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 	}
 
 	if currentAcctInstance.HasOpenOptInRegionRequests() && utils.DetectDevMode == utils.DevModeProduction {
-		_, err := accountcontroller.GetOptInRegionStatus(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
+		_, err := account.GetOptInRegionStatus(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
 		if err != nil {
 			return &AccountValidationError{
 				Type: NotAllOptInRegionsEnabled,
@@ -607,7 +606,7 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 
 }
 
-func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger logr.Logger, account *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder) error {
+func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder) error {
 	awsRegion := config.GetDefaultRegion()
 	awsSetupClient, err := awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
@@ -623,12 +622,12 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 		}
 	}
 
-	if account.Spec.RegionalServiceQuotas == nil {
+	if awsAccount.Spec.RegionalServiceQuotas == nil {
 		return nil
 	}
 
-	if account.Status.RegionalServiceQuotas == nil {
-		err = accountcontroller.SetCurrentAccountServiceQuotas(reqLogger, awsClientBuilder, awsSetupClient, account, r.Client)
+	if awsAccount.Status.RegionalServiceQuotas == nil {
+		err = account.SetCurrentAccountServiceQuotas(reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client)
 		if err != nil {
 			reqLogger.Error(err, "failed to set account service quotas")
 			return &AccountValidationError{
@@ -636,7 +635,7 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 				Err:  errors.New("failed to set account service quotas"),
 			}
 		}
-		err = r.statusUpdate(account)
+		err = r.statusUpdate(awsAccount)
 		if err != nil {
 			return &AccountValidationError{
 				Type: QuotaStatus,
@@ -649,8 +648,8 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 			Err:  errors.New("service quota status updated, increase request needs to be sent to aws"),
 		}
 	} else {
-		if account.HasOpenQuotaIncreaseRequests() && utils.DetectDevMode == utils.DevModeProduction {
-			_, err = accountcontroller.GetServiceQuotaRequest(reqLogger, awsClientBuilder, awsSetupClient, account, r.Client)
+		if awsAccount.HasOpenQuotaIncreaseRequests() && utils.DetectDevMode == utils.DevModeProduction {
+			_, err = account.GetServiceQuotaRequest(reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client)
 			if err != nil {
 				return &AccountValidationError{
 					Type: NotAllServicequotasApplied,
