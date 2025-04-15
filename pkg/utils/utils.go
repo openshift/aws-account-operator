@@ -62,7 +62,7 @@ var operatorStartTime metav1.Time
 func InitOperatorStartTime() error {
 	if !operatorStartTime.IsZero() {
 		// Don't do this. No, really.
-		return errors.New("Attempt to initialize start time twice")
+		return errors.New("attempt to initialize start time twice")
 	}
 	operatorStartTime = metav1.Now()
 	return nil

@@ -116,7 +116,7 @@ func CheckIAMUserExists(reqLogger logr.Logger, client Client, userName string) (
 				}
 				time.Sleep(time.Duration(time.Duration(i*5) * time.Second))
 			} else {
-				return false, nil, fmt.Errorf("Unable to check if user %s exists error: %s", userName, err)
+				return false, nil, fmt.Errorf("unable to check if user %s exists error: %s", userName, err)
 			}
 		} else {
 			break

@@ -406,7 +406,7 @@ func (r *AWSFederatedAccountAccessReconciler) createIAMPolicy(awsClient awsclien
 	// Marshal policydoc to json
 	jsonPolicyDoc, err := json.Marshal(&policyDoc)
 	if err != nil {
-		return &iam.Policy{}, fmt.Errorf("Error marshalling jsonPolicy doc : Error %s", err.Error())
+		return &iam.Policy{}, fmt.Errorf("error marshalling jsonPolicy doc : Error %s", err.Error())
 	}
 
 	var policyName string
@@ -415,7 +415,7 @@ func (r *AWSFederatedAccountAccessReconciler) createIAMPolicy(awsClient awsclien
 		policyName = afr.Spec.AWSCustomPolicy.Name + "-" + uidLabel
 	} else {
 		// Just in case the UID somehow doesn't exist
-		return nil, errors.New("Failed to get UID label")
+		return nil, errors.New("failed to get UID label")
 	}
 
 	output, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
@@ -464,7 +464,7 @@ func (r *AWSFederatedAccountAccessReconciler) createIAMRole(awsClient awsclient.
 		roleName = afr.Name + "-" + uidLabel
 	} else {
 		// Just in case the UID somehow doesn't exist
-		return nil, errors.New("Failed to get UID label")
+		return nil, errors.New("failed to get UID label")
 	}
 
 	createRoleOutput, err := awsClient.CreateRole(&iam.CreateRoleInput{
@@ -483,7 +483,7 @@ func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMPolicy(awsClient 
 
 	uidLabel, ok := afaa.Labels["uid"]
 	if !ok {
-		return errors.New("Unable to get UID label")
+		return errors.New("unable to get UID label")
 	}
 
 	gciOut, err := awsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
@@ -518,7 +518,7 @@ func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMRole(awsClient aw
 
 	uidLabel, ok := afaa.Labels["uid"]
 	if !ok {
-		return nil, errors.New("Unable to get UID label")
+		return nil, errors.New("unable to get UID label")
 	}
 
 	roleName := afaa.Spec.AWSFederatedRole.Name + "-" + uidLabel
@@ -632,7 +632,7 @@ func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr
 			log.Info("UID Label missing with CR not ready, removing finalizer")
 			return nil
 		}
-		return errors.New("Unable to get UID label")
+		return errors.New("unable to get UID label")
 
 	}
 
@@ -643,7 +643,7 @@ func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr
 			log.Info("AWS Account ID Label missing with CR not ready, removing finalizer")
 			return nil
 		}
-		return errors.New("Unable to get AWS Account ID label")
+		return errors.New("unable to get AWS Account ID label")
 	}
 
 	roleName := currentFAA.Spec.AWSFederatedRole.Name + "-" + uidLabel
@@ -775,7 +775,7 @@ func (r *AWSFederatedAccountAccessReconciler) deleteNonAttachedCustomPolicy(reqL
 	// Get the UID
 	uidLabel, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
 	if !ok {
-		return errors.New("Unable to get UID label")
+		return errors.New("unable to get UID label")
 	}
 
 	var policyMarker *string

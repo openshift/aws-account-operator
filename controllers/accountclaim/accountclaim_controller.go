@@ -849,7 +849,7 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 	if defaultAccountPoolName == "" {
 		// We shouldn't really ever hit this, as GetDefaultAccountPoolName will return NotFound err if
 		// defaultAccountPoolName is empty, more of a just in case something changes.
-		err = fmt.Errorf("Cannot find default accountpool")
+		err = fmt.Errorf("cannot find default accountpool")
 		reqLogger.Error(err, "Default AccountPool name is empty")
 		return nil, err
 	} else {

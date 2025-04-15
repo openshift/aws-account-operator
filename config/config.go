@@ -55,7 +55,7 @@ func SetIsFedramp(configMap *corev1.ConfigMap) error {
 	}
 	frBool, err := strconv.ParseBool(fedramp)
 	if err != nil {
-		return fmt.Errorf("Invalid value for configmap fedramp. %w", err)
+		return fmt.Errorf("invalid value for configmap fedramp. %w", err)
 	}
 	isFedramp = frBool
 	return nil

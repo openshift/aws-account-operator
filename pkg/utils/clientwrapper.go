@@ -38,7 +38,7 @@ func InitControllerMaxReconciles(kubeClient client.Client) []error {
 	for _, controller := range controllers {
 		val, err := getControllerMaxReconcilesFromCM(cm, controller)
 		if err != nil {
-			controllerErrors = append(controllerErrors, fmt.Errorf("Error getting Max Reconciles for %s controller", controller))
+			controllerErrors = append(controllerErrors, fmt.Errorf("error getting Max Reconciles for %s controller", controller))
 			continue
 		}
 		ControllerMaxReconciles[controller] = val
@@ -59,7 +59,7 @@ func getControllerMaxReconcilesFromCM(cm *corev1.ConfigMap, controllerName strin
 // GetControllerMaxReconciles gets the default configMap and then gets the amount of concurrent reconciles to run from it
 func GetControllerMaxReconciles(controllerName string) (int, error) {
 	if _, ok := ControllerMaxReconciles[controllerName]; !ok {
-		return 1, fmt.Errorf("Controller %s not present in config data", controllerName)
+		return 1, fmt.Errorf("controller %s not present in config data", controllerName)
 	}
 	return ControllerMaxReconciles[controllerName], nil
 }

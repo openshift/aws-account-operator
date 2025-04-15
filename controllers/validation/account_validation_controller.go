@@ -225,7 +225,7 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 	} else {
 		return &AccountValidationError{
 			Type: MissingTag,
-			Err:  errors.New("Account is not tagged with an owner"),
+			Err:  errors.New("account is not tagged with an owner"),
 		}
 	}
 }
@@ -236,14 +236,14 @@ func ValidateAccountOrigin(account awsv1alpha1.Account) error {
 		log.Info("Will not validate a CCS account")
 		return &AccountValidationError{
 			Type: InvalidAccount,
-			Err:  errors.New("Account is a CCS account"),
+			Err:  errors.New("account is a CCS account"),
 		}
 	}
 	if !account.IsReady() {
 		log.Info("Will not validate account not in a ready state")
 		return &AccountValidationError{
 			Type: InvalidAccount,
-			Err:  errors.New("Account is not in a ready state"),
+			Err:  errors.New("account is not in a ready state"),
 		}
 	}
 	return nil
@@ -253,7 +253,7 @@ func ValidateAwsAccountId(account awsv1alpha1.Account) error {
 	if account.Spec.AwsAccountID == "" {
 		return &AccountValidationError{
 			Type: MissingAWSAccount,
-			Err:  errors.New("Account has not associated AWS account"),
+			Err:  errors.New("account has not associated AWS account"),
 		}
 	}
 	return nil
@@ -300,7 +300,7 @@ func (r *AccountValidationReconciler) ValidateAccountOU(awsClient awsclient.Clie
 		log.Info("Error attempting to get correct OU. Got empty string.")
 		return &AccountValidationError{
 			Type: OULookupFailed,
-			Err:  fmt.Errorf("Empty String when attempting to get correct OU"),
+			Err:  fmt.Errorf("empty String when attempting to get correct OU"),
 		}
 	}
 
@@ -659,7 +659,7 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 
 			return &AccountValidationError{
 				Type: NotAllServicequotasApplied,
-				Err:  errors.New("Service Quotas not yet applied"),
+				Err:  errors.New("service quotas not yet applied"),
 			}
 		}
 	}
