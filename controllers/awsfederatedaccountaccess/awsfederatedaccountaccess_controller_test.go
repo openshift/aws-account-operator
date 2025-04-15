@@ -201,7 +201,7 @@ func TestCreateIAMPolicy(t *testing.T) {
 			name:                  "Test for UID label missing",
 			uidLabel:              map[string]string{},
 			createIAMPolicyOutput: nil,
-			expectedErr:           errors.New("Failed to get UID label"),
+			expectedErr:           errors.New("failed to get UID label"),
 		},
 	}
 
@@ -263,7 +263,7 @@ func TestCreateIAMRole(t *testing.T) {
 			name:                "Test for UID label missing",
 			uidLabel:            map[string]string{},
 			createIAMRoleOutput: nil,
-			expectedErr:         errors.New("Failed to get UID label"),
+			expectedErr:         errors.New("failed to get UID label"),
 		},
 	}
 

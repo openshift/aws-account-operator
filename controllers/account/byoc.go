@@ -83,7 +83,7 @@ func (r *AccountReconciler) initializeNewCCSAccount(reqLogger logr.Logger, accou
 func (r *AccountReconciler) GetSREAccessARN(reqLogger logr.Logger, arnName string) (string, error) {
 	// Get SRE Access ARN from configmap
 	configMap := &corev1.ConfigMap{}
-	err := r.Client.Get(
+	err := r.Get(
 		context.TODO(),
 		types.NamespacedName{
 			Namespace: awsv1alpha1.AccountCrNamespace,
@@ -250,7 +250,7 @@ func DeleteRole(reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.
 func (r *AccountReconciler) getSTSClient(log logr.Logger, accountClaim *awsv1alpha1.AccountClaim, operatorAWSClient awsclient.Client) (awsclient.Client, *sts.AssumeRoleOutput, error) {
 	// Get SRE Access ARN from configmap
 	cm := &corev1.ConfigMap{}
-	cmErr := r.Client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	cmErr := r.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
 	if cmErr != nil {
 		log.Error(cmErr, "There was an error getting the ConfigMap to get the STS Jump Role")
 		return nil, nil, cmErr

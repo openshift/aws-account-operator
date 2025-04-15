@@ -58,7 +58,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 
 	// Fetch the AWSFederatedRole instance
 	instance := &awsv1alpha1.AWSFederatedRole{}
-	err := r.Client.Get(context.TODO(), request.NamespacedName, instance)
+	err := r.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -243,11 +243,11 @@ func annotateAccountAccesses(kubeClient client.Client, roleName string) error {
 		return err
 	}
 	for i := range accountAccesses.Items {
-		if accountAccesses.Items[i].ObjectMeta.Annotations == nil {
-			accountAccesses.Items[i].ObjectMeta.Annotations = make(map[string]string)
+		if accountAccesses.Items[i].Annotations == nil {
+			accountAccesses.Items[i].Annotations = make(map[string]string)
 		}
 
-		accountAccesses.Items[i].ObjectMeta.Annotations[awsv1alpha1.LastRoleUpdateAnnotation] = time.Now().UTC().Format(time.RFC850)
+		accountAccesses.Items[i].Annotations[awsv1alpha1.LastRoleUpdateAnnotation] = time.Now().UTC().Format(time.RFC850)
 		err = kubeClient.Update(context.TODO(), &accountAccesses.Items[i])
 		if err != nil {
 			return err

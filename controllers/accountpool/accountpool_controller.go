@@ -47,7 +47,7 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 
 	// Fetch the AccountPool instance
 	currentAccountPool := &awsv1alpha1.AccountPool{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: request.Name, Namespace: awsv1alpha1.AccountCrNamespace}, currentAccountPool)
+	err := r.Get(context.TODO(), types.NamespacedName{Name: request.Name, Namespace: awsv1alpha1.AccountCrNamespace}, currentAccountPool)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -101,7 +101,7 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 	}
 
 	reqLogger.Info(fmt.Sprintf("Creating account %s for accountpool. Unclaimed accounts: %d, poolsize%d", newAccount.Name, unclaimedAccountCount, poolSizeCount))
-	err = r.Client.Create(context.TODO(), newAccount)
+	err = r.Create(context.TODO(), newAccount)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -135,7 +135,7 @@ func (r *AccountPoolReconciler) calculateAccountPoolStatus(reqLogger logr.Logger
 	listOpts := []client.ListOption{
 		client.InNamespace(awsv1alpha1.AccountCrNamespace),
 	}
-	if err := r.Client.List(context.TODO(), accountList, listOpts...); err != nil {
+	if err := r.List(context.TODO(), accountList, listOpts...); err != nil {
 		return awsv1alpha1.AccountPoolStatus{}, err
 	}
 

@@ -10,13 +10,13 @@ import (
 	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/sts"
-	"go.uber.org/mock/gomock"
 	apis "github.com/openshift/aws-account-operator/api"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/test/fixtures"
+	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -102,7 +102,7 @@ var _ = Describe("AccountClaim", func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			ac := awsv1alpha1.AccountClaim{}
-			err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+			err = r.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ac.Spec).To(Equal(accountClaim.Spec))
 		})
@@ -185,19 +185,19 @@ var _ = Describe("AccountClaim", func() {
 
 				// Confirm that the accountclaim exists from the client's perspective
 				ac := awsv1alpha1.AccountClaim{}
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
 				Expect(err).NotTo(HaveOccurred())
 
 				_, err := r.Reconcile(context.TODO(), req)
 				Expect(err).ToNot(HaveOccurred())
 
 				// With the finalizer removed, the AccountClaim should have been deleted
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
 				Expect(k8serr.IsNotFound(err)).To(BeTrue())
 
 				// Ensure the non-ccs account has been reset as expected.
 				acc := awsv1alpha1.Account{}
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: ac.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, &acc)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: ac.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, &acc)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(acc.Spec.ClaimLink).To(BeEmpty())
 				Expect(acc.Spec.ClaimLinkNamespace).To(BeEmpty())
@@ -259,7 +259,7 @@ var _ = Describe("AccountClaim", func() {
 
 				// Ensure we haven't removed the finalizer.
 				ac := awsv1alpha1.AccountClaim{}
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ac.Finalizers).To(Equal(accountClaim.GetFinalizers()))
 			})
@@ -298,7 +298,7 @@ var _ = Describe("AccountClaim", func() {
 
 				// Ensure we haven't removed the finalizer.
 				ac := awsv1alpha1.AccountClaim{}
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ac.Finalizers).To(Equal(accountClaim.GetFinalizers()))
 			})
@@ -312,7 +312,7 @@ var _ = Describe("AccountClaim", func() {
 
 				// validate that all finalizers are still there
 				ac := awsv1alpha1.AccountClaim{}
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ac.Finalizers).To(Equal(accountClaim.GetFinalizers()))
 
@@ -422,19 +422,19 @@ var _ = Describe("AccountClaim", func() {
 				}
 
 				ac := awsv1alpha1.AccountClaim{}
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
 				Expect(ac.Status.State).To(Equal(awsv1alpha1.ClaimStatusReady))
 
 				account := awsv1alpha1.Account{}
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: accounts[0].Name, Namespace: accounts[0].Namespace}, &account)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: accounts[0].Name, Namespace: accounts[0].Namespace}, &account)
 				Expect(account.Spec.IAMUserSecret).To(Equal(""))
 
 				IAMUsersecret := v1.Secret{}
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: account.Spec.IAMUserSecret, Namespace: awsv1alpha1.AccountCrNamespace}, &IAMUsersecret)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: account.Spec.IAMUserSecret, Namespace: awsv1alpha1.AccountCrNamespace}, &IAMUsersecret)
 				Expect(err).To(HaveOccurred())
 
 				roleSecret := v1.Secret{}
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: accountClaim.Spec.AwsCredentialSecret.Name, Namespace: accountClaim.Spec.AwsCredentialSecret.Namespace}, &roleSecret)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: accountClaim.Spec.AwsCredentialSecret.Name, Namespace: accountClaim.Spec.AwsCredentialSecret.Namespace}, &roleSecret)
 				Expect(err).ToNot(HaveOccurred())
 
 			})
@@ -459,7 +459,7 @@ var _ = Describe("AccountClaim", func() {
 
 				Expect(err).To(HaveOccurred())
 				ac := awsv1alpha1.AccountClaim{}
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ac.Status.State).To(Equal(awsv1alpha1.ClaimStatusError))
 			})
@@ -479,11 +479,11 @@ var _ = Describe("AccountClaim", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				ac := awsv1alpha1.AccountClaim{}
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
 				Expect(err).NotTo(HaveOccurred())
 
 				account := awsv1alpha1.Account{}
-				err = r.Client.Get(context.TODO(), types.NamespacedName{Name: ac.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, &account)
+				err = r.Get(context.TODO(), types.NamespacedName{Name: ac.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, &account)
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(account.Spec.BYOC).To(BeTrue())
@@ -666,20 +666,20 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 					}
 
 					acc := awsv1alpha1.Account{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(acc.Spec.ClaimLink).To(BeEmpty())
 					Expect(acc.Spec.ClaimLinkNamespace).To(BeEmpty())
 					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
 
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: "account-two", Namespace: namespace}, &acc)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: "account-two", Namespace: namespace}, &acc)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(acc.Spec.ClaimLink).To(Equal(sqClaimName))
 					Expect(acc.Spec.ClaimLinkNamespace).To(Equal(namespace))
 					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
 
 					claim := awsv1alpha1.AccountClaim{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: sqClaimName, Namespace: namespace}, &claim)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: sqClaimName, Namespace: namespace}, &claim)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(claim.Spec.AccountLink).To(Equal(acc.Name))
 				})
@@ -749,7 +749,7 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 					}
 
 					acc := awsv1alpha1.Account{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(acc.Spec.ClaimLink).To(Equal(defaultClaimName))
 					Expect(acc.Spec.ClaimLinkNamespace).To(Equal(namespace))
@@ -791,7 +791,7 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 					}
 
 					acc := awsv1alpha1.Account{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(acc.Spec.ClaimLink).To(BeEmpty())
 					Expect(acc.Spec.ClaimLinkNamespace).To(BeEmpty())
@@ -883,7 +883,7 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 
 					// Default
 					acc := awsv1alpha1.Account{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(acc.Spec.ClaimLink).To(BeEmpty())
 					Expect(acc.Spec.ClaimLinkNamespace).To(BeEmpty())
@@ -891,14 +891,14 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 
 					// SQ
 					acc = awsv1alpha1.Account{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: sqAccountName, Namespace: namespace}, &acc)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: sqAccountName, Namespace: namespace}, &acc)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(acc.Spec.ClaimLink).To(Equal(sqClaimName))
 					Expect(acc.Spec.ClaimLinkNamespace).To(Equal(namespace))
 					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
 
 					claim := awsv1alpha1.AccountClaim{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: sqClaimName, Namespace: namespace}, &claim)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: sqClaimName, Namespace: namespace}, &claim)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(claim.Spec.AccountLink).To(Equal(sqAccountName))
 				})
@@ -934,7 +934,7 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 
 					// Default
 					acc := awsv1alpha1.Account{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(acc.Spec.ClaimLink).To(Equal(defaultClaimName))
 					Expect(acc.Spec.ClaimLinkNamespace).To(Equal(namespace))
@@ -942,14 +942,14 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 
 					// SQ
 					acc = awsv1alpha1.Account{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: sqAccountName, Namespace: namespace}, &acc)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: sqAccountName, Namespace: namespace}, &acc)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(acc.Spec.ClaimLink).To(BeEmpty())
 					Expect(acc.Spec.ClaimLinkNamespace).To(BeEmpty())
 					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
 
 					claim := awsv1alpha1.AccountClaim{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultClaimName, Namespace: namespace}, &claim)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: defaultClaimName, Namespace: namespace}, &claim)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(claim.Spec.AccountLink).To(Equal(defaultAccountName))
 				})
@@ -984,7 +984,7 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 
 					// Default
 					acc := awsv1alpha1.Account{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: defaultAccountName, Namespace: namespace}, &acc)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(acc.Spec.ClaimLink).To(Equal(defaultClaimName))
 					Expect(acc.Spec.ClaimLinkNamespace).To(Equal(namespace))
@@ -992,14 +992,14 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 
 					// SQ
 					acc = awsv1alpha1.Account{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: sqAccountName, Namespace: namespace}, &acc)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: sqAccountName, Namespace: namespace}, &acc)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(acc.Spec.ClaimLink).To(BeEmpty())
 					Expect(acc.Spec.ClaimLinkNamespace).To(BeEmpty())
 					Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
 
 					claim := awsv1alpha1.AccountClaim{}
-					err = r.Client.Get(context.TODO(), types.NamespacedName{Name: defaultClaimName, Namespace: namespace}, &claim)
+					err = r.Get(context.TODO(), types.NamespacedName{Name: defaultClaimName, Namespace: namespace}, &claim)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(claim.Spec.AccountLink).To(Equal(defaultAccountName))
 				})

@@ -15,7 +15,7 @@ func (r *AccountReconciler) addFinalizer(reqLogger logr.Logger, account *awsv1al
 		account.SetFinalizers(append(account.GetFinalizers(), awsv1alpha1.AccountFinalizer))
 
 		// Update CR
-		err := r.Client.Update(context.TODO(), account)
+		err := r.Update(context.TODO(), account)
 		if err != nil {
 			reqLogger.Error(err, "Failed to update Account with finalizer")
 			return err
@@ -27,7 +27,7 @@ func (r *AccountReconciler) addFinalizer(reqLogger logr.Logger, account *awsv1al
 // Function to remove finalizer
 func (r *AccountReconciler) removeFinalizer(account *awsv1alpha1.Account, finalizerName string) error {
 	account.SetFinalizers(controllerutils.Remove(account.GetFinalizers(), finalizerName))
-	err := r.Client.Update(context.TODO(), account)
+	err := r.Update(context.TODO(), account)
 	if err != nil {
 		return err
 	}

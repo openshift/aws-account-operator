@@ -9,12 +9,12 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/organizations"
-	"go.uber.org/mock/gomock"
 	"github.com/google/go-cmp/cmp"
 	apis "github.com/openshift/aws-account-operator/api"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -365,7 +365,7 @@ func TestValidateAccountOrigin(t *testing.T) {
 				},
 			},
 			wantErr:     true,
-			expectedErr: "Account is a CCS account",
+			expectedErr: "account is a CCS account",
 		},
 		{
 			name: "Account is not in ready state",
@@ -384,7 +384,7 @@ func TestValidateAccountOrigin(t *testing.T) {
 				},
 			},
 			wantErr:     true,
-			expectedErr: "Account is not in a ready state",
+			expectedErr: "account is not in a ready state",
 		},
 		{
 			name: "Valid account origin",
@@ -461,7 +461,7 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 					Tags: []*organizations.Tag{},
 				}, &AccountValidationError{
 					Type: MissingTag,
-					Err:  errors.New("Account is not tagged with an owner"),
+					Err:  errors.New("account is not tagged with an owner"),
 				}, false, nil, false, nil),
 				accountId:         aws.String("1234"),
 				shardName:         "",
@@ -481,7 +481,7 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 					},
 				}, &AccountValidationError{
 					Type: IncorrectOwnerTag,
-					Err:  errors.New("Account is not tagged with the correct owner"),
+					Err:  errors.New("account is not tagged with the correct owner"),
 				}, false, nil, false, nil),
 				accountId:         aws.String("1234"),
 				shardName:         "shard2",
@@ -575,10 +575,10 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 					if !ok {
 						t.Errorf("ValidateAccountTags() error, expected error of type AccountValidationError but was %v", err.Type)
 					}
-					if err.Type == MissingTag && err.Err.Error() != "Account is not tagged with an owner" {
+					if err.Type == MissingTag && err.Err.Error() != "account is not tagged with an owner" {
 						t.Errorf("ValidateAccountTags() error, did not get correct error message")
 					}
-					if err.Type == IncorrectOwnerTag && err.Err.Error() != "Account is not tagged with the correct owner" {
+					if err.Type == IncorrectOwnerTag && err.Err.Error() != "account is not tagged with the correct owner" {
 						t.Errorf("ValidateAccountTags() error, did not get correct error message")
 					}
 					if err.Type == AccountTagFailed && err.Err.Error() != "failed" {

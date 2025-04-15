@@ -19,7 +19,7 @@ func MoveAccountToOU(r *AccountClaimReconciler, reqLogger logr.Logger, awsClient
 
 	// Search for ConfigMap that holds OU mapping
 	instance := &corev1.ConfigMap{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, instance)
+	err := r.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, instance)
 	if err != nil {
 		// If we failed to retrieve the ConfigMap, simply leave the account in Root
 		unexpectedErrorMsg := "OU: Failed to find OU mapping ConfigMap, leaving account in root"

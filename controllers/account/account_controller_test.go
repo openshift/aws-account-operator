@@ -122,25 +122,25 @@ func (t *testAccountBuilder) WithSpec(spec awsv1alpha1.AccountSpec) *testAccount
 
 // Set a creation timestamp
 func (t *testAccountBuilder) WithCreationTimeStamp(timestamp time.Time) *testAccountBuilder {
-	t.acct.ObjectMeta.CreationTimestamp.Time = timestamp
+	t.acct.CreationTimestamp.Time = timestamp
 	return t
 }
 
 // Set a deletion timestamp
 func (t *testAccountBuilder) WithDeletionTimeStamp(timestamp time.Time) *testAccountBuilder {
-	t.acct.ObjectMeta.DeletionTimestamp = &metav1.Time{Time: timestamp}
+	t.acct.DeletionTimestamp = &metav1.Time{Time: timestamp}
 	return t
 }
 
 // Add finalizers
 func (t *testAccountBuilder) WithFinalizers(finalizers []string) *testAccountBuilder {
-	t.acct.ObjectMeta.Finalizers = finalizers
+	t.acct.Finalizers = finalizers
 	return t
 }
 
 // Add labels
 func (t *testAccountBuilder) WithLabels(labels map[string]string) *testAccountBuilder {
-	t.acct.ObjectMeta.Labels = labels
+	t.acct.Labels = labels
 	return t
 }
 
@@ -1435,7 +1435,7 @@ var _ = Describe("Account Controller", func() {
 	})
 	Context("Testing BuildAccount", func() {
 		var (
-			knownErrors map[string]error = map[string]error{
+			knownErrors = map[string]error{
 				organizations.ErrCodeConcurrentModificationException: awsv1alpha1.ErrAwsConcurrentModification,
 				organizations.ErrCodeConstraintViolationException:    awsv1alpha1.ErrAwsAccountLimitExceeded,
 				organizations.ErrCodeServiceException:                awsv1alpha1.ErrAwsInternalFailure,
@@ -1626,7 +1626,7 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			ac := &awsv1alpha1.Account{}
-			err = r.Client.Get(context.TODO(), types.NamespacedName{Name: account.Name, Namespace: account.Namespace}, ac)
+			err = r.Get(context.TODO(), types.NamespacedName{Name: account.Name, Namespace: account.Namespace}, ac)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(ac.Status.State).To(Equal("Ready"))
 			Expect(ac.Status.Reused).To(BeTrue())
@@ -1647,7 +1647,7 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			ac := &awsv1alpha1.Account{}
-			err = r.Client.Get(context.TODO(), types.NamespacedName{Name: account.Name, Namespace: account.Namespace}, ac)
+			err = r.Get(context.TODO(), types.NamespacedName{Name: account.Name, Namespace: account.Namespace}, ac)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(ac.Status.Claimed).To(BeTrue())
 			Expect(len(ac.Status.Conditions)).To(Equal(1))
@@ -1687,7 +1687,7 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			ac := &awsv1alpha1.Account{}
-			err = r.Client.Get(context.TODO(), types.NamespacedName{Name: account.Name, Namespace: account.Namespace}, ac)
+			err = r.Get(context.TODO(), types.NamespacedName{Name: account.Name, Namespace: account.Namespace}, ac)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(ac.Status.Claimed).To(BeTrue())
 			Expect(ac.Spec.BYOC).To(BeTrue())
@@ -2171,7 +2171,7 @@ var _ = Describe("Account Controller", func() {
 						return []string{account.Status.State, account.Status.SupportCaseID}
 					}).Should(Equal([]string{AccountReady, "123456"}))
 					var k8sAccount awsv1alpha1.Account
-					_ = r.Client.Get(context.TODO(), types.NamespacedName{
+					_ = r.Get(context.TODO(), types.NamespacedName{
 						Namespace: TestAccountNamespace,
 						Name:      TestAccountName,
 					}, &k8sAccount)
@@ -2233,7 +2233,7 @@ var _ = Describe("Account Controller", func() {
 						return []string{stringStatus, supportCase}
 					}).Should(Equal([]string{string(awsv1alpha1.ServiceRequestInProgress), "123456"}))
 					var k8sAccount awsv1alpha1.Account
-					_ = r.Client.Get(context.TODO(), types.NamespacedName{
+					_ = r.Get(context.TODO(), types.NamespacedName{
 						Namespace: TestAccountNamespace,
 						Name:      TestAccountName,
 					}, &k8sAccount)

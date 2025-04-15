@@ -102,7 +102,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	// Fetch the Account instance
 	currentAcctInstance := &awsv1alpha1.Account{}
-	err := r.Client.Get(context.TODO(), request.NamespacedName, currentAcctInstance)
+	err := r.Get(context.TODO(), request.NamespacedName, currentAcctInstance)
 
 	if err != nil {
 		if k8serr.IsNotFound(err) {
@@ -377,7 +377,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 						utils.GenerateShortUID(),
 					),
 				)
-				return reconcile.Result{Requeue: true}, r.Client.Update(context.TODO(), currentAcctInstance)
+				return reconcile.Result{Requeue: true}, r.Update(context.TODO(), currentAcctInstance)
 			}
 
 			_, newCredentials, err := r.handleIAMUserCreation(reqLogger, currentAcctInstance, awsSetupClient, request.Namespace)
@@ -768,7 +768,7 @@ func (r *AccountReconciler) finalizeAccount(reqLogger logr.Logger, awsClient aws
 }
 
 func (r *AccountReconciler) accountSpecUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
-	err := r.Client.Update(context.TODO(), account)
+	err := r.Update(context.TODO(), account)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Account spec update for %s failed", account.Name))
 	}
@@ -978,7 +978,7 @@ func (r *AccountReconciler) BuildAccount(reqLogger logr.Logger, awsClient awscli
 	}
 
 	accountObjectKey := client.ObjectKeyFromObject(account)
-	err := r.Client.Get(context.TODO(), accountObjectKey, account)
+	err := r.Get(context.TODO(), accountObjectKey, account)
 	if err != nil {
 		reqLogger.Error(err, "Unable to get updated Account object after status update")
 	}
@@ -1123,7 +1123,7 @@ func (r *AccountReconciler) setAccountFailed(reqLogger logr.Logger, account *aws
 
 func (r *AccountReconciler) getAccountClaim(account *awsv1alpha1.Account) (*awsv1alpha1.AccountClaim, error) {
 	accountClaim := &awsv1alpha1.AccountClaim{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{
+	err := r.Get(context.TODO(), types.NamespacedName{
 		Name: account.Spec.ClaimLink, Namespace: account.Spec.ClaimLinkNamespace}, accountClaim)
 
 	if err != nil {
@@ -1240,7 +1240,7 @@ func (r *AccountReconciler) getManagedTags(log logr.Logger) []awsclient.AWSTag {
 	tags := []awsclient.AWSTag{}
 
 	cm := &corev1.ConfigMap{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	err := r.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
 	if err != nil {
 		log.Info("There was an error getting the default configmap.", "error", err)
 		return tags

@@ -127,11 +127,6 @@ ifeq ($(origin TESTTARGETS), undefined)
 TESTTARGETS := $(shell ${GOENV} go list -e ./... | grep -E -v "/(vendor)/" | grep -E -v "/(test/e2e)/")
 endif
 
-# If for any reason we've made it this far and TESTTARGETS is still empty, fail early.
-ifeq ($(TESTTARGETS),)
-$(error TESTTARGETS is empty)
-endif
-
 # ex, -v
 TESTOPTS :=
 
@@ -195,6 +190,12 @@ go-check: ## Golang linting and other static analysis
 
 .PHONY: go-generate
 go-generate:
+	# If for any reason we've made it this far and TESTTARGETS is still empty, fail early.
+	@if [ -z "$(TESTTARGETS)" ]; then \
+		echo "ERROR: TESTTARGETS is empty"; \
+		exit 1; \
+	fi
+
 	${GOENV} go generate $(TESTTARGETS)
 	# Don't forget to commit generated files
 
@@ -273,6 +274,12 @@ SHELL = /usr/bin/env bash -o pipefail
 
 .PHONY: go-test
 go-test: setup-envtest
+	# If for any reason we've made it this far and TESTTARGETS is still empty, fail early.
+	@if [ -z "$(TESTTARGETS)" ]; then \
+		echo "ERROR: TESTTARGETS is empty"; \
+		exit 1; \
+	fi
+
 	KUBEBUILDER_ASSETS=$(KUBEBUILDER_ASSETS) go test $(TESTOPTS) $(TESTTARGETS)
 
 .PHONY: python-venv

@@ -10,7 +10,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
-	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -254,13 +253,13 @@ func TestGetControllerMaxReconcilesFromCM(t *testing.T) {
 		name        string
 		expectedErr error
 		expectedVal int
-		configMap   *corev1.ConfigMap
+		configMap   *v1.ConfigMap
 	}{
 		{
 			name:        "Tests Key not found",
 			expectedErr: awsv1alpha1.ErrInvalidConfigMap,
 			expectedVal: 0,
-			configMap: &corev1.ConfigMap{
+			configMap: &v1.ConfigMap{
 				ObjectMeta: validObjectMeta,
 				Data:       map[string]string{},
 			},
@@ -269,7 +268,7 @@ func TestGetControllerMaxReconcilesFromCM(t *testing.T) {
 			name:        "Tests not valid str->int conversion",
 			expectedErr: fmt.Errorf("strconv.Atoi: parsing \"forty-two\": invalid syntax"),
 			expectedVal: 0,
-			configMap: &corev1.ConfigMap{
+			configMap: &v1.ConfigMap{
 				ObjectMeta: validObjectMeta,
 				Data: map[string]string{
 					"MaxConcurrentReconciles.test-controller": "forty-two",
@@ -280,7 +279,7 @@ func TestGetControllerMaxReconcilesFromCM(t *testing.T) {
 			name:        "Tests valid value returned",
 			expectedErr: nil,
 			expectedVal: 3,
-			configMap: &corev1.ConfigMap{
+			configMap: &v1.ConfigMap{
 				ObjectMeta: validObjectMeta,
 				Data: map[string]string{
 					"MaxConcurrentReconciles.test-controller": "3",

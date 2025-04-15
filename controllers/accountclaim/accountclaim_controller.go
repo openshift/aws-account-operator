@@ -156,7 +156,7 @@ type AccountClaimReconciler struct {
 
 // NewReconcileAccountClaim initializes ReconcileAccountClaim
 //
-//go:generate mockgen -build_flags --mod=mod -destination ./mock/cr-client.go -package mock sigs.k8s.io/controller-runtime/pkg/client Client 
+//go:generate mockgen -build_flags --mod=mod -destination ./mock/cr-client.go -package mock sigs.k8s.io/controller-runtime/pkg/client Client
 func NewAccountClaimReconciler(client client.Client, scheme *runtime.Scheme, awsClientBuilder awsclient.IBuilder) *AccountClaimReconciler {
 	return &AccountClaimReconciler{
 		Client:           client,
@@ -174,7 +174,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 
 	// Watch AccountClaim
 	accountClaim := &awsv1alpha1.AccountClaim{}
-	err := r.Client.Get(context.TODO(), request.NamespacedName, accountClaim)
+	err := r.Get(context.TODO(), request.NamespacedName, accountClaim)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -260,7 +260,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 
 	// Return if this claim has been satisfied
 	if claimIsSatisfied(accountClaim) {
-		reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.ObjectMeta.Name))
+		reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.Name))
 		return reconcile.Result{}, nil
 	}
 
@@ -398,8 +398,8 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			}
 
 			// Deletes account IAM user Secret
-			if r.checkIAMSecretExists(unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace) {
-				err := r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.ObjectMeta.Namespace)
+			if r.checkIAMSecretExists(unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.Namespace) {
+				err := r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.Namespace)
 				if err != nil {
 					return reconcile.Result{}, err
 				}
@@ -496,13 +496,13 @@ func (r *AccountClaimReconciler) deleteIAMSecret(reqLogger logr.Logger, secretNa
 	accountIAMUserSecret := &corev1.Secret{}
 	objectKey := client.ObjectKey{Namespace: namespace, Name: secretName}
 
-	err := r.Client.Get(context.TODO(), objectKey, accountIAMUserSecret)
+	err := r.Get(context.TODO(), objectKey, accountIAMUserSecret)
 	if err != nil {
 		reqLogger.Error(err, "Unable to find secret")
 		return err
 	}
 
-	err = r.Client.Delete(context.TODO(), accountIAMUserSecret)
+	err = r.Delete(context.TODO(), accountIAMUserSecret)
 	if err != nil {
 		reqLogger.Error(err, "Unable to delete IAM secret")
 		return err
@@ -535,14 +535,14 @@ func (r *AccountClaimReconciler) createIAMRoleSecret(reqLogger logr.Logger, acco
 	var OCMSecretName string
 
 	if accountClaim.Spec.AwsCredentialSecret.Name == "" {
-		OCMSecretName = accountClaim.ObjectMeta.Name + "-" + awsSTSSecret
+		OCMSecretName = accountClaim.Name + "-" + awsSTSSecret
 
 	} else {
 		OCMSecretName = accountClaim.Spec.AwsCredentialSecret.Name
 	}
 
 	if accountClaim.Spec.AwsCredentialSecret.Namespace == "" {
-		OCMSecretNamespace = accountClaim.ObjectMeta.Namespace
+		OCMSecretNamespace = accountClaim.Namespace
 
 	} else {
 		OCMSecretNamespace = accountClaim.Spec.AwsCredentialSecret.Namespace
@@ -550,7 +550,7 @@ func (r *AccountClaimReconciler) createIAMRoleSecret(reqLogger logr.Logger, acco
 
 	OCMSecret := newStsSecretforCR(OCMSecretName, OCMSecretNamespace, []byte(roleARN))
 
-	err := r.Client.Create(context.TODO(), OCMSecret)
+	err := r.Create(context.TODO(), OCMSecret)
 	if err != nil {
 		reqLogger.Error(err, "Unable to create secret for OCM")
 		return err
@@ -558,7 +558,7 @@ func (r *AccountClaimReconciler) createIAMRoleSecret(reqLogger logr.Logger, acco
 	reqLogger.Info(fmt.Sprintf("Secret %s created for claim %s", OCMSecret.Name, accountClaim.Name))
 
 	accountClaim.Spec.AwsCredentialSecret.Name = OCMSecretName
-	err = r.Client.Update(context.TODO(), accountClaim)
+	err = r.Update(context.TODO(), accountClaim)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("AccountClaim spec update for %s failed", accountClaim.Name))
 	}
@@ -739,7 +739,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 
 	// Get the account and check if its Ready
 	byocAccount := &awsv1alpha1.Account{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: accountClaim.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, byocAccount)
+	err := r.Get(context.TODO(), types.NamespacedName{Name: accountClaim.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, byocAccount)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -807,20 +807,20 @@ func (r *AccountClaimReconciler) createAccountForBYOCClaim(accountClaim *awsv1al
 	controllerutils.AddFinalizer(newAccount, accountClaimFinalizer)
 
 	// Create the new account
-	err := r.Client.Create(context.TODO(), newAccount)
+	err := r.Create(context.TODO(), newAccount)
 	if err != nil {
 		return err
 	}
 
 	// Set the accountLink of the AccountClaim to the new account if create is successful
 	accountClaim.Spec.AccountLink = newAccount.Name
-	err = r.Client.Update(context.TODO(), accountClaim)
+	err = r.Update(context.TODO(), accountClaim)
 	return err
 }
 
 func (r *AccountClaimReconciler) getClaimedAccount(accountLink string, namespace string) (*awsv1alpha1.Account, error) {
 	account := &awsv1alpha1.Account{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: accountLink, Namespace: namespace}, account)
+	err := r.Get(context.TODO(), types.NamespacedName{Name: accountLink, Namespace: namespace}, account)
 	if err != nil {
 		return nil, err
 	}
@@ -835,7 +835,7 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 		client.InNamespace(awsv1alpha1.AccountCrNamespace),
 	}
 
-	if err := r.Client.List(context.TODO(), accountList, listOpts...); err != nil {
+	if err := r.List(context.TODO(), accountList, listOpts...); err != nil {
 		reqLogger.Error(err, "Unable to get accountList")
 		return nil, err
 	}
@@ -849,7 +849,7 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 	if defaultAccountPoolName == "" {
 		// We shouldn't really ever hit this, as GetDefaultAccountPoolName will return NotFound err if
 		// defaultAccountPoolName is empty, more of a just in case something changes.
-		err = fmt.Errorf("Cannot find default accountpool")
+		err = fmt.Errorf("cannot find default accountpool")
 		reqLogger.Error(err, "Default AccountPool name is empty")
 		return nil, err
 	} else {
@@ -870,7 +870,7 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 		}
 
 		if account.Status.Reused {
-			reqLogger.Info(fmt.Sprintf("Reusing account: %s", account.ObjectMeta.Name))
+			reqLogger.Info(fmt.Sprintf("Reusing account: %s", account.Name))
 			return &account, nil
 		} else {
 			unusedAccount = &account
@@ -878,7 +878,7 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 	}
 
 	if unusedAccount != nil {
-		reqLogger.Info(fmt.Sprintf("Claiming account: %s", unusedAccount.ObjectMeta.Name))
+		reqLogger.Info(fmt.Sprintf("Claiming account: %s", unusedAccount.Name))
 		return unusedAccount, nil
 	}
 	return nil, fmt.Errorf("can't find a suitable account to claim")
@@ -952,7 +952,7 @@ func (r *AccountClaimReconciler) createIAMSecret(reqLogger logr.Logger, accountC
 	accountIAMUserSecret := &corev1.Secret{}
 	objectKey := client.ObjectKey{Namespace: unclaimedAccount.Namespace, Name: unclaimedAccount.Spec.IAMUserSecret}
 
-	err := r.Client.Get(context.TODO(), objectKey, accountIAMUserSecret)
+	err := r.Get(context.TODO(), objectKey, accountIAMUserSecret)
 	if err != nil {
 		reqLogger.Error(err, "Unable to find AWS account STS secret")
 		return err
@@ -969,7 +969,7 @@ func (r *AccountClaimReconciler) createIAMSecret(reqLogger logr.Logger, accountC
 
 	OCMSecret := newSecretforCR(OCMSecretName, OCMSecretNamespace, awsAccessKeyID, awsSecretAccessKey)
 
-	err = r.Client.Create(context.TODO(), OCMSecret)
+	err = r.Create(context.TODO(), OCMSecret)
 	if err != nil {
 		reqLogger.Error(err, "Unable to create secret for OCM")
 		return err
@@ -983,7 +983,7 @@ func (r *AccountClaimReconciler) checkIAMSecretExists(name string, namespace str
 	// Need to check if the secret exists AND that it matches what we're expecting
 	secret := corev1.Secret{}
 	secretObjectKey := client.ObjectKey{Name: name, Namespace: namespace}
-	if err := r.Client.Get(context.TODO(), secretObjectKey, &secret); err != nil {
+	if err := r.Get(context.TODO(), secretObjectKey, &secret); err != nil {
 		// The secret does not exist
 		return false
 	}
@@ -999,7 +999,7 @@ func (r *AccountClaimReconciler) statusUpdate(reqLogger logr.Logger, accountClai
 }
 
 func (r *AccountClaimReconciler) specUpdate(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
-	err := r.Client.Update(context.TODO(), accountClaim)
+	err := r.Update(context.TODO(), accountClaim)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Spec update for %s failed", accountClaim.Name))
 	}
@@ -1007,7 +1007,7 @@ func (r *AccountClaimReconciler) specUpdate(reqLogger logr.Logger, accountClaim 
 }
 
 func (r *AccountClaimReconciler) accountSpecUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
-	err := r.Client.Update(context.TODO(), account)
+	err := r.Update(context.TODO(), account)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Account spec update for %s failed", account.Name))
 	}
@@ -1017,8 +1017,8 @@ func (r *AccountClaimReconciler) accountSpecUpdate(reqLogger logr.Logger, accoun
 // updateClaimedAccountFields sets Account.Spec.ClaimLink to AccountClaim.ObjectMetadata.Name
 func updateClaimedAccountFields(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
 	// Set link on Account
-	awsAccount.Spec.ClaimLink = awsAccountClaim.ObjectMeta.Name
-	awsAccount.Spec.ClaimLinkNamespace = awsAccountClaim.ObjectMeta.Namespace
+	awsAccount.Spec.ClaimLink = awsAccountClaim.Name
+	awsAccount.Spec.ClaimLinkNamespace = awsAccountClaim.Namespace
 
 	// Carry over LegalEntity data from the claim to the account
 	awsAccount.Spec.LegalEntity.ID = awsAccountClaim.Spec.LegalEntity.ID
@@ -1046,10 +1046,10 @@ func setAccountClaimStatus(reqLogger logr.Logger, awsAccount *awsv1alpha1.Accoun
 func setAccountLinkOnAccountClaim(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsAccountClaim *awsv1alpha1.AccountClaim) {
 	// This shouldn't error but lets log it just incase
 	if awsAccountClaim.Spec.AccountLink != "" {
-		reqLogger.Info("AccountLink field is already populated for claim: %s, AWS account link is: %s\n", awsAccountClaim.ObjectMeta.Name, awsAccountClaim.Spec.AccountLink)
+		reqLogger.Info("AccountLink field is already populated for claim: %s, AWS account link is: %s\n", awsAccountClaim.Name, awsAccountClaim.Spec.AccountLink)
 	}
 	// Set link on AccountClaim
-	awsAccountClaim.Spec.AccountLink = awsAccount.ObjectMeta.Name
+	awsAccountClaim.Spec.AccountLink = awsAccount.Name
 	reqLogger.Info(fmt.Sprintf("Linked claim %s to account %s", awsAccountClaim.Name, awsAccount.Name))
 }
 
@@ -1080,8 +1080,8 @@ func newSecretforCR(secretName string, secretNameSpace string, awsAccessKeyID []
 func populateBYOCSpec(account *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) {
 	account.Spec.BYOC = true
 	account.Spec.AwsAccountID = accountClaim.Spec.BYOCAWSAccountID
-	account.Spec.ClaimLink = accountClaim.ObjectMeta.Name
-	account.Spec.ClaimLinkNamespace = accountClaim.ObjectMeta.Namespace
+	account.Spec.ClaimLink = accountClaim.Name
+	account.Spec.ClaimLinkNamespace = accountClaim.Namespace
 	account.Spec.LegalEntity = accountClaim.Spec.LegalEntity
 	account.Spec.ManualSTSMode = accountClaim.Spec.ManualSTSMode
 }

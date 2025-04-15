@@ -69,7 +69,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 
 	// Fetch the AWSFederatedAccountAccess instance
 	currentFAA := &awsv1alpha1.AWSFederatedAccountAccess{}
-	err := r.Client.Get(context.TODO(), request.NamespacedName, currentFAA)
+	err := r.Get(context.TODO(), request.NamespacedName, currentFAA)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -82,7 +82,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 	}
 
 	requestedRole := &awsv1alpha1.AWSFederatedRole{}
-	err = r.Client.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AWSFederatedRole.Name, Namespace: currentFAA.Spec.AWSFederatedRole.Namespace}, requestedRole)
+	err = r.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AWSFederatedRole.Name, Namespace: currentFAA.Spec.AWSFederatedRole.Namespace}, requestedRole)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			SetStatuswithCondition(currentFAA, "Requested role does not exist", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
@@ -150,7 +150,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 			// Join the new UID label with any current labels
 			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
-			err = r.Client.Update(context.TODO(), currentFAA)
+			err = r.Update(context.TODO(), currentFAA)
 			if err != nil {
 				reqLogger.Error(err, fmt.Sprintf("Failed to update label %s for %s/%s", awsv1alpha1.FederatedRoleNameLabel, currentFAA.Namespace, currentFAA.Name))
 				return reconcile.Result{}, err
@@ -182,7 +182,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
 		// Update the CR with new labels
-		err = r.Client.Update(context.TODO(), currentFAA)
+		err = r.Update(context.TODO(), currentFAA)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("Failed to update label %s for %s/%s", awsv1alpha1.UIDLabel, currentFAA.Namespace, currentFAA.Name))
 			return reconcile.Result{}, err
@@ -220,7 +220,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
 
 		// Update the CR with new labels
-		err = r.Client.Update(context.TODO(), currentFAA)
+		err = r.Update(context.TODO(), currentFAA)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("Label update for %s failed", currentFAA.Name))
 			return reconcile.Result{}, err
@@ -406,7 +406,7 @@ func (r *AWSFederatedAccountAccessReconciler) createIAMPolicy(awsClient awsclien
 	// Marshal policydoc to json
 	jsonPolicyDoc, err := json.Marshal(&policyDoc)
 	if err != nil {
-		return &iam.Policy{}, fmt.Errorf("Error marshalling jsonPolicy doc : Error %s", err.Error())
+		return &iam.Policy{}, fmt.Errorf("error marshalling jsonPolicy doc : Error %s", err.Error())
 	}
 
 	var policyName string
@@ -415,7 +415,7 @@ func (r *AWSFederatedAccountAccessReconciler) createIAMPolicy(awsClient awsclien
 		policyName = afr.Spec.AWSCustomPolicy.Name + "-" + uidLabel
 	} else {
 		// Just in case the UID somehow doesn't exist
-		return nil, errors.New("Failed to get UID label")
+		return nil, errors.New("failed to get UID label")
 	}
 
 	output, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
@@ -464,7 +464,7 @@ func (r *AWSFederatedAccountAccessReconciler) createIAMRole(awsClient awsclient.
 		roleName = afr.Name + "-" + uidLabel
 	} else {
 		// Just in case the UID somehow doesn't exist
-		return nil, errors.New("Failed to get UID label")
+		return nil, errors.New("failed to get UID label")
 	}
 
 	createRoleOutput, err := awsClient.CreateRole(&iam.CreateRoleInput{
@@ -483,7 +483,7 @@ func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMPolicy(awsClient 
 
 	uidLabel, ok := afaa.Labels["uid"]
 	if !ok {
-		return errors.New("Unable to get UID label")
+		return errors.New("unable to get UID label")
 	}
 
 	gciOut, err := awsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
@@ -518,7 +518,7 @@ func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMRole(awsClient aw
 
 	uidLabel, ok := afaa.Labels["uid"]
 	if !ok {
-		return nil, errors.New("Unable to get UID label")
+		return nil, errors.New("unable to get UID label")
 	}
 
 	roleName := afaa.Spec.AWSFederatedRole.Name + "-" + uidLabel
@@ -601,7 +601,7 @@ func (r *AWSFederatedAccountAccessReconciler) addFinalizer(reqLogger logr.Logger
 	awsFederatedAccountAccess.SetFinalizers(append(awsFederatedAccountAccess.GetFinalizers(), controllerutils.Finalizer))
 
 	// Update CR
-	err := r.Client.Update(context.TODO(), awsFederatedAccountAccess)
+	err := r.Update(context.TODO(), awsFederatedAccountAccess)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update AccountClaim with finalizer")
 		return err
@@ -614,7 +614,7 @@ func (r *AWSFederatedAccountAccessReconciler) removeFinalizer(reqLogger logr.Log
 	AWSFederatedAccountAccess.SetFinalizers(controllerutils.Remove(AWSFederatedAccountAccess.GetFinalizers(), finalizerName))
 
 	// Update CR
-	err := r.Client.Update(context.TODO(), AWSFederatedAccountAccess)
+	err := r.Update(context.TODO(), AWSFederatedAccountAccess)
 	if err != nil {
 		reqLogger.Error(err, "Failed to remove AWSFederatedAccountAccess finalizer")
 		return err
@@ -632,7 +632,7 @@ func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr
 			log.Info("UID Label missing with CR not ready, removing finalizer")
 			return nil
 		}
-		return errors.New("Unable to get UID label")
+		return errors.New("unable to get UID label")
 
 	}
 
@@ -643,7 +643,7 @@ func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr
 			log.Info("AWS Account ID Label missing with CR not ready, removing finalizer")
 			return nil
 		}
-		return errors.New("Unable to get AWS Account ID label")
+		return errors.New("unable to get AWS Account ID label")
 	}
 
 	roleName := currentFAA.Spec.AWSFederatedRole.Name + "-" + uidLabel
@@ -775,7 +775,7 @@ func (r *AWSFederatedAccountAccessReconciler) deleteNonAttachedCustomPolicy(reqL
 	// Get the UID
 	uidLabel, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
 	if !ok {
-		return errors.New("Unable to get UID label")
+		return errors.New("unable to get UID label")
 	}
 
 	var policyMarker *string

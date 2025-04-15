@@ -49,7 +49,7 @@ var _ = Describe("AWS Resource Tag Builder", func() {
 		)
 
 		When("creating IAM resource tags", func() {
-			var tags []*iam.Tag = tagBuilder.GetIAMTags()
+			var tags = tagBuilder.GetIAMTags()
 			var hardCodedTags = 4
 
 			It("Should not add unexpected tags", func() {
@@ -87,7 +87,7 @@ var _ = Describe("AWS Resource Tag Builder", func() {
 		})
 
 		When("creating EC2 resource tags", func() {
-			var tags []*ec2.Tag = tagBuilder.GetEC2Tags()
+			var tags = tagBuilder.GetEC2Tags()
 			var hardCodedTags = 5
 
 			It("Should not add unexpected tags", func() {

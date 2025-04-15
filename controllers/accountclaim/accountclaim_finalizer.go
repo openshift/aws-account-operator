@@ -17,7 +17,7 @@ func (r *AccountClaimReconciler) addFinalizer(reqLogger logr.Logger, accountClai
 	accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), accountClaimFinalizer))
 
 	// Update CR
-	err := r.Client.Update(context.TODO(), accountClaim)
+	err := r.Update(context.TODO(), accountClaim)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update AccountClaim with finalizer")
 		return err
@@ -30,7 +30,7 @@ func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountC
 	accountClaim.SetFinalizers(utils.Remove(accountClaim.GetFinalizers(), finalizerName))
 
 	// Update CR
-	err := r.Client.Update(context.TODO(), accountClaim)
+	err := r.Update(context.TODO(), accountClaim)
 	if err != nil {
 		reqLogger.Error(err, "Failed to remove AccountClaim finalizer")
 		return err
@@ -41,7 +41,7 @@ func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountC
 func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha1.AccountClaim) error {
 
 	byocSecret := &corev1.Secret{}
-	err := r.Client.Get(context.TODO(),
+	err := r.Get(context.TODO(),
 		types.NamespacedName{
 			Name:      accountClaim.Spec.BYOCSecretRef.Name,
 			Namespace: accountClaim.Spec.BYOCSecretRef.Namespace},
@@ -52,7 +52,7 @@ func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha
 
 	if !utils.Contains(byocSecret.GetFinalizers(), byocSecretFinalizer) {
 		utils.AddFinalizer(byocSecret, byocSecretFinalizer)
-		err = r.Client.Update(context.TODO(), byocSecret)
+		err = r.Update(context.TODO(), byocSecret)
 		if err != nil {
 			return err
 		}
@@ -64,7 +64,7 @@ func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha
 func (r *AccountClaimReconciler) removeBYOCSecretFinalizer(accountClaim *awsv1alpha1.AccountClaim) error {
 
 	byocSecret := &corev1.Secret{}
-	err := r.Client.Get(context.TODO(),
+	err := r.Get(context.TODO(),
 		types.NamespacedName{
 			Name:      accountClaim.Spec.BYOCSecretRef.Name,
 			Namespace: accountClaim.Spec.BYOCSecretRef.Namespace},
@@ -78,7 +78,7 @@ func (r *AccountClaimReconciler) removeBYOCSecretFinalizer(accountClaim *awsv1al
 	}
 
 	byocSecret.Finalizers = utils.Remove(byocSecret.Finalizers, byocSecretFinalizer)
-	err = r.Client.Update(context.TODO(), byocSecret)
+	err = r.Update(context.TODO(), byocSecret)
 	if err != nil {
 		return err
 	}
