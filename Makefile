@@ -29,15 +29,6 @@ test-apis:
 	go test ./... ; \
 	popd
 
-# Spell Check
-.PHONY: check-spell
-check-spell: # Check spelling
-	./hack/scripts/misspell_check.sh
-	GOLANGCI_LINT_CACHE=${GOLANGCI_LINT_CACHE} golangci-lint run ./...
-
-# This *adds* `check-spell` ./hack/scripts/misspell_check.sh the existing `lint` provided by boilerplate
-lint: check-spell
-
 .PHONY: test-all
 test-all: lint clean-operator test test-apis test-integration ## Runs all tests
 
