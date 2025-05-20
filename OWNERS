@@ -1,11 +1,10 @@
 reviewers:
 - iamkirkbater
-- joshbranham
 - jharrington22
-- reedcort
+- srep-functional-team-aurora
 approvers:
 - iamkirkbater
 - jharrington22
-- joshbranham
-- reedcort
+- srep-functional-team-aurora
 maintainers:
+- srep-functional-team-aurora
