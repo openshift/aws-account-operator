@@ -1,4 +1,4 @@
-FROM quay.io/redhat-services-prod/openshift/boilerplate:image-v7.3.0 AS builder
+FROM quay.io/redhat-services-prod/openshift/boilerplate:image-v7.4.0 AS builder
 
 ENV OPERATOR_PATH=/go/src/github.com/openshift/aws-account-operator
 ENV GO111MODULE=on
