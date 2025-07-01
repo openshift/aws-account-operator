@@ -35,6 +35,8 @@ const (
 	// OperatorNamespace stores a string indicating the Kubernetes namespace in which the operator runs
 	OperatorNamespace string = "aws-account-operator"
 
+	EnableOLMSkipRange string = "true"
+
 	// used in constructing ARNs
 	AwsResourceTypeRole                  string = "role"
 	AwsResourceTypePolicy                string = "policy"

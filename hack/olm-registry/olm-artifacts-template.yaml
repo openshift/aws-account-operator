@@ -89,6 +89,7 @@ objects:
     metadata:
       name: aws-account-operator-og
     spec:
+      upgradeStrategy: TechPreviewUnsafeFailForward 
       targetNamespaces:
         - aws-account-operator
 
