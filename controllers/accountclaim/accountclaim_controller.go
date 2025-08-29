@@ -171,7 +171,6 @@ func NewAccountClaimReconciler(client client.Client, scheme *runtime.Scheme, aws
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
-
 	// Watch AccountClaim
 	accountClaim := &awsv1alpha1.AccountClaim{}
 	err := r.Get(context.TODO(), request.NamespacedName, accountClaim)
@@ -214,12 +213,13 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 				if err != nil {
 					return reconcile.Result{}, err
 				}
+				reqLogger.V(1).Info("successfully deleted IAM secret", "accountclaim", accountClaim.Name)
 			}
-
 			currentAcctInstance, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
 			if accountErr != nil {
 				reqLogger.Error(accountErr, "Unable to get claimed account")
 			}
+			reqLogger.V(1).Info("successfully got claimed account", "accountclaim", accountClaim.Name)
 			if currentAcctInstance != nil && !currentAcctInstance.IsBYOC() {
 				awsRegion := config.GetDefaultRegion()
 
@@ -241,6 +241,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 				if err != nil {
 					return reconcile.Result{}, err
 				}
+				reqLogger.V(1).Info("successfully cleaned up IAM role and policies", "accountclaim", accountClaim.Name)
 			}
 		}
 		return reconcile.Result{}, r.handleAccountClaimDeletion(reqLogger, accountClaim)
@@ -292,11 +293,13 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			reqLogger.Error(err, "Unable to select an unclaimed account from the pool")
 			return reconcile.Result{}, err
 		}
+		reqLogger.V(1).Info("successfully got unclaimed account", "accountclaim", accountClaim.Name)
 	} else {
 		unclaimedAccount, err = r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+		reqLogger.V(1).Info("successfully got claimed account", "accountclaim", accountClaim.Name)
 	}
 
 	// Set Account.Spec.ClaimLink
@@ -307,16 +310,19 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+		reqLogger.V(1).Info("successfully updated claimLink", "accountclaim", accountClaim.Name)
 	}
 
 	// Set awsAccountClaim.Spec.AccountLink
 	if accountClaim.Spec.AccountLink == "" {
 		setAccountLinkOnAccountClaim(reqLogger, unclaimedAccount, accountClaim)
+		reqLogger.V(1).Info("successfully set AccountLink", "accountclaim", accountClaim.Name)
 		return reconcile.Result{}, r.specUpdate(reqLogger, accountClaim)
 	}
 
 	if !accountClaim.Spec.ManualSTSMode {
 		err = r.setSupportRoleARNManagedOpenshift(reqLogger, accountClaim, unclaimedAccount)
+		reqLogger.V(1).Info("successfully set the support role ARN", "accountclaim", accountClaim.Name)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -347,6 +353,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			}
 			return reconcile.Result{}, err
 		}
+		reqLogger.V(1).Info("successfully moved account to OU", "accountclaimName", accountClaim.Name, "account", unclaimedAccount.Name)
 	}
 	cm, err := controllerutils.GetOperatorConfigMap(r.Client)
 	if err != nil {
@@ -362,7 +369,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	}
 	log.Info("Is fleet manager accountclaim enabled?", "enabled", fleetManagerClaimEnabled)
 
-	// This will trigger role and secret creation which will enable AccountCLaims to be able to gain access via a AWS STS tokens
+	// This will trigger role and secret creation which will enable AccountCLaims to be able to gain access via an AWS STS tokens
 	if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" && (accountClaim.Spec.AccountPool != "" && accountClaim.Spec.AccountPool != "default") {
 		if fleetManagerClaimEnabled {
 			awsRegion := config.GetDefaultRegion()
@@ -426,6 +433,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 					return reconcile.Result{}, err
 				}
 			}
+			reqLogger.V(1).Info("successfully created role and secret for fleet manager accountclaim", "accountclaim", accountClaim.Name)
 		} else {
 			log.Info("Would attempt to create IAM Role with permission here, but fleet manager accountclaim is disabled.")
 		}
@@ -437,12 +445,14 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			if err != nil {
 				return reconcile.Result{}, nil
 			}
+			reqLogger.V(1).Info("successfully created IAM secret", "accountclaim", accountClaim.Name)
 		}
 	}
 
 	if accountClaim.Status.State != awsv1alpha1.ClaimStatusReady && accountClaim.Spec.AccountLink != "" {
 		// Set AccountClaim.Status.Conditions and AccountClaim.Status.State to Ready
 		setAccountClaimStatus(reqLogger, unclaimedAccount, accountClaim)
+		reqLogger.V(1).Info("successfully updated accountclaim status to Ready", "accountclaim", accountClaim.Name)
 		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 	}
 
@@ -694,10 +704,10 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 		return reconcile.Result{}, nil
 	}
 
-	reqLogger.Info("Reconciling CCS AccountClaim")
+	reqLogger.Info("Reconciling CCS AccountClaim", "accountclaim", accountClaim.Name)
 	if !accountClaim.Spec.ManualSTSMode {
 		// Ensure BYOC secret has finalizer
-		reqLogger.Info("Ensuring byoc secret has finalizer")
+		reqLogger.Info("Ensuring byoc secret has finalizer", "accountclaim", accountClaim.Name)
 		err := r.addBYOCSecretFinalizer(accountClaim)
 		if err != nil {
 			reqLogger.Error(err, "Unable to add finalizer to byoc secret")
@@ -726,12 +736,14 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 			// TODO: Recoverable?
 			return reconcile.Result{}, validateErr
 		}
+		reqLogger.V(1).Info("successfully validated account linked to accountclaim ", "accountclaim", accountClaim.Name)
 
 		// Create a new account with BYOC flag
 		err := r.createAccountForBYOCClaim(accountClaim)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+		reqLogger.V(1).Info("successfully created account for BYOC claim", "accountclaim", accountClaim.Name, "account", accountClaim.Spec.AccountLink)
 		// Requeue this claim request in 30 seconds as we need to check to see if the account is ready
 		// so we can update the AccountClaim `status.state` to `true`
 		return reconcile.Result{RequeueAfter: time.Second * waitPeriod}, nil
@@ -777,6 +789,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 			controllerutils.UpdateConditionNever,
 			accountClaim.Spec.BYOCAWSAccountID != "",
 		)
+		reqLogger.V(1).Info(fmt.Sprintf("%s is Ready", byocAccount.Name), "accountclaim", accountClaim.Name, "Account Status", byocAccount.Status.State)
 		// Update the status on AccountClaim
 		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
 	}
@@ -786,6 +799,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+		reqLogger.V(1).Info("successfully set support role ARN", "accountclaim", accountClaim.Name)
 
 		// Create secret for OCM to consume
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
@@ -793,6 +807,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 			if err != nil {
 				return reconcile.Result{}, nil
 			}
+			reqLogger.V(1).Info("successfully created IAM secret", "accountclaim", accountClaim.Name)
 		}
 	}
 

@@ -85,8 +85,9 @@ func main() {
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 
+	isDebuggingEnabled := utils.GetEnvironmentBool("DEBUG_LOGGING", false)
 	opts := zap.Options{
-		Development: false,
+		Development: isDebuggingEnabled,
 	}
 	if utils.DetectDevMode == utils.DevModeLocal {
 		zap.UseDevMode(true)
