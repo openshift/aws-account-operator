@@ -70,6 +70,9 @@ parameters:
     value: "309956199498"
   - name: OPT_IN_REGIONS
     required: false
+  - name: DEBUG_LOGGING
+    required: false
+    value: "false"
 
 objects:
   - apiVersion: operators.coreos.com/v1alpha1
@@ -102,6 +105,10 @@ objects:
       name: aws-account-operator
       source: aws-account-operator-catalog
       sourceNamespace: aws-account-operator
+      config:
+        env:
+          - name: DEBUG_LOGGING
+            value: ${DEBUG_LOGGING}
 
   - apiVersion: v1
     kind: ConfigMap
