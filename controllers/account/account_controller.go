@@ -117,6 +117,13 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return reconcile.Result{}, err
 	}
 
+	// Read compliance tags from ConfigMap
+	complianceTags, err := r.generateAccountTags(reqLogger, configMap)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	reqLogger.Info("Compliance tags loaded", "count", len(complianceTags))
+
 	isOptInRegionFeatureEnabled, err := utils.GetFeatureFlagValue(configMap, "feature.opt_in_regions")
 	if err != nil {
 		reqLogger.Info("Could not retrieve feature flag 'feature.opt_in_regions' - region Opt-In is disabled")
@@ -305,7 +312,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 					}
 				}
 
-				if err := r.nonCCSAssignAccountID(reqLogger, currentAcctInstance, awsSetupClient); err != nil {
+				if err := r.nonCCSAssignAccountID(reqLogger, currentAcctInstance, awsSetupClient, complianceTags); err != nil {
 					return reconcile.Result{}, err
 				}
 			} else {
@@ -402,6 +409,44 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	return reconcile.Result{}, nil
+}
+
+// generateAccountTags reads compliance tag values from the ConfigMap and returns a map of tag key-value pairs
+func (r *AccountReconciler) generateAccountTags(reqLogger logr.Logger, configMap *corev1.ConfigMap) (map[string]string, error) {
+	tags := make(map[string]string)
+
+	// Check feature flag
+	enabled, err := strconv.ParseBool(configMap.Data["feature.compliance_tags"])
+	if err != nil {
+		reqLogger.Info("Could not retrieve feature flag 'feature.compliance_tags' - compliance tagging is disabled")
+		return tags, nil
+	}
+
+	if !enabled {
+		reqLogger.Info("Compliance tagging is disabled")
+		return tags, nil
+	}
+
+	// Read tag values and add to map only if non-empty
+	if appCode, ok := configMap.Data["app-code"]; ok && appCode != "" {
+		tags["app-code"] = appCode
+	} else {
+		reqLogger.Info("Could not retrieve configuration map value 'app-code' - compliance tag will be skipped")
+	}
+
+	if servicePhase, ok := configMap.Data["service-phase"]; ok && servicePhase != "" {
+		tags["service-phase"] = servicePhase
+	} else {
+		reqLogger.Info("Could not retrieve configuration map value 'service-phase' - compliance tag will be skipped")
+	}
+
+	if costCenter, ok := configMap.Data["cost-center"]; ok && costCenter != "" {
+		tags["cost-center"] = costCenter
+	} else {
+		reqLogger.Info("Could not retrieve configuration map value 'cost-center' - compliance tag will be skipped")
+	}
+
+	return tags, nil
 }
 
 func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string) (reconcile.Result, error) {
@@ -775,7 +820,7 @@ func (r *AccountReconciler) accountSpecUpdate(reqLogger logr.Logger, account *aw
 	return err
 }
 
-func (r *AccountReconciler) nonCCSAssignAccountID(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client) error {
+func (r *AccountReconciler) nonCCSAssignAccountID(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, complianceTags map[string]string) error {
 	// Build Aws Account
 	var awsAccountID string
 
@@ -807,8 +852,8 @@ func (r *AccountReconciler) nonCCSAssignAccountID(reqLogger logr.Logger, current
 	// update account cr with awsAccountID from aws
 	currentAcctInstance.Spec.AwsAccountID = awsAccountID
 
-	// tag account with hive shard name
-	err = TagAccount(awsSetupClient, awsAccountID, r.shardName)
+	// tag account with hive shard name and compliance tags
+	err = TagAccount(awsSetupClient, awsAccountID, r.shardName, complianceTags)
 	if err != nil {
 		reqLogger.Info("Unable to tag aws account.", "account", currentAcctInstance.Name, "AWSAccountID", awsAccountID, "Error", error.Error(err))
 	}
@@ -816,15 +861,26 @@ func (r *AccountReconciler) nonCCSAssignAccountID(reqLogger logr.Logger, current
 	return r.accountSpecUpdate(reqLogger, currentAcctInstance)
 }
 
-func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName string) error {
+func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName string, complianceTags map[string]string) error {
+	// Start with the owner tag
+	tags := []*organizations.Tag{
+		{
+			Key:   aws.String("owner"),
+			Value: aws.String(shardName),
+		},
+	}
+
+	// Add compliance tags from the map
+	for key, value := range complianceTags {
+		tags = append(tags, &organizations.Tag{
+			Key:   aws.String(key),
+			Value: aws.String(value),
+		})
+	}
+
 	inputTag := &organizations.TagResourceInput{
 		ResourceId: aws.String(awsAccountID),
-		Tags: []*organizations.Tag{
-			{
-				Key:   aws.String("owner"),
-				Value: aws.String(shardName),
-			},
-		},
+		Tags:       tags,
 	}
 
 	_, err := awsSetupClient.TagResource(inputTag)

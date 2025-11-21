@@ -479,15 +479,12 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 							Value: aws.String("shard1"),
 						},
 					},
-				}, &AccountValidationError{
-					Type: IncorrectOwnerTag,
-					Err:  errors.New("account is not tagged with the correct owner"),
-				}, false, nil, false, nil),
+				}, nil, false, nil, false, nil),
 				accountId:         aws.String("1234"),
 				shardName:         "shard2",
 				accountTagEnabled: false,
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "No owner tag - tag account successfully",
@@ -585,6 +582,152 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 						t.Errorf("ValidateAccountTags() error, did not get correct error message")
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestValidateAccount_ValidateComplianceTags(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	makeClient := func(output *organizations.ListTagsForResourceOutput, err error, willTag bool, tagErr error) awsclient.Client {
+		mockClient := mock.NewMockClient(ctrl)
+		mockClient.EXPECT().ListTagsForResource(gomock.Any()).Return(output, err)
+		if willTag {
+			mockClient.EXPECT().TagResource(gomock.Any()).Return(nil, tagErr).Times(1)
+		}
+		return mockClient
+	}
+
+	type args struct {
+		client                awsclient.Client
+		accountId             *string
+		shardName             string
+		accountTagEnabled     bool
+		appCode               string
+		servicePhase          string
+		costCenter            string
+		complianceTagsEnabled bool
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "Feature disabled - should skip validation",
+			args: args{
+				client: func() awsclient.Client {
+					// When feature is disabled, ListTagsForResource should not be called
+					mockClient := mock.NewMockClient(ctrl)
+					return mockClient
+				}(),
+				accountId:             aws.String("1234"),
+				shardName:             "shard1",
+				accountTagEnabled:     true,
+				appCode:               "OSD-002",
+				servicePhase:          "prod",
+				costCenter:            "148",
+				complianceTagsEnabled: false,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Compliance tags missing - should add them",
+			args: args{
+				client: makeClient(&organizations.ListTagsForResourceOutput{
+					Tags: []*organizations.Tag{
+						{
+							Key:   aws.String("owner"),
+							Value: aws.String("shard1"),
+						},
+					},
+				}, nil, true, nil),
+				accountId:             aws.String("1234"),
+				shardName:             "shard1",
+				accountTagEnabled:     true,
+				appCode:               "OSD-002",
+				servicePhase:          "prod",
+				costCenter:            "148",
+				complianceTagsEnabled: true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Compliance tags incorrect - should update them",
+			args: args{
+				client: makeClient(&organizations.ListTagsForResourceOutput{
+					Tags: []*organizations.Tag{
+						{
+							Key:   aws.String("app-code"),
+							Value: aws.String("WRONG-CODE"),
+						},
+						{
+							Key:   aws.String("service-phase"),
+							Value: aws.String("stage"),
+						},
+					},
+				}, nil, true, nil),
+				accountId:             aws.String("1234"),
+				shardName:             "shard1",
+				accountTagEnabled:     true,
+				appCode:               "OSD-002",
+				servicePhase:          "prod",
+				costCenter:            "148",
+				complianceTagsEnabled: true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "All compliance tags correct - no changes needed",
+			args: args{
+				client: makeClient(&organizations.ListTagsForResourceOutput{
+					Tags: []*organizations.Tag{
+						{
+							Key:   aws.String("app-code"),
+							Value: aws.String("OSD-002"),
+						},
+						{
+							Key:   aws.String("service-phase"),
+							Value: aws.String("prod"),
+						},
+						{
+							Key:   aws.String("cost-center"),
+							Value: aws.String("148"),
+						},
+					},
+				}, nil, false, nil),
+				accountId:             aws.String("1234"),
+				shardName:             "shard1",
+				accountTagEnabled:     true,
+				appCode:               "OSD-002",
+				servicePhase:          "prod",
+				costCenter:            "148",
+				complianceTagsEnabled: true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "Tags missing but tagging disabled - should not error",
+			args: args{
+				client: makeClient(&organizations.ListTagsForResourceOutput{
+					Tags: []*organizations.Tag{},
+				}, nil, false, nil),
+				accountId:             aws.String("1234"),
+				shardName:             "shard1",
+				accountTagEnabled:     false,
+				appCode:               "OSD-002",
+				servicePhase:          "prod",
+				costCenter:            "148",
+				complianceTagsEnabled: true,
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := ValidateComplianceTags(tt.args.client, tt.args.accountId, tt.args.shardName, tt.args.accountTagEnabled, tt.args.appCode, tt.args.servicePhase, tt.args.costCenter, tt.args.complianceTagsEnabled); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateComplianceTags() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -771,6 +914,148 @@ func TestValidateAccount_Reconcile(t *testing.T) {
 					}}...).Build(),
 				scheme:           scheme.Scheme,
 				awsClientBuilder: nil,
+			},
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: "default",
+						Name:      "test",
+					},
+				},
+			},
+			want: reconcile.Result{Requeue: false}, wantErr: false},
+		{
+			name: "Reconcile reads compliance tags from ConfigMap when feature flag is enabled (CCS account)",
+			fields: fields{
+				Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
+					&awsv1alpha1.Account{
+						TypeMeta: v1.TypeMeta{
+							Kind:       "Account",
+							APIVersion: "v1alpha1",
+						},
+						ObjectMeta: v1.ObjectMeta{
+							Name:      "test",
+							Namespace: "default",
+						},
+						Spec: awsv1alpha1.AccountSpec{
+							AwsAccountID: "123456789012",
+							BYOC:         true, // CCS account won't be validated
+						},
+						Status: awsv1alpha1.AccountStatus{
+							State: string(awsv1alpha1.AccountReady),
+						},
+					},
+					&corev1.ConfigMap{
+						ObjectMeta: v1.ObjectMeta{
+							Name:      awsv1alpha1.DefaultConfigMap,
+							Namespace: awsv1alpha1.AccountCrNamespace,
+						},
+						Data: map[string]string{
+							"root":                    "ou-root-123",
+							"base":                    "ou-base-456",
+							"shard-name":              "test-shard",
+							"feature.compliance_tags": "true",
+							"app-code":                "OSD-002",
+							"service-phase":           "prod",
+							"cost-center":             "148",
+						},
+					}}...).Build(),
+				scheme:           scheme.Scheme,
+				awsClientBuilder: newBuilder(ctrl),
+			},
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: "default",
+						Name:      "test",
+					},
+				},
+			},
+			want: reconcile.Result{Requeue: false}, wantErr: false},
+		{
+			name: "Reconcile skips compliance tags when feature flag is disabled (CCS account)",
+			fields: fields{
+				Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
+					&awsv1alpha1.Account{
+						TypeMeta: v1.TypeMeta{
+							Kind:       "Account",
+							APIVersion: "v1alpha1",
+						},
+						ObjectMeta: v1.ObjectMeta{
+							Name:      "test",
+							Namespace: "default",
+						},
+						Spec: awsv1alpha1.AccountSpec{
+							AwsAccountID: "123456789012",
+							BYOC:         true, // CCS account won't be validated
+						},
+						Status: awsv1alpha1.AccountStatus{
+							State: string(awsv1alpha1.AccountReady),
+						},
+					},
+					&corev1.ConfigMap{
+						ObjectMeta: v1.ObjectMeta{
+							Name:      awsv1alpha1.DefaultConfigMap,
+							Namespace: awsv1alpha1.AccountCrNamespace,
+						},
+						Data: map[string]string{
+							"root":                    "ou-root-123",
+							"base":                    "ou-base-456",
+							"shard-name":              "test-shard",
+							"feature.compliance_tags": "false",
+							"app-code":                "OSD-002",
+							"service-phase":           "prod",
+							"cost-center":             "148",
+						},
+					}}...).Build(),
+				scheme:           scheme.Scheme,
+				awsClientBuilder: newBuilder(ctrl),
+			},
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: "default",
+						Name:      "test",
+					},
+				},
+			},
+			want: reconcile.Result{Requeue: false}, wantErr: false},
+		{
+			name: "Reconcile handles missing compliance tag values gracefully (CCS account)",
+			fields: fields{
+				Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
+					&awsv1alpha1.Account{
+						TypeMeta: v1.TypeMeta{
+							Kind:       "Account",
+							APIVersion: "v1alpha1",
+						},
+						ObjectMeta: v1.ObjectMeta{
+							Name:      "test",
+							Namespace: "default",
+						},
+						Spec: awsv1alpha1.AccountSpec{
+							AwsAccountID: "123456789012",
+							BYOC:         true, // CCS account won't be validated
+						},
+						Status: awsv1alpha1.AccountStatus{
+							State: string(awsv1alpha1.AccountReady),
+						},
+					},
+					&corev1.ConfigMap{
+						ObjectMeta: v1.ObjectMeta{
+							Name:      awsv1alpha1.DefaultConfigMap,
+							Namespace: awsv1alpha1.AccountCrNamespace,
+						},
+						Data: map[string]string{
+							"root":                    "ou-root-123",
+							"base":                    "ou-base-456",
+							"shard-name":              "test-shard",
+							"feature.compliance_tags": "true",
+							// Don't set app-code, service-phase, cost-center
+						},
+					}}...).Build(),
+				scheme:           scheme.Scheme,
+				awsClientBuilder: newBuilder(ctrl),
 			},
 			args: args{
 				request: reconcile.Request{

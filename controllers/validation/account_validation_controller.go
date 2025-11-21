@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-logr/logr"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-logr/logr"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
@@ -33,6 +34,7 @@ var log = logf.Log.WithName("controller_accountvalidation")
 var accountMoveEnabled = false
 var accountTagEnabled = false
 var accountDeletionEnabled = false
+var complianceTagsEnabled = false
 
 const (
 	controllerName = "accountvalidation"
@@ -169,6 +171,7 @@ func untagAccountOwner(client awsclient.Client, accountId string) error {
 	return err
 }
 
+// ValidateAccountTags validates the owner tag on an AWS account
 func ValidateAccountTags(client awsclient.Client, accountId *string, shardName string, accountTagEnabled bool) error {
 	listTagsForResourceInput := &organizations.ListTagsForResourceInput{
 		ResourceId: accountId,
@@ -192,7 +195,8 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 						}
 					}
 
-					err = account.TagAccount(client, *accountId, shardName)
+					complianceTags := make(map[string]string)
+					err = account.TagAccount(client, *accountId, shardName, complianceTags)
 					if err != nil {
 						log.Error(err, "Unable to tag aws account.", "AWSAccountID", accountId)
 						return &AccountValidationError{
@@ -213,7 +217,8 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 	}
 
 	if accountTagEnabled {
-		err := account.TagAccount(client, *accountId, shardName)
+		complianceTags := make(map[string]string)
+		err := account.TagAccount(client, *accountId, shardName, complianceTags)
 		if err != nil {
 			log.Error(err, "Unable to tag aws account.", "AWSAccountID", accountId)
 			return &AccountValidationError{
@@ -228,6 +233,86 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 			Err:  errors.New("account is not tagged with an owner"),
 		}
 	}
+}
+
+// buildTagMap converts a list of tags into a map for easier lookup
+func buildTagMap(tags []*organizations.Tag) map[string]string {
+	tagMap := make(map[string]string)
+	for _, tag := range tags {
+		tagMap[*tag.Key] = *tag.Value
+	}
+	return tagMap
+}
+
+// areComplianceTagsInSync checks if compliance tags match expected values
+func areComplianceTagsInSync(existingTags map[string]string, appCode, servicePhase, costCenter string) bool {
+	if appCode != "" && existingTags["app-code"] != appCode {
+		return false
+	}
+	if servicePhase != "" && existingTags["service-phase"] != servicePhase {
+		return false
+	}
+	if costCenter != "" && existingTags["cost-center"] != costCenter {
+		return false
+	}
+	return true
+}
+
+// ValidateComplianceTags validates compliance tags (app-code, service-phase, cost-center) on an AWS account
+func ValidateComplianceTags(client awsclient.Client, accountId *string, shardName string, accountTagEnabled bool, appCode, servicePhase, costCenter string, complianceTagsEnabled bool) error {
+	// Only validate if feature is enabled
+	if !complianceTagsEnabled {
+		return nil
+	}
+
+	// Fetch existing tags
+	listTagsForResourceInput := &organizations.ListTagsForResourceInput{
+		ResourceId: accountId,
+	}
+	resp, err := client.ListTagsForResource(listTagsForResourceInput)
+	if err != nil {
+		return err
+	}
+
+	// Build tag map for easy lookup
+	existingTags := buildTagMap(resp.Tags)
+
+	// Check if compliance tags are correct
+	if areComplianceTagsInSync(existingTags, appCode, servicePhase, costCenter) {
+		// All compliance tags are correct, nothing to do
+		return nil
+	}
+
+	// Compliance tags are missing or incorrect
+	if !accountTagEnabled {
+		// Just log, don't fix
+		log.Info("Compliance tags are missing or incorrect but account tagging is disabled", "accountId", *accountId)
+		return nil
+	}
+
+	// Re-tag to add/update compliance tags
+	complianceTags := make(map[string]string)
+	if complianceTagsEnabled {
+		if appCode != "" {
+			complianceTags["app-code"] = appCode
+		}
+		if servicePhase != "" {
+			complianceTags["service-phase"] = servicePhase
+		}
+		if costCenter != "" {
+			complianceTags["cost-center"] = costCenter
+		}
+	}
+	err = account.TagAccount(client, *accountId, shardName, complianceTags)
+	if err != nil {
+		log.Error(err, "Unable to update compliance tags on aws account.", "AWSAccountID", accountId)
+		return &AccountValidationError{
+			Type: AccountTagFailed,
+			Err:  err,
+		}
+	}
+
+	return nil
 }
 
 func ValidateAccountOrigin(account awsv1alpha1.Account) error {
@@ -423,6 +508,14 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	}
 	log.Info("Is tagging accounts enabled?", "enabled", accountTagEnabled)
 
+	enabled, err = strconv.ParseBool(cm.Data["feature.compliance_tags"])
+	if err != nil {
+		log.Info("Could not retrieve feature flag 'feature.compliance_tags' - compliance tagging is disabled")
+	} else {
+		complianceTagsEnabled = enabled
+	}
+	log.Info("Is compliance tagging enabled?", "enabled", complianceTagsEnabled)
+
 	enabled, err = strconv.ParseBool(cm.Data["feature.validation_delete_account"])
 	if err != nil {
 		log.Info("Could not retrieve feature flag 'feature.validation_delete_account' - account deletion is disabled")
@@ -492,6 +585,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		if shardName == "" {
 			log.Info("Cluster configuration is missing a shardName value.  Skipping validation for this tag.")
 		} else {
+			// Validate owner tag
 			err = ValidateAccountTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled)
 			if err != nil {
 				validationError, ok := err.(*AccountValidationError)
@@ -501,10 +595,36 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 				return utils.RequeueWithError(err)
 			}
 		}
-	}
 
-	// check if account belongs to accountpool
-	if !account.IsBYOC() {
+		// check if account belongs to accountpool
+		if !account.IsBYOC() {
+			// Validate compliance tags
+			var appCode, servicePhase, costCenter string
+
+			// Read ConfigMap values if complianceTagsEnabled
+			if complianceTagsEnabled {
+				var ok bool
+				appCode, ok = cm.Data["app-code"]
+				if !ok {
+					log.Info("Could not retrieve configuration map value 'app-code' - compliance tag will be skipped")
+				}
+				servicePhase, ok = cm.Data["service-phase"]
+				if !ok {
+					log.Info("Could not retrieve configuration map value 'service-phase' - compliance tag will be skipped")
+				}
+				costCenter, ok = cm.Data["cost-center"]
+				if !ok {
+					log.Info("Could not retrieve configuration map value 'cost-center' - compliance tag will be skipped")
+				}
+			}
+
+			err = ValidateComplianceTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled, appCode, servicePhase, costCenter, complianceTagsEnabled)
+			if err != nil {
+				log.Error(err, "Failed to validate compliance tags")
+				return utils.RequeueWithError(err)
+			}
+		}
+
 		optInRegions, ok := cm.Data["opt-in-regions"]
 		// ValidateOptInRegions
 		if ok && isOptInRegionFeatureEnabled {

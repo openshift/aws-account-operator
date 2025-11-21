@@ -9,6 +9,9 @@ parameters:
 - name: STS_JUMP_ARN
 - name: SUPPORT_JUMP_ROLE
 - name: ACCOUNTPOOL_CONFIG
+- name: APP_CODE
+- name: SERVICE_PHASE
+- name: COST_CENTER
 metadata:
   name: test-aws-ou-mapping-configmap-template
 objects:
@@ -38,6 +41,10 @@ objects:
     feature.accountpool_validation: "false"
     feature.accountclaim_fleet_manager_trusted_arn: "false"
     feature.opt_in_regions: "false"
+    feature.compliance_tags: "false"
     opt-in-regions: "af-south-1,ap-southeast-4"
     shard-name: local
     accountpool: ${ACCOUNTPOOL_CONFIG}
+    app-code: ${APP_CODE}
+    service-phase: ${SERVICE_PHASE}
+    cost-center: ${COST_CENTER}
