@@ -65,6 +65,9 @@ parameters:
   - name: FEATURE_OPT_IN_REGIONS
     required: false
     value: "false"
+  - name: FEATURE_COMPLIANCE_TAGS
+    required: false
+    value: "false"
   - name: AMIOWNER
     require: false
     value: "309956199498"
@@ -73,6 +76,15 @@ parameters:
   - name: DEBUG_LOGGING
     required: false
     value: "false"
+  - name: APP_CODE
+    required: false
+    value: ""
+  - name: SERVICE_PHASE
+    required: false
+    value: ""
+  - name: COST_CENTER
+    required: false
+    value: ""
 
 objects:
   - apiVersion: operators.coreos.com/v1alpha1
@@ -139,7 +151,11 @@ objects:
       feature.accountpool_validation: ${FEATURE_ACCOUNTPOOL_VALIDATION}
       feature.accountclaim_fleet_manager_trusted_arn: ${FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN}
       feature.opt_in_regions: ${FEATURE_OPT_IN_REGIONS}
+      feature.compliance_tags: ${FEATURE_COMPLIANCE_TAGS}
       opt-in-regions: "${OPT_IN_REGIONS}"
+      app-code: "${APP_CODE}"
+      service-phase: "${SERVICE_PHASE}"
+      cost-center: "${COST_CENTER}"
 
   - apiVersion: aws.managed.openshift.io/v1alpha1
     kind: AccountPool

@@ -798,7 +798,8 @@ func TestTagAccount(t *testing.T) {
 	)
 
 	r := &AccountReconciler{shardName: "hivename"}
-	err := TagAccount(mockAWSClient, accountID, r.shardName)
+	complianceTags := make(map[string]string)
+	err := TagAccount(mockAWSClient, accountID, r.shardName, complianceTags)
 	if err != nil {
 		t.Errorf("failed to tag account")
 	}
@@ -1854,6 +1855,109 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(outRequest).ToNot(BeNil())
 			Expect(outRequest.RequeueAfter).To(Equal(awsAccountInitRequeueDuration))
+		})
+	})
+
+	Context("Testing compliance tags in Reconcile", func() {
+		It("Should read compliance tags from ConfigMap when feature flag is enabled", func() {
+			testAccount := &newTestAccountBuilder().WithState(AccountReady).WithAwsAccountID("123456789012").acct
+
+			testConfigMap := &v1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        awsv1alpha1.DefaultConfigMap,
+					Namespace:   awsv1alpha1.AccountCrNamespace,
+					Labels:      map[string]string{},
+					Annotations: map[string]string{},
+				},
+				Data: map[string]string{
+					"ami-owner":               "12345",
+					"feature.compliance_tags": "true",
+					"app-code":                "OSD-002",
+					"service-phase":           "prod",
+					"cost-center":             "148",
+				},
+			}
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{testAccount, testConfigMap}...).Build()
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: testAccount.Namespace,
+					Name:      testAccount.Name,
+				},
+			}
+
+			_, err := r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Compliance tags are read from ConfigMap during reconcile
+			// The actual tag application is tested in the validation controller tests
+		})
+
+		It("Should skip reading compliance tag values when feature flag is disabled", func() {
+			testAccount := &newTestAccountBuilder().WithState(AccountReady).WithAwsAccountID("123456789012").acct
+
+			testConfigMap := &v1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        awsv1alpha1.DefaultConfigMap,
+					Namespace:   awsv1alpha1.AccountCrNamespace,
+					Labels:      map[string]string{},
+					Annotations: map[string]string{},
+				},
+				Data: map[string]string{
+					"ami-owner":               "12345",
+					"feature.compliance_tags": "false",
+					"app-code":                "OSD-002",
+					"service-phase":           "prod",
+					"cost-center":             "148",
+				},
+			}
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{testAccount, testConfigMap}...).Build()
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: testAccount.Namespace,
+					Name:      testAccount.Name,
+				},
+			}
+
+			_, err := r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Compliance tags are disabled, reconcile should complete without error
+		})
+
+		It("Should handle missing compliance tag values gracefully", func() {
+			testAccount := &newTestAccountBuilder().WithState(AccountReady).WithAwsAccountID("123456789012").acct
+
+			testConfigMap := &v1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        awsv1alpha1.DefaultConfigMap,
+					Namespace:   awsv1alpha1.AccountCrNamespace,
+					Labels:      map[string]string{},
+					Annotations: map[string]string{},
+				},
+				Data: map[string]string{
+					"ami-owner":               "12345",
+					"feature.compliance_tags": "true",
+					// Don't set app-code, service-phase, cost-center
+				},
+			}
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{testAccount, testConfigMap}...).Build()
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: testAccount.Namespace,
+					Name:      testAccount.Name,
+				},
+			}
+
+			_, err := r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Compliance tags are enabled but values are missing, should handle gracefully
 		})
 	})
 
