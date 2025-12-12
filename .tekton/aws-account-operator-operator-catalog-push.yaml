@@ -35,6 +35,14 @@ spec:
   taskRunTemplate:
     serviceAccountName: build-pipeline-aws-account-operator-catalog
   workspaces:
+  - name: workspace
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
   - name: git-auth
     secret:
       secretName: '{{ git_auth_secret }}'
