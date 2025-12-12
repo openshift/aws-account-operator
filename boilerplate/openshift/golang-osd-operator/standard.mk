@@ -412,12 +412,16 @@ bundle-generate: ## Generate OLM bundle manifests locally
 	@echo "Generating bundle manifests..."
 	@mkdir -p bundle/manifests bundle/metadata
 	@cp deploy/crds/*.yaml bundle/manifests/
-	@cp config/templates/csv-template.yaml bundle/manifests/
+	@cp config/templates/csv-template.yaml bundle/manifests/csv-template.yaml
 	@if [ -z "$(OPERATOR_IMAGE_URI)" ]; then \
 		echo "ERROR: OPERATOR_IMAGE_URI is not set. Run 'make docker-build' first."; \
 		exit 1; \
 	fi
-	@OPERATOR_IMAGE=$(OPERATOR_IMAGE_URI) bundle-hack/update_bundle.sh
+	@OPERATOR_IMAGE=$(OPERATOR_IMAGE_URI) \
+		CSV_FILE=bundle/manifests/csv-template.yaml \
+		METADATA_DIR=bundle/metadata \
+		MANIFESTS_DIR=bundle/manifests \
+		bundle-hack/update_bundle.sh
 
 .PHONY: bundle-validate
 bundle-validate: bundle-generate ## Validate OLM bundle
@@ -437,12 +441,15 @@ catalog-generate: ## Generate FBC catalog from bundle
 	@echo "Generating catalog from bundle $(BUNDLE_IMAGE)..."
 	@${CONVENTION_DIR}/ensure.sh opm
 	@mkdir -p catalog
-	@opm render $(BUNDLE_IMAGE) --output=json > catalog/index.json
+	@# Create FBC with package, channel, and bundle
+	@echo '{"schema":"olm.package","name":"$(OPERATOR_NAME)","defaultChannel":"stable"}' > catalog/index.json
+	@echo '{"schema":"olm.channel","name":"stable","package":"$(OPERATOR_NAME)","entries":[{"name":"$(OPERATOR_NAME)-0.0.1"}]}' >> catalog/index.json
+	@.opm/bin/opm render $(BUNDLE_IMAGE) --output=json >> catalog/index.json
 
 .PHONY: catalog-validate
 catalog-validate: catalog-generate ## Validate FBC catalog
 	@echo "Validating catalog..."
-	@opm validate catalog/
+	@.opm/bin/opm validate catalog/
 
 .PHONY: catalog-build
 catalog-build: catalog-generate ## Build catalog image locally
