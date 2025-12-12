@@ -399,3 +399,56 @@ rvmo-bundle:
 	OPERATOR_OLM_REGISTRY_IMAGE=$(REGISTRY_IMAGE) \
 	TEMPLATE_DIR=$(abspath hack/release-bundle) \
 	bash ${CONVENTION_DIR}/rvmo-bundle.sh
+
+############################
+# Konflux OLM Bundle Support
+############################
+
+BUNDLE_IMAGE ?= localhost/$(OPERATOR_NAME)-bundle:dev
+CATALOG_IMAGE ?= localhost/$(OPERATOR_NAME)-catalog:dev
+
+.PHONY: bundle-generate
+bundle-generate: ## Generate OLM bundle manifests locally
+	@echo "Generating bundle manifests..."
+	@mkdir -p bundle/manifests bundle/metadata
+	@cp deploy/crds/*.yaml bundle/manifests/
+	@cp config/templates/csv-template.yaml bundle/manifests/
+	@if [ -z "$(OPERATOR_IMAGE_URI)" ]; then \
+		echo "ERROR: OPERATOR_IMAGE_URI is not set. Run 'make docker-build' first."; \
+		exit 1; \
+	fi
+	@OPERATOR_IMAGE=$(OPERATOR_IMAGE_URI) bundle-hack/update_bundle.sh
+
+.PHONY: bundle-validate
+bundle-validate: bundle-generate ## Validate OLM bundle
+	@echo "Validating bundle..."
+	@${CONVENTION_DIR}/ensure.sh operator-sdk
+	@operator-sdk bundle validate ./bundle
+
+.PHONY: bundle-build
+bundle-build: bundle-generate ## Build bundle image locally
+	@echo "Building bundle image $(BUNDLE_IMAGE)..."
+	@$(CONTAINER_ENGINE) build -f Containerfile.bundle \
+		--build-arg OPERATOR_IMAGE_DIGEST=$(OPERATOR_IMAGE_URI) \
+		-t $(BUNDLE_IMAGE) .
+
+.PHONY: catalog-generate
+catalog-generate: ## Generate FBC catalog from bundle
+	@echo "Generating catalog from bundle $(BUNDLE_IMAGE)..."
+	@${CONVENTION_DIR}/ensure.sh opm
+	@mkdir -p catalog
+	@opm render $(BUNDLE_IMAGE) --output=json > catalog/index.json
+
+.PHONY: catalog-validate
+catalog-validate: catalog-generate ## Validate FBC catalog
+	@echo "Validating catalog..."
+	@opm validate catalog/
+
+.PHONY: catalog-build
+catalog-build: catalog-generate ## Build catalog image locally
+	@echo "Building catalog image $(CATALOG_IMAGE)..."
+	@$(CONTAINER_ENGINE) build -f Containerfile.catalog -t $(CATALOG_IMAGE) .
+
+.PHONY: olm-test-all
+olm-test-all: bundle-validate catalog-validate ## Run all OLM validations
+	@echo "✅ All OLM validations passed"

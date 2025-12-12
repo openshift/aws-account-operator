@@ -1,0 +1,12 @@
+# Minimal kustomization for OLM bundle manifests
+# This file is copied to operator repos via boilerplate update
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Resources that make up the OLM bundle
+resources:
+- bases/__OPERATOR_NAME__.clusterserviceversion.yaml
+
+# Namespace is a placeholder, will be replaced during bundle generation
+namespace: placeholder

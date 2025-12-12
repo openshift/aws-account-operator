@@ -3,6 +3,7 @@ kind: PipelineRun
 metadata:
   annotations:
     build.appstudio.openshift.io/repo: https://github.com/openshift/aws-account-operator?rev={{revision}}
+    build.appstudio.openshift.io/build-nudges: "aws-account-operator-bundle"
     build.appstudio.redhat.com/commit_sha: '{{revision}}'
     build.appstudio.redhat.com/target_branch: '{{target_branch}}'
     pipelinesascode.tekton.dev/cancel-in-progress: 'false'

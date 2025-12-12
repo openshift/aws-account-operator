@@ -1,0 +1,54 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  annotations:
+    build.appstudio.openshift.io/repo: https://github.com/openshift/__OPERATOR_NAME__?rev={{revision}}
+    build.appstudio.redhat.com/commit_sha: '{{revision}}'
+    build.appstudio.redhat.com/pull_request_number: '{{pull_request_number}}'
+    build.appstudio.redhat.com/target_branch: '{{target_branch}}'
+    pipelinesascode.tekton.dev/cancel-in-progress: 'true'
+    pipelinesascode.tekton.dev/max-keep-runs: '3'
+    pipelinesascode.tekton.dev/on-cel-expression: |
+      event == "pull_request" && target_branch == "master"
+  creationTimestamp: null
+  labels:
+    appstudio.openshift.io/application: __OPERATOR_NAME__
+    appstudio.openshift.io/component: __OPERATOR_NAME__-bundle
+    pipelines.appstudio.openshift.io/type: build
+  name: __OPERATOR_NAME__-bundle-on-pull-request
+  namespace: __NAMESPACE__
+spec:
+  params:
+  - name: git-url
+    value: '{{source_url}}'
+  - name: revision
+    value: '{{revision}}'
+  - name: output-image
+    value: quay.io/redhat-user-workloads/__NAMESPACE__/openshift/__OPERATOR_NAME__-bundle:on-pr-{{revision}}
+  - name: image-expires-after
+    value: 5d
+  - name: dockerfile
+    value: Containerfile.bundle
+  - name: path-context
+    value: .
+  - name: operator-image
+    value: quay.io/redhat-user-workloads/__NAMESPACE__/openshift/__OPERATOR_NAME__:latest
+  - name: build-args
+    value:
+    - OPERATOR_IMAGE_DIGEST=$(tasks.resolve-operator-digest.results.digest)
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-__OPERATOR_NAME__-bundle
+  workspaces:
+  - name: git-auth
+    secret:
+      secretName: '{{ git_auth_secret }}'
+  pipelineRef:
+    resolver: git
+    params:
+    - name: url
+      value: https://github.com/openshift/boilerplate
+    - name: revision
+      value: master
+    - name: pathInRepo
+      value: pipelines/bundle-builder/pipeline.yaml
+status: {}
