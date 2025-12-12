@@ -25,7 +25,7 @@ spec:
   - name: output-image
     value: quay.io/redhat-user-workloads/aws-account-operator-tenant/openshift/aws-account-operator-bundle:{{revision}}
   - name: dockerfile
-    value: Containerfile.bundle
+    value: boilerplate/openshift/golang-osd-operator/Containerfile.bundle
   - name: path-context
     value: .
   - name: operator-image
@@ -33,6 +33,7 @@ spec:
   - name: build-args
     value:
     - OPERATOR_IMAGE_DIGEST=$(tasks.resolve-operator-digest.results.digest)
+    - OPERATOR_NAME=aws-account-operator
   taskRunTemplate:
     serviceAccountName: build-pipeline-aws-account-operator-bundle
   workspaces:

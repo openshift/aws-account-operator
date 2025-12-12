@@ -25,7 +25,7 @@ spec:
   - name: output-image
     value: quay.io/redhat-user-workloads/__NAMESPACE__/openshift/__OPERATOR_NAME__-catalog:{{revision}}
   - name: dockerfile
-    value: Containerfile.catalog
+    value: boilerplate/openshift/golang-osd-operator/Containerfile.catalog
   - name: path-context
     value: .
   - name: operator-name

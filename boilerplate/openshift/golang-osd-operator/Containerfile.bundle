@@ -28,10 +28,12 @@ RUN OPERATOR_IMAGE="${OPERATOR_IMAGE_DIGEST}" /bundle-hack/update_bundle.sh
 FROM scratch
 
 # OLM bundle labels
+# OPERATOR_NAME is passed as a build arg from the pipeline
+ARG OPERATOR_NAME
 LABEL operators.operatorframework.io.bundle.mediatype.v1=registry+v1
 LABEL operators.operatorframework.io.bundle.manifests.v1=manifests/
 LABEL operators.operatorframework.io.bundle.metadata.v1=metadata/
-LABEL operators.operatorframework.io.bundle.package.v1=__OPERATOR_NAME__
+LABEL operators.operatorframework.io.bundle.package.v1=${OPERATOR_NAME}
 LABEL operators.operatorframework.io.bundle.channels.v1=stable
 LABEL operators.operatorframework.io.bundle.channel.default.v1=stable
 
