@@ -35,7 +35,6 @@ spec:
     value: quay.io/redhat-user-workloads/__NAMESPACE__/openshift/__OPERATOR_NAME__:latest
   - name: build-args
     value:
-    - OPERATOR_IMAGE_DIGEST=$(tasks.resolve-operator-digest.results.digest)
     - OPERATOR_NAME=__OPERATOR_NAME__
   taskRunTemplate:
     serviceAccountName: build-pipeline-__OPERATOR_NAME__-bundle
