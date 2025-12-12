@@ -3,21 +3,16 @@ kind: PipelineRun
 metadata:
   annotations:
     build.appstudio.openshift.io/repo: https://github.com/openshift/aws-account-operator?rev={{revision}}
-    build.appstudio.openshift.io/build-nudges: "aws-account-operator-bundle"
     build.appstudio.redhat.com/commit_sha: '{{revision}}'
     build.appstudio.redhat.com/target_branch: '{{target_branch}}'
     pipelinesascode.tekton.dev/cancel-in-progress: 'false'
     pipelinesascode.tekton.dev/max-keep-runs: '3'
-    pipelinesascode.tekton.dev/on-cel-expression: "event == \"push\" \n&& target_branch\
-      \ == \"master\"\n&& (\"**/*.go\".pathChanged() ||\n    \"**/go.*\".pathChanged()\
-      \ ||\n    \"build/Dockerfile\".pathChanged() ||\n    \".tekton/aws-account-operator-push.yaml\"\
-      .pathChanged() ) \n"
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: aws-account-operator
-    appstudio.openshift.io/component: aws-account-operator
+    appstudio.openshift.io/component: aws-account-operator-catalog
     pipelines.appstudio.openshift.io/type: build
-  name: aws-account-operator-on-push
+  name: aws-account-operator-catalog-on-push
   namespace: aws-account-operator-tenant
 spec:
   params:
@@ -26,14 +21,28 @@ spec:
   - name: revision
     value: '{{revision}}'
   - name: output-image
-    value: quay.io/redhat-user-workloads/aws-account-operator-tenant/openshift/aws-account-operator:{{revision}}
+    value: quay.io/redhat-user-workloads/aws-account-operator-tenant/openshift/aws-account-operator-catalog:{{revision}}
   - name: dockerfile
-    value: build/Dockerfile
+    value: boilerplate/openshift/golang-osd-operator/Containerfile.catalog
   - name: path-context
     value: .
+  - name: operator-name
+    value: aws-account-operator
+  - name: operator-bundle-image
+    value: quay.io/redhat-user-workloads/aws-account-operator-tenant/openshift/aws-account-operator-bundle:latest
+  - name: default-channel
+    value: stable
   taskRunTemplate:
-    serviceAccountName: build-pipeline-aws-account-operator
+    serviceAccountName: build-pipeline-aws-account-operator-catalog
   workspaces:
+  - name: workspace
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
   - name: git-auth
     secret:
       secretName: '{{ git_auth_secret }}'
@@ -45,5 +54,5 @@ spec:
     - name: revision
       value: master
     - name: pathInRepo
-      value: pipelines/docker-build-oci-ta/pipeline.yaml
+      value: pipelines/catalog-builder/pipeline.yaml
 status: {}

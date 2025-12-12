@@ -65,6 +65,7 @@ if [[ -f ${REPO_ROOT}/.gitignore ]]; then
 fi
 
 OPERATOR_NAME=$(sed -n 's/.*OperatorName .*"\([^"]*\)".*/\1/p' "${REPO_ROOT}/config/config.go")
+OPERATOR_NAMESPACE=$(sed -n 's/.*OperatorNamespace .*"\([^"]*\)".*/\1/p' "${REPO_ROOT}/config/config.go")
 
 if [[ ! -f ${REPO_ROOT}/config/metadata/additional-labels.txt ]]; then
   mkdir -p ${REPO_ROOT}/config/metadata
@@ -120,6 +121,58 @@ if [ -d "$TEKTON_DIR" ]; then
 		fi
 	done
 fi
+
+# Konflux OLM Bundle and Catalog Support
+echo "Setting up Konflux OLM bundle and catalog support..."
+
+# Copy Containerfiles to repo root
+echo "  Copying Containerfile.bundle and Containerfile.catalog..."
+cp ${HERE}/Containerfile.bundle $REPO_ROOT/
+cp ${HERE}/Containerfile.catalog $REPO_ROOT/
+
+# Replace __OPERATOR_NAME__ placeholder in Containerfile.bundle
+${SED?} -i "s/__OPERATOR_NAME__/${OPERATOR_NAME}/g" $REPO_ROOT/Containerfile.bundle
+
+# Copy bundle-hack directory
+echo "  Copying bundle-hack scripts..."
+mkdir -p $REPO_ROOT/bundle-hack
+cp -r ${HERE}/bundle-hack/* $REPO_ROOT/bundle-hack/
+chmod +x $REPO_ROOT/bundle-hack/update_bundle.sh
+
+# Replace __OPERATOR_NAME__ placeholder in bundle metadata generation
+${SED?} -i "s/__OPERATOR_NAME__/${OPERATOR_NAME}/g" $REPO_ROOT/bundle-hack/update_bundle.sh
+
+# Instantiate .tekton pipeline templates (only if .tekton directory exists)
+if [[ -d "${REPO_ROOT}/.tekton/" && -n "${OPERATOR_NAME}" && -n "${OPERATOR_NAMESPACE}" ]]; then
+  echo "  Generating Konflux OLM pipeline files..."
+
+  # Instantiate each template
+  for template in ${HERE}/.tekton-templates/*.yaml.tmpl; do
+    if [[ -f "$template" ]]; then
+      filename=$(basename "$template" .tmpl)
+      output_file="${REPO_ROOT}/.tekton/${OPERATOR_NAME}-${filename}"
+
+      # Replace placeholders
+      ${SED?} -e "s/__OPERATOR_NAME__/${OPERATOR_NAME}/g" \
+              -e "s/__NAMESPACE__/${OPERATOR_NAMESPACE}-tenant/g" \
+              "$template" > "$output_file"
+
+      echo "    Created ${OPERATOR_NAME}-${filename}"
+    fi
+  done
+fi
+
+# Create config/manifests directory if it doesn't exist
+if [[ ! -d "${REPO_ROOT}/config/manifests" ]]; then
+  echo "  Creating config/manifests directory..."
+  mkdir -p $REPO_ROOT/config/manifests
+  cp ${HERE}/config-templates/manifests/kustomization.yaml $REPO_ROOT/config/manifests/
+
+  # Replace __OPERATOR_NAME__ placeholder
+  ${SED?} -i "s/__OPERATOR_NAME__/${OPERATOR_NAME}/g" $REPO_ROOT/config/manifests/kustomization.yaml
+fi
+
+echo "Konflux OLM support configured successfully!"
 
 cat <<EOF
 
