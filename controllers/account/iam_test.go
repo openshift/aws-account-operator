@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	apis "github.com/openshift/aws-account-operator/api"
 	"github.com/openshift/aws-account-operator/api/v1alpha1"
@@ -73,22 +74,22 @@ func TestRetryIfAwsServiceFailureOrInvalidToken(t *testing.T) {
 	}{
 		{
 			name:          "TestServiceFailure",
-			err:           awserr.New("ServiceFailure", "", nil),
+			err:           &smithy.GenericAPIError{Code: "ServiceFailure", Message: ""},
 			expectedValue: true,
 		},
 		{
 			name:          "TestInvalidClientTokenId",
-			err:           awserr.New("InvalidClientTokenId", "", nil),
+			err:           &smithy.GenericAPIError{Code: "InvalidClientTokenId", Message: ""},
 			expectedValue: true,
 		},
 		{
 			name:          "TestAccessDenied",
-			err:           awserr.New("AccessDenied", "", nil),
+			err:           &smithy.GenericAPIError{Code: "AccessDenied", Message: ""},
 			expectedValue: true,
 		},
 		{
 			name:          "TestNotFound",
-			err:           awserr.New("NotFound", "", nil),
+			err:           &smithy.GenericAPIError{Code: "NotFound", Message: ""},
 			expectedValue: false,
 		},
 		{
@@ -115,13 +116,13 @@ func TestListAccessKeys(t *testing.T) {
 
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 	username := "AwesomeUser"
-	user := iam.User{UserName: &username}
+	user := iamtypes.User{UserName: &username}
 
 	expectedAccessKeyID := aws.String("hihi")
 
-	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any(), gomock.Any()).Return(
 		&iam.ListAccessKeysOutput{
-			AccessKeyMetadata: []*iam.AccessKeyMetadata{
+			AccessKeyMetadata: []iamtypes.AccessKeyMetadata{
 				{
 					AccessKeyId: expectedAccessKeyID,
 				},
@@ -136,10 +137,10 @@ func TestListAccessKeys(t *testing.T) {
 	assert.Equal(t, returnValue.AccessKeyMetadata[0].AccessKeyId, expectedAccessKeyID)
 
 	mockAWSClient = mock.NewMockClient(mocks.mockCtrl)
-	returnErr := awserr.New("AccessDenied", "", nil)
+	returnErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: ""}
 
 	// Should retry 5 times
-	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(nil, returnErr).Times(5)
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any(), gomock.Any()).Return(nil, returnErr).Times(5)
 
 	returnValue, err = listAccessKeys(mockAWSClient, &user)
 	assert.Nil(t, returnValue)
@@ -151,7 +152,7 @@ func TestDeleteAccessKey(t *testing.T) {
 
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
-	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(
+	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any(), gomock.Any()).Return(
 		&iam.DeleteAccessKeyOutput{},
 		nil, // no error
 	)
@@ -164,10 +165,10 @@ func TestDeleteAccessKey(t *testing.T) {
 	assert.Nil(t, err)
 
 	mockAWSClient = mock.NewMockClient(mocks.mockCtrl)
-	returnErr := awserr.New("AccessDenied", "", nil)
+	returnErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: ""}
 
 	// Should retry 5 times
-	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr).Times(5)
+	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any(), gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr).Times(5)
 
 	deleteAccessKeyOutput, err = deleteAccessKey(mockAWSClient, &accessKeyID, &username)
 	assert.Equal(t, deleteAccessKeyOutput, &iam.DeleteAccessKeyOutput{})
@@ -179,13 +180,13 @@ func TestDeleteAllAccessKeys(t *testing.T) {
 
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 	username := "AwesomeUser"
-	user := iam.User{UserName: &username}
+	user := iamtypes.User{UserName: &username}
 
 	expectedAccessKeyID := aws.String("expectedAccessKeyID")
 
-	mockAWSClient.EXPECT().ListAccessKeys(&iam.ListAccessKeysInput{UserName: &username}).Return(
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &username}).Return(
 		&iam.ListAccessKeysOutput{
-			AccessKeyMetadata: []*iam.AccessKeyMetadata{
+			AccessKeyMetadata: []iamtypes.AccessKeyMetadata{
 				{
 					AccessKeyId: expectedAccessKeyID,
 				},
@@ -194,6 +195,7 @@ func TestDeleteAllAccessKeys(t *testing.T) {
 		nil, // no error
 	)
 	mockAWSClient.EXPECT().DeleteAccessKey(
+		gomock.Any(),
 		&iam.DeleteAccessKeyInput{
 			AccessKeyId: expectedAccessKeyID,
 			UserName:    &username,
@@ -223,11 +225,11 @@ func TestCreateIAMUser(t *testing.T) {
 			name: "Success",
 			setupAWSMock: func(mc *mock.MockClientMockRecorder) {
 				gomock.InOrder(
-					mc.CreateUser(&iam.CreateUserInput{
+					mc.CreateUser(gomock.Any(), &iam.CreateUserInput{
 						UserName: username,
 					}).Return(
 						&iam.CreateUserOutput{
-							User: &iam.User{
+							User: &iamtypes.User{
 								UserId:   userID,
 								UserName: username,
 							},
@@ -237,7 +239,7 @@ func TestCreateIAMUser(t *testing.T) {
 				)
 			},
 			expectedCreateUserOutput: &iam.CreateUserOutput{
-				User: &iam.User{
+				User: &iamtypes.User{
 					UserId:   userID,
 					UserName: username,
 				},
@@ -248,49 +250,49 @@ func TestCreateIAMUser(t *testing.T) {
 			name: "InvalidClientTokenId",
 			setupAWSMock: func(mc *mock.MockClientMockRecorder) {
 				gomock.InOrder(
-					mc.CreateUser(&iam.CreateUserInput{
+					mc.CreateUser(gomock.Any(), &iam.CreateUserInput{
 						UserName: username,
-					}).Return(nil, awserr.New("InvalidClientTokenId", "", nil)).Times(9),
+					}).Return(nil, &smithy.GenericAPIError{Code: "InvalidClientTokenId", Message: ""}).Times(9),
 				)
 			},
 			expectedCreateUserOutput: &iam.CreateUserOutput{},
-			expectedErr:              awserr.New("InvalidClientTokenId", "", nil),
+			expectedErr:              &smithy.GenericAPIError{Code: "InvalidClientTokenId", Message: ""},
 		},
 		{
 			name: "AccessDenied",
 			setupAWSMock: func(mc *mock.MockClientMockRecorder) {
 				gomock.InOrder(
-					mc.CreateUser(&iam.CreateUserInput{
+					mc.CreateUser(gomock.Any(), &iam.CreateUserInput{
 						UserName: username,
-					}).Return(nil, awserr.New("AccessDenied", "", nil)).Times(9),
+					}).Return(nil, &smithy.GenericAPIError{Code: "AccessDenied", Message: ""}).Times(9),
 				)
 			},
 			expectedCreateUserOutput: &iam.CreateUserOutput{},
-			expectedErr:              awserr.New("AccessDenied", "", nil),
+			expectedErr:              &smithy.GenericAPIError{Code: "AccessDenied", Message: ""},
 		},
 		{
 			name: "EntityAlreadyExists",
 			setupAWSMock: func(mc *mock.MockClientMockRecorder) {
 				gomock.InOrder(
-					mc.CreateUser(&iam.CreateUserInput{
+					mc.CreateUser(gomock.Any(), &iam.CreateUserInput{
 						UserName: username,
-					}).Return(nil, awserr.New(iam.ErrCodeEntityAlreadyExistsException, "", nil)),
+					}).Return(nil, &iamtypes.EntityAlreadyExistsException{Message: aws.String("")}),
 				)
 			},
 			expectedCreateUserOutput: &iam.CreateUserOutput{},
-			expectedErr:              awserr.New(iam.ErrCodeEntityAlreadyExistsException, "", nil),
+			expectedErr:              &iamtypes.EntityAlreadyExistsException{Message: aws.String("")},
 		},
 		{
 			name: "OtherErr",
 			setupAWSMock: func(mc *mock.MockClientMockRecorder) {
 				gomock.InOrder(
-					mc.CreateUser(&iam.CreateUserInput{
+					mc.CreateUser(gomock.Any(), &iam.CreateUserInput{
 						UserName: username,
-					}).Return(nil, awserr.New("OtherErr", "", nil)),
+					}).Return(nil, &smithy.GenericAPIError{Code: "OtherErr", Message: ""}),
 				)
 			},
 			expectedCreateUserOutput: &iam.CreateUserOutput{},
-			expectedErr:              awserr.New("OtherErr", "", nil),
+			expectedErr:              &smithy.GenericAPIError{Code: "OtherErr", Message: ""},
 		},
 	}
 	for _, test := range tests {
@@ -315,11 +317,11 @@ func TestAttachAdminUserPolicy(t *testing.T) {
 	mocks := setupDefaultMocks(t, []runtime.Object{})
 
 	username := "AwesomeUser"
-	user := iam.User{UserName: &username, Arn: aws.String("arn:aws:iam::1234567890:user/AwesomeUser")}
+	user := iamtypes.User{UserName: &username, Arn: aws.String("arn:aws:iam::1234567890:user/AwesomeUser")}
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
 	// Testing valid state, returns with no issue.
-	mockAWSClient.EXPECT().AttachUserPolicy(gomock.Any()).Return(
+	mockAWSClient.EXPECT().AttachUserPolicy(gomock.Any(), gomock.Any()).Return(
 		&iam.AttachUserPolicyOutput{},
 		nil, // no error
 	)
@@ -329,8 +331,8 @@ func TestAttachAdminUserPolicy(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Testing invalid state, returns error, retries up to 100 times.
-	expectedError := awserr.New("AccessDenied", "", nil)
-	mockAWSClient.EXPECT().AttachUserPolicy(gomock.Any()).Return(
+	expectedError := &smithy.GenericAPIError{Code: "AccessDenied", Message: ""}
+	mockAWSClient.EXPECT().AttachUserPolicy(gomock.Any(), gomock.Any()).Return(
 		&iam.AttachUserPolicyOutput{},
 		expectedError, // no error
 	).Times(100)
@@ -350,14 +352,14 @@ func TestAttachAndEnsureRolePolicies(t *testing.T) {
 	managedSupRoleWithID := "RoleName-aabbcc"
 	policyArn := "MyPolicyARN"
 
-	mockAWSClient.EXPECT().AttachRolePolicy(&iam.AttachRolePolicyInput{
+	mockAWSClient.EXPECT().AttachRolePolicy(gomock.Any(), &iam.AttachRolePolicyInput{
 		RoleName:  aws.String(managedSupRoleWithID),
 		PolicyArn: aws.String(policyArn),
 	}).Return(nil, nil)
 
-	mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(
+	mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any(), gomock.Any()).Return(
 		&iam.ListAttachedRolePoliciesOutput{
-			AttachedPolicies: []*iam.AttachedPolicy{
+			AttachedPolicies: []iamtypes.AttachedPolicy{
 				{
 					PolicyArn:  aws.String(policyArn),
 					PolicyName: aws.String("PolicyName"),
@@ -377,17 +379,18 @@ func TestCreateUserAccessKey(t *testing.T) {
 
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 	username := "AwesomeUser"
-	user := iam.User{UserName: &username}
+	user := iamtypes.User{UserName: &username}
 
 	expectedAccessKeyID := aws.String("expectedAccessKeyID")
 
 	mockAWSClient.EXPECT().CreateAccessKey(
+		gomock.Any(),
 		&iam.CreateAccessKeyInput{
 			UserName: aws.String(username),
 		},
 	).Return(
 		&iam.CreateAccessKeyOutput{
-			AccessKey: &iam.AccessKey{
+			AccessKey: &iamtypes.AccessKey{
 				AccessKeyId: expectedAccessKeyID,
 			},
 		},
@@ -399,10 +402,10 @@ func TestCreateUserAccessKey(t *testing.T) {
 	assert.Nil(t, err)
 
 	mockAWSClient = mock.NewMockClient(mocks.mockCtrl)
-	returnErr := awserr.New("AccessDenied", "", nil)
+	returnErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: ""}
 
 	// Should retry 5 times
-	mockAWSClient.EXPECT().CreateAccessKey(gomock.Any()).Return(&iam.CreateAccessKeyOutput{}, returnErr).Times(5)
+	mockAWSClient.EXPECT().CreateAccessKey(gomock.Any(), gomock.Any()).Return(&iam.CreateAccessKeyOutput{}, returnErr).Times(5)
 
 	returnValue, err = CreateUserAccessKey(mockAWSClient, &user)
 	assert.Equal(t, returnValue, &iam.CreateAccessKeyOutput{})
@@ -429,15 +432,15 @@ func TestBuildIAMUser(t *testing.T) {
 	mocks := setupDefaultMocks(t, localObjects)
 
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
-	mockAWSClient.EXPECT().GetUser(&iam.GetUserInput{
+	mockAWSClient.EXPECT().GetUser(gomock.Any(), &iam.GetUserInput{
 		UserName: aws.String(username),
 	}).Return(&iam.GetUserOutput{
-		User: &iam.User{
+		User: &iamtypes.User{
 			UserName: &username,
 			Arn:      aws.String("arn:aws:iam::1234567890:user/AwesomeUser"),
 		},
 	}, nil)
-	mockAWSClient.EXPECT().AttachUserPolicy(&iam.AttachUserPolicyInput{
+	mockAWSClient.EXPECT().AttachUserPolicy(gomock.Any(), &iam.AttachUserPolicyInput{
 		UserName:  &username,
 		PolicyArn: aws.String(strings.Join([]string{standardAdminAccessArnPrefix, adminAccessArnSuffix}, "")),
 	}).Return(&iam.AttachUserPolicyOutput{}, nil)
@@ -461,21 +464,21 @@ func TestDeleteIAMUser(t *testing.T) {
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 	defer mocks.mockCtrl.Finish()
 
-	mockAWSClient.EXPECT().ListAttachedUserPolicies(gomock.Any()).Return(
+	mockAWSClient.EXPECT().ListAttachedUserPolicies(gomock.Any(), gomock.Any()).Return(
 		&iam.ListAttachedUserPoliciesOutput{
-			AttachedPolicies: []*iam.AttachedPolicy{},
+			AttachedPolicies: []iamtypes.AttachedPolicy{},
 		}, nil,
 	)
-	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any(), gomock.Any()).Return(
 		&iam.ListAccessKeysOutput{
-			AccessKeyMetadata: []*iam.AccessKeyMetadata{},
+			AccessKeyMetadata: []iamtypes.AccessKeyMetadata{},
 		}, nil,
 	)
-	mockAWSClient.EXPECT().DeleteUser(&iam.DeleteUserInput{UserName: aws.String("MyUserName")}).Return(
+	mockAWSClient.EXPECT().DeleteUser(gomock.Any(), &iam.DeleteUserInput{UserName: aws.String("MyUserName")}).Return(
 		nil, nil,
 	)
 
-	user := iam.User{UserName: aws.String("MyUserName")}
+	user := iamtypes.User{UserName: aws.String("MyUserName")}
 
 	err := deleteIAMUser(nullLogger, mockAWSClient, &user)
 	assert.Nil(t, err)
@@ -499,9 +502,9 @@ func TestDeleteIAMUsers(t *testing.T) {
 	account := newTestAccountBuilder().acct
 	account.Name = *username
 	account.Namespace = "MyNamespace"
-	mockAWSClient.EXPECT().GetUser(gomock.Any()).Return(
+	mockAWSClient.EXPECT().GetUser(gomock.Any(), gomock.Any()).Return(
 		&iam.GetUserOutput{
-			User: &iam.User{
+			User: &iamtypes.User{
 				UserName: username,
 				Tags:     getValidTags(&account),
 			},
@@ -509,24 +512,24 @@ func TestDeleteIAMUsers(t *testing.T) {
 	)
 
 	// Copied expectations from TestDeleteIAMUser
-	mockAWSClient.EXPECT().ListAttachedUserPolicies(gomock.Any()).Return(
+	mockAWSClient.EXPECT().ListAttachedUserPolicies(gomock.Any(), gomock.Any()).Return(
 		&iam.ListAttachedUserPoliciesOutput{
-			AttachedPolicies: []*iam.AttachedPolicy{},
+			AttachedPolicies: []iamtypes.AttachedPolicy{},
 		}, nil,
 	)
-	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any()).Return(
+	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any(), gomock.Any()).Return(
 		&iam.ListAccessKeysOutput{
-			AccessKeyMetadata: []*iam.AccessKeyMetadata{},
+			AccessKeyMetadata: []iamtypes.AccessKeyMetadata{},
 		}, nil,
 	)
-	mockAWSClient.EXPECT().DeleteUser(&iam.DeleteUserInput{UserName: username}).Return(
+	mockAWSClient.EXPECT().DeleteUser(gomock.Any(), &iam.DeleteUserInput{UserName: username}).Return(
 		nil, nil,
 	)
 
 	// Need to Monkey Patch awsclient.ListIAMUsers to return a list of users we define.
 	old := listIAMUsers
-	listIAMUsers = func(reqLogger logr.Logger, client awsclient.Client) ([]*iam.User, error) {
-		return []*iam.User{{UserName: username}}, nil
+	listIAMUsers = func(reqLogger logr.Logger, client awsclient.Client) ([]iamtypes.User, error) {
+		return []iamtypes.User{{UserName: username}}, nil
 	}
 
 	err = DeleteIAMUsers(nullLogger, mockAWSClient, &account)
@@ -534,8 +537,8 @@ func TestDeleteIAMUsers(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-func getValidTags(account *v1alpha1.Account) []*iam.Tag {
-	return []*iam.Tag{
+func getValidTags(account *v1alpha1.Account) []iamtypes.Tag {
+	return []iamtypes.Tag{
 		// These tags are required to enter the deletion block
 		{
 			Key:   aws.String(v1alpha1.ClusterAccountNameTagKey),
@@ -559,20 +562,21 @@ func TestCleanIAMRoles(t *testing.T) {
 	account.Name = expectedUsername
 
 	expectedRoleName := aws.String("MyAwesomeRole")
-	expectedRole := &iam.Role{
+	expectedRole := &iamtypes.Role{
 		RoleName: expectedRoleName,
 		Arn:      aws.String("LookAtMyArnMyArnIsAmazing"),
 		Tags:     getValidTags(&account),
 	}
 
-	mockAWSClient.EXPECT().ListRoles(gomock.Any()).Return(
+	mockAWSClient.EXPECT().ListRoles(gomock.Any(), gomock.Any()).Return(
 		&iam.ListRolesOutput{
-			Roles:       []*iam.Role{expectedRole},
-			IsTruncated: aws.Bool(false),
+			Roles:       []iamtypes.Role{*expectedRole},
+			IsTruncated: false,
 		},
 		nil,
 	)
 	mockAWSClient.EXPECT().GetRole(
+		gomock.Any(),
 		&iam.GetRoleInput{
 			RoleName: expectedRoleName,
 		},
@@ -585,12 +589,13 @@ func TestCleanIAMRoles(t *testing.T) {
 
 	expectedPolicyArn := "ExpectedPolicyArn"
 	mockAWSClient.EXPECT().ListAttachedRolePolicies(
+		gomock.Any(),
 		&iam.ListAttachedRolePoliciesInput{
 			RoleName: expectedRoleName,
 		},
 	).Return(
 		&iam.ListAttachedRolePoliciesOutput{
-			AttachedPolicies: []*iam.AttachedPolicy{
+			AttachedPolicies: []iamtypes.AttachedPolicy{
 				{
 					PolicyArn:  &expectedPolicyArn,
 					PolicyName: aws.String("ExpectedPolicyName"),
@@ -601,6 +606,7 @@ func TestCleanIAMRoles(t *testing.T) {
 	)
 
 	mockAWSClient.EXPECT().DetachRolePolicy(
+		gomock.Any(),
 		&iam.DetachRolePolicyInput{
 			PolicyArn: &expectedPolicyArn,
 			RoleName:  expectedRoleName,
@@ -608,6 +614,7 @@ func TestCleanIAMRoles(t *testing.T) {
 	).Return(nil, nil)
 
 	mockAWSClient.EXPECT().DeleteRole(
+		gomock.Any(),
 		&iam.DeleteRoleInput{
 			RoleName: expectedRoleName,
 		},
@@ -633,18 +640,19 @@ func TestRotateIAMAccessKeys(t *testing.T) {
 		Client: mocks.fakeKubeClient,
 		Scheme: scheme.Scheme,
 	}
-	iamUser := iam.User{
+	iamUser := iamtypes.User{
 		UserName: &expectedUsername,
 	}
 	nullLogger := testutils.NewTestLogger().Logger()
 
 	mockAWSClient.EXPECT().ListAccessKeys(
+		gomock.Any(),
 		&iam.ListAccessKeysInput{
 			UserName: &expectedUsername,
 		},
 	).Return(
 		&iam.ListAccessKeysOutput{
-			AccessKeyMetadata: []*iam.AccessKeyMetadata{
+			AccessKeyMetadata: []iamtypes.AccessKeyMetadata{
 				{
 					AccessKeyId: &expectedAccessKeyId,
 				},
@@ -653,6 +661,7 @@ func TestRotateIAMAccessKeys(t *testing.T) {
 		nil,
 	)
 	mockAWSClient.EXPECT().DeleteAccessKey(
+		gomock.Any(),
 		&iam.DeleteAccessKeyInput{
 			AccessKeyId: &expectedAccessKeyId,
 			UserName:    &expectedUsername,
@@ -663,11 +672,12 @@ func TestRotateIAMAccessKeys(t *testing.T) {
 	)
 
 	expectedAccessKeyOutput := &iam.CreateAccessKeyOutput{
-		AccessKey: &iam.AccessKey{
+		AccessKey: &iamtypes.AccessKey{
 			AccessKeyId: aws.String("MyAccessKeyID"),
 		},
 	}
 	mockAWSClient.EXPECT().CreateAccessKey(
+		gomock.Any(),
 		&iam.CreateAccessKeyInput{
 			UserName: iamUser.UserName,
 		},
@@ -687,16 +697,17 @@ func TestDetachUserPolicies(t *testing.T) {
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
 	expectedUsername := "ExpectedName"
-	iamUser := &iam.User{
+	iamUser := &iamtypes.User{
 		UserName: &expectedUsername,
 	}
 
 	expectedPolicyArn := "ExpectedPolicyArn"
 	mockAWSClient.EXPECT().ListAttachedUserPolicies(
+		gomock.Any(),
 		&iam.ListAttachedUserPoliciesInput{UserName: &expectedUsername},
 	).Return(
 		&iam.ListAttachedUserPoliciesOutput{
-			AttachedPolicies: []*iam.AttachedPolicy{
+			AttachedPolicies: []iamtypes.AttachedPolicy{
 				{
 					PolicyArn:  &expectedPolicyArn,
 					PolicyName: aws.String("ExpectedPolicyName"),
@@ -706,6 +717,7 @@ func TestDetachUserPolicies(t *testing.T) {
 		nil,
 	)
 	mockAWSClient.EXPECT().DetachUserPolicy(
+		gomock.Any(),
 		&iam.DetachUserPolicyInput{
 			UserName:  &expectedUsername,
 			PolicyArn: &expectedPolicyArn,
@@ -727,12 +739,13 @@ func TestDetachRolePolicies(t *testing.T) {
 	expectedPolicyArn := "ExpectedPolicyArn"
 
 	mockAWSClient.EXPECT().ListAttachedRolePolicies(
+		gomock.Any(),
 		&iam.ListAttachedRolePoliciesInput{
 			RoleName: expectedRoleName,
 		},
 	).Return(
 		&iam.ListAttachedRolePoliciesOutput{
-			AttachedPolicies: []*iam.AttachedPolicy{
+			AttachedPolicies: []iamtypes.AttachedPolicy{
 				{
 					PolicyArn:  &expectedPolicyArn,
 					PolicyName: aws.String("ExpectedPolicyName"),
@@ -743,6 +756,7 @@ func TestDetachRolePolicies(t *testing.T) {
 	)
 
 	mockAWSClient.EXPECT().DetachRolePolicy(
+		gomock.Any(),
 		&iam.DetachRolePolicyInput{
 			PolicyArn: &expectedPolicyArn,
 			RoleName:  expectedRoleName,
@@ -772,7 +786,7 @@ func TestCreateIAMUserSecret(t *testing.T) {
 	}
 
 	createAccessKeyOutput := iam.CreateAccessKeyOutput{
-		AccessKey: &iam.AccessKey{
+		AccessKey: &iamtypes.AccessKey{
 			UserName:        aws.String("UserName"),
 			AccessKeyId:     aws.String("AccessKeyId"),
 			SecretAccessKey: aws.String("SecretAccessKey"),

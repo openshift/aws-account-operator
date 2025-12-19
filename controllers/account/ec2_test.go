@@ -2,14 +2,15 @@ package account
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	ststypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
@@ -29,7 +30,7 @@ type testRunInstanceInputBuilder struct {
 }
 
 func newTestRunInstanceInputBuilder() *testRunInstanceInputBuilder {
-	commonTags := []*ec2.Tag{
+	commonTags := []ec2types.Tag{
 		{
 			Key:   aws.String("clusterAccountName"),
 			Value: aws.String(TestAccountName),
@@ -52,27 +53,27 @@ func newTestRunInstanceInputBuilder() *testRunInstanceInputBuilder {
 		},
 	}
 	input := ec2.RunInstancesInput{
-		BlockDeviceMappings: []*ec2.BlockDeviceMapping{
+		BlockDeviceMappings: []ec2types.BlockDeviceMapping{
 			{
 				DeviceName: aws.String("/dev/sda1"),
-				Ebs: &ec2.EbsBlockDevice{
+				Ebs: &ec2types.EbsBlockDevice{
 					DeleteOnTermination: aws.Bool(true),
 					Encrypted:           aws.Bool(true),
-					VolumeSize:          aws.Int64(10),
+					VolumeSize:          aws.Int32(10),
 				},
 			},
 		},
 		ImageId:      aws.String("fakeami"),
-		InstanceType: aws.String("t2.micro"),
-		MaxCount:     aws.Int64(1),
-		MinCount:     aws.Int64(1),
-		TagSpecifications: []*ec2.TagSpecification{
+		InstanceType: ec2types.InstanceTypeT2Micro,
+		MaxCount:     aws.Int32(1),
+		MinCount:     aws.Int32(1),
+		TagSpecifications: []ec2types.TagSpecification{
 			{
-				ResourceType: &awsv1alpha1.InstanceResourceType,
+				ResourceType: ec2types.ResourceTypeInstance,
 				Tags:         commonTags,
 			},
 			{
-				ResourceType: aws.String("volume"),
+				ResourceType: ec2types.ResourceTypeVolume,
 				Tags:         commonTags,
 			},
 		},
@@ -105,7 +106,7 @@ func TestCreateEC2Instance(t *testing.T) {
 		customerTags        []awsclient.AWSTag
 		customerKmsKeyId    string
 		instanceInput       *ec2.RunInstancesInput
-		instanceOutput      *ec2.Reservation
+		instanceOutput      *ec2.RunInstancesOutput
 		instanceOutputError error
 	}
 	tests := []struct {
@@ -123,9 +124,9 @@ func TestCreateEC2Instance(t *testing.T) {
 			customerTags:     []awsclient.AWSTag{},
 			customerKmsKeyId: "",
 			instanceInput:    &newTestRunInstanceInputBuilder().instanceInput,
-			instanceOutput: &ec2.Reservation{
-				Groups: []*ec2.GroupIdentifier{},
-				Instances: []*ec2.Instance{
+			instanceOutput: &ec2.RunInstancesOutput{
+				Groups: []ec2types.GroupIdentifier{},
+				Instances: []ec2types.Instance{
 					{
 						InstanceId: aws.String("1"),
 					},
@@ -146,9 +147,9 @@ func TestCreateEC2Instance(t *testing.T) {
 			customerTags:     []awsclient.AWSTag{},
 			customerKmsKeyId: "123456",
 			instanceInput:    &newTestRunInstanceInputBuilder().WithKmsKeyId("123456").instanceInput,
-			instanceOutput: &ec2.Reservation{
-				Groups: []*ec2.GroupIdentifier{},
-				Instances: []*ec2.Instance{
+			instanceOutput: &ec2.RunInstancesOutput{
+				Groups: []ec2types.GroupIdentifier{},
+				Instances: []ec2types.Instance{
 					{
 						InstanceId: aws.String("1"),
 					},
@@ -168,19 +169,19 @@ func TestCreateEC2Instance(t *testing.T) {
 			customerTags:     []awsclient.AWSTag{},
 			customerKmsKeyId: "",
 			instanceInput:    &newTestRunInstanceInputBuilder().instanceInput,
-			instanceOutput: &ec2.Reservation{
-				Groups:        []*ec2.GroupIdentifier{},
-				Instances:     []*ec2.Instance{},
+			instanceOutput: &ec2.RunInstancesOutput{
+				Groups:        []ec2types.GroupIdentifier{},
+				Instances:     []ec2types.Instance{},
 				OwnerId:       aws.String("red-hat"),
 				RequesterId:   aws.String("aao"),
 				ReservationId: aws.String("1"),
 			},
-			instanceOutputError: awserr.New("Test", "Test", fmt.Errorf("test")),
+			instanceOutputError: &smithy.GenericAPIError{Code: "Test", Message: "Test"},
 		}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockAWSClient.EXPECT().RunInstances(tt.args.instanceInput).MinTimes(1).MaxTimes(1).Return(tt.args.instanceOutput, tt.args.instanceOutputError)
+			mockAWSClient.EXPECT().RunInstances(gomock.Any(), tt.args.instanceInput).MinTimes(1).MaxTimes(1).Return(tt.args.instanceOutput, tt.args.instanceOutputError)
 			got, err := CreateEC2Instance(tt.args.reqLogger, tt.args.account, tt.args.client, tt.args.instanceInfo, tt.args.managedTags, tt.args.customerTags, tt.args.customerKmsKeyId)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("CreateEC2Instance() error = %v, wantErr %v", err, tt.wantErr)
@@ -200,10 +201,10 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 	mockAWSBuilder := mock.NewMockIBuilder(ctrl)
 	mockAWSClient := mock.NewMockClient(ctrl)
 	mockAWSBuilder.EXPECT().GetClient(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockAWSClient, nil)
-	mockAWSClient.EXPECT().DescribeInstances(gomock.Any()).Return(&ec2.DescribeInstancesOutput{}, nil).MinTimes(2).MaxTimes(3)
-	mockAWSClient.EXPECT().RunInstances(gomock.Any()).Return(&ec2.Reservation{
-		Groups: []*ec2.GroupIdentifier{},
-		Instances: []*ec2.Instance{
+	mockAWSClient.EXPECT().DescribeInstances(gomock.Any(), gomock.Any()).Return(&ec2.DescribeInstancesOutput{}, nil).MinTimes(2).MaxTimes(3)
+	mockAWSClient.EXPECT().RunInstances(gomock.Any(), gomock.Any()).Return(&ec2.RunInstancesOutput{
+		Groups: []ec2types.GroupIdentifier{},
+		Instances: []ec2types.Instance{
 			{
 				InstanceId: aws.String("1"),
 			},
@@ -212,32 +213,32 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 		RequesterId:   aws.String("aao"),
 		ReservationId: aws.String("1"),
 	}, nil)
-	mockAWSClient.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
-		InstanceTypes: []*ec2.InstanceTypeInfo{{
-			InstanceType: aws.String("t3.micro"),
+	mockAWSClient.EXPECT().DescribeInstanceTypes(gomock.Any(), gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
+		InstanceTypes: []ec2types.InstanceTypeInfo{{
+			InstanceType: ec2types.InstanceTypeT3Micro,
 		}}}, nil).Times(2)
-	mockAWSClient.EXPECT().DescribeImages(gomock.Any()).Return(
+	mockAWSClient.EXPECT().DescribeImages(gomock.Any(), gomock.Any()).Return(
 		&ec2.DescribeImagesOutput{
-			Images: []*ec2.Image{
+			Images: []ec2types.Image{
 				{
-					Architecture: aws.String("x86_64"),
+					Architecture: ec2types.ArchitectureValuesX8664,
 					ImageId:      aws.String("ami-075ed2fafb0c1aa68"),
 					Name:         aws.String("RHEL-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
 					OwnerId:      aws.String("12345"),
 				},
 			},
 		}, nil)
-	mockAWSClient.EXPECT().DescribeInstanceStatus(gomock.Any()).Return(&ec2.DescribeInstanceStatusOutput{
-		InstanceStatuses: []*ec2.InstanceStatus{
+	mockAWSClient.EXPECT().DescribeInstanceStatus(gomock.Any(), gomock.Any()).Return(&ec2.DescribeInstanceStatusOutput{
+		InstanceStatuses: []ec2types.InstanceStatus{
 			{
-				InstanceState: &ec2.InstanceState{
-					Code: aws.Int64(16),
-					Name: aws.String("Running"),
+				InstanceState: &ec2types.InstanceState{
+					Code: aws.Int32(16),
+					Name: ec2types.InstanceStateNameRunning,
 				},
 			},
 		},
 	}, nil)
-	mockAWSClient.EXPECT().TerminateInstances(gomock.Any()).Return(&ec2.TerminateInstancesOutput{}, nil)
+	mockAWSClient.EXPECT().TerminateInstances(gomock.Any(), gomock.Any()).Return(&ec2.TerminateInstancesOutput{}, nil)
 	type fields struct {
 		Client           client.Client
 		scheme           *runtime.Scheme
@@ -275,14 +276,14 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 					Name: "us-east-1",
 				}},
 			creds: &sts.AssumeRoleOutput{
-				AssumedRoleUser: &sts.AssumedRoleUser{},
-				Credentials: &sts.Credentials{
+				AssumedRoleUser: &ststypes.AssumedRoleUser{},
+				Credentials: &ststypes.Credentials{
 					AccessKeyId:     aws.String("123456"),
 					Expiration:      &time.Time{},
 					SecretAccessKey: aws.String("123456"),
 					SessionToken:    aws.String("123456"),
 				},
-				PackedPolicySize: new(int64),
+				PackedPolicySize: new(int32),
 			},
 			amiOwner: "",
 		}},
@@ -319,10 +320,10 @@ func TestRetrieveFreeInstanceType(t *testing.T) {
 		{"retrieve a t2.micro instance", args{
 			awsClient: func() awsclient.Client {
 				mock := mock.NewMockClient(ctrl)
-				mock.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(nil, awserr.New("InvalidInstanceType", "Not found", nil))
-				mock.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
-					InstanceTypes: []*ec2.InstanceTypeInfo{{
-						InstanceType: aws.String("t2.micro"),
+				mock.EXPECT().DescribeInstanceTypes(gomock.Any(), gomock.Any()).Return(nil, &smithy.GenericAPIError{Code: "InvalidInstanceType", Message: "Not found"})
+				mock.EXPECT().DescribeInstanceTypes(gomock.Any(), gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
+					InstanceTypes: []ec2types.InstanceTypeInfo{{
+						InstanceType: ec2types.InstanceTypeT2Micro,
 					}}}, nil)
 				return mock
 			}(),
@@ -331,9 +332,9 @@ func TestRetrieveFreeInstanceType(t *testing.T) {
 		{"retrieve a t3 instance", args{
 			awsClient: func() awsclient.Client {
 				mock := mock.NewMockClient(ctrl)
-				mock.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
-					InstanceTypes: []*ec2.InstanceTypeInfo{{
-						InstanceType: aws.String("t3.micro"),
+				mock.EXPECT().DescribeInstanceTypes(gomock.Any(), gomock.Any()).Return(&ec2.DescribeInstanceTypesOutput{
+					InstanceTypes: []ec2types.InstanceTypeInfo{{
+						InstanceType: ec2types.InstanceTypeT3Micro,
 					}}}, nil)
 				return mock
 			}(),
@@ -342,7 +343,7 @@ func TestRetrieveFreeInstanceType(t *testing.T) {
 		{"can not retrieve an instance - other error", args{
 			awsClient: func() awsclient.Client {
 				mock := mock.NewMockClient(ctrl)
-				mock.EXPECT().DescribeInstanceTypes(gomock.Any()).Return(nil, errors.New("an error happened"))
+				mock.EXPECT().DescribeInstanceTypes(gomock.Any(), gomock.Any()).Return(nil, errors.New("an error happened"))
 				return mock
 			}(),
 			logger: logger,
@@ -380,17 +381,17 @@ func TestRetrieveAmi(t *testing.T) {
 			args: args{
 				awsClient: func() awsclient.Client {
 					mock := mock.NewMockClient(ctrl)
-					mock.EXPECT().DescribeImages(gomock.Any()).Return(
+					mock.EXPECT().DescribeImages(gomock.Any(), gomock.Any()).Return(
 						&ec2.DescribeImagesOutput{
-							Images: []*ec2.Image{
+							Images: []ec2types.Image{
 								{
-									Architecture: aws.String("x86_64"),
+									Architecture: ec2types.ArchitectureValuesX8664,
 									ImageId:      aws.String("ami-075ed2fafb0c1aa69"),
 									Name:         aws.String("RHEL-SAP-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
 									OwnerId:      aws.String("12345"),
 								},
 								{
-									Architecture: aws.String("x86_64"),
+									Architecture: ec2types.ArchitectureValuesX8664,
 									ImageId:      aws.String("ami-075ed2fafb0c1aa68"),
 									Name:         aws.String("RHEL-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
 									OwnerId:      aws.String("12345"),
@@ -409,17 +410,17 @@ func TestRetrieveAmi(t *testing.T) {
 			args: args{
 				awsClient: func() awsclient.Client {
 					mock := mock.NewMockClient(ctrl)
-					mock.EXPECT().DescribeImages(gomock.Any()).Return(
+					mock.EXPECT().DescribeImages(gomock.Any(), gomock.Any()).Return(
 						&ec2.DescribeImagesOutput{
-							Images: []*ec2.Image{
+							Images: []ec2types.Image{
 								{
-									Architecture: aws.String("x86_64"),
+									Architecture: ec2types.ArchitectureValuesX8664,
 									ImageId:      aws.String("ami-075ed2fafb0c1aa69"),
 									Name:         aws.String("RHEL-BETA-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
 									OwnerId:      aws.String("12345"),
 								},
 								{
-									Architecture: aws.String("x86_64"),
+									Architecture: ec2types.ArchitectureValuesX8664,
 									ImageId:      aws.String("ami-075ed2fafb0c1aa68"),
 									Name:         aws.String("RHEL-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
 									OwnerId:      aws.String("12345"),
@@ -438,17 +439,17 @@ func TestRetrieveAmi(t *testing.T) {
 			args: args{
 				awsClient: func() awsclient.Client {
 					mock := mock.NewMockClient(ctrl)
-					mock.EXPECT().DescribeImages(gomock.Any()).Return(
+					mock.EXPECT().DescribeImages(gomock.Any(), gomock.Any()).Return(
 						&ec2.DescribeImagesOutput{
-							Images: []*ec2.Image{
+							Images: []ec2types.Image{
 								{
-									Architecture: aws.String("x86_64"),
+									Architecture: ec2types.ArchitectureValuesX8664,
 									ImageId:      aws.String("ami-075ed2fafb0c1aa69"),
 									Name:         aws.String("RHEL-BETA-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
 									OwnerId:      aws.String("12345"),
 								},
 								{
-									Architecture: aws.String("x86_64"),
+									Architecture: ec2types.ArchitectureValuesX8664,
 									ImageId:      aws.String("ami-075ed2fafb0c1aa68"),
 									Name:         aws.String("RHEL-SAP-8.1.0_HVM-20211007-x86_64-0-Hourly2-GP2"),
 									OwnerId:      aws.String("12345"),

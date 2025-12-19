@@ -1,18 +1,19 @@
 package federatedaccesstesting
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"gopkg.in/yaml.v2"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/iam"
 )
 
 // Structs for Role CRs
@@ -87,26 +88,26 @@ func TestFederatedAccessRolePermissions(t *testing.T) {
 }
 
 // builds the actions list for a statement
-func buildActionList(stmt statement) []*string {
-	actionList := []*string{}
+func buildActionList(stmt statement) []string {
+	actionList := []string{}
 	for _, action := range stmt.Action {
-		actionList = append(actionList, aws.String(action))
+		actionList = append(actionList, action)
 	}
 	return actionList
 }
 
 // builds the context list for a statement
-func buildContextList(stmt statement) []*iam.ContextEntry {
-	contextList := []*iam.ContextEntry{}
+func buildContextList(stmt statement) []iamtypes.ContextEntry {
+	contextList := []iamtypes.ContextEntry{}
 
 	// first check for conditions
 	for key, condition := range stmt.Condition {
 		if key == "StringEquals" || key == "StringLike" {
 			for contextKey, contextValue := range condition {
-				contextList = append(contextList, &iam.ContextEntry{
+				contextList = append(contextList, iamtypes.ContextEntry{
 					ContextKeyName:   aws.String(contextKey),
-					ContextKeyType:   aws.String("string"),
-					ContextKeyValues: []*string{aws.String(contextValue)},
+					ContextKeyType:   iamtypes.ContextKeyTypeEnum("string"),
+					ContextKeyValues: []string{contextValue},
 				})
 			}
 		}
@@ -115,47 +116,37 @@ func buildContextList(stmt statement) []*iam.ContextEntry {
 }
 
 // builds the list of resources for an action
-func buildResourceList(stmt statement) []*string {
-	resourceList := []*string{}
+func buildResourceList(stmt statement) []string {
+	resourceList := []string{}
 	for _, resource := range stmt.Resource {
-		resourceList = append(resourceList, aws.String(resource))
+		resourceList = append(resourceList, resource)
 	}
 	return resourceList
 }
 
 // Runs the test simulating the policy
-func testAction(t *testing.T, iamClient *iam.IAM, roleARN string, stmt statement) {
+func testAction(t *testing.T, iamClient *iam.Client, roleARN string, stmt statement) {
 	actions := buildActionList(stmt)
-	context := buildContextList(stmt)
+	contextEntries := buildContextList(stmt)
 	resources := buildResourceList(stmt)
-	t.Logf("Action: %v\nContext: %v\nResources: %v", logPointerList(actions), context, logPointerList(resources))
+	t.Logf("Action: %v\nContext: %v\nResources: %v", actions, contextEntries, resources)
 	input := &iam.SimulatePrincipalPolicyInput{
 		PolicySourceArn: aws.String(roleARN),
 		ActionNames:     actions,
-		ContextEntries:  context,
+		ContextEntries:  contextEntries,
 		ResourceArns:    resources,
 	}
-	err := iamClient.SimulatePrincipalPolicyPages(input, func(response *iam.SimulatePolicyResponse, lastPage bool) bool {
-		for _, result := range response.EvaluationResults {
-			if *result.EvalDecision != "allowed" {
-				t.Errorf("%s is not allowed by RoleARN: %s\n-- Possibly a missing context or the action does not exist?\n%+v", *result.EvalActionName, roleARN, *result)
-			}
-		}
-		return !lastPage
-	})
+	response, err := iamClient.SimulatePrincipalPolicy(context.TODO(), input)
 	if err != nil {
 		t.Fatal("Could not simulate policy.", err)
 	}
+	for _, result := range response.EvaluationResults {
+		if string(result.EvalDecision) != "allowed" {
+			t.Errorf("%s is not allowed by RoleARN: %s\n-- Possibly a missing context or the action does not exist?\n%+v", *result.EvalActionName, roleARN, result)
+		}
+	}
 }
 
-// Log Pointers
-func logPointerList(list []*string) []string {
-	retList := []string{}
-	for _, v := range list {
-		retList = append(retList, *v)
-	}
-	return retList
-}
 
 // Unmarshals YAML from File
 func unmarshalFromFile(t *testing.T, cr string, crToTest *crStruct) {
@@ -199,7 +190,7 @@ func getSecretCredentials(t *testing.T, secret *awsUserSecret) {
 }
 
 // Gets AWS Client using passed in credentials struct
-func getAWSIAMClient(t *testing.T, awsCreds awsUserSecret) (*iam.IAM, error) {
+func getAWSIAMClient(t *testing.T, awsCreds awsUserSecret) (*iam.Client, error) {
 	accessKeyID, err := base64.StdEncoding.DecodeString(awsCreds.Data.AccessKeyID)
 	if err != nil {
 		return nil, err
@@ -210,16 +201,15 @@ func getAWSIAMClient(t *testing.T, awsCreds awsUserSecret) (*iam.IAM, error) {
 		return nil, err
 	}
 
-	s, err := session.NewSession(&aws.Config{
-		Credentials: credentials.NewCredentials(&credentials.StaticProvider{
-			Value: credentials.Value{
-				AccessKeyID:     string(accessKeyID),
-				SecretAccessKey: string(secretAccessKey),
-			},
-		}),
-	})
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			string(accessKeyID),
+			string(secretAccessKey),
+			"",
+		)),
+	)
 	if err != nil {
 		return nil, err
 	}
-	return iam.New(s), nil
+	return iam.NewFromConfig(cfg), nil
 }

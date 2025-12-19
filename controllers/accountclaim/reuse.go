@@ -11,11 +11,13 @@ import (
 
 	"github.com/rkt/rkt/tests/testutils/logger"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/route53"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/route53"
+	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
@@ -234,18 +236,18 @@ func (r *AccountClaimReconciler) cleanUpAwsAccount(reqLogger logr.Logger, awsCli
 func (r *AccountClaimReconciler) cleanUpAwsAccountSnapshots(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
 
 	// Filter only for snapshots owned by the account
-	selfOwnerFilter := ec2.Filter{
+	selfOwnerFilter := ec2types.Filter{
 		Name: aws.String("owner-alias"),
-		Values: []*string{
-			aws.String("self"),
+		Values: []string{
+			"self",
 		},
 	}
 	describeSnapshotsInput := ec2.DescribeSnapshotsInput{
-		Filters: []*ec2.Filter{
-			&selfOwnerFilter,
+		Filters: []ec2types.Filter{
+			selfOwnerFilter,
 		},
 	}
-	ebsSnapshots, err := awsClient.DescribeSnapshots(&describeSnapshotsInput)
+	ebsSnapshots, err := awsClient.DescribeSnapshots(context.TODO(), &describeSnapshotsInput)
 	if err != nil {
 		descError := "Failed describing EBS snapshots"
 		awsErrors <- descError
@@ -255,10 +257,10 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountSnapshots(reqLogger logr.Logge
 	for _, snapshot := range ebsSnapshots.Snapshots {
 
 		deleteSnapshotInput := ec2.DeleteSnapshotInput{
-			SnapshotId: aws.String(*snapshot.SnapshotId),
+			SnapshotId: snapshot.SnapshotId,
 		}
 
-		_, err = awsClient.DeleteSnapshot(&deleteSnapshotInput)
+		_, err = awsClient.DeleteSnapshot(context.TODO(), &deleteSnapshotInput)
 		if err != nil {
 			delError := fmt.Errorf("failed deleting EBS snapshot: %s: %w", *snapshot.SnapshotId, err).Error()
 			awsErrors <- delError
@@ -273,17 +275,17 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountSnapshots(reqLogger logr.Logge
 
 func (r *AccountClaimReconciler) CleanUpAwsAccountVpcEndpointServiceConfigurations(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
 	describeVpcEndpointServiceConfigurationsInput := ec2.DescribeVpcEndpointServiceConfigurationsInput{}
-	vpcEndpointServiceConfigurations, err := awsClient.DescribeVpcEndpointServiceConfigurations(&describeVpcEndpointServiceConfigurationsInput)
+	vpcEndpointServiceConfigurations, err := awsClient.DescribeVpcEndpointServiceConfigurations(context.TODO(), &describeVpcEndpointServiceConfigurationsInput)
 	if vpcEndpointServiceConfigurations == nil || err != nil {
 		descError := "Failed describing VPC endpoint service configurations"
 		awsErrors <- descError
 		return err
 	}
 
-	serviceIds := []*string{}
+	serviceIds := []string{}
 
 	for _, config := range vpcEndpointServiceConfigurations.ServiceConfigurations {
-		serviceIds = append(serviceIds, config.ServiceId)
+		serviceIds = append(serviceIds, *config.ServiceId)
 	}
 
 	successMsg := "VPC endpoint service configuration cleanup finished successfully"
@@ -296,7 +298,7 @@ func (r *AccountClaimReconciler) CleanUpAwsAccountVpcEndpointServiceConfiguratio
 		ServiceIds: serviceIds,
 	}
 
-	output, err := awsClient.DeleteVpcEndpointServiceConfigurations(&deleteVpcEndpointServiceConfigurationsInput)
+	output, err := awsClient.DeleteVpcEndpointServiceConfigurations(context.TODO(), &deleteVpcEndpointServiceConfigurationsInput)
 	if err != nil {
 		unsuccessfulList := ""
 		for i, unsuccessfulEndpoint := range output.Unsuccessful {
@@ -317,7 +319,7 @@ func (r *AccountClaimReconciler) CleanUpAwsAccountVpcEndpointServiceConfiguratio
 func (r *AccountClaimReconciler) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
 
 	describeVolumesInput := ec2.DescribeVolumesInput{}
-	ebsVolumes, err := awsClient.DescribeVolumes(&describeVolumesInput)
+	ebsVolumes, err := awsClient.DescribeVolumes(context.TODO(), &describeVolumesInput)
 	if err != nil {
 		descError := "Failed describing EBS volumes"
 		awsErrors <- descError
@@ -327,10 +329,10 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logg
 	for _, volume := range ebsVolumes.Volumes {
 
 		deleteVolumeInput := ec2.DeleteVolumeInput{
-			VolumeId: aws.String(*volume.VolumeId),
+			VolumeId: volume.VolumeId,
 		}
 
-		_, err = awsClient.DeleteVolume(&deleteVolumeInput)
+		_, err = awsClient.DeleteVolume(context.TODO(), &deleteVolumeInput)
 		if err != nil {
 			delError := fmt.Errorf("failed deleting EBS volume: %s: %w", *volume.VolumeId, err).Error()
 			logger.Error(delError)
@@ -347,7 +349,7 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logg
 
 func (r *AccountClaimReconciler) cleanUpAwsAccountS3(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
 	listBucketsInput := s3.ListBucketsInput{}
-	s3Buckets, err := awsClient.ListBuckets(&listBucketsInput)
+	s3Buckets, err := awsClient.ListBuckets(context.TODO(), &listBucketsInput)
 	if err != nil {
 		listError := fmt.Errorf("failed listing S3 buckets: %w", err).Error()
 		awsErrors <- listError
@@ -357,16 +359,17 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountS3(reqLogger logr.Logger, awsC
 	for _, bucket := range s3Buckets.Buckets {
 
 		deleteBucketInput := s3.DeleteBucketInput{
-			Bucket: aws.String(*bucket.Name),
+			Bucket: bucket.Name,
 		}
 
 		// delete any content if any
 		err := DeleteBucketContent(awsClient, *bucket.Name)
 		if err != nil {
 			ContentDelErr := fmt.Errorf("failed to delete bucket content: %s: %w", *bucket.Name, err).Error()
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				case s3.ErrCodeNoSuchBucket:
+			var aerr smithy.APIError
+			if errors.As(err, &aerr) {
+				switch aerr.ErrorCode() {
+				case "NoSuchBucket":
 					//ignore these errors
 				default:
 					awsErrors <- ContentDelErr
@@ -374,12 +377,13 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountS3(reqLogger logr.Logger, awsC
 				}
 			}
 		}
-		_, err = awsClient.DeleteBucket(&deleteBucketInput)
+		_, err = awsClient.DeleteBucket(context.TODO(), &deleteBucketInput)
 		if err != nil {
 			DelError := fmt.Errorf("failed deleting S3 bucket: %s: %w", *bucket.Name, err).Error()
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				case s3.ErrCodeNoSuchBucket:
+			var aerr smithy.APIError
+			if errors.As(err, &aerr) {
+				switch aerr.ErrorCode() {
+				case "NoSuchBucket":
 					//ignore these errors
 				default:
 					awsErrors <- DelError
@@ -402,7 +406,7 @@ func (r *AccountClaimReconciler) cleanUpAwsRoute53(reqLogger logr.Logger, awsCli
 	// Paginate through hosted zones
 	for {
 		// Get list of hosted zones by page
-		hostedZonesOutput, err := awsClient.ListHostedZones(&route53.ListHostedZonesInput{Marker: nextZoneMarker})
+		hostedZonesOutput, err := awsClient.ListHostedZones(context.TODO(), &route53.ListHostedZonesInput{Marker: nextZoneMarker})
 		if err != nil {
 			listError := fmt.Errorf("failed to list Hosted Zones: %w", err).Error()
 			awsErrors <- listError
@@ -415,35 +419,36 @@ func (r *AccountClaimReconciler) cleanUpAwsRoute53(reqLogger logr.Logger, awsCli
 			var nextRecordName *string
 			// Pagination again!!!!!
 			for {
-				recordSet, listRecordsError := awsClient.ListResourceRecordSets(&route53.ListResourceRecordSetsInput{HostedZoneId: zone.Id, StartRecordName: nextRecordName})
+				recordSet, listRecordsError := awsClient.ListResourceRecordSets(context.TODO(), &route53.ListResourceRecordSetsInput{HostedZoneId: zone.Id, StartRecordName: nextRecordName})
 				if listRecordsError != nil {
 					recordSetListError := fmt.Errorf("failed to list Record sets for hosted zone %s: %w", *zone.Name, err).Error()
 					awsErrors <- recordSetListError
 					return listRecordsError
 				}
 
-				changeBatch := &route53.ChangeBatch{}
+				changeBatch := &route53types.ChangeBatch{}
 				for _, record := range recordSet.ResourceRecordSets {
 					// Build ChangeBatch
-					// https://docs.aws.amazon.com/sdk-for-go/api/service/route53/#ChangeBatch
-					//https://docs.aws.amazon.com/sdk-for-go/api/service/route53/#Change
-					if *record.Type != "NS" && *record.Type != "SOA" {
-						changeBatch.Changes = append(changeBatch.Changes, &route53.Change{
-							Action:            aws.String("DELETE"),
-							ResourceRecordSet: record,
+					// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/route53/types#ChangeBatch
+					// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/route53/types#Change
+					if record.Type != "NS" && record.Type != "SOA" {
+						deleteAction := route53types.ChangeActionDelete
+						changeBatch.Changes = append(changeBatch.Changes, route53types.Change{
+							Action:            deleteAction,
+							ResourceRecordSet: &record,
 						})
 					}
 				}
 
 				if changeBatch.Changes != nil {
-					_, changeErr := awsClient.ChangeResourceRecordSets(&route53.ChangeResourceRecordSetsInput{HostedZoneId: zone.Id, ChangeBatch: changeBatch})
+					_, changeErr := awsClient.ChangeResourceRecordSets(context.TODO(), &route53.ChangeResourceRecordSetsInput{HostedZoneId: zone.Id, ChangeBatch: changeBatch})
 					if changeErr != nil {
 						recordDeleteError := fmt.Errorf("failed to delete record sets for hosted zone %s: %w", *zone.Name, err).Error()
 						awsErrors <- recordDeleteError
 						return changeErr
 					}
 				}
-				if *recordSet.IsTruncated {
+				if recordSet.IsTruncated {
 					nextRecordName = recordSet.NextRecordName
 				} else {
 					break
@@ -451,7 +456,7 @@ func (r *AccountClaimReconciler) cleanUpAwsRoute53(reqLogger logr.Logger, awsCli
 
 			}
 
-			_, deleteError := awsClient.DeleteHostedZone(&route53.DeleteHostedZoneInput{Id: zone.Id})
+			_, deleteError := awsClient.DeleteHostedZone(context.TODO(), &route53.DeleteHostedZoneInput{Id: zone.Id})
 			if deleteError != nil {
 				zoneDelErr := fmt.Errorf("failed to delete hosted zone: %s: %w", *zone.Name, err).Error()
 				awsErrors <- zoneDelErr
@@ -459,7 +464,7 @@ func (r *AccountClaimReconciler) cleanUpAwsRoute53(reqLogger logr.Logger, awsCli
 			}
 		}
 
-		if *hostedZonesOutput.IsTruncated {
+		if hostedZonesOutput.IsTruncated {
 			nextZoneMarker = hostedZonesOutput.Marker
 		} else {
 			break
@@ -474,7 +479,7 @@ func (r *AccountClaimReconciler) cleanUpAwsRoute53(reqLogger logr.Logger, awsCli
 // DeleteBucketContent deletes any content in a bucket if it is not empty
 func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
 	// check if objects exits
-	objects, err := awsClient.ListObjectsV2(&s3.ListObjectsV2Input{
+	objects, err := awsClient.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucketName),
 	})
 	if err != nil {
@@ -484,7 +489,7 @@ func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
 		return nil
 	}
 
-	err = awsClient.BatchDeleteBucketObjects(aws.String(bucketName))
+	err = awsClient.BatchDeleteBucketObjects(context.TODO(), aws.String(bucketName))
 	if err != nil {
 		return err
 	}

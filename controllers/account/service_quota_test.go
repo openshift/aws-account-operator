@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/servicequotas"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/servicequotas"
+	servicequotastypes "github.com/aws/aws-sdk-go-v2/service/servicequotas/types"
 	"github.com/go-logr/logr"
 	"go.uber.org/mock/gomock"
 	apis "github.com/openshift/aws-account-operator/api"
@@ -51,29 +52,29 @@ func TestAccountReconciler_HandleServiceQuotaRequests(t *testing.T) {
 			// after mocks is defined
 			defer mocks.mockCtrl.Finish()
 
-			mockAWSClient.EXPECT().GetServiceQuota(gomock.Any()).Return(
+			mockAWSClient.EXPECT().GetServiceQuota(gomock.Any(), gomock.Any()).Return(
 				&servicequotas.GetServiceQuotaOutput{
-					Quota: &servicequotas.ServiceQuota{
+					Quota: &servicequotastypes.ServiceQuota{
 						Value: aws.Float64(5),
 					},
 				},
 				nil,
 			)
 
-			mockAWSClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any()).Return(
+			mockAWSClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any(), gomock.Any()).Return(
 				&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
-					RequestedQuotas: []*servicequotas.RequestedServiceQuotaChange{},
+					RequestedQuotas: []servicequotastypes.RequestedServiceQuotaChange{},
 				},
 				nil,
 			)
 
-			mockAWSClient.EXPECT().RequestServiceQuotaIncrease(&servicequotas.RequestServiceQuotaIncreaseInput{
+			mockAWSClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any(), &servicequotas.RequestServiceQuotaIncreaseInput{
 				DesiredValue: aws.Float64(10),
 				QuotaCode:    aws.String(string(v1alpha1.RunningStandardInstances)),
 				ServiceCode:  aws.String(string(v1alpha1.EC2ServiceQuota)),
 			}).Return(
 				&servicequotas.RequestServiceQuotaIncreaseOutput{
-					RequestedQuota: &servicequotas.RequestedServiceQuotaChange{
+					RequestedQuota: &servicequotastypes.RequestedServiceQuotaChange{
 						CaseId: aws.String("MyAwesomeCaseID"),
 					},
 				},

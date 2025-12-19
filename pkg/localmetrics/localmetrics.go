@@ -16,13 +16,14 @@ package localmetrics
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	neturl "net/url"
 	"strings"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/smithy-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -364,8 +365,9 @@ func (e *ReportedError) Parse(err error) {
 	}
 
 	// attempt to see if it's an AWS Error
-	if aerr, ok := err.(awserr.Error); ok {
-		e.Code = aerr.Code()
+	var aerr smithy.APIError
+	if errors.As(err, &aerr) {
+		e.Code = aerr.ErrorCode()
 		e.Source = "aws"
 		return
 	}

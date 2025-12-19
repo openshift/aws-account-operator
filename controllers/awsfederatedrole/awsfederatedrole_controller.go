@@ -2,18 +2,20 @@ package awsfederatedrole
 
 import (
 	"context"
-	goerr "errors"
+	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"k8s.io/apimachinery/pkg/api/errors"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/smithy-go"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"time"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
@@ -29,7 +31,7 @@ var (
 	log           = logf.Log.WithName("controller_awsfederatedrole")
 	awsSecretName = "aws-account-operator-credentials" //  #nosec G101 -- This is a false positive
 
-	errInvalidManagedPolicy = goerr.New("InvalidManagedPolicy")
+	errInvalidManagedPolicy = errors.New("InvalidManagedPolicy")
 )
 
 // AWSFederatedRoleReconciler reconciles a AWSFederatedRole object
@@ -60,7 +62,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 	instance := &awsv1alpha1.AWSFederatedRole{}
 	err := r.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serr.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
@@ -139,14 +141,15 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 	}
 
 	// Attempts to create the policy to ensure it's a valid policy
-	createOutput, err := awsClient.CreatePolicy(&iam.CreatePolicyInput{
+	createOutput, err := awsClient.CreatePolicy(context.TODO(), &iam.CreatePolicyInput{
 		Description:    &instance.Spec.AWSCustomPolicy.Description,
 		PolicyName:     &instance.Spec.AWSCustomPolicy.Name,
 		PolicyDocument: &jsonPolicy,
 	})
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			if aerr.Code() == "MalformedPolicyDocument" {
+		var aerr smithy.APIError
+		if errors.As(err, &aerr) {
+			if aerr.ErrorCode() == "MalformedPolicyDocument" {
 				log.Error(err, "Malformed Policy Document")
 				instance.Status.State = awsv1alpha1.AWSFederatedRoleStateInvalid
 				instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
@@ -171,7 +174,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 	}
 
 	// Cleanup the created policy since it's only for validation
-	_, err = awsClient.DeletePolicy(&iam.DeletePolicyInput{PolicyArn: createOutput.Policy.Arn})
+	_, err = awsClient.DeletePolicy(context.TODO(), &iam.DeletePolicyInput{PolicyArn: createOutput.Policy.Arn})
 	if err != nil {
 		log.Error(err, "Error deleting custom policy")
 		return reconcile.Result{}, err
@@ -257,9 +260,9 @@ func annotateAccountAccesses(kubeClient client.Client, roleName string) error {
 }
 
 // Paginate through ListPolicy results from AWS
-func getAllPolicies(awsClient awsclient.Client) ([]iam.Policy, error) {
+func getAllPolicies(awsClient awsclient.Client) ([]iamtypes.Policy, error) {
 
-	var policies []iam.Policy
+	var policies []iamtypes.Policy
 	var truncated bool
 	var marker string
 	// The first request shouldn't have a marker
@@ -267,16 +270,16 @@ func getAllPolicies(awsClient awsclient.Client) ([]iam.Policy, error) {
 
 	// Paginate through results until IsTruncated is False
 	for {
-		output, err := awsClient.ListPolicies(input)
+		output, err := awsClient.ListPolicies(context.TODO(), input)
 		if err != nil {
-			return []iam.Policy{}, err
+			return []iamtypes.Policy{}, err
 		}
 
 		for _, policy := range output.Policies {
-			policies = append(policies, *policy)
+			policies = append(policies, policy)
 		}
 
-		truncated = *output.IsTruncated
+		truncated = output.IsTruncated
 		if truncated {
 			// Set the marker for the subsequent request
 			marker = *output.Marker
@@ -290,7 +293,7 @@ func getAllPolicies(awsClient awsclient.Client) ([]iam.Policy, error) {
 }
 
 // Create list of policy names from a Policy slice
-func buildPolicyNameSlice(policies []iam.Policy) []string {
+func buildPolicyNameSlice(policies []iamtypes.Policy) []string {
 
 	var policyNames []string
 	for _, policy := range policies {
