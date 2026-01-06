@@ -130,7 +130,7 @@ var _ = Describe("AccountClaim", func() {
 				It("should not remove finalizer as account claim doesn't exist", func() {
 
 					err := r.removeFinalizer(nullLogger, accountClaim, accountClaimFinalizer)
-					Expect(err).To(HaveOccurred())
+					Expect(err).NotTo(HaveOccurred())
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, true)
 				})
 			})

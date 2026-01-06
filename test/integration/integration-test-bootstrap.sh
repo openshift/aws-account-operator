@@ -6,7 +6,7 @@ source test/integration/test_envs
 source test/integration/integration-test-lib.sh
 
 export TEST_START_TIME_SECONDS=$(date +%s)
-export OPERATOR_START_TIME=$(date --rfc-3339=seconds)
+export OPERATOR_START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 export IMAGE_NAME=aws-account-operator
 export BUILD_CONFIG=aws-account-operator
 export OPERATOR_DEPLOYMENT=aws-account-operator
@@ -176,7 +176,7 @@ function cleanup {
                 return
         fi
 
-        $OC delete namespace $NAMESPACE --ignore-not-found=true || true
+        $OC delete namespace $NAMESPACE --ignore-not-found=true --timeout=15m || true
     else
         echo "Skipping test bootstrap cleanup due to --skip-cleanup flag"
         echo "Note: individual tests may still perform their own cleanup steps"
@@ -278,11 +278,36 @@ function installJq {
 }
 
 # note: needed for running builds on prow infrastructure
+function installUnzip {
+    echo "Installing dependency: unzip"
+    # Use busybox unzip as a lightweight alternative
+    curl -sfL https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox -o /tmp/busybox
+    chmod a+x /tmp/busybox
+    ln -sf /tmp/busybox /tmp/unzip
+}
+
+# note: needed for running builds on prow infrastructure
 function installAWS {
     echo "Installing dependency: aws-cli"
     curl -sfL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" --output /tmp/awscliv2.zip
-    unzip -qq /tmp/awscliv2.zip
-    ./aws/install --install-dir /tmp/aws-cli -b /tmp
+
+    # Extract to a temporary directory to avoid conflicts
+    /tmp/unzip -qq /tmp/awscliv2.zip -d /tmp/awscli-install
+
+    # Install AWS CLI binary to /tmp
+    /tmp/awscli-install/aws/install --install-dir /tmp/aws-cli -b /tmp
+
+    # Clean up extraction directory
+    rm -rf /tmp/awscli-install
+
+    # Verify installation
+    if [ ! -x "/tmp/aws" ]; then
+        echo "ERROR: AWS CLI installation failed - /tmp/aws not found or not executable"
+        return 1
+    fi
+
+    echo "AWS CLI installed successfully"
+    /tmp/aws --version
 
     echo "Configuring aws-cli credentials"
     cat <<EOF >/tmp/credentials
@@ -303,8 +328,14 @@ EOF
 
 function installProwCIDependencies {
     installJq
+    installUnzip
     installAWS
-    PATH=$PATH:/tmp
+    export PATH=/tmp:$PATH
+
+    # Verify aws is in PATH
+    echo "Verifying AWS CLI in PATH:"
+    which aws || echo "WARNING: aws not found in PATH"
+    echo "Current PATH: $PATH"
 }
 
 function profileLocal {
@@ -382,7 +413,7 @@ function profileProw {
     echo -e "\n========================================================================"
     echo "= Building Operator Image"
     echo "========================================================================"
-    OPERATOR_START_TIME=$(date --rfc-3339=seconds)
+    OPERATOR_START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     buildOperatorImage
     verifyBuildSuccess
 
@@ -416,7 +447,7 @@ function profileStage {
     echo "= Operator Runtime"
     echo "========================================================================"
     echo "Checking for existing AAO deployment."
-    OPERATOR_START_TIME=$(date --rfc-3339=seconds)
+    OPERATOR_START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     aaoDeployment=$($OC_WITH_NAMESPACE get deployment $OPERATOR_DEPLOYMENT -o json --ignore-not-found=true | jq '.status.conditions[] | select( .type == "Available" and .status == "True" )')
 
     if [ -z "$aaoDeployment" ]; then
