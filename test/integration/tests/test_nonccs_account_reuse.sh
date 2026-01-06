@@ -10,6 +10,14 @@
 
 source test/integration/integration-test-lib.sh
 
+# Run pre-flight checks
+if [ "${SKIP_PREFLIGHT_CHECKS:-false}" != "true" ]; then
+    if ! preflightChecks; then
+        echo "Pre-flight checks failed. Set SKIP_PREFLIGHT_CHECKS=true to bypass."
+        exit $EXIT_FAIL_UNEXPECTED_ERROR
+    fi
+fi
+
 EXIT_TEST_FAIL_REUSED_ACCOUNT_NOT_READY=1
 EXIT_TEST_FAIL_ACCOUNT_NOT_REUSED=2
 EXIT_TEST_FAIL_SECRET_INVALID_CREDS=3
@@ -70,10 +78,11 @@ function setupTestPhase {
 
 
     echo "Simulating \"customer resource\" by creating an S3 bucket."
-    reuseBucketName="${testName}-bucket" 
+    reuseBucketName="${testName}-bucket"
 
-    if ! aws s3api create-bucket --bucket "${reuseBucketName}" --region=us-east-1; then
-        echo "Failed to create s3 bucket ${reuseBucketName}."
+    echo "Creating S3 bucket with retry logic..."
+    if ! retryWithBackoff "$MAX_RETRIES" aws s3api create-bucket --bucket "${reuseBucketName}" --region=us-east-1; then
+        echo "Failed to create s3 bucket ${reuseBucketName} after $MAX_RETRIES attempts."
         exit $EXIT_TEST_FAIL_S3_BUCKET_CREATION
     fi
 
@@ -140,12 +149,21 @@ function testPhase {
         AWS_SECRET_ACCESS_KEY=$(oc get secret "${awsAccountSecretCrName}" -n "${accountCrNamespace}" -o json | jq -r '.data.aws_secret_access_key' | base64 -d)
         export AWS_SECRET_ACCESS_KEY
 
-        aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'
+        retryWithBackoff "$MAX_RETRIES" aws s3api list-buckets | jq '[.Buckets[] | .Name] | length'
     )
     if [ "$BUCKETS" -ne 0 ]; then
         echo "Customer resources (s3 bucket) still exists after account deletion."
         exit $EXIT_TEST_FAIL_S3_BUCKET_STILL_EXISTS
     fi
+
+    echo ""
+    echo "========================================"
+    echo "NON-CCS ACCOUNT REUSE TEST PASSED!"
+    echo "========================================"
+    echo "✓ AccountClaim deleted successfully"
+    echo "✓ Account returned to pool (unclaimed)"
+    echo "✓ S3 buckets cleaned up"
+    echo "✓ Account ready for reuse"
 
     exit "$EXIT_PASS"
 }
