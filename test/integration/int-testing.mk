@@ -76,7 +76,7 @@ test-sts: create-sts-accountclaim ## Runs a full integration test for STS workfl
 	@oc process --local -p NAME=${STS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete -f -
 	
 .PHONY: test-fake-accountclaim
-test-fake-accountclaim: create-fake-accountclaim ## Runs a full integration test for FAKE workflow
+test-fake-accountclaim: create-fake-accountclaim ## Runs a full integration test for a FAKE workflow
 	test/integration/tests/validate_fake_accountclaim.sh
 
 	# Delete Namespace and Account

@@ -2,6 +2,7 @@ package accountclaim
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
@@ -27,15 +28,56 @@ func (r *AccountClaimReconciler) addFinalizer(reqLogger logr.Logger, accountClai
 
 func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, finalizerName string) error {
 	reqLogger.Info("Removing Finalizer for the AccountClaim")
-	accountClaim.SetFinalizers(utils.Remove(accountClaim.GetFinalizers(), finalizerName))
 
-	// Update CR
-	err := r.Update(context.TODO(), accountClaim)
-	if err != nil {
-		reqLogger.Error(err, "Failed to remove AccountClaim finalizer")
-		return err
+	// Retry logic to handle conflicts when removing finalizer
+	// During long-running cleanup, the AccountClaim may be modified by other controllers
+	maxRetries := 5
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			// Refetch the latest version of the AccountClaim
+			reqLogger.Info("Retrying finalizer removal due to conflict", "attempt", attempt+1, "maxRetries", maxRetries)
+			freshAccountClaim := &awsv1alpha1.AccountClaim{}
+			err := r.Get(context.TODO(), types.NamespacedName{
+				Namespace: accountClaim.Namespace,
+				Name:      accountClaim.Name,
+			}, freshAccountClaim)
+			if err != nil {
+				if k8serr.IsNotFound(err) {
+					// AccountClaim was deleted - this is OK, finalizer is gone
+					return nil
+				}
+				reqLogger.Error(err, "Failed to refetch AccountClaim for finalizer retry")
+				return err
+			}
+			accountClaim = freshAccountClaim
+		}
+
+		accountClaim.SetFinalizers(utils.Remove(accountClaim.GetFinalizers(), finalizerName))
+
+		// Update CR
+		err := r.Update(context.TODO(), accountClaim)
+		if err != nil {
+			if k8serr.IsNotFound(err) {
+				// AccountClaim was deleted - this is OK
+				return nil
+			}
+			if k8serr.IsConflict(err) && attempt < maxRetries-1 {
+				// Conflict - retry with fresh object
+				time.Sleep(time.Millisecond * 100 * time.Duration(attempt+1))
+				continue
+			}
+			reqLogger.Error(err, "Failed to remove AccountClaim finalizer")
+			return err
+		}
+
+		// Success
+		reqLogger.Info("Successfully removed AccountClaim finalizer")
+		return nil
 	}
-	return nil
+
+	err := k8serr.NewConflict(awsv1alpha1.GroupVersion.WithResource("accountclaim").GroupResource(), accountClaim.Name, nil)
+	reqLogger.Error(err, "Failed to remove finalizer after max retries", "maxRetries", maxRetries)
+	return err
 }
 
 func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha1.AccountClaim) error {
