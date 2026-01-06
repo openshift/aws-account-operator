@@ -160,6 +160,9 @@ var _ = Describe("AccountClaim", func() {
 				dvo := &ec2.DescribeVolumesOutput{
 					Volumes: []*ec2.Volume{},
 				}
+				dio := &ec2.DescribeInstancesOutput{
+					Reservations: []*ec2.Reservation{},
+				}
 
 				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
 					DurationSeconds: aws.Int64(3600),
@@ -177,6 +180,7 @@ var _ = Describe("AccountClaim", func() {
 					},
 					PackedPolicySize: aws.Int64(40),
 				}, nil)
+				mockAWSClient.EXPECT().DescribeInstances(gomock.Any()).Return(dio, nil)
 				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(lhzo, nil)
 				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(lbo, nil)
 				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(dvpcesco, nil)
@@ -229,6 +233,9 @@ var _ = Describe("AccountClaim", func() {
 				dvo := &ec2.DescribeVolumesOutput{
 					Volumes: []*ec2.Volume{},
 				}
+				dio := &ec2.DescribeInstancesOutput{
+					Reservations: []*ec2.Reservation{},
+				}
 
 				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
 					DurationSeconds: aws.Int64(3600),
@@ -246,6 +253,7 @@ var _ = Describe("AccountClaim", func() {
 					},
 					PackedPolicySize: aws.Int64(40),
 				}, nil)
+				mockAWSClient.EXPECT().DescribeInstances(gomock.Any()).Return(dio, nil)
 				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(lhzo, nil)
 				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(lbo, nil)
 				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(dvpcesco, nil)
@@ -286,11 +294,7 @@ var _ = Describe("AccountClaim", func() {
 					},
 					PackedPolicySize: aws.Int64(40),
 				}, nil)
-				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(nil, theErr)
-				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(nil, theErr)
-				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(nil, theErr)
-				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any()).Return(nil, theErr)
-				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any()).Return(nil, theErr)
+				mockAWSClient.EXPECT().DescribeInstances(gomock.Any()).Return(nil, theErr)
 
 				_, err := r.Reconcile(context.TODO(), req)
 

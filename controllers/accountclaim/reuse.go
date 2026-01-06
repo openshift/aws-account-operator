@@ -21,6 +21,8 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/pkg/utils"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -78,8 +80,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 		}
 		awsClient, err = r.awsClientBuilder.GetClient(controllerName, r.Client, awsClientInput)
 		if err != nil {
-			connErr := fmt.Sprintf("Unable to create aws client for region %s", clusterAwsRegion)
-			reqLogger.Error(err, connErr)
+			reqLogger.Error(err, "Unable to create aws client for region", "region", clusterAwsRegion)
 			return err
 		}
 	} else {
@@ -99,8 +100,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 		// e.g. https://github.com/parallelworks/interactive_session/pull/65
 		awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, reusedAccount, r.Client, awsSetupClient, clusterAwsRegion, awsv1alpha1.AccountOperatorIAMRole, "")
 		if err != nil {
-			connErr := fmt.Sprintf("Unable to create aws client for region %s", clusterAwsRegion)
-			reqLogger.Error(err, connErr)
+			reqLogger.Error(err, "Unable to create aws client for region", "region", clusterAwsRegion)
 			return err
 		}
 	}
@@ -144,41 +144,72 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 
 func (r *AccountClaimReconciler) resetAccountSpecStatus(reqLogger logr.Logger, reusedAccount *awsv1alpha1.Account, deletedAccountClaim *awsv1alpha1.AccountClaim, accountState awsv1alpha1.AccountConditionType, conditionStatus string) error {
 
-	// Reset claimlink and carry over legal entity from deleted claim
-	reusedAccount.Spec.ClaimLink = ""
-	reusedAccount.Spec.ClaimLinkNamespace = ""
+	maxRetries := 5
+	for attempt := range maxRetries {
+		if attempt > 0 {
+			reqLogger.Info("Retrying account update due to conflict", "attempt", attempt+1, "maxRetries", maxRetries)
+			err := r.Get(context.TODO(), client.ObjectKey{
+				Namespace: reusedAccount.Namespace,
+				Name:      reusedAccount.Name,
+			}, reusedAccount)
+			if err != nil {
+				if k8serr.IsNotFound(err) {
+					return nil
+				}
+				reqLogger.Error(err, "Failed to refetch account for retry")
+				return err
+			}
+		}
 
-	// LegalEntity is being carried over here to support older accounts, that were claimed
-	// prior to the introduction of reuse (their account's legalEntity will be blank )
-	if reusedAccount.Spec.LegalEntity.ID == "" {
-		reusedAccount.Spec.LegalEntity.ID = deletedAccountClaim.Spec.LegalEntity.ID
-		reusedAccount.Spec.LegalEntity.Name = deletedAccountClaim.Spec.LegalEntity.Name
+		// Reset claimlink and carry over legal entity from deleted claim
+		reusedAccount.Spec.ClaimLink = ""
+		reusedAccount.Spec.ClaimLinkNamespace = ""
+
+		// LegalEntity is being carried over here to support older accounts, that were claimed
+		// prior to the introduction of reuse (their account's legalEntity will be blank )
+		if reusedAccount.Spec.LegalEntity.ID == "" {
+			reusedAccount.Spec.LegalEntity.ID = deletedAccountClaim.Spec.LegalEntity.ID
+			reusedAccount.Spec.LegalEntity.Name = deletedAccountClaim.Spec.LegalEntity.Name
+		}
+
+		err := r.accountSpecUpdate(reqLogger, reusedAccount)
+		if err != nil {
+			if k8serr.IsNotFound(err) {
+				return nil
+			}
+			if k8serr.IsConflict(err) && attempt < maxRetries-1 {
+				continue
+			}
+			reqLogger.Error(err, "Failed to update account spec for reuse")
+			return err
+		}
+
+		reqLogger.Info("Setting RotateCredentials and RotateConsoleCredentials for account", "awsAccountID", reusedAccount.Spec.AwsAccountID)
+		reusedAccount.Status.RotateConsoleCredentials = true
+		reusedAccount.Status.RotateCredentials = true
+
+		reusedAccount.Status.State = conditionStatus
+		reusedAccount.Status.Claimed = false
+		reusedAccount.Status.Reused = true
+		conditionMsg := fmt.Sprintf("Account Reuse - %s", conditionStatus)
+		utils.SetAccountStatus(reusedAccount, conditionMsg, accountState, conditionStatus)
+		err = r.accountStatusUpdate(reqLogger, reusedAccount)
+		if err != nil {
+			if k8serr.IsNotFound(err) {
+				return nil
+			}
+			if k8serr.IsConflict(err) && attempt < maxRetries-1 {
+				continue
+			}
+			reqLogger.Error(err, "Failed to update account status for reuse")
+			return err
+		}
+
+		reqLogger.Info("Successfully reset account for reuse")
+		return nil
 	}
 
-	err := r.accountSpecUpdate(reqLogger, reusedAccount)
-	if err != nil {
-		reqLogger.Error(err, "Failed to update account spec for reuse")
-		return err
-	}
-
-	reqLogger.Info(fmt.Sprintf(
-		"Setting RotateCredentials and RotateConsoleCredentials for account %s", reusedAccount.Spec.AwsAccountID))
-	reusedAccount.Status.RotateConsoleCredentials = true
-	reusedAccount.Status.RotateCredentials = true
-
-	// Update account status and add conditions indicating account reuse
-	reusedAccount.Status.State = conditionStatus
-	reusedAccount.Status.Claimed = false
-	reusedAccount.Status.Reused = true
-	conditionMsg := fmt.Sprintf("Account Reuse - %s", conditionStatus)
-	utils.SetAccountStatus(reusedAccount, conditionMsg, accountState, conditionStatus)
-	err = r.accountStatusUpdate(reqLogger, reusedAccount)
-	if err != nil {
-		reqLogger.Error(err, "Failed to update account status for reuse")
-		return err
-	}
-
-	return nil
+	return fmt.Errorf("failed to update account after %d retries due to conflicts", maxRetries)
 }
 
 func (r *AccountClaimReconciler) cleanUpAwsAccount(reqLogger logr.Logger, awsClient awsclient.Client) error {
@@ -190,6 +221,13 @@ func (r *AccountClaimReconciler) cleanUpAwsAccount(reqLogger logr.Logger, awsCli
 
 	defer close(awsNotifications)
 	defer close(awsErrors)
+
+	reqLogger.Info("Starting EC2 instance cleanup before EBS volume cleanup")
+	err := r.cleanUpAwsAccountEc2Instances(reqLogger, awsClient)
+	if err != nil {
+		reqLogger.Error(err, "EC2 instance cleanup failed")
+		return err
+	}
 
 	// Declare un array of cleanup functions
 	cleanUpFunctions := []func(logr.Logger, awsclient.Client, chan string, chan string) error{
@@ -206,7 +244,6 @@ func (r *AccountClaimReconciler) cleanUpAwsAccount(reqLogger logr.Logger, awsCli
 		go cleanUpFunc(reqLogger, awsClient, awsNotifications, awsErrors)
 	}
 
-	var err error
 	// Wait for clean up functions to end
 	for i := 0; i < len(cleanUpFunctions); i++ {
 		select {
@@ -231,9 +268,84 @@ func (r *AccountClaimReconciler) cleanUpAwsAccount(reqLogger logr.Logger, awsCli
 	return nil
 }
 
+func (r *AccountClaimReconciler) cleanUpAwsAccountEc2Instances(reqLogger logr.Logger, awsClient awsclient.Client) error {
+	describeInstancesInput := ec2.DescribeInstancesInput{}
+	reservations, err := awsClient.DescribeInstances(&describeInstancesInput)
+	if err != nil {
+		reqLogger.Error(err, "Failed describing EC2 instances")
+		return err
+	}
+
+	var instanceIdsToTerminate []*string
+	for _, reservation := range reservations.Reservations {
+		for _, instance := range reservation.Instances {
+			if instance.State != nil && *instance.State.Name != "terminated" && *instance.State.Name != "terminating" {
+				instanceIdsToTerminate = append(instanceIdsToTerminate, instance.InstanceId)
+			}
+		}
+	}
+
+	if len(instanceIdsToTerminate) == 0 {
+		reqLogger.Info("EC2 instance cleanup finished successfully (no instances to terminate)")
+		return nil
+	}
+
+	reqLogger.Info("Terminating EC2 instances", "count", len(instanceIdsToTerminate))
+	terminateInstancesInput := ec2.TerminateInstancesInput{
+		InstanceIds: instanceIdsToTerminate,
+	}
+	_, err = awsClient.TerminateInstances(&terminateInstancesInput)
+	if err != nil {
+		reqLogger.Error(err, "Failed terminating EC2 instances")
+		return err
+	}
+
+	reqLogger.Info("Waiting for EC2 instances to terminate (max 5 minutes)")
+	maxWaitTime := 5 * time.Minute
+	pollInterval := 15 * time.Second
+	startTime := time.Now()
+
+	for {
+		if time.Since(startTime) > maxWaitTime {
+			reqLogger.Info("Timeout waiting for instances to terminate, proceeding with cleanup")
+			break
+		}
+
+		describeOutput, descErr := awsClient.DescribeInstances(&ec2.DescribeInstancesInput{
+			InstanceIds: instanceIdsToTerminate,
+		})
+		if descErr != nil {
+			reqLogger.Info("Error checking instance states, proceeding with cleanup", "error", descErr)
+			break
+		}
+
+		allTerminated := true
+		for _, reservation := range describeOutput.Reservations {
+			for _, instance := range reservation.Instances {
+				if instance.State != nil && *instance.State.Name != "terminated" {
+					allTerminated = false
+					break
+				}
+			}
+			if !allTerminated {
+				break
+			}
+		}
+
+		if allTerminated {
+			reqLogger.Info("All EC2 instances terminated successfully")
+			break
+		}
+
+		time.Sleep(pollInterval)
+	}
+
+	reqLogger.Info("EC2 instance cleanup finished successfully", "instancesTerminated", len(instanceIdsToTerminate))
+	return nil
+}
+
 func (r *AccountClaimReconciler) cleanUpAwsAccountSnapshots(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
 
-	// Filter only for snapshots owned by the account
 	selfOwnerFilter := ec2.Filter{
 		Name: aws.String("owner-alias"),
 		Values: []*string{
@@ -324,6 +436,8 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logg
 		return err
 	}
 
+	deletedCount := 0
+	skippedCount := 0
 	for _, volume := range ebsVolumes.Volumes {
 
 		deleteVolumeInput := ec2.DeleteVolumeInput{
@@ -332,15 +446,28 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logg
 
 		_, err = awsClient.DeleteVolume(&deleteVolumeInput)
 		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				if aerr.Code() == "VolumeInUse" {
+					reqLogger.Info("Skipping EBS volume (still attached to instance)", "volumeId", *volume.VolumeId)
+					skippedCount++
+					continue
+				}
+			}
 			delError := fmt.Errorf("failed deleting EBS volume: %s: %w", *volume.VolumeId, err).Error()
 			logger.Error(delError)
 			awsErrors <- delError
 			return err
 		}
-
+		deletedCount++
 	}
 
-	successMsg := "EBS Volume cleanup finished successfully"
+	if skippedCount > 0 {
+		warnMsg := fmt.Sprintf("EBS Volume cleanup finished (deleted: %d, skipped attached: %d - will retry on next reconciliation)", deletedCount, skippedCount)
+		reqLogger.Info(warnMsg)
+		awsNotifications <- warnMsg
+		return nil
+	}
+	successMsg := fmt.Sprintf("EBS Volume cleanup finished successfully (deleted: %d)", deletedCount)
 	awsNotifications <- successMsg
 	return nil
 }
@@ -494,7 +621,7 @@ func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
 func (r *AccountClaimReconciler) accountStatusUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
 	err := r.Client.Status().Update(context.TODO(), account)
 	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", account.Name))
+		reqLogger.Error(err, "Status update failed", "account", account.Name)
 	}
 	return err
 }

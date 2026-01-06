@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
+export PATH=/tmp:$PATH
+
 export ACCOUNT_READY_TIMEOUT="3m"
 export ACCOUNT_CLAIM_READY_TIMEOUT="1m"
-export RESOURCE_DELETE_TIMEOUT="30s"
+export RESOURCE_DELETE_TIMEOUT="6m"
 
 export EXIT_PASS=0
 export EXIT_FAIL_UNEXPECTED_ERROR=99
