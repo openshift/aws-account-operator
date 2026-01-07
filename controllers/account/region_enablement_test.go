@@ -2,8 +2,11 @@ package account
 
 import (
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/account"
+	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/account"
+	accounttypes "github.com/aws/aws-sdk-go-v2/service/account/types"
 	"github.com/go-logr/logr"
 	apis "github.com/openshift/aws-account-operator/api"
 	"github.com/openshift/aws-account-operator/api/v1alpha1"
@@ -11,7 +14,6 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"go.uber.org/mock/gomock"
 	"k8s.io/client-go/kubernetes/scheme"
-	"testing"
 )
 
 func TestAccountReconciler_HandleOptInRegionRequests(t *testing.T) {
@@ -57,23 +59,23 @@ func TestAccountReconciler_HandleOptInRegionRequests(t *testing.T) {
 			// This is necessary for the mocks to report failures like methods not being called an expected number of times.
 			// after mocks is defined
 			defer mocks.mockCtrl.Finish()
-			mockAWSClient.EXPECT().GetRegionOptStatus(gomock.Any()).Return(
+			mockAWSClient.EXPECT().GetRegionOptStatus(gomock.Any(), gomock.Any()).Return(
 				&account.GetRegionOptStatusOutput{
 					RegionName:      aws.String("af-south-1"),
-					RegionOptStatus: aws.String("DISABLED"),
+					RegionOptStatus: accounttypes.RegionOptStatusDisabled,
 				},
 				nil,
 			)
 
-			mockAWSClient.EXPECT().GetRegionOptStatus(gomock.Any()).Return(
+			mockAWSClient.EXPECT().GetRegionOptStatus(gomock.Any(), gomock.Any()).Return(
 				&account.GetRegionOptStatusOutput{
 					RegionName:      aws.String("af-south-1"),
-					RegionOptStatus: aws.String("DISABLED"),
+					RegionOptStatus: accounttypes.RegionOptStatusDisabled,
 				},
 				nil,
 			)
 
-			mockAWSClient.EXPECT().EnableRegion(gomock.Any()).Return(
+			mockAWSClient.EXPECT().EnableRegion(gomock.Any(), gomock.Any()).Return(
 				&account.EnableRegionOutput{},
 				nil,
 			)

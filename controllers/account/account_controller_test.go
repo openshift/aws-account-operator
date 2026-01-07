@@ -6,15 +6,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	acct "github.com/aws/aws-sdk-go/service/account"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/organizations"
-	"github.com/aws/aws-sdk-go/service/servicequotas"
-	"github.com/aws/aws-sdk-go/service/sts"
-	"github.com/aws/aws-sdk-go/service/support"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsaccount "github.com/aws/aws-sdk-go-v2/service/account"
+	accounttypes "github.com/aws/aws-sdk-go-v2/service/account/types"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
+	"github.com/aws/aws-sdk-go-v2/service/servicequotas"
+	servicequotastypes "github.com/aws/aws-sdk-go-v2/service/servicequotas/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	ststypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
+	"github.com/aws/aws-sdk-go-v2/service/support"
+	supporttypes "github.com/aws/aws-sdk-go-v2/service/support/types"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -786,9 +793,9 @@ func TestTagAccount(t *testing.T) {
 
 	awsOutputTag := &organizations.TagResourceOutput{}
 
-	mockAWSClient.EXPECT().TagResource(&organizations.TagResourceInput{
+	mockAWSClient.EXPECT().TagResource(gomock.Any(), &organizations.TagResourceInput{
 		ResourceId: &accountID,
-		Tags: []*organizations.Tag{
+		Tags: []organizationstypes.Tag{
 			{
 				Key:   aws.String("owner"),
 				Value: aws.String(hivename)}},
@@ -1250,11 +1257,11 @@ func TestFinalizeAccount_LabelledBYOCAccount(t *testing.T) {
 	localObjects := []runtime.Object{&account}
 	mocks := setupDefaultMocks(t, localObjects)
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
-	mockAWSClient.EXPECT().ListUsersPages(gomock.Any(), gomock.Any())
-	mockAWSClient.EXPECT().ListRoles(gomock.Any()).Return(
+	mockAWSClient.EXPECT().ListUsersPages(gomock.Any(), gomock.Any(), gomock.Any())
+	mockAWSClient.EXPECT().ListRoles(gomock.Any(), gomock.Any()).Return(
 		&iam.ListRolesOutput{
-			Roles:       []*iam.Role{},
-			IsTruncated: aws.Bool(false),
+			Roles:       []iamtypes.Role{},
+			IsTruncated: false,
 		},
 		nil,
 	)
@@ -1325,66 +1332,66 @@ var _ = Describe("Account Controller", func() {
 
 		It("AWS returns ErrCodeConstraintViolationException from CreateAccount", func() {
 			// ErrCodeConstraintViolationException is mapped to awsv1alpha1.ErrAwsAccountLimitExceeded in CreateAccount
-			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeConstraintViolationException, "Error String", nil))
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, &organizationstypes.ConstraintViolationException{Message: aws.String("Error String")})
 			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsAccountLimitExceeded).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeConstraintViolationException)))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring("ConstraintViolationException")))
 		})
 
 		It("AWS returns ErrCodeServiceException from CreateAccount", func() {
 			// ErrCodeServiceException is mapped to awsv1alpha1.ErrAwsInternalFailure in CreateAccount
-			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeServiceException, "Error String", nil))
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, &organizationstypes.ServiceException{Message: aws.String("Error String")})
 			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsInternalFailure).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeServiceException)))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring("ServiceException")))
 		})
 
 		It("AWS returns ErrCodeTooManyRequestsException from CreateAccount", func() {
 			// ErrCodeTooManyRequestsException is mapped to awsv1alpha1.ErrAwsTooManyRequests in CreateAccount
-			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeTooManyRequestsException, "Error String", nil))
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, &organizationstypes.TooManyRequestsException{Message: aws.String("Error String")})
 			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsTooManyRequests).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeTooManyRequestsException)))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring("TooManyRequestsException")))
 		})
 
 		It("AWS returns error from CreateAccount", func() {
 			// Unhandled AWS exceptions get mapped awsv1alpha1.ErrAwsFailedCreateAccount in CreateAccount
-			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeDuplicateAccountException, "Error String", nil))
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, &organizationstypes.DuplicateAccountException{Message: aws.String("Error String")})
 			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsFailedCreateAccount).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeDuplicateAccountException)))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring("DuplicateAccountException")))
 		})
 
 		It("AWS returns ErrCodeConcurrentModificationException from CreateAccount", func() {
 			// ErrCodeConcurrentModificationException is mapped to awsv1alpha1.ErrAwsConcurrentModification in CreateAccount
-			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeConcurrentModificationException, "Error String", nil))
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, &organizationstypes.ConcurrentModificationException{Message: aws.String("Error String")})
 			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsConcurrentModification).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeConcurrentModificationException)))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring("ConcurrentModificationException")))
 		})
 
 		It("AWS returns an error from DescribeCreateAccountStatus", func() {
-			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(
 				&organizations.CreateAccountOutput{
-					CreateAccountStatus: &organizations.CreateAccountStatus{
+					CreateAccountStatus: &organizationstypes.CreateAccountStatus{
 						Id: aws.String("ID"),
 					},
 				},
 				nil,
 			)
 
-			expectedErr := awserr.New(organizations.ErrCodeServiceException, "Error String", nil)
-			mockAWSClient.EXPECT().DescribeCreateAccountStatus(gomock.Any()).Return(nil, expectedErr) //errors.New("MyError")) //)
+			expectedErr := &organizationstypes.ServiceException{Message: aws.String("Error String")}
+			mockAWSClient.EXPECT().DescribeCreateAccountStatus(gomock.Any(), gomock.Any()).Return(nil, expectedErr) //errors.New("MyError")) //)
 			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
@@ -1392,21 +1399,21 @@ var _ = Describe("Account Controller", func() {
 		})
 
 		It("DescribeCreateAccountStatus returns a FAILED state", func() {
-			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(
 				&organizations.CreateAccountOutput{
-					CreateAccountStatus: &organizations.CreateAccountStatus{
+					CreateAccountStatus: &organizationstypes.CreateAccountStatus{
 						Id: aws.String("ID"),
 					},
 				},
 				nil,
 			)
 			describeCreateAccountStatusOutput := &organizations.DescribeCreateAccountStatusOutput{
-				CreateAccountStatus: &organizations.CreateAccountStatus{
-					State:         aws.String("FAILED"),
-					FailureReason: aws.String("ACCOUNT_LIMIT_EXCEEDED"),
+				CreateAccountStatus: &organizationstypes.CreateAccountStatus{
+					State:         organizationstypes.CreateAccountStateFailed,
+					FailureReason: organizationstypes.CreateAccountFailureReasonAccountLimitExceeded,
 				},
 			}
-			mockAWSClient.EXPECT().DescribeCreateAccountStatus(gomock.Any()).Return(describeCreateAccountStatusOutput, nil)
+			mockAWSClient.EXPECT().DescribeCreateAccountStatus(gomock.Any(), gomock.Any()).Return(describeCreateAccountStatusOutput, nil)
 			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 
@@ -1414,20 +1421,20 @@ var _ = Describe("Account Controller", func() {
 			Expect(awsv1alpha1.ErrAwsAccountLimitExceeded).To(Equal(err))
 		})
 		It("CreateAccount creates account", func() {
-			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(
 				&organizations.CreateAccountOutput{
-					CreateAccountStatus: &organizations.CreateAccountStatus{
+					CreateAccountStatus: &organizationstypes.CreateAccountStatus{
 						Id: aws.String("ID"),
 					},
 				},
 				nil,
 			)
 			describeCreateAccountStatusOutput := &organizations.DescribeCreateAccountStatusOutput{
-				CreateAccountStatus: &organizations.CreateAccountStatus{
-					State: aws.String("SUCCEEDED"),
+				CreateAccountStatus: &organizationstypes.CreateAccountStatus{
+					State: organizationstypes.CreateAccountStateSucceeded,
 				},
 			}
-			mockAWSClient.EXPECT().DescribeCreateAccountStatus(gomock.Any()).Return(describeCreateAccountStatusOutput, nil)
+			mockAWSClient.EXPECT().DescribeCreateAccountStatus(gomock.Any(), gomock.Any()).Return(describeCreateAccountStatusOutput, nil)
 			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(Succeed())
 			Expect(createAccountOutput).To(Equal(describeCreateAccountStatusOutput))
@@ -1436,24 +1443,44 @@ var _ = Describe("Account Controller", func() {
 	})
 	Context("Testing BuildAccount", func() {
 		var (
-			knownErrors = map[string]error{
-				organizations.ErrCodeConcurrentModificationException: awsv1alpha1.ErrAwsConcurrentModification,
-				organizations.ErrCodeConstraintViolationException:    awsv1alpha1.ErrAwsAccountLimitExceeded,
-				organizations.ErrCodeServiceException:                awsv1alpha1.ErrAwsInternalFailure,
-				organizations.ErrCodeTooManyRequestsException:        awsv1alpha1.ErrAwsTooManyRequests,
+			knownErrors = map[string]struct {
+				err          error
+				expectedErr  error
+				errorSubstr  string
+			}{
+				"ConcurrentModificationException": {
+					err:         &organizationstypes.ConcurrentModificationException{Message: aws.String("Error String")},
+					expectedErr: awsv1alpha1.ErrAwsConcurrentModification,
+					errorSubstr: "ConcurrentModificationException",
+				},
+				"ConstraintViolationException": {
+					err:         &organizationstypes.ConstraintViolationException{Message: aws.String("Error String")},
+					expectedErr: awsv1alpha1.ErrAwsAccountLimitExceeded,
+					errorSubstr: "ConstraintViolationException",
+				},
+				"ServiceException": {
+					err:         &organizationstypes.ServiceException{Message: aws.String("Error String")},
+					expectedErr: awsv1alpha1.ErrAwsInternalFailure,
+					errorSubstr: "ServiceException",
+				},
+				"TooManyRequestsException": {
+					err:         &organizationstypes.TooManyRequestsException{Message: aws.String("Error String")},
+					expectedErr: awsv1alpha1.ErrAwsTooManyRequests,
+					errorSubstr: "TooManyRequestsException",
+				},
 			}
 		)
 		It("Should not modify the AccountCR when encountering a known error during Account Creation", func() {
 			account = &newTestAccountBuilder().WithoutState().acct
 			account.Name = accountName
-			for errCode, knownErr := range knownErrors {
-				mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(errCode, "Error String", nil))
+			for name, tc := range knownErrors {
+				mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, tc.err)
 				acctId, actualErr := r.BuildAccount(nullLogger, mockAWSClient, account)
-				Expect(actualErr).To(HaveOccurred())
-				Expect(acctId).To(BeEmpty())
-				Expect(actualErr).To(MatchError(knownErr))
-				Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(errCode)))
-				Expect(account.Status.State).To(BeEmpty())
+				Expect(actualErr).To(HaveOccurred(), "Test case: "+name)
+				Expect(acctId).To(BeEmpty(), "Test case: "+name)
+				Expect(actualErr).To(MatchError(tc.expectedErr), "Test case: "+name)
+				Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(tc.errorSubstr)), "Test case: "+name)
+				Expect(account.Status.State).To(BeEmpty(), "Test case: "+name)
 			}
 		})
 
@@ -1461,12 +1488,12 @@ var _ = Describe("Account Controller", func() {
 			account = &newTestAccountBuilder().WithoutState().acct
 			account.Name = accountName
 			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account}...).Build()
-			mockAWSClient.EXPECT().CreateAccount(gomock.Any()).Return(nil, awserr.New(organizations.ErrCodeAccessDeniedException, "Error String", nil))
+			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, &organizationstypes.AccessDeniedException{Message: aws.String("Error String")})
 			acctId, actualErr := r.BuildAccount(nullLogger, mockAWSClient, account)
 			Expect(actualErr).To(HaveOccurred())
 			Expect(acctId).To(BeEmpty())
 			Expect(actualErr).To(MatchError(awsv1alpha1.ErrAwsFailedCreateAccount))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(organizations.ErrCodeAccessDeniedException)))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring("AccessDeniedException")))
 			Expect(account.Status.State).To(BeEquivalentTo(awsv1alpha1.AccountFailed))
 		})
 	})
@@ -1506,39 +1533,39 @@ var _ = Describe("Account Controller", func() {
 			orgAccessArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, config.AwsResourceTypeRole, orgAccessRoleName)
 			roleSessionName := "awsAccountOperator"
 			// Assume org access role in account
-			mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
-				DurationSeconds: aws.Int64(3600),
+			mockAWSClient.EXPECT().AssumeRole(gomock.Any(), &sts.AssumeRoleInput{
+				DurationSeconds: aws.Int32(3600),
 				RoleArn:         &orgAccessArn,
 				RoleSessionName: &roleSessionName,
 			}).Return(&sts.AssumeRoleOutput{
-				AssumedRoleUser: &sts.AssumedRoleUser{
+				AssumedRoleUser: &ststypes.AssumedRoleUser{
 					Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
 					AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
 				},
-				Credentials: &sts.Credentials{
+				Credentials: &ststypes.Credentials{
 					AccessKeyId:     aws.String("ACCESS_KEY"),
 					Expiration:      &validUntil,
 					SecretAccessKey: aws.String("SECRET_KEY"),
 					SessionToken:    aws.String("SESSION_TOKEN"),
 				},
-				PackedPolicySize: aws.Int64(40),
+				PackedPolicySize: aws.Int32(40),
 			}, nil)
 
 			aaoRootIamUserName := "aao-root"
 			aaoRootIamUserArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, "user", aaoRootIamUserName)
-			mockAWSClient.EXPECT().GetUser(gomock.Any()).Return(&iam.GetUserOutput{
-				User: &iam.User{
+			mockAWSClient.EXPECT().GetUser(gomock.Any(), gomock.Any()).Return(&iam.GetUserOutput{
+				User: &iamtypes.User{
 					Arn:      &aaoRootIamUserArn,
 					UserName: &aaoRootIamUserName,
 				},
 			}, nil)
-			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(&iam.GetRoleOutput{}, nil)
+			mockAWSClient.EXPECT().GetRole(gomock.Any(), gomock.Any()).Return(&iam.GetRoleOutput{}, nil)
 
 			rolePolicyDoc := fmt.Sprintf("{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"sts:AssumeRole\"],\"Principal\":{\"AWS\":[\"%s\",\"arn:::support-jump-role\"]}}]}", aaoRootIamUserArn)
 			roleDesc := "AdminAccess for BYOC"
 			roleName := "ManagedOpenShift-Support-abcdef"
 			roleCreate := time.Now()
-			roleTags := []*iam.Tag{
+			roleTags := []iamtypes.Tag{
 				{
 					Key:   aws.String("clusterAccountName"),
 					Value: aws.String("testaccount"),
@@ -1556,18 +1583,18 @@ var _ = Describe("Account Controller", func() {
 					Value: aws.String(""),
 				},
 			}
-			mockAWSClient.EXPECT().CreateRole(&iam.CreateRoleInput{
+			mockAWSClient.EXPECT().CreateRole(gomock.Any(), &iam.CreateRoleInput{
 				AssumeRolePolicyDocument: &rolePolicyDoc,
 				Description:              &roleDesc,
 				RoleName:                 &roleName,
 				Tags:                     roleTags,
 			}).Return(&iam.CreateRoleOutput{
-				Role: &iam.Role{
+				Role: &iamtypes.Role{
 					Arn:                      aws.String(fmt.Sprintf("aws:::%s", roleName)),
 					AssumeRolePolicyDocument: &rolePolicyDoc,
 					CreateDate:               &roleCreate,
 					Description:              &roleDesc,
-					MaxSessionDuration:       aws.Int64(1000000),
+					MaxSessionDuration:       aws.Int32(1000000),
 					RoleId:                   &roleName,
 					RoleName:                 &roleName,
 					Tags:                     roleTags,
@@ -1575,24 +1602,24 @@ var _ = Describe("Account Controller", func() {
 			}, nil)
 
 			adminAccessArn := config.GetIAMArn("aws", config.AwsResourceTypePolicy, config.AwsResourceIDAdministratorAccessRole)
-			mockAWSClient.EXPECT().AttachRolePolicy(&iam.AttachRolePolicyInput{
+			mockAWSClient.EXPECT().AttachRolePolicy(gomock.Any(), &iam.AttachRolePolicyInput{
 				PolicyArn: &adminAccessArn,
 				RoleName:  &roleName,
 			}).Return(nil, nil)
-			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(&iam.ListAttachedRolePoliciesOutput{
-				AttachedPolicies: []*iam.AttachedPolicy{{
+			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any(), gomock.Any()).Return(&iam.ListAttachedRolePoliciesOutput{
+				AttachedPolicies: []iamtypes.AttachedPolicy{{
 					PolicyArn:  &adminAccessArn,
 					PolicyName: aws.String(config.AwsResourceIDAdministratorAccessRole),
 				}},
 			}, nil)
 
 			userName := "osdManagedAdmin-abcdef"
-			mockAWSClient.EXPECT().GetUser(&iam.GetUserInput{
+			mockAWSClient.EXPECT().GetUser(gomock.Any(), &iam.GetUserInput{
 				UserName: &userName,
-			}).Return(nil, awserr.New(iam.ErrCodeNoSuchEntityException, "", nil))
+			}).Return(nil, &iamtypes.NoSuchEntityException{Message: aws.String("")})
 
-			mockAWSClient.EXPECT().CreateUser(gomock.Any()).Return(&iam.CreateUserOutput{
-				User: &iam.User{
+			mockAWSClient.EXPECT().CreateUser(gomock.Any(), gomock.Any()).Return(&iam.CreateUserOutput{
+				User: &iamtypes.User{
 					Arn:      aws.String(fmt.Sprintf("aws:::%s", userName)),
 					Tags:     roleTags,
 					UserId:   &userName,
@@ -1600,25 +1627,25 @@ var _ = Describe("Account Controller", func() {
 				},
 			}, nil)
 
-			mockAWSClient.EXPECT().AttachUserPolicy(&iam.AttachUserPolicyInput{
+			mockAWSClient.EXPECT().AttachUserPolicy(gomock.Any(), &iam.AttachUserPolicyInput{
 				UserName:  &userName,
 				PolicyArn: &adminAccessArn,
 			}).Return(nil, nil)
 
-			mockAWSClient.EXPECT().ListAccessKeys(&iam.ListAccessKeysInput{
+			mockAWSClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{
 				UserName: &userName,
 			}).Return(&iam.ListAccessKeysOutput{
-				AccessKeyMetadata: []*iam.AccessKeyMetadata{},
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{},
 			}, nil)
 
-			mockAWSClient.EXPECT().CreateAccessKey(&iam.CreateAccessKeyInput{
+			mockAWSClient.EXPECT().CreateAccessKey(gomock.Any(), &iam.CreateAccessKeyInput{
 				UserName: &userName,
 			}).Return(&iam.CreateAccessKeyOutput{
-				AccessKey: &iam.AccessKey{
+				AccessKey: &iamtypes.AccessKey{
 					AccessKeyId:     aws.String("ACCESS_KEY"),
 					CreateDate:      &roleCreate,
 					SecretAccessKey: aws.String("SECRET_KEY"),
-					Status:          aws.String("Valid"),
+					Status:          iamtypes.StatusTypeActive,
 					UserName:        &userName,
 				},
 			}, nil)
@@ -1730,39 +1757,39 @@ var _ = Describe("Account Controller", func() {
 			orgAccessArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, config.AwsResourceTypeRole, orgAccessRoleName)
 			roleSessionName := "awsAccountOperator"
 			// Assume org access role in account
-			mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
-				DurationSeconds: aws.Int64(3600),
+			mockAWSClient.EXPECT().AssumeRole(gomock.Any(), &sts.AssumeRoleInput{
+				DurationSeconds: aws.Int32(3600),
 				RoleArn:         &orgAccessArn,
 				RoleSessionName: &roleSessionName,
 			}).Return(&sts.AssumeRoleOutput{
-				AssumedRoleUser: &sts.AssumedRoleUser{
+				AssumedRoleUser: &ststypes.AssumedRoleUser{
 					Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
 					AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
 				},
-				Credentials: &sts.Credentials{
+				Credentials: &ststypes.Credentials{
 					AccessKeyId:     aws.String("ACCESS_KEY"),
 					Expiration:      &validUntil,
 					SecretAccessKey: aws.String("SECRET_KEY"),
 					SessionToken:    aws.String("SESSION_TOKEN"),
 				},
-				PackedPolicySize: aws.Int64(40),
+				PackedPolicySize: aws.Int32(40),
 			}, nil)
 
 			aaoRootIamUserName := "aao-root"
 			aaoRootIamUserArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, "user", aaoRootIamUserName)
-			mockAWSClient.EXPECT().GetUser(gomock.Any()).Return(&iam.GetUserOutput{
-				User: &iam.User{
+			mockAWSClient.EXPECT().GetUser(gomock.Any(), gomock.Any()).Return(&iam.GetUserOutput{
+				User: &iamtypes.User{
 					Arn:      &aaoRootIamUserArn,
 					UserName: &aaoRootIamUserName,
 				},
 			}, nil)
-			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(&iam.GetRoleOutput{}, nil)
+			mockAWSClient.EXPECT().GetRole(gomock.Any(), gomock.Any()).Return(&iam.GetRoleOutput{}, nil)
 
 			rolePolicyDoc := fmt.Sprintf("{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"sts:AssumeRole\"],\"Principal\":{\"AWS\":[\"%s\",\"arn:::support-jump-role\"]}}]}", aaoRootIamUserArn)
 			roleDesc := "AdminAccess for BYOC"
 			roleName := "ManagedOpenShift-Support-abcdef"
 			roleCreate := time.Now()
-			roleTags := []*iam.Tag{
+			roleTags := []iamtypes.Tag{
 				{
 					Key:   aws.String("clusterAccountName"),
 					Value: aws.String("testaccount"),
@@ -1780,18 +1807,18 @@ var _ = Describe("Account Controller", func() {
 					Value: aws.String(""),
 				},
 			}
-			mockAWSClient.EXPECT().CreateRole(&iam.CreateRoleInput{
+			mockAWSClient.EXPECT().CreateRole(gomock.Any(), &iam.CreateRoleInput{
 				AssumeRolePolicyDocument: &rolePolicyDoc,
 				Description:              &roleDesc,
 				RoleName:                 &roleName,
 				Tags:                     roleTags,
 			}).Return(&iam.CreateRoleOutput{
-				Role: &iam.Role{
+				Role: &iamtypes.Role{
 					Arn:                      aws.String(fmt.Sprintf("aws:::%s", roleName)),
 					AssumeRolePolicyDocument: &rolePolicyDoc,
 					CreateDate:               &roleCreate,
 					Description:              &roleDesc,
-					MaxSessionDuration:       aws.Int64(1000000),
+					MaxSessionDuration:       aws.Int32(1000000),
 					RoleId:                   &roleName,
 					RoleName:                 &roleName,
 					Tags:                     roleTags,
@@ -1799,24 +1826,24 @@ var _ = Describe("Account Controller", func() {
 			}, nil)
 
 			adminAccessArn := config.GetIAMArn("aws", config.AwsResourceTypePolicy, config.AwsResourceIDAdministratorAccessRole)
-			mockAWSClient.EXPECT().AttachRolePolicy(&iam.AttachRolePolicyInput{
+			mockAWSClient.EXPECT().AttachRolePolicy(gomock.Any(), &iam.AttachRolePolicyInput{
 				PolicyArn: &adminAccessArn,
 				RoleName:  &roleName,
 			}).Return(nil, nil)
-			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any()).Return(&iam.ListAttachedRolePoliciesOutput{
-				AttachedPolicies: []*iam.AttachedPolicy{{
+			mockAWSClient.EXPECT().ListAttachedRolePolicies(gomock.Any(), gomock.Any()).Return(&iam.ListAttachedRolePoliciesOutput{
+				AttachedPolicies: []iamtypes.AttachedPolicy{{
 					PolicyArn:  &adminAccessArn,
 					PolicyName: aws.String(config.AwsResourceIDAdministratorAccessRole),
 				}},
 			}, nil)
 
 			userName := "osdManagedAdmin-abcdef"
-			mockAWSClient.EXPECT().GetUser(&iam.GetUserInput{
+			mockAWSClient.EXPECT().GetUser(gomock.Any(), &iam.GetUserInput{
 				UserName: &userName,
-			}).Return(nil, awserr.New(iam.ErrCodeNoSuchEntityException, "", nil))
+			}).Return(nil, &iamtypes.NoSuchEntityException{Message: aws.String("")})
 
-			mockAWSClient.EXPECT().CreateUser(gomock.Any()).Return(&iam.CreateUserOutput{
-				User: &iam.User{
+			mockAWSClient.EXPECT().CreateUser(gomock.Any(), gomock.Any()).Return(&iam.CreateUserOutput{
+				User: &iamtypes.User{
 					Arn:      aws.String(fmt.Sprintf("aws:::%s", userName)),
 					Tags:     roleTags,
 					UserId:   &userName,
@@ -1824,32 +1851,32 @@ var _ = Describe("Account Controller", func() {
 				},
 			}, nil)
 
-			mockAWSClient.EXPECT().AttachUserPolicy(&iam.AttachUserPolicyInput{
+			mockAWSClient.EXPECT().AttachUserPolicy(gomock.Any(), &iam.AttachUserPolicyInput{
 				UserName:  &userName,
 				PolicyArn: &adminAccessArn,
 			}).Return(nil, nil)
 
-			mockAWSClient.EXPECT().ListAccessKeys(&iam.ListAccessKeysInput{
+			mockAWSClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{
 				UserName: &userName,
 			}).Return(&iam.ListAccessKeysOutput{
-				AccessKeyMetadata: []*iam.AccessKeyMetadata{},
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{},
 			}, nil)
 
-			mockAWSClient.EXPECT().CreateAccessKey(&iam.CreateAccessKeyInput{
+			mockAWSClient.EXPECT().CreateAccessKey(gomock.Any(), &iam.CreateAccessKeyInput{
 				UserName: &userName,
 			}).Return(&iam.CreateAccessKeyOutput{
-				AccessKey: &iam.AccessKey{
+				AccessKey: &iamtypes.AccessKey{
 					AccessKeyId:     aws.String("ACCESS_KEY"),
 					CreateDate:      &roleCreate,
 					SecretAccessKey: aws.String("SECRET_KEY"),
-					Status:          aws.String("Valid"),
+					Status:          iamtypes.StatusTypeActive,
 					UserName:        &userName,
 				},
 			}, nil)
 
-			mockAWSClient.EXPECT().DescribeRegions(&ec2.DescribeRegionsInput{
+			mockAWSClient.EXPECT().DescribeRegions(gomock.Any(), &ec2.DescribeRegionsInput{
 				AllRegions: aws.Bool(false),
-			}).Return(nil, awserr.New("OptInRequired", "You are not subscribed to this service. Please go to http://aws.amazon.com to subscribe.", nil))
+			}).Return(nil, &smithy.GenericAPIError{Code: "OptInRequired", Message: "You are not subscribed to this service. Please go to http://aws.amazon.com to subscribe."})
 
 			outRequest, err := r.Reconcile(context.TODO(), req)
 			Expect(err).ToNot(HaveOccurred())
@@ -1969,11 +1996,11 @@ var _ = Describe("Account Controller", func() {
 			Expect(isAwsOptInError(fmt.Errorf("anyError"))).To(BeFalse())
 		})
 		It("Should return False when passing a wrong awserror", func() {
-			wrongError := awserr.New("InvalidQueryParameter", "The AWS query string is malformed or does not adhere to AWS standards.", fmt.Errorf("error"))
+			wrongError := &smithy.GenericAPIError{Code: "InvalidQueryParameter", Message: "The AWS query string is malformed or does not adhere to AWS standards."}
 			Expect(isAwsOptInError(wrongError)).To(BeFalse())
 		})
 		It("Should return True when passing an OptInError", func() {
-			rightError := awserr.New("OptInRequired", "You are not subscribed to this service. Please go to http://aws.amazon.com to subscribe.", nil)
+			rightError := &smithy.GenericAPIError{Code: "OptInRequired", Message: "You are not subscribed to this service. Please go to http://aws.amazon.com to subscribe."}
 			Expect(isAwsOptInError(rightError)).To(BeTrue())
 		})
 
@@ -1996,18 +2023,18 @@ var _ = Describe("Account Controller", func() {
 			})
 			When("No service quotas are defined for the account", func() {
 				It("does does not open service quota requests for the account", func() {
-					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+					mockAWSClient.EXPECT().CreateCase(gomock.Any(), gomock.Any()).Return(&support.CreateCaseOutput{
 						CaseId: aws.String("123456"),
 					}, nil)
-					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
-						Cases: []*support.CaseDetails{
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any(), gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []supporttypes.CaseDetails{
 							{
 								CaseId: aws.String("123456"),
 								Status: aws.String("resolved"),
 							},
 						},
 					}, nil)
-					mockAWSClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any()).Times(0)
+					mockAWSClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any(), gomock.Any()).Times(0)
 					Eventually(func() []string {
 						_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
 						Expect(err).NotTo(HaveOccurred())
@@ -2046,23 +2073,23 @@ var _ = Describe("Account Controller", func() {
 						return subClient, &sts.AssumeRoleOutput{}, nil
 					}
 					optInRegions := "af-south-1"
-					subClient.EXPECT().GetRegionOptStatus(gomock.Any()).Return(
-						&acct.GetRegionOptStatusOutput{
+					subClient.EXPECT().GetRegionOptStatus(gomock.Any(), gomock.Any()).Return(
+						&awsaccount.GetRegionOptStatusOutput{
 							RegionName:      aws.String("af-south-1"),
-							RegionOptStatus: aws.String("DISABLED"),
+							RegionOptStatus: accounttypes.RegionOptStatusDisabled,
 						},
 						nil)
 
-					subClient.EXPECT().GetRegionOptStatus(gomock.Any()).Return(
-						&acct.GetRegionOptStatusOutput{
+					subClient.EXPECT().GetRegionOptStatus(gomock.Any(), gomock.Any()).Return(
+						&awsaccount.GetRegionOptStatusOutput{
 							RegionName:      aws.String("af-south-1"),
-							RegionOptStatus: aws.String("DISABLED"),
+							RegionOptStatus: accounttypes.RegionOptStatusDisabled,
 						},
 						nil,
 					)
 
-					subClient.EXPECT().EnableRegion(gomock.Any()).Return(
-						&acct.EnableRegionOutput{},
+					subClient.EXPECT().EnableRegion(gomock.Any(), gomock.Any()).Return(
+						&awsaccount.EnableRegionOutput{},
 						nil,
 					)
 					_, err := r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions)
@@ -2082,8 +2109,8 @@ var _ = Describe("Account Controller", func() {
 						return subClient, &sts.AssumeRoleOutput{}, nil
 					}
 					optInRegions := "ap-east-2"
-					subClient.EXPECT().GetRegionOptStatus(gomock.Any()).Return(
-						&acct.GetRegionOptStatusOutput{},
+					subClient.EXPECT().GetRegionOptStatus(gomock.Any(), gomock.Any()).Return(
+						&awsaccount.GetRegionOptStatusOutput{},
 						nil)
 
 					_, err = r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions)
@@ -2115,8 +2142,8 @@ var _ = Describe("Account Controller", func() {
 						return subClient, &sts.AssumeRoleOutput{}, nil
 					}
 					// Reconciliation loop 1
-					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
-						Regions: []*ec2.Region{
+					subClient.EXPECT().DescribeRegions(gomock.Any(), gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []ec2types.Region{
 							{
 								RegionName: aws.String("us-east-1"),
 							},
@@ -2149,11 +2176,11 @@ var _ = Describe("Account Controller", func() {
 						return subClient, &sts.AssumeRoleOutput{}, nil
 					}
 
-					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+					mockAWSClient.EXPECT().CreateCase(gomock.Any(), gomock.Any()).Return(&support.CreateCaseOutput{
 						CaseId: aws.String("123456"),
 					}, nil)
-					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
-						Regions: []*ec2.Region{
+					subClient.EXPECT().DescribeRegions(gomock.Any(), gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []ec2types.Region{
 							{
 								RegionName: aws.String("us-east-1"),
 							},
@@ -2176,31 +2203,31 @@ var _ = Describe("Account Controller", func() {
 						return subClient, &sts.AssumeRoleOutput{}, nil
 					}
 					// Reconciliation loop 1
-					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+					mockAWSClient.EXPECT().CreateCase(gomock.Any(), gomock.Any()).Return(&support.CreateCaseOutput{
 						CaseId: aws.String("123456"),
 					}, nil)
-					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
-						Cases: []*support.CaseDetails{
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any(), gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []supporttypes.CaseDetails{
 							{
 								CaseId: aws.String("123456"),
 								Status: aws.String("resolved"),
 							},
 						},
 					}, nil).Times(2)
-					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
-						Regions: []*ec2.Region{
+					subClient.EXPECT().DescribeRegions(gomock.Any(), gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []ec2types.Region{
 							{
 								RegionName: aws.String("us-east-1"),
 							},
 						},
 					}, nil)
-					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
-						Quota: &servicequotas.ServiceQuota{
+					subClient.EXPECT().GetServiceQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotastypes.ServiceQuota{
 							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
 							Value:     aws.Float64(101),
 						},
 					}, nil)
-					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any()).Times(0)
+					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any(), gomock.Any()).Times(0)
 					Eventually(func() []string {
 						_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
 						Expect(err).NotTo(HaveOccurred())
@@ -2221,41 +2248,41 @@ var _ = Describe("Account Controller", func() {
 						return subClient, &sts.AssumeRoleOutput{}, nil
 					}
 					// Reconciliation loop 1
-					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+					mockAWSClient.EXPECT().CreateCase(gomock.Any(), gomock.Any()).Return(&support.CreateCaseOutput{
 						CaseId: aws.String("123456"),
 					}, nil)
-					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
-						Cases: []*support.CaseDetails{
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any(), gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []supporttypes.CaseDetails{
 							{
 								CaseId: aws.String("123456"),
 								Status: aws.String("resolved"),
 							},
 						},
 					}, nil).Times(2)
-					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
-						Regions: []*ec2.Region{
+					subClient.EXPECT().DescribeRegions(gomock.Any(), gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []ec2types.Region{
 							{
 								RegionName: aws.String("us-east-1"),
 							},
 						},
 					}, nil)
-					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any()).Return(&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
-						RequestedQuotas: []*servicequotas.RequestedServiceQuotaChange{},
+					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
+						RequestedQuotas: []servicequotastypes.RequestedServiceQuotaChange{},
 					}, nil)
-					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
-						Quota: &servicequotas.ServiceQuota{
+					subClient.EXPECT().GetServiceQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotastypes.ServiceQuota{
 							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
 							Value:     aws.Float64(0),
 						},
 					}, nil)
-					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any()).Return(&servicequotas.RequestServiceQuotaIncreaseOutput{
-						RequestedQuota: &servicequotas.RequestedServiceQuotaChange{
+					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any(), gomock.Any()).Return(&servicequotas.RequestServiceQuotaIncreaseOutput{
+						RequestedQuota: &servicequotastypes.RequestedServiceQuotaChange{
 							CaseId: aws.String("234567"),
 						},
 					}, nil)
 					// Reconciliation loop 2
-					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
-						Cases: []*support.CaseDetails{
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any(), gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []supporttypes.CaseDetails{
 							{
 								CaseId: aws.String("123456"),
 								Status: aws.String("resolved"),
@@ -2263,8 +2290,8 @@ var _ = Describe("Account Controller", func() {
 						},
 					}, nil)
 					// The quota now matches the requested value the case is finished
-					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
-						Quota: &servicequotas.ServiceQuota{
+					subClient.EXPECT().GetServiceQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotastypes.ServiceQuota{
 							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
 							Value:     aws.Float64(100),
 						},
@@ -2295,35 +2322,35 @@ var _ = Describe("Account Controller", func() {
 						return subClient, &sts.AssumeRoleOutput{}, nil
 					}
 					// Reconciliation loop 1
-					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+					mockAWSClient.EXPECT().CreateCase(gomock.Any(), gomock.Any()).Return(&support.CreateCaseOutput{
 						CaseId: aws.String("123456"),
 					}, nil)
-					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
-						Cases: []*support.CaseDetails{
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any(), gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []supporttypes.CaseDetails{
 							{
 								CaseId: aws.String("123456"),
 								Status: aws.String("resolved"),
 							},
 						},
 					}, nil)
-					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
-						Regions: []*ec2.Region{
+					subClient.EXPECT().DescribeRegions(gomock.Any(), gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []ec2types.Region{
 							{
 								RegionName: aws.String("us-east-1"),
 							},
 						},
 					}, nil)
-					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any()).Return(&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
-						RequestedQuotas: []*servicequotas.RequestedServiceQuotaChange{},
+					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
+						RequestedQuotas: []servicequotastypes.RequestedServiceQuotaChange{},
 					}, nil)
-					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
-						Quota: &servicequotas.ServiceQuota{
+					subClient.EXPECT().GetServiceQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotastypes.ServiceQuota{
 							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
 							Value:     aws.Float64(0),
 						},
 					}, nil)
-					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any()).Return(&servicequotas.RequestServiceQuotaIncreaseOutput{
-						RequestedQuota: &servicequotas.RequestedServiceQuotaChange{
+					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any(), gomock.Any()).Return(&servicequotas.RequestServiceQuotaIncreaseOutput{
+						RequestedQuota: &servicequotastypes.RequestedServiceQuotaChange{
 							CaseId: aws.String("234567"),
 						},
 					}, nil)
@@ -2357,11 +2384,11 @@ var _ = Describe("Account Controller", func() {
 						return subClient, &sts.AssumeRoleOutput{}, nil
 					}
 					// Reconciliation loop 1
-					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+					mockAWSClient.EXPECT().CreateCase(gomock.Any(), gomock.Any()).Return(&support.CreateCaseOutput{
 						CaseId: aws.String("123456"),
 					}, nil)
-					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
-						Regions: []*ec2.Region{
+					subClient.EXPECT().DescribeRegions(gomock.Any(), gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []ec2types.Region{
 							{
 								RegionName: aws.String("us-east-1"),
 							},
@@ -2375,26 +2402,26 @@ var _ = Describe("Account Controller", func() {
 					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(2))
 					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))
 					Expect(len(account.Status.RegionalServiceQuotas["us-east-2"])).To(Equal(1))
-					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
-						Cases: []*support.CaseDetails{
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any(), gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []supporttypes.CaseDetails{
 							{
 								CaseId: aws.String("123456"),
 								Status: aws.String("resolved"),
 							},
 						},
 					}, nil).Times(2)
-					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any()).Return(&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
-						RequestedQuotas: []*servicequotas.RequestedServiceQuotaChange{},
+					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
+						RequestedQuotas: []servicequotastypes.RequestedServiceQuotaChange{},
 					}, nil).Times(2)
 					// Have to increase both of our quotas
-					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
-						Quota: &servicequotas.ServiceQuota{
+					subClient.EXPECT().GetServiceQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotastypes.ServiceQuota{
 							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
 							Value:     aws.Float64(0),
 						},
 					}, nil).Times(2)
-					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any()).Return(&servicequotas.RequestServiceQuotaIncreaseOutput{
-						RequestedQuota: &servicequotas.RequestedServiceQuotaChange{
+					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any(), gomock.Any()).Return(&servicequotas.RequestServiceQuotaIncreaseOutput{
+						RequestedQuota: &servicequotastypes.RequestedServiceQuotaChange{
 							CaseId: aws.String("234567"),
 						},
 					}, nil).Times(2)
@@ -2402,8 +2429,8 @@ var _ = Describe("Account Controller", func() {
 					Expect(account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestInProgress))
 					Expect(account.Status.RegionalServiceQuotas["us-east-2"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestInProgress))
 					Expect(account.Status.State).To(Equal(AccountPendingVerification))
-					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
-						Cases: []*support.CaseDetails{
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any(), gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []supporttypes.CaseDetails{
 							{
 								CaseId: aws.String("123456"),
 								Status: aws.String("resolved"),
@@ -2411,8 +2438,8 @@ var _ = Describe("Account Controller", func() {
 						},
 					}, nil)
 					// Have to increase both of our quotas
-					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
-						Quota: &servicequotas.ServiceQuota{
+					subClient.EXPECT().GetServiceQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotastypes.ServiceQuota{
 							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
 							Value:     aws.Float64(100),
 						},
@@ -2437,11 +2464,11 @@ var _ = Describe("Account Controller", func() {
 						return subClient, &sts.AssumeRoleOutput{}, nil
 					}
 					// Reconciliation loop 1
-					mockAWSClient.EXPECT().CreateCase(gomock.Any()).Return(&support.CreateCaseOutput{
+					mockAWSClient.EXPECT().CreateCase(gomock.Any(), gomock.Any()).Return(&support.CreateCaseOutput{
 						CaseId: aws.String("123456"),
 					}, nil)
-					subClient.EXPECT().DescribeRegions(gomock.Any()).Return(&ec2.DescribeRegionsOutput{
-						Regions: []*ec2.Region{
+					subClient.EXPECT().DescribeRegions(gomock.Any(), gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []ec2types.Region{
 							{
 								RegionName: aws.String("us-east-1"),
 							},
@@ -2451,27 +2478,27 @@ var _ = Describe("Account Controller", func() {
 					Expect(err).ToNot(HaveOccurred())
 					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(1))
 					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))
-					mockAWSClient.EXPECT().DescribeCases(gomock.Any()).Return(&support.DescribeCasesOutput{
-						Cases: []*support.CaseDetails{
+					mockAWSClient.EXPECT().DescribeCases(gomock.Any(), gomock.Any()).Return(&support.DescribeCasesOutput{
+						Cases: []supporttypes.CaseDetails{
 							{
 								CaseId: aws.String("123456"),
 								Status: aws.String("resolved"),
 							},
 						},
 					}, nil)
-					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any()).Return(&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
-						RequestedQuotas: []*servicequotas.RequestedServiceQuotaChange{
+					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
+						RequestedQuotas: []servicequotastypes.RequestedServiceQuotaChange{
 							{
 								DesiredValue: aws.Float64(100),
 								QuotaCode:    aws.String(string(awsv1alpha1.RunningStandardInstances)),
 								ServiceCode:  aws.String(string(awsv1alpha1.EC2ServiceQuota)),
-								Status:       aws.String("DENIED"),
+								Status:       servicequotastypes.RequestStatusDenied,
 							},
 						},
 					}, nil).Times(1)
 					// Have to increase both of our quotas
-					subClient.EXPECT().GetServiceQuota(gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
-						Quota: &servicequotas.ServiceQuota{
+					subClient.EXPECT().GetServiceQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotastypes.ServiceQuota{
 							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
 							Value:     aws.Float64(0),
 						},

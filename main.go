@@ -13,8 +13,8 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/operator-framework/operator-lib/leader"
 
 	corev1 "k8s.io/api/core/v1"
@@ -299,7 +299,7 @@ func initOperatorConfigMapVars(kubeClient client.Client) {
 	}
 
 	// Get the SRE Admin Access role for CCS Accounts and populate the role name into the configmap
-	role, err := awsClient.GetRole(&iam.GetRoleInput{
+	role, err := awsClient.GetRole(context.TODO(), &iam.GetRoleInput{
 		RoleName: aws.String(awsv1alpha1.SREAccessRoleName),
 	})
 	if err != nil {

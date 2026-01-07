@@ -8,18 +8,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	"sigs.k8s.io/controller-runtime/pkg/controller"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/organizations"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
@@ -96,7 +95,7 @@ func ParentsTillPredicate(awsId string, client awsclient.Client, p func(s string
 	listParentsInput := organizations.ListParentsInput{
 		ChildId: aws.String(awsId),
 	}
-	listParentsOutput, err := client.ListParents(&listParentsInput)
+	listParentsOutput, err := client.ListParents(context.TODO(), &listParentsInput)
 	if err != nil {
 		return err
 	}
@@ -137,7 +136,7 @@ func MoveAccount(awsAccountId string, client awsclient.Client, targetOU string, 
 	listParentsInput := organizations.ListParentsInput{
 		ChildId: aws.String(awsAccountId),
 	}
-	listParentsOutput, err := client.ListParents(&listParentsInput)
+	listParentsOutput, err := client.ListParents(context.TODO(), &listParentsInput)
 	if err != nil {
 		log.Error(err, "Can not find parent for AWS account", "aws-account", awsAccountId)
 		return err
@@ -150,7 +149,7 @@ func MoveAccount(awsAccountId string, client awsclient.Client, targetOU string, 
 			DestinationParentId: aws.String(targetOU),
 			SourceParentId:      oldOu,
 		}
-		_, err = client.MoveAccount(&moveAccountInput)
+		_, err = client.MoveAccount(context.TODO(), &moveAccountInput)
 		if err != nil {
 			log.Error(err, "Could not move aws account to new ou", "aws-account", awsAccountId, "ou", targetOU)
 			return err
@@ -164,10 +163,10 @@ func MoveAccount(awsAccountId string, client awsclient.Client, targetOU string, 
 func untagAccountOwner(client awsclient.Client, accountId string) error {
 	inputTags := &organizations.UntagResourceInput{
 		ResourceId: aws.String(accountId),
-		TagKeys:    []*string{aws.String("owner")},
+		TagKeys:    []string{"owner"},
 	}
 
-	_, err := client.UntagResource(inputTags)
+	_, err := client.UntagResource(context.TODO(), inputTags)
 	return err
 }
 
@@ -177,7 +176,7 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 		ResourceId: accountId,
 	}
 
-	resp, err := client.ListTagsForResource(listTagsForResourceInput)
+	resp, err := client.ListTagsForResource(context.TODO(), listTagsForResourceInput)
 	if err != nil {
 		return err
 	}
@@ -236,7 +235,7 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 }
 
 // buildTagMap converts a list of tags into a map for easier lookup
-func buildTagMap(tags []*organizations.Tag) map[string]string {
+func buildTagMap(tags []organizationstypes.Tag) map[string]string {
 	tagMap := make(map[string]string)
 	for _, tag := range tags {
 		tagMap[*tag.Key] = *tag.Value
@@ -269,7 +268,7 @@ func ValidateComplianceTags(client awsclient.Client, accountId *string, shardNam
 	listTagsForResourceInput := &organizations.ListTagsForResourceInput{
 		ResourceId: accountId,
 	}
-	resp, err := client.ListTagsForResource(listTagsForResourceInput)
+	resp, err := client.ListTagsForResource(context.TODO(), listTagsForResourceInput)
 	if err != nil {
 		return err
 	}
@@ -421,10 +420,11 @@ func (r *AccountValidationReconciler) GetOUIDFromName(client awsclient.Client, p
 	}
 	for ouID == "" {
 		// Get a list with a fraction of the OUs in this parent starting from NextToken
-		listOut, err := client.ListOrganizationalUnitsForParent(&listOrgUnitsForParentID)
+		listOut, err := client.ListOrganizationalUnitsForParent(context.TODO(), &listOrgUnitsForParentID)
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				unexpectedErrorMsg := fmt.Sprintf("FindOUFromParentID: Unexpected AWS Error when attempting to find OU ID from Parent: %s", aerr.Code())
+			var aerr smithy.APIError
+			if errors.As(err, &aerr) {
+				unexpectedErrorMsg := fmt.Sprintf("FindOUFromParentID: Unexpected AWS Error when attempting to find OU ID from Parent: %s", aerr.ErrorCode())
 				log.Info(unexpectedErrorMsg)
 			}
 			return "", err

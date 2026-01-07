@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
 	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 
 	"github.com/go-logr/logr"
@@ -462,28 +462,28 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 // CleanUpIAMRoleAndPolicies  is responsible for cleaning up existing IAM roles and their associated policies.
 func (r *AccountClaimReconciler) CleanUpIAMRoleAndPolicies(reqLogger logr.Logger, awsClient awsclient.Client, roleName string) error {
 	// Retrieve the existing IAM role by its name.
-	_, err := awsClient.GetRole(&iam.GetRoleInput{
+	_, err := awsClient.GetRole(context.TODO(), &iam.GetRoleInput{
 		RoleName: aws.String(roleName),
 	})
 	if err != nil {
 		return nil
 	}
 
-	respPolicy, err := awsClient.ListRolePolicies(&iam.ListRolePoliciesInput{
+	respPolicy, err := awsClient.ListRolePolicies(context.TODO(), &iam.ListRolePoliciesInput{
 		RoleName: aws.String(roleName),
 	})
 
 	if err != nil {
-		_, err = awsClient.DeleteRole(&iam.DeleteRoleInput{
+		_, err = awsClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{
 			RoleName: aws.String(roleName),
 		})
 		return err
 	}
 
 	for _, policyName := range respPolicy.PolicyNames {
-		_, err = awsClient.DeleteRolePolicy(&iam.DeleteRolePolicyInput{
+		_, err = awsClient.DeleteRolePolicy(context.TODO(), &iam.DeleteRolePolicyInput{
 			RoleName:   aws.String(roleName),
-			PolicyName: policyName,
+			PolicyName: &policyName,
 		})
 
 		if err != nil {
@@ -491,7 +491,7 @@ func (r *AccountClaimReconciler) CleanUpIAMRoleAndPolicies(reqLogger logr.Logger
 			return err
 		}
 	}
-	_, err = awsClient.DeleteRole(&iam.DeleteRoleInput{
+	_, err = awsClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{
 		RoleName: aws.String(roleName),
 	})
 	if err != nil {
@@ -604,7 +604,7 @@ func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Log
 	}
 
 	reqLogger.Info(fmt.Sprintf("Creating role: %s", roleName))
-	createRoleOutput, err := awsClient.CreateRole(&iam.CreateRoleInput{
+	createRoleOutput, err := awsClient.CreateRole(context.TODO(), &iam.CreateRoleInput{
 		RoleName:                 aws.String(roleName),
 		Description:              aws.String("Managed by AAO"),
 		AssumeRolePolicyDocument: aws.String(string(jsonAssumeRolePolicyDoc)),
@@ -612,7 +612,7 @@ func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Log
 	if err != nil {
 		return "", err
 	}
-	reqLogger.Info(fmt.Sprintf("Role %s created", createRoleOutput))
+	reqLogger.Info(fmt.Sprintf("Role %s created", *createRoleOutput.Role.RoleName))
 
 	arnComponents := strings.Split(*createRoleOutput.Role.Arn, ":")
 	accountId := arnComponents[4]
@@ -623,7 +623,7 @@ func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Log
 	}
 
 	// Attach the permissions policy to the role
-	_, err = awsClient.PutRolePolicy(&iam.PutRolePolicyInput{
+	_, err = awsClient.PutRolePolicy(context.TODO(), &iam.PutRolePolicyInput{
 		PolicyName:     aws.String(stsPolicyName),
 		RoleName:       aws.String(roleName),
 		PolicyDocument: aws.String(policyDocument),
@@ -631,7 +631,7 @@ func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Log
 
 	if err != nil {
 		// If there was an error, clean up by deleting the role
-		_, roleDeleteErr := awsClient.DeleteRole(&iam.DeleteRoleInput{
+		_, roleDeleteErr := awsClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{
 			RoleName: aws.String(roleName),
 		})
 		if roleDeleteErr != nil {

@@ -3,19 +3,20 @@ package accountclaim
 import (
 	"context"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/route53"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/sts"
-	apis "github.com/openshift/aws-account-operator/api"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
-	"github.com/openshift/aws-account-operator/config"
-	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
-	"github.com/openshift/aws-account-operator/pkg/localmetrics"
-	"github.com/openshift/aws-account-operator/test/fixtures"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/route53"
+	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	ststypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
+	"github.com/aws/smithy-go"
 	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
@@ -26,7 +27,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"time"
+
+	apis "github.com/openshift/aws-account-operator/api"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
+	"github.com/openshift/aws-account-operator/config"
+	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
+	"github.com/openshift/aws-account-operator/pkg/localmetrics"
+	"github.com/openshift/aws-account-operator/test/fixtures"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -145,43 +152,43 @@ var _ = Describe("AccountClaim", func() {
 				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
 				// Create empty empy aws responses.
 				lhzo := &route53.ListHostedZonesOutput{
-					HostedZones: []*route53.HostedZone{},
-					IsTruncated: aws.Bool(false),
+					HostedZones: []route53types.HostedZone{},
+					IsTruncated: false,
 				}
 				lbo := &s3.ListBucketsOutput{
-					Buckets: []*s3.Bucket{},
+					Buckets: []s3types.Bucket{},
 				}
 				dvpcesco := &ec2.DescribeVpcEndpointServiceConfigurationsOutput{
-					ServiceConfigurations: []*ec2.ServiceConfiguration{},
+					ServiceConfigurations: []ec2types.ServiceConfiguration{},
 				}
 				dso := &ec2.DescribeSnapshotsOutput{
-					Snapshots: []*ec2.Snapshot{},
+					Snapshots: []ec2types.Snapshot{},
 				}
 				dvo := &ec2.DescribeVolumesOutput{
-					Volumes: []*ec2.Volume{},
+					Volumes: []ec2types.Volume{},
 				}
 
-				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
-					DurationSeconds: aws.Int64(3600),
+				mockAWSClient.EXPECT().AssumeRole(gomock.Any(), &sts.AssumeRoleInput{
+					DurationSeconds: aws.Int32(3600),
 					RoleArn:         &orgAccessArn,
 					RoleSessionName: &roleSessionName,
 				}).Return(&sts.AssumeRoleOutput{
-					AssumedRoleUser: &sts.AssumedRoleUser{
+					AssumedRoleUser: &ststypes.AssumedRoleUser{
 						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
 						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
 					},
-					Credentials: &sts.Credentials{
+					Credentials: &ststypes.Credentials{
 						AccessKeyId:     aws.String("ACCESS_KEY"),
 						SecretAccessKey: aws.String("SECRET_KEY"),
 						SessionToken:    aws.String("SESSION_TOKEN"),
 					},
-					PackedPolicySize: aws.Int64(40),
+					PackedPolicySize: aws.Int32(40),
 				}, nil)
-				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(lhzo, nil)
-				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(lbo, nil)
-				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(dvpcesco, nil)
-				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any()).Return(dso, nil)
-				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any()).Return(dvo, nil)
+				mockAWSClient.EXPECT().ListHostedZones(gomock.Any(), gomock.Any()).Return(lhzo, nil)
+				mockAWSClient.EXPECT().ListBuckets(gomock.Any(), gomock.Any()).Return(lbo, nil)
+				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any(), gomock.Any()).Return(dvpcesco, nil)
+				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any(), gomock.Any()).Return(dso, nil)
+				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any(), gomock.Any()).Return(dvo, nil)
 
 				// Confirm that the accountclaim exists from the client's perspective
 				ac := awsv1alpha1.AccountClaim{}
@@ -214,43 +221,43 @@ var _ = Describe("AccountClaim", func() {
 				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
 				// Create empty empy aws responses.
 				lhzo := &route53.ListHostedZonesOutput{
-					HostedZones: []*route53.HostedZone{},
-					IsTruncated: aws.Bool(false),
+					HostedZones: []route53types.HostedZone{},
+					IsTruncated: false,
 				}
 				lbo := &s3.ListBucketsOutput{
-					Buckets: []*s3.Bucket{},
+					Buckets: []s3types.Bucket{},
 				}
 				dvpcesco := &ec2.DescribeVpcEndpointServiceConfigurationsOutput{
-					ServiceConfigurations: []*ec2.ServiceConfiguration{},
+					ServiceConfigurations: []ec2types.ServiceConfiguration{},
 				}
 				dso := &ec2.DescribeSnapshotsOutput{
-					Snapshots: []*ec2.Snapshot{},
+					Snapshots: []ec2types.Snapshot{},
 				}
 				dvo := &ec2.DescribeVolumesOutput{
-					Volumes: []*ec2.Volume{},
+					Volumes: []ec2types.Volume{},
 				}
 
-				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
-					DurationSeconds: aws.Int64(3600),
+				mockAWSClient.EXPECT().AssumeRole(gomock.Any(), &sts.AssumeRoleInput{
+					DurationSeconds: aws.Int32(3600),
 					RoleArn:         &orgAccessArn,
 					RoleSessionName: &roleSessionName,
 				}).Return(&sts.AssumeRoleOutput{
-					AssumedRoleUser: &sts.AssumedRoleUser{
+					AssumedRoleUser: &ststypes.AssumedRoleUser{
 						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
 						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
 					},
-					Credentials: &sts.Credentials{
+					Credentials: &ststypes.Credentials{
 						AccessKeyId:     aws.String("ACCESS_KEY"),
 						SecretAccessKey: aws.String("SECRET_KEY"),
 						SessionToken:    aws.String("SESSION_TOKEN"),
 					},
-					PackedPolicySize: aws.Int64(40),
+					PackedPolicySize: aws.Int32(40),
 				}, nil)
-				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(lhzo, nil)
-				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(lbo, nil)
-				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(dvpcesco, nil)
-				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any()).Return(dso, nil)
-				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any()).Return(dvo, nil)
+				mockAWSClient.EXPECT().ListHostedZones(gomock.Any(), gomock.Any()).Return(lhzo, nil)
+				mockAWSClient.EXPECT().ListBuckets(gomock.Any(), gomock.Any()).Return(lbo, nil)
+				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any(), gomock.Any()).Return(dvpcesco, nil)
+				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any(), gomock.Any()).Return(dso, nil)
+				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any(), gomock.Any()).Return(dvo, nil)
 
 				_, err := r.Reconcile(context.TODO(), req)
 
@@ -269,28 +276,28 @@ var _ = Describe("AccountClaim", func() {
 
 				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
 				// Use a bogus error, just so we can fail AWS calls.
-				theErr := awserr.NewBatchError("foo", "bar", []error{})
-				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
-					DurationSeconds: aws.Int64(3600),
+				theErr := &smithy.GenericAPIError{Code: "foo", Message: "bar"}
+				mockAWSClient.EXPECT().AssumeRole(gomock.Any(), &sts.AssumeRoleInput{
+					DurationSeconds: aws.Int32(3600),
 					RoleArn:         &orgAccessArn,
 					RoleSessionName: &roleSessionName,
 				}).Return(&sts.AssumeRoleOutput{
-					AssumedRoleUser: &sts.AssumedRoleUser{
+					AssumedRoleUser: &ststypes.AssumedRoleUser{
 						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
 						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
 					},
-					Credentials: &sts.Credentials{
+					Credentials: &ststypes.Credentials{
 						AccessKeyId:     aws.String("ACCESS_KEY"),
 						SecretAccessKey: aws.String("SECRET_KEY"),
 						SessionToken:    aws.String("SESSION_TOKEN"),
 					},
-					PackedPolicySize: aws.Int64(40),
+					PackedPolicySize: aws.Int32(40),
 				}, nil)
-				mockAWSClient.EXPECT().ListHostedZones(gomock.Any()).Return(nil, theErr)
-				mockAWSClient.EXPECT().ListBuckets(gomock.Any()).Return(nil, theErr)
-				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any()).Return(nil, theErr)
-				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any()).Return(nil, theErr)
-				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any()).Return(nil, theErr)
+				mockAWSClient.EXPECT().ListHostedZones(gomock.Any(), gomock.Any()).Return(nil, theErr)
+				mockAWSClient.EXPECT().ListBuckets(gomock.Any(), gomock.Any()).Return(nil, theErr)
+				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any(), gomock.Any()).Return(nil, theErr)
+				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any(), gomock.Any()).Return(nil, theErr)
+				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any(), gomock.Any()).Return(nil, theErr)
 
 				_, err := r.Reconcile(context.TODO(), req)
 
@@ -384,38 +391,38 @@ var _ = Describe("AccountClaim", func() {
 				orgAccessArn := config.GetIAMArn(accounts[0].Spec.AwsAccountID, config.AwsResourceTypeRole, orgAccessRoleName)
 				roleSessionName := "awsAccountOperator"
 
-				mockAWSClient.EXPECT().AssumeRole(&sts.AssumeRoleInput{
-					DurationSeconds: aws.Int64(3600),
+				mockAWSClient.EXPECT().AssumeRole(gomock.Any(), &sts.AssumeRoleInput{
+					DurationSeconds: aws.Int32(3600),
 					RoleArn:         &orgAccessArn,
 					RoleSessionName: &roleSessionName,
 				}).Return(&sts.AssumeRoleOutput{
-					AssumedRoleUser: &sts.AssumedRoleUser{
+					AssumedRoleUser: &ststypes.AssumedRoleUser{
 						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
 						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
 					},
-					Credentials: &sts.Credentials{
+					Credentials: &ststypes.Credentials{
 						AccessKeyId:     aws.String("ACCESS_KEY"),
 						SecretAccessKey: aws.String("SECRET_KEY"),
 						SessionToken:    aws.String("SESSION_TOKEN"),
 					},
-					PackedPolicySize: aws.Int64(40),
+					PackedPolicySize: aws.Int32(40),
 				}, nil)
 
-				mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(&iam.GetRoleOutput{}, nil)
-				mockAWSClient.EXPECT().ListRolePolicies(gomock.Any()).Return(&iam.ListRolePoliciesOutput{}, nil)
-				mockAWSClient.EXPECT().DeleteRole(gomock.Any()).Return(&iam.DeleteRoleOutput{}, nil)
-				mockAWSClient.EXPECT().ListUsersPages(gomock.Any(), gomock.Any()).Return(nil)
+				mockAWSClient.EXPECT().GetRole(gomock.Any(), gomock.Any()).Return(&iam.GetRoleOutput{}, nil)
+				mockAWSClient.EXPECT().ListRolePolicies(gomock.Any(), gomock.Any()).Return(&iam.ListRolePoliciesOutput{}, nil)
+				mockAWSClient.EXPECT().DeleteRole(gomock.Any(), gomock.Any()).Return(&iam.DeleteRoleOutput{}, nil)
+				mockAWSClient.EXPECT().ListUsersPages(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 				expectedCreateRoleOutput := &iam.CreateRoleOutput{
-					Role: &iam.Role{
+					Role: &iamtypes.Role{
 						RoleName:    aws.String(roleName),
 						Arn:         aws.String("arn:aws:iam::123456789012:role/" + roleName),
 						Description: aws.String("Created by AAO"),
 					},
 				}
 
-				mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(expectedCreateRoleOutput, nil)
-				mockAWSClient.EXPECT().PutRolePolicy(gomock.Any()).Return(nil, nil)
+				mockAWSClient.EXPECT().CreateRole(gomock.Any(), gomock.Any()).Return(expectedCreateRoleOutput, nil)
+				mockAWSClient.EXPECT().PutRolePolicy(gomock.Any(), gomock.Any()).Return(nil, nil)
 
 				for i := 0; i < 3; i++ {
 					_, err = r.Reconcile(context.TODO(), req)

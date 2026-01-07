@@ -1,11 +1,13 @@
 package account
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/support"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/support"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 
 	"github.com/openshift/aws-account-operator/api/v1alpha1"
@@ -53,14 +55,15 @@ Thanks.
 
 	reqLogger.Info("Creating the case", "CaseInput", createCaseInput)
 
-	caseResult, caseErr := client.CreateCase(&createCaseInput)
+	caseResult, caseErr := client.CreateCase(context.TODO(), &createCaseInput)
 	if caseErr != nil {
 		var returnErr error
-		if aerr, ok := caseErr.(awserr.Error); ok {
-			switch aerr.Code() {
-			case support.ErrCodeCaseCreationLimitExceeded:
+		var apiErr smithy.APIError
+		if errors.As(caseErr, &apiErr) {
+			switch apiErr.ErrorCode() {
+			case "CaseCreationLimitExceeded":
 				returnErr = v1alpha1.ErrAwsCaseCreationLimitExceeded
-			case support.ErrCodeInternalServerError:
+			case "InternalServerError":
 				returnErr = v1alpha1.ErrAwsInternalFailure
 			default:
 				returnErr = v1alpha1.ErrAwsFailedCreateSupportCase
@@ -79,20 +82,21 @@ Thanks.
 func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.Client) (bool, error) {
 	// Look for the case using the unique ID provided
 	describeCasesInput := support.DescribeCasesInput{
-		CaseIdList: []*string{
-			aws.String(caseID),
+		CaseIdList: []string{
+			caseID,
 		},
 	}
 
-	caseResult, caseErr := client.DescribeCases(&describeCasesInput)
+	caseResult, caseErr := client.DescribeCases(context.TODO(), &describeCasesInput)
 	if caseErr != nil {
 
 		var returnErr error
-		if aerr, ok := caseErr.(awserr.Error); ok {
-			switch aerr.Code() {
-			case support.ErrCodeCaseIdNotFound:
+		var apiErr smithy.APIError
+		if errors.As(caseErr, &apiErr) {
+			switch apiErr.ErrorCode() {
+			case "CaseIdNotFound":
 				returnErr = v1alpha1.ErrAwsSupportCaseIDNotFound
-			case support.ErrCodeInternalServerError:
+			case "InternalServerError":
 				returnErr = v1alpha1.ErrAwsInternalFailure
 			default:
 				returnErr = v1alpha1.ErrAwsFailedDescribeSupportCase
