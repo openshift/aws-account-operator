@@ -270,45 +270,22 @@ function waitForDeployment {
     echo "Deployment Completed"
 }
 
-# note: needed for running builds on prow infrastructure
-function installJq {
-    echo "Installing dependency: jq"
-    curl -sfL https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 --output /tmp/jq
-    chmod a+x /tmp/jq
-}
+function setupProwCIDependencies {
+    echo "Setting up Prow CI dependencies..."
 
-# note: needed for running builds on prow infrastructure
-function installUnzip {
-    echo "Installing dependency: unzip"
-    curl -sfL https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox -o /tmp/busybox
-    chmod a+x /tmp/busybox
-    ln -sf /tmp/busybox /tmp/unzip
-}
-
-# note: needed for running builds on prow infrastructure
-function installAWS {
-    echo "Installing dependency: aws-cli"
-    curl -sfL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" --output /tmp/awscliv2.zip
-
-    # Extract to a temporary directory to avoid conflicts
-    /tmp/unzip -qq /tmp/awscliv2.zip -d /tmp/awscli-install
-
-    # Install AWS CLI binary to /usr/local/bin
-    /tmp/awscli-install/aws/install --install-dir /usr/local/aws-cli -b /usr/local/bin
-
-    # Clean up extraction directory
-    rm -rf /tmp/awscli-install
-
-    # Verify installation
-    if [ ! -x "/usr/local/bin/aws" ]; then
-        echo "ERROR: AWS CLI installation failed - /usr/local/bin/aws not found or not executable"
-        return 1
+    # TODO: Once openshift/release PR is merged with integration-test image config,
+    # dependencies will be pre-installed in /usr/local/bin and this fallback can be removed
+    if command -v aws &> /dev/null && command -v jq &> /dev/null; then
+        echo "✓ Dependencies already available (using integration-test image)"
+        echo "  - AWS CLI: $(aws --version)"
+        echo "  - jq: $(jq --version)"
+    else
+        echo "Dependencies not pre-installed, installing to ~/.local/bin..."
+        installDependenciesToUserLocal
     fi
 
-    echo "AWS CLI installed successfully"
-    /usr/local/bin/aws --version
-
-    echo "Configuring aws-cli credentials"
+    # Configure AWS credentials
+    echo "Configuring AWS CLI credentials..."
     cat <<EOF >/tmp/credentials
 [osd-staging-1]
 aws_access_key_id = $OPERATOR_ACCESS_KEY_ID
@@ -323,19 +300,47 @@ aws_access_key_id = $OPERATOR_ACCESS_KEY_ID
 aws_secret_access_key = $OPERATOR_SECRET_ACCESS_KEY
 EOF
     export AWS_SHARED_CREDENTIALS_FILE=/tmp/credentials
+
+    echo "All dependencies configured"
 }
 
-function installProwCIDependencies {
-    installJq
-    installUnzip
-    installAWS
-    # Ensure /usr/local/bin is highest priority in PATH for AWS CLI, /tmp needed for unzip
-    export PATH=/usr/local/bin:/tmp:$PATH
+# TODO: Remove once integration-test Docker image is configured in openshift/release
+function installDependenciesToUserLocal {
+    echo "Installing dependencies to ~/.local/bin (user-local installation)..."
+    mkdir -p ~/.local/bin
 
-    # Verify aws is in PATH
-    echo "Verifying AWS CLI in PATH:"
-    which aws || echo "WARNING: aws not found in PATH"
-    echo "Current PATH: $PATH"
+    if ! command -v unzip &> /dev/null; then
+        echo "  Installing unzip (via busybox)..."
+        curl -sfL https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox -o /tmp/busybox
+        chmod a+x /tmp/busybox
+        ln -sf /tmp/busybox /tmp/unzip
+        export PATH=/tmp:$PATH
+    fi
+
+    if ! command -v jq &> /dev/null; then
+        echo "  Installing jq..."
+        curl -sfL https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 -o ~/.local/bin/jq
+        chmod +x ~/.local/bin/jq
+    fi
+
+    if ! command -v aws &> /dev/null; then
+        echo "  Installing AWS CLI..."
+        curl -sfL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+        /tmp/unzip -qq /tmp/awscliv2.zip -d /tmp/awscli-install
+        /tmp/awscli-install/aws/install --install-dir ~/.local/aws-cli -b ~/.local/bin
+        rm -rf /tmp/awscli-install /tmp/awscliv2.zip
+    fi
+
+    export PATH=~/.local/bin:$PATH
+
+    if ! command -v aws &> /dev/null || ! command -v jq &> /dev/null; then
+        echo "ERROR: Dependency installation failed"
+        return 1
+    fi
+
+    echo "✓ Dependencies installed successfully"
+    echo "  - AWS CLI: $(aws --version)"
+    echo "  - jq: $(jq --version)"
 }
 
 function profileLocal {
@@ -398,7 +403,7 @@ function profileProw {
     echo "Configuring local build environment"
     export FORCE_DEV_MODE=cluster
     sourceFromMountedKvStoreConfig
-    installProwCIDependencies
+    setupProwCIDependencies
 
 
     # cleanup resources from previous runs
