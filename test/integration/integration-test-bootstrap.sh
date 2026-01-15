@@ -6,7 +6,7 @@ source test/integration/test_envs
 source test/integration/integration-test-lib.sh
 
 export TEST_START_TIME_SECONDS=$(date +%s)
-export OPERATOR_START_TIME=$(date --rfc-3339=seconds)
+export OPERATOR_START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 export IMAGE_NAME=aws-account-operator
 export BUILD_CONFIG=aws-account-operator
 export OPERATOR_DEPLOYMENT=aws-account-operator
@@ -176,7 +176,7 @@ function cleanup {
                 return
         fi
 
-        $OC delete namespace $NAMESPACE --ignore-not-found=true || true
+        $OC delete namespace $NAMESPACE --ignore-not-found=true --timeout=15m || true
     else
         echo "Skipping test bootstrap cleanup due to --skip-cleanup flag"
         echo "Note: individual tests may still perform their own cleanup steps"
@@ -270,21 +270,22 @@ function waitForDeployment {
     echo "Deployment Completed"
 }
 
-# note: needed for running builds on prow infrastructure
-function installJq {
-    echo "Installing dependency: jq"
-    curl -sfL https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 --output /tmp/jq
-    chmod a+x /tmp/jq
-}
+function setupProwCIDependencies {
+    echo "Setting up Prow CI dependencies..."
 
-# note: needed for running builds on prow infrastructure
-function installAWS {
-    echo "Installing dependency: aws-cli"
-    curl -sfL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" --output /tmp/awscliv2.zip
-    unzip -qq /tmp/awscliv2.zip
-    ./aws/install --install-dir /tmp/aws-cli -b /tmp
+    # TODO: Once openshift/release PR is merged with integration-test image config,
+    # dependencies will be pre-installed in /usr/local/bin and this fallback can be removed
+    if command -v aws &> /dev/null && command -v jq &> /dev/null; then
+        echo "✓ Dependencies already available (using integration-test image)"
+        echo "  - AWS CLI: $(aws --version)"
+        echo "  - jq: $(jq --version)"
+    else
+        echo "Dependencies not pre-installed, installing to ~/.local/bin..."
+        installDependenciesToUserLocal
+    fi
 
-    echo "Configuring aws-cli credentials"
+    # Configure AWS credentials
+    echo "Configuring AWS CLI credentials..."
     cat <<EOF >/tmp/credentials
 [osd-staging-1]
 aws_access_key_id = $OPERATOR_ACCESS_KEY_ID
@@ -299,12 +300,47 @@ aws_access_key_id = $OPERATOR_ACCESS_KEY_ID
 aws_secret_access_key = $OPERATOR_SECRET_ACCESS_KEY
 EOF
     export AWS_SHARED_CREDENTIALS_FILE=/tmp/credentials
+
+    echo "All dependencies configured"
 }
 
-function installProwCIDependencies {
-    installJq
-    installAWS
-    PATH=$PATH:/tmp
+# TODO: Remove once integration-test Docker image is configured in openshift/release
+function installDependenciesToUserLocal {
+    echo "Installing dependencies to ~/.local/bin (user-local installation)..."
+    mkdir -p ~/.local/bin
+
+    if ! command -v unzip &> /dev/null; then
+        echo "  Installing unzip (via busybox)..."
+        curl -sfL https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox -o /tmp/busybox
+        chmod a+x /tmp/busybox
+        ln -sf /tmp/busybox /tmp/unzip
+        export PATH=/tmp:$PATH
+    fi
+
+    if ! command -v jq &> /dev/null; then
+        echo "  Installing jq..."
+        curl -sfL https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 -o ~/.local/bin/jq
+        chmod +x ~/.local/bin/jq
+    fi
+
+    if ! command -v aws &> /dev/null; then
+        echo "  Installing AWS CLI..."
+        curl -sfL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+        /tmp/unzip -qq /tmp/awscliv2.zip -d /tmp/awscli-install
+        /tmp/awscli-install/aws/install --install-dir ~/.local/aws-cli -b ~/.local/bin
+        rm -rf /tmp/awscli-install /tmp/awscliv2.zip
+    fi
+
+    export PATH=~/.local/bin:$PATH
+
+    if ! command -v aws &> /dev/null || ! command -v jq &> /dev/null; then
+        echo "ERROR: Dependency installation failed"
+        return 1
+    fi
+
+    echo "✓ Dependencies installed successfully"
+    echo "  - AWS CLI: $(aws --version)"
+    echo "  - jq: $(jq --version)"
 }
 
 function profileLocal {
@@ -367,7 +403,7 @@ function profileProw {
     echo "Configuring local build environment"
     export FORCE_DEV_MODE=cluster
     sourceFromMountedKvStoreConfig
-    installProwCIDependencies
+    setupProwCIDependencies
 
 
     # cleanup resources from previous runs
@@ -382,7 +418,7 @@ function profileProw {
     echo -e "\n========================================================================"
     echo "= Building Operator Image"
     echo "========================================================================"
-    OPERATOR_START_TIME=$(date --rfc-3339=seconds)
+    OPERATOR_START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     buildOperatorImage
     verifyBuildSuccess
 
@@ -416,7 +452,7 @@ function profileStage {
     echo "= Operator Runtime"
     echo "========================================================================"
     echo "Checking for existing AAO deployment."
-    OPERATOR_START_TIME=$(date --rfc-3339=seconds)
+    OPERATOR_START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     aaoDeployment=$($OC_WITH_NAMESPACE get deployment $OPERATOR_DEPLOYMENT -o json --ignore-not-found=true | jq '.status.conditions[] | select( .type == "Available" and .status == "True" )')
 
     if [ -z "$aaoDeployment" ]; then
