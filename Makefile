@@ -38,14 +38,12 @@ test-all: lint clean-operator test test-apis test-integration ## Runs all tests
 
 .PHONY: check-aws-account-id-env
 check-aws-account-id-env: ## Check if AWS Account Env vars are set
-ifndef OSD_STAGING_1_AWS_ACCOUNT_ID
-	$(error OSD_STAGING_1_AWS_ACCOUNT_ID is undefined)
-endif
+# Note: OSD_STAGING_1_AWS_ACCOUNT_ID is no longer required - using shared account
 ifndef OSD_STAGING_2_AWS_ACCOUNT_ID
-	$(error OSD_STAGING_2_AWS_ACCOUNT_ID is undefined)
+	$(error OSD_STAGING_2_AWS_ACCOUNT_ID is undefined. This should be your assigned account ID.)
 endif
 ifndef AWS_IAM_ARN
-	$(eval export AWS_IAM_ARN := $(shell aws sts get-caller-identity --profile=osd-staging-2 | jq -r '.Arn'))
+	$(eval export AWS_IAM_ARN := $(shell aws sts get-caller-identity | jq -r '.Arn'))
 	@if [[ -z "$(AWS_IAM_ARN)" ]]; then echo "AWS_IAM_ARN unset and could not be calculated!"; exit 1; fi
 endif
 
