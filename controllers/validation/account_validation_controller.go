@@ -40,6 +40,8 @@ const (
 	controllerName = "accountvalidation"
 	moveWaitTime   = 5 * time.Minute
 	ownerKey       = "owner"
+	// PauseReconciliationAnnotation is the annotation key to pause all reconciliation for an account
+	PauseReconciliationAnnotation = "aws.managed.openshift.com/pause-reconciliation"
 )
 
 type AccountValidationReconciler struct {
@@ -476,6 +478,12 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	}
 	if account.DeletionTimestamp != nil {
 		log.Info("Account is being deleted - not running any validations", "account", account.Name)
+		return utils.DoNotRequeue()
+	}
+
+	// Check if reconciliation is paused for this account
+	if account.Annotations[PauseReconciliationAnnotation] == "true" {
+		log.Info("Reconciliation paused for account - skipping all validations", "account", account.Name)
 		return utils.DoNotRequeue()
 	}
 
