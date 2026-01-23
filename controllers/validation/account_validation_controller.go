@@ -12,12 +12,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/organizations"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -797,8 +802,39 @@ func (r *AccountValidationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	rwm := utils.NewReconcilerWithMetrics(r, controllerName)
+
+	// AccountValidation watches for status changes on Account CRs, not creation events.
+	// This allows the Account controller to own the .For() and receive all create events,
+	// while AccountValidation only processes accounts that need validation (typically Ready state).
+	// This is a workaround for controller-runtime v0.14.6 limitation where multiple controllers
+	// using .For() on the same GVK causes only the last registered controller to receive events.
+
+	statusChangePredicate := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			// Don't process create events - let Account controller handle new CRs
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			// Process all update events (including status changes)
+			return true
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			// Process delete events for cleanup
+			return true
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			// Process generic events
+			return true
+		},
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&awsv1alpha1.Account{}).
+		Named("accountvalidation").
+		Watches(
+			&source.Kind{Type: &awsv1alpha1.Account{}},
+			&handler.EnqueueRequestForObject{},
+			builder.WithPredicates(statusChangePredicate),
+		).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxReconciles,
 		}).Complete(rwm)

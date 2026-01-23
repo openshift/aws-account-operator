@@ -136,6 +136,13 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		reqLogger.Info("Could not retrieve opt-in-regions from configMap")
 	}
 
+	// Read shard-name from configMap (used for tagging AWS accounts)
+	if shardName, ok := configMap.Data["shard-name"]; ok {
+		r.shardName = shardName
+	} else {
+		reqLogger.Info("Could not retrieve shard-name from configMap")
+	}
+
 	awsRegion := config.GetDefaultRegion()
 	// We expect this secret to exist in the same namespace Account CR's are created
 	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
@@ -1480,21 +1487,14 @@ func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
 	}
 
-	// AlexVulaj: We're seeing errors here on startup during local testing, we may need to move this to later in the startup process
-	// ERROR   controller_account      failed retrieving configmap     {"error": "the cache is not started, can not read objects"}
-	configMap, err := utils.GetOperatorConfigMap(r.Client)
-	if err != nil {
-		log.Error(err, "failed retrieving configmap")
-	}
-
-	hiveName, ok := configMap.Data["shard-name"]
-	if !ok {
-		log.Error(err, "shard-name key not available in configmap")
-	}
-	r.shardName = hiveName
+	// Initialize shardName to empty string. It will be read from configMap in Reconcile()
+	// where the cache is guaranteed to be started. Reading it here causes cache errors.
+	// See comment from AlexVulaj above - this was a known issue.
+	r.shardName = ""
 
 	rwm := utils.NewReconcilerWithMetrics(r, controllerName)
 	return ctrl.NewControllerManagedBy(mgr).
+		Named("account").
 		For(&awsv1alpha1.Account{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxReconciles,

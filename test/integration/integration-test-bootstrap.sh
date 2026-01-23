@@ -176,7 +176,11 @@ function cleanup {
                 return
         fi
 
-        $OC delete namespace $NAMESPACE --ignore-not-found=true --timeout=15m || true
+        if $OC delete namespace $NAMESPACE --ignore-not-found=true --timeout=15m 2>/dev/null; then
+            echo "Namespace $NAMESPACE deleted successfully."
+        else
+            echo "WARNING: Namespace deletion did not complete within 15m. Kubernetes will continue cleanup in the background."
+        fi
     else
         echo "Skipping test bootstrap cleanup due to --skip-cleanup flag"
         echo "Note: individual tests may still perform their own cleanup steps"
