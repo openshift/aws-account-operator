@@ -53,9 +53,8 @@ import (
 )
 
 const (
-	awsCredsSecretIDKey        = "aws_access_key_id"     // #nosec G101 -- This is a false positive
-	awsCredsSecretAccessKey    = "aws_secret_access_key" // #nosec G101 -- This is a false positive
-	awsCredsSecretSessionToken = "aws_session_token"     // #nosec G101 -- This is a false positive
+	awsCredsSecretIDKey     = "aws_access_key_id"     // #nosec G101 -- This is a false positive
+	awsCredsSecretAccessKey = "aws_secret_access_key" // #nosec G101 -- This is a false positive
 )
 
 //go:generate mockgen -source=./client.go -destination=./mock/zz_generated.mock_client.go -package=mock
@@ -643,16 +642,7 @@ func (rp *Builder) GetClient(controllerName string, kubeClient kubeclientpkg.Cli
 				input.SecretName, awsCredsSecretAccessKey)
 		}
 
-		sessionToken := ""
-		if token, ok := secret.Data[awsCredsSecretSessionToken]; ok {
-			sessionToken = string(token)
-		}
-
-		if sessionToken == "" && input.AwsToken != "" {
-			sessionToken = input.AwsToken
-		}
-
-		awsClient, err := newClient(controllerName, string(accessKeyID), string(secretAccessKey), sessionToken, input.AwsRegion)
+		awsClient, err := newClient(controllerName, string(accessKeyID), string(secretAccessKey), input.AwsToken, input.AwsRegion)
 		if err != nil {
 			return nil, err
 		}

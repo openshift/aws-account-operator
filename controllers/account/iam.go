@@ -9,7 +9,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
@@ -617,13 +616,13 @@ func createIAMUserSecretName(account string) string {
 func (r *AccountReconciler) createManagedOpenShiftSupportRole(reqLogger logr.Logger, setupClient awsclient.Client, client awsclient.Client, policyArn string, instanceID string, tags []*iam.Tag) (roleID string, err error) {
 	reqLogger.Info("Creating ManagedOpenShiftSupportRole")
 
-	getCallerIdentityOutput, err := setupClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
+	getUserOutput, err := setupClient.GetUser(&iam.GetUserInput{})
 	if err != nil {
-		reqLogger.Error(err, "Failed to get caller identity")
+		reqLogger.Error(err, "Failed to get IAM User info")
 		return roleID, err
 	}
 
-	principalARN := *getCallerIdentityOutput.Arn
+	principalARN := *getUserOutput.User.Arn
 	SREAccessARN, err := r.GetSREAccessARN(reqLogger, awsv1alpha1.SupportJumpRole)
 	if err != nil {
 		reqLogger.Error(err, "Unable to find STS JUMP ROLE in configmap")

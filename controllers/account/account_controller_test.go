@@ -1526,8 +1526,11 @@ var _ = Describe("Account Controller", func() {
 
 			aaoRootIamUserName := "aao-root"
 			aaoRootIamUserArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, "user", aaoRootIamUserName)
-			mockAWSClient.EXPECT().GetCallerIdentity(gomock.Any()).Return(&sts.GetCallerIdentityOutput{
-				Arn: &aaoRootIamUserArn,
+			mockAWSClient.EXPECT().GetUser(gomock.Any()).Return(&iam.GetUserOutput{
+				User: &iam.User{
+					Arn:      &aaoRootIamUserArn,
+					UserName: &aaoRootIamUserName,
+				},
 			}, nil)
 			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(&iam.GetRoleOutput{}, nil)
 
@@ -1747,8 +1750,11 @@ var _ = Describe("Account Controller", func() {
 
 			aaoRootIamUserName := "aao-root"
 			aaoRootIamUserArn := config.GetIAMArn(testAccount.Spec.AwsAccountID, "user", aaoRootIamUserName)
-			mockAWSClient.EXPECT().GetCallerIdentity(gomock.Any()).Return(&sts.GetCallerIdentityOutput{
-				Arn: &aaoRootIamUserArn,
+			mockAWSClient.EXPECT().GetUser(gomock.Any()).Return(&iam.GetUserOutput{
+				User: &iam.User{
+					Arn:      &aaoRootIamUserArn,
+					UserName: &aaoRootIamUserName,
+				},
 			}, nil)
 			mockAWSClient.EXPECT().GetRole(gomock.Any()).Return(&iam.GetRoleOutput{}, nil)
 

@@ -29,20 +29,10 @@ AWS Account Operator is a Kubernetes operator that manages AWS accounts for Open
 - `make clean-operator` - Clean up operator resources
 
 ### Environment Setup
-
-**Initial Setup**:
-1. Authenticate to your assigned account: `rh-aws-saml-login <your-profile-name>`
-2. Create AccessRole in your assigned account: `./hack/scripts/aws/setup_access_role.sh -a <ACCOUNT_ID> -p <your-profile-name>`
-
-Set these environment variables for testing (in `.envrc`):
-- `FORCE_DEV_MODE=local` - Enable local development mode
-- `OSD_STAGING_2_AWS_ACCOUNT_ID` - Your assigned osd-staging-2 account ID (not osd-staging-1)
-- `OSD_STAGING_1_OU_ROOT_ID` and `OSD_STAGING_1_OU_BASE_ID` - Organizational Unit IDs
-- `STS_JUMP_ROLE=arn:aws:iam::<SHARED_ACCOUNT_ID>:role/JumpRole` - Shared jump role (centrally managed)
-- `STS_JUMP_ARN=arn:aws:iam::<SHARED_ACCOUNT_ID>:role/JumpRole` - Same as above
-- `STS_ROLE_ARN=arn:aws:iam::<YOUR_ACCOUNT_ID>:role/AccessRole` - Your AccessRole ARN
-
-**Note**: Credentials are now managed via temporary STS tokens using `rh-aws-saml-login`, stored in `~/.aws/credentials`. No long-lived IAM user keys are used. Credentials expire after a few hours and need refreshing via `update_aws_credentials.sh`.
+Set these environment variables for testing:
+- `OPERATOR_ACCESS_KEY_ID` and `OPERATOR_SECRET_ACCESS_KEY` - AWS credentials
+- `OSD_STAGING_1_AWS_ACCOUNT_ID` and `OSD_STAGING_2_AWS_ACCOUNT_ID` - Test account IDs
+- `STS_JUMP_ROLE` and `STS_ROLE_ARN` - STS role configuration
 
 ## Architecture
 

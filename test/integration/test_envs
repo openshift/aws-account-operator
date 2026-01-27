@@ -1,8 +1,7 @@
 # most of these env variables should probably be removed once all the
 # integration tests are re-written. Just need to make sure nothing
 # else is using them.
-# Note: Despite the variable name, this now uses osd-staging-2 account ID
-OSD_STAGING_1_ACCOUNT_CR_NAME_OSD=osd-creds-mgmt-osd-staging-2
+OSD_STAGING_1_ACCOUNT_CR_NAME_OSD=osd-creds-mgmt-osd-staging-1
 AWS_FEDERATED_ROLE_NAME=read-only
 IAM_USER_SECRET=${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}-secret
 NAMESPACE=aws-account-operator
