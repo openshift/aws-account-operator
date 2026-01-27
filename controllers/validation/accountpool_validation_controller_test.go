@@ -3,8 +3,9 @@ package validation
 import (
 	"context"
 	"fmt"
-	apis "github.com/openshift/aws-account-operator/api"
 	"testing"
+
+	apis "github.com/openshift/aws-account-operator/api"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -198,6 +199,90 @@ testaccount:
 				Expect(err).To(Not(HaveOccurred()))
 				Expect(expectedAccount.Spec.RegionalServiceQuotas["us-east-1"]["L-1216C47A"].Value).To(Equal(50))
 
+			})
+		})
+		When("Account has pause-reconciliation annotation set to true", func() {
+			It("Should skip updating service quotas for that account", func() {
+				var accountPoolConfig = `
+testaccount:
+  servicequotas:
+    us-east-1:
+      L-1216C47A: '200'`
+				pausedAccount := account.DeepCopy()
+				pausedAccount.Annotations = map[string]string{
+					PauseReconciliationAnnotation: "true",
+				}
+				configMap = &v1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      awsv1alpha1.DefaultConfigMap,
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+					Data: map[string]string{
+						"accountpool":                    accountPoolConfig,
+						"feature.accountpool_validation": "true",
+					},
+				}
+
+				r := &AccountPoolValidationReconciler{
+					Scheme: scheme.Scheme,
+					Client: fake.NewClientBuilder().WithRuntimeObjects(pausedAccount, &accontPool, configMap).Build(),
+				}
+				_, _ = r.Reconcile(context.TODO(), ctrl.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: awsv1alpha1.AccountCrNamespace,
+						Name:      accountName,
+					},
+				})
+				err := r.Client.Get(context.TODO(), types.NamespacedName{
+					Namespace: awsv1alpha1.AccountCrNamespace,
+					Name:      accountName,
+				}, &expectedAccount)
+
+				Expect(err).To(Not(HaveOccurred()))
+				// Service quota should remain unchanged (100) because account is paused
+				Expect(expectedAccount.Spec.RegionalServiceQuotas["us-east-1"]["L-1216C47A"].Value).To(Equal(100))
+			})
+		})
+		When("Account has pause-reconciliation annotation set to false", func() {
+			It("Should proceed with updating service quotas", func() {
+				var accountPoolConfig = `
+testaccount:
+  servicequotas:
+    us-east-1:
+      L-1216C47A: '200'`
+				unpausedAccount := account.DeepCopy()
+				unpausedAccount.Annotations = map[string]string{
+					PauseReconciliationAnnotation: "false",
+				}
+				configMap = &v1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      awsv1alpha1.DefaultConfigMap,
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+					Data: map[string]string{
+						"accountpool":                    accountPoolConfig,
+						"feature.accountpool_validation": "true",
+					},
+				}
+
+				r := &AccountPoolValidationReconciler{
+					Scheme: scheme.Scheme,
+					Client: fake.NewClientBuilder().WithRuntimeObjects(unpausedAccount, &accontPool, configMap).Build(),
+				}
+				_, _ = r.Reconcile(context.TODO(), ctrl.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: awsv1alpha1.AccountCrNamespace,
+						Name:      accountName,
+					},
+				})
+				err := r.Client.Get(context.TODO(), types.NamespacedName{
+					Namespace: awsv1alpha1.AccountCrNamespace,
+					Name:      accountName,
+				}, &expectedAccount)
+
+				Expect(err).To(Not(HaveOccurred()))
+				// Service quota should be updated (200) because account is not paused
+				Expect(expectedAccount.Spec.RegionalServiceQuotas["us-east-1"]["L-1216C47A"].Value).To(Equal(200))
 			})
 		})
 	})
