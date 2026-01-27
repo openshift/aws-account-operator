@@ -8,6 +8,10 @@ unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
 echo "Getting Operator User credentials from secret..."
 export AWS_ACCESS_KEY_ID=$(oc get secret -n aws-account-operator aws-account-operator-credentials -o json | jq -r '.data.aws_access_key_id' | base64 -d)
 export AWS_SECRET_ACCESS_KEY=$(oc get secrets -n aws-account-operator aws-account-operator-credentials -o json | jq -r .data.aws_secret_access_key | base64 -d)
+SESSION_TOKEN=$(oc get secrets -n aws-account-operator aws-account-operator-credentials -o json | jq -r '.data.aws_session_token // empty' | base64 -d)
+if [ -n "$SESSION_TOKEN" ]; then
+  export AWS_SESSION_TOKEN=$SESSION_TOKEN
+fi
 
 export AWS_PAGER=""
 operatorUser=$(aws sts get-caller-identity --output json | jq -r .Arn)
