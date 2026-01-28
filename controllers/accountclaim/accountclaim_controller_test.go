@@ -1010,4 +1010,56 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 			})
 		})
 	})
+
+	When("Account has pause-reconciliation annotation", func() {
+		It("should NOT be claimable even if ready and unclaimed", func() {
+			pausedAccount := &awsv1alpha1.Account{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "paused-account",
+					Namespace: namespace,
+					Annotations: map[string]string{
+						PauseReconciliationAnnotation: "true",
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							Kind: "AccountPool",
+						},
+					},
+				},
+				Spec: awsv1alpha1.AccountSpec{
+					AccountPool:  defaultAccountPoolName,
+					AwsAccountID: "123456789012",
+				},
+				Status: awsv1alpha1.AccountStatus{
+					State:   string(awsv1alpha1.AccountReady),
+					Claimed: false,
+				},
+			}
+
+			testClaim := &awsv1alpha1.AccountClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "test-claim",
+					Namespace:         namespace,
+					CreationTimestamp: metav1.Time{},
+					Finalizers:        []string{accountClaimFinalizer},
+				},
+				Spec: awsv1alpha1.AccountClaimSpec{
+					LegalEntity: awsv1alpha1.LegalEntity{
+						Name: "Test Legal Entity",
+						ID:   "test-legal-123",
+					},
+				},
+			}
+
+			// Verify the function returns false for paused accounts
+			result := CanAccountBeClaimedByAccountClaim(pausedAccount, testClaim)
+			Expect(result).To(BeFalse(), "Paused accounts should not be claimable")
+
+			// Also test with annotation set to false - should be claimable
+			unpausedAccount := pausedAccount.DeepCopy()
+			unpausedAccount.Annotations[PauseReconciliationAnnotation] = "false"
+			result = CanAccountBeClaimedByAccountClaim(unpausedAccount, testClaim)
+			Expect(result).To(BeTrue(), "Unpaused accounts should be claimable if ready and unclaimed")
+		})
+	})
 })

@@ -3,12 +3,13 @@ package validation
 import (
 	"context"
 	"fmt"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
-	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"reflect"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"strconv"
 	"time"
+
+	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/go-logr/logr"
 	"github.com/openshift/aws-account-operator/pkg/utils"
@@ -133,6 +134,11 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 
 	for _, account := range accountList {
 		accountCopy := account
+		// Skip accounts with pause reconciliation annotation
+		if accountCopy.Annotations[PauseReconciliationAnnotation] == "true" {
+			reqLogger.Info("Skipping account with pause reconciliation annotation", "account", accountCopy.Name)
+			continue
+		}
 		if !reflect.DeepEqual(accountCopy.Spec.RegionalServiceQuotas, parsedRegionalServiceQuotas) && isEnabled {
 			accountCopy.Spec.RegionalServiceQuotas = parsedRegionalServiceQuotas
 
@@ -166,6 +172,11 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 
 	for _, updatedAccount := range updatedAccountList {
 		updatedAccountCopy := updatedAccount
+		// Skip accounts with pause reconciliation annotation
+		if updatedAccountCopy.Annotations[PauseReconciliationAnnotation] == "true" {
+			reqLogger.Info("Skipping account with pause reconciliation annotation", "account", updatedAccountCopy.Name)
+			continue
+		}
 		if exists := updatedAccountMap[updatedAccountCopy.Name]; exists {
 			updatedAccountCopy.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
 			reqLogger.Info(fmt.Sprintf("Attempting to update the account status for: %v", updatedAccountCopy.Name))

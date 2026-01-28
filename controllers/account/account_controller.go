@@ -71,6 +71,8 @@ const (
 	iamUserNameUHC               = "osdManagedAdmin"
 
 	controllerName = "account"
+	// PauseReconciliationAnnotation is the annotation key to pause all reconciliation for an account
+	PauseReconciliationAnnotation = "aws.managed.openshift.com/pause-reconciliation"
 
 	// number of service quota requests we are allowed to open concurrently in AWS
 	MaxOpenQuotaRequests = 20
@@ -109,6 +111,12 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			return reconcile.Result{}, nil
 		}
 		return reconcile.Result{}, err
+	}
+
+	// Check if reconciliation is paused for this account (but allow deletion to proceed)
+	if currentAcctInstance.Annotations[PauseReconciliationAnnotation] == "true" && !currentAcctInstance.IsPendingDeletion() {
+		reqLogger.Info("Reconciliation paused for account - skipping all operations", "account", currentAcctInstance.Name)
+		return reconcile.Result{}, nil
 	}
 
 	configMap, err := utils.GetOperatorConfigMap(r.Client)

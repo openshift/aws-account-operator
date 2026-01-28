@@ -49,6 +49,8 @@ const (
 	awsSTSSecret            = "sts-secret"
 	stsRoleName             = "managed-sts-role"
 	stsPolicyName           = "AAO-CustomPolicy"
+	// PauseReconciliationAnnotation is the annotation key to pause all reconciliation for an account
+	PauseReconciliationAnnotation = "aws.managed.openshift.com/pause-reconciliation"
 )
 
 var fleetManagerClaimEnabled = false
@@ -941,6 +943,11 @@ func IsSameAccountPoolNames(first string, second string, defaultAccountPool stri
 func CanAccountBeClaimedByAccountClaim(account *awsv1alpha1.Account, accountclaim *awsv1alpha1.AccountClaim) bool {
 	// nil accounts can't be claimed
 	if account == nil || accountclaim == nil {
+		return false
+	}
+
+	// Accounts with pause reconciliation annotation can't be claimed
+	if account.Annotations[PauseReconciliationAnnotation] == "true" {
 		return false
 	}
 

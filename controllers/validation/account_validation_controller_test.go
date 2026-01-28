@@ -883,6 +883,81 @@ func TestValidateAccount_Reconcile(t *testing.T) {
 				},
 			},
 		}, want: reconcile.Result{Requeue: false}, wantErr: false},
+		{name: "Will not attempt to reconcile an account with pause-reconciliation annotation set to true.", fields: fields{
+			Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
+				&awsv1alpha1.Account{
+					TypeMeta: v1.TypeMeta{
+						Kind:       "Account",
+						APIVersion: "v1alpha1",
+					},
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "test",
+						Namespace: "default",
+						Annotations: map[string]string{
+							PauseReconciliationAnnotation: "true",
+						},
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						AwsAccountID: "123456",
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State: string(awsv1alpha1.AccountReady),
+					},
+				},
+				&corev1.ConfigMap{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      awsv1alpha1.DefaultConfigMap,
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+				}}...).Build(),
+			scheme:           scheme.Scheme,
+			awsClientBuilder: nil,
+		}, args: args{
+			request: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: "default",
+					Name:      "test",
+				},
+			},
+		}, want: reconcile.Result{Requeue: false}, wantErr: false},
+		{name: "Will proceed with reconciliation when pause-reconciliation annotation is set to false (CCS account skips OU validation).", fields: fields{
+			Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
+				&awsv1alpha1.Account{
+					TypeMeta: v1.TypeMeta{
+						Kind:       "Account",
+						APIVersion: "v1alpha1",
+					},
+					ObjectMeta: v1.ObjectMeta{
+						Name:      "test",
+						Namespace: "default",
+						Annotations: map[string]string{
+							PauseReconciliationAnnotation: "false",
+						},
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						AwsAccountID: "123456",
+						BYOC:         true, // CCS account skips OU validation
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State: string(awsv1alpha1.AccountReady),
+					},
+				},
+				&corev1.ConfigMap{
+					ObjectMeta: v1.ObjectMeta{
+						Name:      awsv1alpha1.DefaultConfigMap,
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+				}}...).Build(),
+			scheme:           scheme.Scheme,
+			awsClientBuilder: newBuilder(ctrl),
+		}, args: args{
+			request: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: "default",
+					Name:      "test",
+				},
+			},
+		}, want: reconcile.Result{Requeue: false}, wantErr: false},
 		{
 			name: "When an account has no AWS account ID and is failed it stop reconciliation",
 			fields: fields{
@@ -914,6 +989,91 @@ func TestValidateAccount_Reconcile(t *testing.T) {
 					}}...).Build(),
 				scheme:           scheme.Scheme,
 				awsClientBuilder: nil,
+			},
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: "default",
+						Name:      "test",
+					},
+				},
+			},
+			want: reconcile.Result{Requeue: false}, wantErr: false},
+		{
+			name: "Will skip pause check and allow deletion when account is pending deletion even with pause annotation",
+			fields: fields{
+				Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
+					&awsv1alpha1.Account{
+						TypeMeta: v1.TypeMeta{
+							Kind:       "Account",
+							APIVersion: "v1alpha1",
+						},
+						ObjectMeta: v1.ObjectMeta{
+							Name:      "test",
+							Namespace: "default",
+							Annotations: map[string]string{
+								PauseReconciliationAnnotation: "true",
+							},
+							DeletionTimestamp: &v1.Time{
+								Time: time.Now(),
+							},
+						},
+						Spec: awsv1alpha1.AccountSpec{
+							AwsAccountID: "123456",
+						},
+					},
+					&corev1.ConfigMap{
+						ObjectMeta: v1.ObjectMeta{
+							Name:      awsv1alpha1.DefaultConfigMap,
+							Namespace: awsv1alpha1.AccountCrNamespace,
+						},
+					}}...).Build(),
+				scheme:           scheme.Scheme,
+				awsClientBuilder: nil, // No AWS calls expected - deletion check happens first
+			},
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: "default",
+						Name:      "test",
+					},
+				},
+			},
+			want: reconcile.Result{Requeue: false}, wantErr: false},
+		{
+			name: "Will allow automatic deletion of failed accounts even when pause annotation is set",
+			fields: fields{
+				Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
+					&awsv1alpha1.Account{
+						TypeMeta: v1.TypeMeta{
+							Kind:       "Account",
+							APIVersion: "v1alpha1",
+						},
+						ObjectMeta: v1.ObjectMeta{
+							Name:      "test",
+							Namespace: "default",
+							Annotations: map[string]string{
+								PauseReconciliationAnnotation: "true",
+							},
+						},
+						Spec: awsv1alpha1.AccountSpec{
+							AwsAccountID: "", // No AWS account ID
+						},
+						Status: awsv1alpha1.AccountStatus{
+							State: string(awsv1alpha1.AccountFailed),
+						},
+					},
+					&corev1.ConfigMap{
+						ObjectMeta: v1.ObjectMeta{
+							Name:      awsv1alpha1.DefaultConfigMap,
+							Namespace: awsv1alpha1.AccountCrNamespace,
+						},
+						Data: map[string]string{
+							"feature.validation_delete_account": "true",
+						},
+					}}...).Build(),
+				scheme:           scheme.Scheme,
+				awsClientBuilder: nil, // No AWS calls expected
 			},
 			args: args{
 				request: reconcile.Request{
