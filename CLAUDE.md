@@ -12,15 +12,102 @@ AWS Account Operator is a Kubernetes operator that manages AWS accounts for Open
 - `make test-all` - Runs all test suites (includes lint, unit tests, and integration tests)
 - `make test` - Run unit tests only
 - `make test-apis` - Run API tests only
-- `make test-integration` - Run integration tests
+- `make test-integration` - Run full integration test suite (for CI/PROW)
+- `make test-integration-local` - **EASY BUTTON**: Automated local integration testing with setup
 - `make lint` - Run linting
 - `make build` - Build the operator binary
 - `go test ./...` - Run unit tests from any directory
 
-### Running Tests by Category
-- `make test-account-creation` - Test account creation flows
-- `make test-ccs` - Test Customer Cloud Subscription (BYOC) flows
-- `make test-reuse` - Test account reuse functionality
+### Integration Testing
+
+**Quick Start** (Local testing with 5/8 tests):
+```bash
+make test-integration-local
+```
+
+This command automatically:
+1. Validates AWS credentials and cluster connectivity
+2. Configures operator and starts it locally
+3. Runs 5 integration tests (~20-25 minutes total)
+4. Skips 3 tests (see below)
+
+**What Runs Where:**
+
+*Local Profile* (5/8 tests, ~20-25 minutes):
+- ✅ Fast tests: FAKE AccountClaim, AccountPool (~3 min)
+- ✅ AWS integration: STS, Account creation, OU logic (~15-20 min)
+- ❌ Skipped: KMS (requires special IAM permissions), Account reuse, Finalizer cleanup (too slow locally)
+
+*CI/PROW Profile* (8/8 tests, ~15-20 minutes):
+- All 8 tests with real AWS integration
+- Faster infrastructure (2-4x faster than local)
+- Required for PR merge
+
+**Manual Setup** (if you want more control):
+```bash
+# Run setup only
+./hack/scripts/setup_local_integration_testing.sh
+
+# Then run tests manually
+./test/integration/integration-test-bootstrap.sh -p local
+```
+
+**Integration Tests (Local Profile)** - 5 tests (~20-25 minutes total):
+- test_fake_accountclaim.sh - FAKE claim workflow (~30s)
+- test_accountpool_size.sh - AccountPool management (~1-2m)
+- test_sts_accountclaim.sh - STS account workflow (~5m)
+- test_nonccs_account_creation.sh - Account creation workflow (~5-7m)
+- test_aws_ou_logic.sh - Organizational Unit assignment (~7-10m)
+
+**Skipped Locally** (3 tests):
+- test_kms_accountclaim.sh - Requires cross-account IAM role assumption permissions not available locally
+- test_nonccs_account_reuse.sh - Account reuse with finalizer cleanup (~10-15m, often times out)
+- test_finalizer_cleanup.sh - Extended finalizer operations (~20-25m, designed for slow cleanup)
+
+**Integration Tests (CI/PROW Profile)** - All 8 tests (~15-20 minutes):
+- Runs all 5 local tests PLUS the 3 skipped tests
+- Faster infrastructure (2-4x faster than local)
+- Required for PR merge
+
+**Why Skip 3 Tests Locally?**
+- **KMS test**: Requires cross-account IAM role assumption permissions (ManagedOpenShift-Support role) not available in local dev environment
+- **Account reuse and finalizer tests**: Local infrastructure is 2-4x slower than CI (consumer internet, external operator)
+  - These tests involve extensive AWS cleanup (10-25 minutes)
+  - Often timeout even with 15m limits locally
+- 5/8 tests still provide excellent coverage for local validation
+- All PRs must pass full 8/8 test suite in CI before merge
+
+**Performance Notes**:
+- **Local development**: Account CR operations take 5-15 minutes due to:
+  - Consumer internet connection (vs datacenter networking in CI)
+  - External operator-sdk process (vs in-cluster operator in CI)
+  - IAM eventual consistency (AWS can take 2+ minutes to propagate changes)
+  - Sequential AWS API calls for resource cleanup
+- **PROW/CI environment**: 2-4x faster due to datacenter infrastructure
+- **Timeouts are extended for local profile**: 7m Account ready, 7m AccountClaim ready, 5m resource delete
+
+**Optimization Strategies**:
+- Local profile runs 5/8 tests for good coverage without excessive wait times
+- All PRs must pass full 8/8 test suite in CI before merge
+- Extended timeouts account for slower local infrastructure
+- Operator reuse: When running tests multiple times locally, the operator process is reused for faster iteration
+  - ConfigMap and CRDs are automatically recreated even when operator is reused
+  - Finalizers are removed immediately during cleanup (no double-timeout wait)
+- Parallel execution: Not currently supported for single AWS account (resource conflicts)
+  - Future: Could parallelize with multiple AWS accounts assigned to different tests
+
+**Local Development Notes**:
+- **Credential Expiration**: STS tokens expire after a few hours. If tests timeout with "null" status:
+  - Run `./hack/scripts/update_aws_credentials.sh` to refresh credentials
+  - Timeout messages include credential expiration hints for local development
+- **Cleanup Improvements**: Finalizers are now removed immediately instead of waiting for timeout
+  - Reduced cleanup timeout from 15m to 5m for local profile
+  - Tests complete faster when cleaning up resources
+- **Operator ConfigMap**: The operator requires `aws-account-operator-configmap` to reconcile Account CRs
+  - **CI/PROW**: ConfigMap created from mounted secrets with real OU/STS values
+  - **Local Dev**: ConfigMap auto-created with placeholder values (OU vars not needed for BYOC testing)
+  - If OU environment variables are set in `.envrc`, `make predeploy` will create proper ConfigMap
+  - Otherwise, bootstrap script creates minimal ConfigMap sufficient for integration tests
 
 ### Local Development
 - `make predeploy` - Deploy prerequisites (CRDs, namespaces, credentials)
