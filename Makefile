@@ -29,6 +29,21 @@ test-apis:
 	go test ./... ; \
 	popd
 
+.PHONY: test-integration-local
+test-integration-local: ## Run integration tests locally with automated setup
+	@echo "Setting up local integration testing environment..."
+	@./hack/scripts/setup_local_integration_testing.sh
+	@echo ""
+	@echo "Running integration tests (local profile - skips KMS)..."
+	@export OPERATOR_ACCESS_KEY_ID=$$(aws configure get aws_access_key_id --profile osd-staging-1); \
+	export OPERATOR_SECRET_ACCESS_KEY=$$(aws configure get aws_secret_access_key --profile osd-staging-1); \
+	export OPERATOR_SESSION_TOKEN=$$(aws configure get aws_session_token --profile osd-staging-1); \
+	./test/integration/integration-test-bootstrap.sh -p local
+
+.PHONY: test-integration
+test-integration: ## Run full integration test suite (for CI/PROW)
+	@./test/integration/integration-test-bootstrap.sh -p prow
+
 .PHONY: test-all
 test-all: lint clean-operator test test-apis test-integration ## Runs all tests
 

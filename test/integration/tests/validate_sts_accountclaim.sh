@@ -41,8 +41,10 @@ if [[ $(jq -r '.spec.manualSTSMode' <<< "$accClaim") != true ]]; then
 fi
 
 # validate stsRoleARN fields
-if [[ $(jq -r '.spec.stsRoleARN' <<< "$accClaim") != ${STS_ROLE_ARN} ]]; then
-  echo "STS Accountclaim should have .spec.stsRoleARN set to STS_ROLE_ARN."
+# Prefer STS_TEST_ROLE_ARN; fallback to STS_ROLE_ARN if not set
+EXPECTED_STS_ROLE="${STS_TEST_ROLE_ARN:-${STS_ROLE_ARN}}"
+if [[ $(jq -r '.spec.stsRoleARN' <<< "$accClaim") != ${EXPECTED_STS_ROLE} ]]; then
+  echo "STS Accountclaim should have .spec.stsRoleARN set to ${EXPECTED_STS_ROLE}."
   exit 1
 fi
 

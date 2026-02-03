@@ -5,6 +5,19 @@ set -eo pipefail
 source test/integration/test_envs
 source test/integration/integration-test-lib.sh
 
+# Extended timeouts for local development (AWS operations can be slow)
+# These are set early so parseArgs can detect PROFILE and apply conditionally
+function applyLocalTimeouts {
+    if [ "${PROFILE}" = "local" ]; then
+        # Extended timeouts for slower local infrastructure
+        export ACCOUNT_READY_TIMEOUT="7m"
+        export ACCOUNT_CLAIM_READY_TIMEOUT="7m"
+        export STS_CLAIM_READY_TIMEOUT="7m"
+        export RESOURCE_DELETE_TIMEOUT="5m"  # Cleanup timeout for local development
+        echo "Extended timeouts for local profile: Account=${ACCOUNT_READY_TIMEOUT}, Claim=${ACCOUNT_CLAIM_READY_TIMEOUT}, STS=${STS_CLAIM_READY_TIMEOUT}, Delete=${RESOURCE_DELETE_TIMEOUT}"
+    fi
+}
+
 export TEST_START_TIME_SECONDS=$(date +%s)
 export OPERATOR_START_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 export IMAGE_NAME=aws-account-operator
@@ -71,6 +84,13 @@ function sourceEnvrcConfig {
         return 1
     fi
     source .envrc
+
+    # Derive STS_TEST_ROLE_ARN for STS testing (same pattern as PROW)
+    # Falls back to STS_ROLE_ARN if not already set
+    if [ -n "${OSD_STAGING_2_AWS_ACCOUNT_ID}" ]; then
+        STS_TEST_ROLE_ARN="${STS_TEST_ROLE_ARN:-arn:aws:iam::${OSD_STAGING_2_AWS_ACCOUNT_ID}:role/AccessRole}"
+        export STS_TEST_ROLE_ARN
+    fi
 }
 
 function sourceFromMountedKvStoreConfig {
@@ -81,6 +101,13 @@ function sourceFromMountedKvStoreConfig {
     export OSD_STAGING_2_AWS_ACCOUNT_ID
     STS_ROLE_ARN=$(cat /tmp/secret/aao-aws-creds/STS_ROLE_ARN)
     export STS_ROLE_ARN
+
+    # STS_TEST_ROLE_ARN: For STS AccountClaim testing (role must be in BYOC account)
+    # STS_ROLE_ARN is used for cleanup and points to osd-staging-1
+    # STS_TEST_ROLE_ARN is used for testing and points to osd-staging-2
+    STS_TEST_ROLE_ARN="arn:aws:iam::${OSD_STAGING_2_AWS_ACCOUNT_ID}:role/OrganizationAccountAccessRole"
+    export STS_TEST_ROLE_ARN
+
     STS_JUMP_ARN=$(cat /tmp/secret/aao-aws-creds/STS_JUMP_ARN)
     export STS_JUMP_ARN
     OSD_STAGING_1_OU_ROOT_ID=$(cat /tmp/secret/aao-aws-creds/OSD_STAGING_1_OU_ROOT_ID)
@@ -347,6 +374,16 @@ function installDependenciesToUserLocal {
     echo "  - jq: $(jq --version)"
 }
 
+# profileLocal - Bootstrap for local development testing
+#
+# This profile is designed for developers running tests repeatedly on the same cluster.
+# It optimizes for fast iteration by:
+#   - Reusing an already-running operator if one exists (avoids rebuild)
+#   - Handling namespace recreation after cleanup
+#   - Using local .envrc for configuration
+#
+# NOTE: This profile is LOCAL DEVELOPMENT ONLY. CI/Prow uses profileProw() which
+# always builds fresh operators and doesn't reuse processes.
 function profileLocal {
     echo -e "\n========================================================================"
     echo "= Int Testing Bootstrap Profile - Local Cluster"
@@ -364,21 +401,84 @@ function profileLocal {
     echo "= Operator Runtime"
     echo "========================================================================"
 
-    # start local operator if not already running
-    #
-    # not sure if theres a better way to detect this, but operator-sdk processes look 
-    # like this when I was testing locally: 
-    #   > ps aux | grep "[g]o-build"
-    #   mstratto 3313211  0.2  0.1 2590492 117236 pts/7  Sl+  10:59   0:08 /tmp/go-build3762679696/b001/exe/main --zap-devel
-    # There is some build information in that path, but I thought that was overkill:
-    #   > cat /tmp/go-build3762679696/b001/importcfg.link | grep aws-account-operator | wc -l
-    #   14
+    # Ensure operator namespace exists even after cleanupPre deletion
+    echo "Ensuring operator namespace exists..."
+    if ! $OC get namespace "$NAMESPACE" &>/dev/null; then
+        echo "Creating namespace $NAMESPACE..."
+        $OC adm new-project "$NAMESPACE" 2>/dev/null || $OC create namespace "$NAMESPACE"
+    else
+        echo "Namespace $NAMESPACE already exists"
+    fi
+
+    # Check if operator-sdk is already running from a previous test run
+    # If found, reuse it to avoid rebuilding (speeds up local iteration)
+    # Helper function to create minimal configmap for local development
+    # when OU environment variables are not set
+    createMinimalConfigMap() {
+        if $OC get configmap aws-account-operator-configmap -n $NAMESPACE &>/dev/null; then
+            echo "ConfigMap already exists, skipping creation"
+            return 0
+        fi
+
+        echo "Creating minimal ConfigMap for local development..."
+        $OC create -f - <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-account-operator-configmap
+  namespace: $NAMESPACE
+data:
+  root: "r-placeholder"
+  base: "ou-placeholder"
+  quota.vcpu: "2000"
+  account-limit: "10"
+  MaxConcurrentReconciles.account: "2"
+  MaxConcurrentReconciles.accountvalidation: "2"
+  MaxConcurrentReconciles.accountpoolvalidation: "1"
+  MaxConcurrentReconciles.accountclaim: "1"
+  MaxConcurrentReconciles.accountpool: "1"
+  MaxConcurrentReconciles.awsfederatedaccountaccess: "1"
+  MaxConcurrentReconciles.awsfederatedrole: "1"
+  ami-owner: "309956199498"
+  sts-jump-role: "arn:aws:iam::000000000000:role/PlaceholderRole"
+  support-jump-role: "arn:aws:iam::000000000000:role/PlaceholderRole"
+  feature.validation_move_account: "false"
+  feature.validation_tag_account: "false"
+  feature.validation_delete_account: "false"
+  feature.accountpool_validation: "false"
+  feature.accountclaim_fleet_manager_trusted_arn: "false"
+  feature.opt_in_regions: "false"
+  feature.compliance_tags: "false"
+  opt-in-regions: "af-south-1,ap-southeast-4"
+  shard-name: local
+  accountpool: ""
+  app-code: ""
+  service-phase: ""
+  cost-center: ""
+EOF
+        echo "✓ Minimal ConfigMap created"
+    }
+
     if ! localOperatorPID=$(pgrep -f go-build); then
         echo -e "\n========================================================================"
         echo "= Preparing Cluster for Build/Deploy"
         echo "========================================================================"
-        $OC adm new-project "$NAMESPACE" 2>/dev/null || true
-        make predeploy
+        echo "Running predeploy to install CRDs and dependencies..."
+        # Try to run predeploy, but don't fail if OU environment variables aren't set
+        if ! make predeploy 2>&1 | tee /tmp/predeploy.log; then
+            if grep -q "OSD_STAGING_1_OU_ROOT_ID is undefined" /tmp/predeploy.log; then
+                echo ""
+                echo "⚠ OU environment variables not set (expected for local BYOC testing)"
+                echo "  CRDs and basic resources created successfully"
+                echo "  ConfigMap creation skipped due to missing OU vars - will create minimal version"
+                echo ""
+                createMinimalConfigMap
+            else
+                echo "ERROR: predeploy failed for unexpected reason"
+                cat /tmp/predeploy.log
+                return 1
+            fi
+        fi
 
         echo -e "\n========================================================================"
         echo "= Building/Running Operator using operator-sdk"
@@ -388,10 +488,38 @@ function profileLocal {
         echo "Operator running in background with PID $localOperatorPID"
         echo "You can follow operator logs with: tail -f $LOCAL_LOG_FILE"
     else
-        echo "Local operator-sdk process (probably) already running with PID $localOperatorPID."
+        # Reusing existing operator from previous test run
+        echo "===== OPERATOR REUSE DETECTED ====="
+        echo "Operator-sdk process already running with PID $localOperatorPID"
+        echo "Reusing existing operator (skipping rebuild)"
+
+        # Even when reusing operator, ensure ConfigMap and CRDs exist
+        # (namespace may have been deleted/recreated during cleanup)
+        echo -e "\n========================================================================"
+        echo "= Ensuring CRDs and ConfigMap exist"
+        echo "========================================================================"
+        echo "Running predeploy to install CRDs and dependencies..."
+        # Try to run predeploy, but don't fail if OU environment variables aren't set
+        if ! make predeploy 2>&1 | tee /tmp/predeploy.log; then
+            if grep -q "OSD_STAGING_1_OU_ROOT_ID is undefined" /tmp/predeploy.log; then
+                echo ""
+                echo "⚠ OU environment variables not set (expected for local BYOC testing)"
+                echo "  CRDs and basic resources recreated successfully"
+                echo "  ConfigMap creation skipped due to missing OU vars - will create minimal version"
+                echo ""
+                createMinimalConfigMap
+            else
+                echo "ERROR: predeploy failed for unexpected reason"
+                cat /tmp/predeploy.log
+                return 1
+            fi
+        fi
+
         localOperatorStdOut=$(ls -l /proc/$localOperatorPID/fd/1)
         if !  echo "$localOperatorStdOut" | grep "$LOCAL_LOG_FILE" &>/dev/null; then
-            echo -e "Proc $localOperatorPID stdout doesnt seem to be going to the expected log file ($LOCAL_LOG_FILE):\n\t$localOperatorStdOut"
+            echo ""
+            echo "WARNING: Process $localOperatorPID stdout doesn't match expected log file ($LOCAL_LOG_FILE):"
+            echo "  $localOperatorStdOut"
             echo "This might not be the operator process. Do you have multiple operator-sdk builds running?"
             echo "You may need to intervene to make sure the operator is running properly."
         else
@@ -510,7 +638,15 @@ function runTest {
     local testScript=$1
     overall="PASS"
 
-    echo -e "\n========================================================================"
+    echo -e "\n"
+    echo "================================================================================"
+    echo "================================================================================"
+    echo "STARTING INTEGRATION TEST: $testScript"
+    echo "================================================================================"
+    echo "================================================================================"
+    echo ""
+
+    echo "========================================================================"
     echo "= Test: $testScript"
     echo "= Phase: setup"
     echo "========================================================================"
@@ -596,6 +732,7 @@ function printTestResults {
 }
 
 parseArgs "$@"
+applyLocalTimeouts
 OC_WITH_NAMESPACE="$OC -n $NAMESPACE"
 trap cleanupPost EXIT
 case $PROFILE in
@@ -617,10 +754,44 @@ esac
 echo -e "\n========================================================================"
 echo "= START INTEGRATION TESTS"
 echo "========================================================================"
+
+if [ "${PROFILE}" = "local" ]; then
+    echo "Local Profile: 6/8 tests (extended timeouts, skips 2 slow tests)"
+    echo ""
+else
+    echo "CI/PROW Profile: 8/8 tests (full integration suite)"
+    echo ""
+fi
+
 set +e
-runTest "test/integration/tests/test_nonccs_account_creation.sh"
-runTest "test/integration/tests/test_nonccs_account_reuse.sh"
-runTest "test/integration/tests/test_aws_ou_logic.sh"
+
+if [ "${PROFILE}" = "local" ]; then
+    # ===== LOCAL PROFILE: 5/8 TESTS =====
+    # Runs core tests locally with extended timeouts for slower local infrastructure
+    # Skips 3 tests that require special permissions or often timeout locally
+
+    runTest "test/integration/tests/test_fake_accountclaim.sh"
+    runTest "test/integration/tests/test_accountpool_size.sh"
+    runTest "test/integration/tests/test_sts_accountclaim.sh"
+    runTest "test/integration/tests/test_nonccs_account_creation.sh"
+    runTest "test/integration/tests/test_aws_ou_logic.sh"
+    # SKIP: test_kms_accountclaim.sh - Requires cross-account IAM permissions not available locally
+    # SKIP: test_nonccs_account_reuse.sh - Too slow locally (10-15 min, often times out)
+    # SKIP: test_finalizer_cleanup.sh - Too slow locally (20-25 min)
+
+else
+    # ===== CI/PROW PROFILE: FULL INTEGRATION TEST SUITE =====
+    
+    runTest "test/integration/tests/test_fake_accountclaim.sh"
+    runTest "test/integration/tests/test_accountpool_size.sh"
+    runTest "test/integration/tests/test_sts_accountclaim.sh"
+    runTest "test/integration/tests/test_nonccs_account_creation.sh"
+    runTest "test/integration/tests/test_kms_accountclaim.sh"
+    runTest "test/integration/tests/test_aws_ou_logic.sh"
+    runTest "test/integration/tests/test_nonccs_account_reuse.sh"
+    runTest "test/integration/tests/test_finalizer_cleanup.sh"
+fi
+
 set -e
 
 # we probably only want to dump the logs on prow for convenience
@@ -631,6 +802,3 @@ echo -e "\n=====================================================================
 echo "= INTEGRATION TEST RESULTS"
 echo "========================================================================"
 printTestResults
-
-
-

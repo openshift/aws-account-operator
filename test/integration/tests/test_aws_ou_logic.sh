@@ -15,6 +15,14 @@
 
 source test/integration/integration-test-lib.sh
 
+# Run pre-flight checks
+if [ "${SKIP_PREFLIGHT_CHECKS:-false}" != "true" ]; then
+    if ! preflightChecks; then
+        echo "Pre-flight checks failed. Set SKIP_PREFLIGHT_CHECKS=true to bypass."
+        exit $EXIT_FAIL_UNEXPECTED_ERROR
+    fi
+fi
+
 EXIT_TEST_FAILED_MOVE_ACCOUNT_ROOT=1
 
 declare -A exitCodeMessages
