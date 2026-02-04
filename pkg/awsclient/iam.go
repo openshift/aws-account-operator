@@ -1,12 +1,15 @@
 package awsclient
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/utils"
@@ -18,20 +21,19 @@ func ListIAMUserTags(reqLogger logr.Logger, client Client, userName string) (*ia
 		UserName: aws.String(userName),
 	}
 
-	result, err := client.ListUserTags(input)
+	result, err := client.ListUserTags(context.TODO(), input)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case iam.ErrCodeNoSuchEntityException:
-				fmt.Println(iam.ErrCodeNoSuchEntityException, aerr.Error())
-			case iam.ErrCodeServiceFailureException:
-				fmt.Println(iam.ErrCodeServiceFailureException, aerr.Error())
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			switch apiErr.ErrorCode() {
+			case "NoSuchEntity":
+				fmt.Println("NoSuchEntity", apiErr.ErrorMessage())
+			case "ServiceFailure":
+				fmt.Println("ServiceFailure", apiErr.ErrorMessage())
 			default:
-				fmt.Println(aerr.Error())
+				fmt.Println(apiErr.ErrorMessage())
 			}
 		} else {
-			// Print the error, cast err to awserr.Error to get the Code and
-			// Message from an error.
 			fmt.Println(err.Error())
 		}
 		return result, err
@@ -40,22 +42,23 @@ func ListIAMUserTags(reqLogger logr.Logger, client Client, userName string) (*ia
 	return result, nil
 }
 
-// ListIAMUsers returns an *iam.User list of users from the current account
-func ListIAMUsers(reqLogger logr.Logger, client Client) ([]*iam.User, error) {
+// ListIAMUsers returns a types.User list of users from the current account
+func ListIAMUsers(reqLogger logr.Logger, client Client) ([]types.User, error) {
 	input := &iam.ListUsersInput{}
 	// List of IAM users to return
-	iamUserList := []*iam.User{}
+	iamUserList := []types.User{}
 
-	err := client.ListUsersPages(input,
+	err := client.ListUsersPages(context.TODO(), input,
 		func(page *iam.ListUsersOutput, lastPage bool) bool {
 			iamUserList = append(iamUserList, page.Users...)
-			return aws.BoolValue(page.IsTruncated)
+			return !lastPage
 		})
 
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case iam.ErrCodeServiceFailureException:
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			switch apiErr.ErrorCode() {
+			case "ServiceFailure":
 				msg := "Service failure exception"
 				utils.LogAwsError(reqLogger, msg, nil, err)
 				return iamUserList, err
@@ -65,8 +68,6 @@ func ListIAMUsers(reqLogger logr.Logger, client Client) ([]*iam.User, error) {
 				return iamUserList, err
 			}
 		} else {
-			// Print the error, cast err to awserr.Error to get the Code and
-			// Message from an error.
 			utils.LogAwsError(reqLogger, "Unexpected error when listing IAM users", nil, err)
 			fmt.Println(err.Error())
 		}
@@ -87,15 +88,16 @@ func CheckIAMUserExists(reqLogger logr.Logger, client Client, userName string) (
 
 	for i := 0; i < 10; i++ {
 		// check if username exists for this account
-		iamGetUserOutput, err = client.GetUser(&iam.GetUserInput{
+		iamGetUserOutput, err = client.GetUser(context.TODO(), &iam.GetUserInput{
 			UserName: aws.String(userName),
 		})
 
 		// handle errors
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				case iam.ErrCodeNoSuchEntityException:
+			var apiErr smithy.APIError
+			if errors.As(err, &apiErr) {
+				switch apiErr.ErrorCode() {
+				case "NoSuchEntity":
 					return false, nil, nil
 				case "InvalidClientTokenId":
 					invalidTokenMsg := fmt.Sprintf("Invalid Token error from AWS when attempting get IAM user %s, trying again", userName)
@@ -134,15 +136,16 @@ func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Ac
 
 	for i := 0; i < 10; i++ {
 
-		createUserOutput, err = client.CreateUser(&iam.CreateUserInput{
+		createUserOutput, err = client.CreateUser(context.TODO(), &iam.CreateUserInput{
 			UserName: aws.String(userName),
 			Tags:     AWSTags.BuildTags(account, managedTags, customTags).GetIAMTags(),
 		})
 
 		// handle errors
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
+			var apiErr smithy.APIError
+			if errors.As(err, &apiErr) {
+				switch apiErr.ErrorCode() {
 				// Since we're using the same credentials to create the user as we did to check if the user exists
 				// we can continue to try without returning, also the outer loop will eventually return
 				case "InvalidClientTokenId":
@@ -159,7 +162,7 @@ func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Ac
 				// createUserOutput inconsistently returns "InvalidClientTokenId" if that happens then the next call to
 				// create the user will fail with EntitiyAlreadyExists. Since we verity the user doesn't exist before this
 				// loop we can safely assume we created the user on our first loop.
-				case iam.ErrCodeEntityAlreadyExistsException:
+				case "EntityAlreadyExists":
 					invalidTokenMsg := fmt.Sprintf("IAM User %s was created", userName)
 					reqLogger.Info(invalidTokenMsg)
 					return &iam.CreateUserOutput{}, err
@@ -179,22 +182,22 @@ func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Ac
 	return createUserOutput, err
 }
 
-// ListIAMRoles returns an *iam.Role list of roles in the AWS account
-func ListIAMRoles(reqLogger logr.Logger, client Client) ([]*iam.Role, error) {
+// ListIAMRoles returns a types.Role list of roles in the AWS account
+func ListIAMRoles(reqLogger logr.Logger, client Client) ([]types.Role, error) {
 
 	// List of IAM roles to return
-	iamRoleList := []*iam.Role{}
+	iamRoleList := []types.Role{}
 	var marker *string
 
 	for {
-		output, err := client.ListRoles(&iam.ListRolesInput{Marker: marker})
+		output, err := client.ListRoles(context.TODO(), &iam.ListRolesInput{Marker: marker})
 		if err != nil {
 			return nil, err
 		}
 
 		iamRoleList = append(iamRoleList, output.Roles...)
 
-		if *output.IsTruncated {
+		if output.IsTruncated {
 			marker = output.Marker
 		} else {
 			return iamRoleList, nil
