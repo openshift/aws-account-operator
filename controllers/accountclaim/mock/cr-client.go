@@ -5,6 +5,7 @@
 //
 //	mockgen -build_flags --mod=mod -destination ./mock/cr-client.go -package mock sigs.k8s.io/controller-runtime/pkg/client Client
 //
+
 // Package mock is a generated GoMock package.
 package mock
 
