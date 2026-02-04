@@ -756,7 +756,7 @@ echo "= START INTEGRATION TESTS"
 echo "========================================================================"
 
 if [ "${PROFILE}" = "local" ]; then
-    echo "Local Profile: 6/8 tests (extended timeouts, skips 2 slow tests)"
+    echo "Local Profile: 5/8 tests (extended timeouts, skips 3 tests)"
     echo ""
 else
     echo "CI/PROW Profile: 8/8 tests (full integration suite)"
