@@ -1300,11 +1300,12 @@ func matchSubstring(roleID, role string) (bool, error) {
 }
 
 func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountConditionType) {
-	if err == awsv1alpha1.ErrInvalidToken {
+	switch err {
+	case awsv1alpha1.ErrInvalidToken:
 		return "InvalidClientTokenId", awsv1alpha1.AccountAuthenticationError
-	} else if err == awsv1alpha1.ErrAccessDenied {
+	case awsv1alpha1.ErrAccessDenied:
 		return "AccessDenied", awsv1alpha1.AccountAuthorizationError
-	} else {
+	default:
 		var aerr smithy.APIError
 		if errors.As(err, &aerr) {
 			return "ClientError", awsv1alpha1.AccountClientError

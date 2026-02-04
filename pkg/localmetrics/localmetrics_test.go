@@ -5,7 +5,7 @@ import (
 	neturl "net/url"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -111,7 +111,7 @@ func TestReconcileErrorParse(t *testing.T) {
 		},
 		{
 			name:     "Test AWS Error gives aws codes",
-			err:      awserr.New("RateLimit", "This is a message", nil),
+			err:      &smithy.GenericAPIError{Code: "RateLimit", Message: "This is a message"},
 			expected: []string{"RateLimit", "aws"},
 		},
 		{

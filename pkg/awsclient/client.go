@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -32,6 +33,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/servicequotas"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/aws-sdk-go-v2/service/support"
+	smithyendpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
@@ -149,6 +151,22 @@ type Client interface {
 	RequestServiceQuotaIncrease(context.Context, *servicequotas.RequestServiceQuotaIncreaseInput) (*servicequotas.RequestServiceQuotaIncreaseOutput, error)
 	ListRequestedServiceQuotaChangeHistory(context.Context, *servicequotas.ListRequestedServiceQuotaChangeHistoryInput) (*servicequotas.ListRequestedServiceQuotaChangeHistoryOutput, error)
 	ListRequestedServiceQuotaChangeHistoryByQuota(context.Context, *servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaInput) (*servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput, error)
+}
+
+// customEC2EndpointResolver implements ec2.EndpointResolverV2 for EC2 regional endpoints
+type customEC2EndpointResolver struct {
+	region string
+}
+
+func (r *customEC2EndpointResolver) ResolveEndpoint(ctx context.Context, params ec2.EndpointParameters) (smithyendpoints.Endpoint, error) {
+	endpointURL := fmt.Sprintf("https://ec2.%s.amazonaws.com", r.region)
+	uri, err := url.Parse(endpointURL)
+	if err != nil {
+		return smithyendpoints.Endpoint{}, err
+	}
+	return smithyendpoints.Endpoint{
+		URI: *uri,
+	}, nil
 }
 
 type awsClient struct {
@@ -605,22 +623,13 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 		})
 	}
 
-	// Create EC2 config with regional endpoint
-	ec2Config := awsConfig.Copy()
-	ec2Config.EndpointResolverWithOptions = aws.EndpointResolverWithOptionsFunc(
-		func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-			return aws.Endpoint{
-				PartitionID:   "aws",
-				URL:           fmt.Sprintf("https://ec2.%s.amazonaws.com", region),
-				SigningRegion: region,
-			}, nil
-		},
-	)
+	// Create EC2 client with regional endpoint resolver
+	ec2Resolver := &customEC2EndpointResolver{region: awsConfig.Region}
 
 	return &awsClient{
 		acctClient:          account.NewFromConfig(awsConfig),
 		iamClient:           iam.NewFromConfig(awsConfig),
-		ec2Client:           ec2.NewFromConfig(ec2Config),
+		ec2Client:           ec2.NewFromConfig(awsConfig, ec2.WithEndpointResolverV2(ec2Resolver)),
 		orgClient:           organizations.NewFromConfig(awsConfig),
 		route53client:       route53.NewFromConfig(awsConfig),
 		s3Client:            s3.NewFromConfig(awsConfig),

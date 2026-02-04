@@ -275,9 +275,7 @@ func getAllPolicies(awsClient awsclient.Client) ([]iamtypes.Policy, error) {
 			return []iamtypes.Policy{}, err
 		}
 
-		for _, policy := range output.Policies {
-			policies = append(policies, policy)
-		}
+		policies = append(policies, output.Policies...)
 
 		truncated = output.IsTruncated
 		if truncated {
