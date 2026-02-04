@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/smithy-go"
 	"gopkg.in/yaml.v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -202,7 +202,8 @@ func AddLabels(object metav1.Object, labels map[string]string) {
 
 // LogAwsError formats and logs aws error and returns if err was an awserr
 func LogAwsError(logger logr.Logger, errMsg string, customError error, err error) {
-	if aerr, ok := err.(awserr.Error); ok {
+	var aerr smithy.APIError
+	if errors.As(err, &aerr) {
 		if customError == nil {
 			customError = aerr
 		}
@@ -212,8 +213,8 @@ func LogAwsError(logger logr.Logger, errMsg string, customError error, err error
 				AWS Error Code: %s,
 				AWS Error Message: %s`,
 				errMsg,
-				aerr.Code(),
-				aerr.Message()))
+				aerr.ErrorCode(),
+				aerr.ErrorMessage()))
 	}
 }
 
