@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/organizations"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
@@ -144,18 +144,19 @@ func (s *AccountWatcher) getTotalAwsAccounts() (int, error) {
 	accountTotal := 0
 	// Ensure we paginate through the created account list
 	for {
-		awsAccountList, err := s.awsClient.ListAccounts(&organizations.ListAccountsInput{NextToken: nextToken})
+		awsAccountList, err := s.awsClient.ListAccounts(context.TODO(), &organizations.ListAccountsInput{NextToken: nextToken})
 		if err != nil {
 			errMsg := "Error getting a list of accounts"
-			if aerr, ok := err.(awserr.Error); ok {
-				errMsg = aerr.Message()
+			var aerr smithy.APIError
+			if errors.As(err, &aerr) {
+				errMsg = aerr.ErrorMessage()
 			}
 			return s.total, errors.New(errMsg)
 		}
 
 		// Count only ACTIVE accounts
 		for _, account := range awsAccountList.Accounts {
-			if *account.Status == organizations.AccountStatusActive {
+			if account.Status == organizationstypes.AccountStatusActive {
 				accountTotal++
 			}
 		}
@@ -170,14 +171,15 @@ func (s *AccountWatcher) getTotalAwsAccounts() (int, error) {
 	nextToken = nil
 	for {
 		// Request a list of "in progress" account creations
-		awsAccountCreatingList, err := s.awsClient.ListCreateAccountStatus(&organizations.ListCreateAccountStatusInput{
+		awsAccountCreatingList, err := s.awsClient.ListCreateAccountStatus(context.TODO(), &organizations.ListCreateAccountStatusInput{
 			NextToken: nextToken,
-			States:    []*string{aws.String(organizations.CreateAccountStateInProgress)},
+			States:    []organizationstypes.CreateAccountState{organizationstypes.CreateAccountStateInProgress},
 		})
 		if err != nil {
 			errMsg := "Error getting a list of account creation statuses"
-			if aerr, ok := err.(awserr.Error); ok {
-				errMsg = aerr.Message()
+			var aerr smithy.APIError
+			if errors.As(err, &aerr) {
+				errMsg = aerr.ErrorMessage()
 			}
 			return s.total, errors.New(errMsg)
 		}

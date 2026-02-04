@@ -28,7 +28,8 @@ var (
 )
 
 const (
-	validationControllerName = "accountpoolvalidation"
+	validationControllerName      = "accountpoolvalidation"
+	PauseReconciliationAnnotation = "aws.managed.openshift.com/pause-reconciliation"
 )
 
 type AccountPoolValidationReconciler struct {

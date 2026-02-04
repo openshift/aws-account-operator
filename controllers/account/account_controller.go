@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/organizations"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/smithy-go"
 	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 
 	corev1 "k8s.io/api/core/v1"
@@ -71,8 +73,6 @@ const (
 	iamUserNameUHC               = "osdManagedAdmin"
 
 	controllerName = "account"
-	// PauseReconciliationAnnotation is the annotation key to pause all reconciliation for an account
-	PauseReconciliationAnnotation = "aws.managed.openshift.com/pause-reconciliation"
 
 	// number of service quota requests we are allowed to open concurrently in AWS
 	MaxOpenQuotaRequests = 20
@@ -113,12 +113,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return reconcile.Result{}, err
 	}
 
-	// Check if reconciliation is paused for this account (but allow deletion to proceed)
-	if currentAcctInstance.Annotations[PauseReconciliationAnnotation] == "true" && !currentAcctInstance.IsPendingDeletion() {
-		reqLogger.Info("Reconciliation paused for account - skipping all operations", "account", currentAcctInstance.Name)
-		return reconcile.Result{}, nil
-	}
-
 	configMap, err := utils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
@@ -142,13 +136,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	optInRegions, ok := configMap.Data["opt-in-regions"]
 	if !ok {
 		reqLogger.Info("Could not retrieve opt-in-regions from configMap")
-	}
-
-	// Read shard-name from configMap (used for tagging AWS accounts)
-	if shardName, ok := configMap.Data["shard-name"]; ok {
-		r.shardName = shardName
-	} else {
-		reqLogger.Info("Could not retrieve shard-name from configMap")
 	}
 
 	awsRegion := config.GetDefaultRegion()
@@ -189,8 +176,9 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			if err != nil {
 				reqLogger.Error(err, "failed building BYOC client from assume_role")
 				_, err = r.handleAWSClientError(reqLogger, currentAcctInstance, err)
-				if aerr, ok := err.(awserr.Error); ok {
-					switch aerr.Code() {
+				var aerr smithy.APIError
+				if errors.As(err, &aerr) {
+					switch aerr.ErrorCode() {
 					// If it's AccessDenied we want to just delete the finalizer and continue as we assume
 					// the credentials have been deleted by the customer. For additional safety we also only
 					// want to do this for CCS accounts.
@@ -522,18 +510,18 @@ func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, c
 // Error with the error code "OptInRequired". This usually indicates that a
 // newly created aws account is not yet fully operational.
 //
-// returns true only if the error can be cast to an instance of awserr.Error and has the appropriate code set. Passing in `nil` also returns false.
+// returns true only if the error can be cast to an instance of smithy.APIError and has the appropriate code set. Passing in `nil` also returns false.
 func isAwsOptInError(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	awsError, ok := err.(awserr.Error)
-	if !ok {
+	var awsError smithy.APIError
+	if !errors.As(err, &awsError) {
 		return false
 	}
 
-	return awsError.Code() == "OptInRequired"
+	return awsError.ErrorCode() == "OptInRequired"
 }
 
 func (r *AccountReconciler) handleIAMUserCreation(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, namespace string) (reconcile.Result, *sts.AssumeRoleOutput, error) {
@@ -576,8 +564,9 @@ func (r *AccountReconciler) handleIAMUserCreation(reqLogger logr.Logger, current
 func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, err error) (reconcile.Result, error) {
 	// Get custom failure reason to update account status
 	reason := ""
-	if aerr, ok := err.(awserr.Error); ok {
-		reason = aerr.Code()
+	var aerr smithy.APIError
+	if errors.As(err, &aerr) {
+		reason = aerr.ErrorCode()
 	}
 	errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s: %s", currentAcctInstance.Spec.AwsAccountID, err)
 	_, stateErr := r.setAccountFailed(
@@ -776,13 +765,14 @@ func SetCurrentAccountServiceQuotas(reqLogger logr.Logger, awsClientBuilder awsc
 	}
 
 	// Get a list of regions enabled in the current account
-	regionsEnabledInAccount, err := awsAssumedRoleClient.DescribeRegions(&ec2.DescribeRegionsInput{
+	regionsEnabledInAccount, err := awsAssumedRoleClient.DescribeRegions(context.TODO(), &ec2.DescribeRegionsInput{
 		AllRegions: aws.Bool(false),
 	})
 	if err != nil {
 		// Retry on failures related to the slow AWS API
-		if aerr, ok := err.(awserr.Error); ok {
-			if aerr.Code() == "OptInRequired" {
+		var aerr smithy.APIError
+		if errors.As(err, &aerr) {
+			if aerr.ErrorCode() == "OptInRequired" {
 				return nil
 			}
 		}
@@ -878,7 +868,7 @@ func (r *AccountReconciler) nonCCSAssignAccountID(reqLogger logr.Logger, current
 
 func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName string, complianceTags map[string]string) error {
 	// Start with the owner tag
-	tags := []*organizations.Tag{
+	tags := []organizationstypes.Tag{
 		{
 			Key:   aws.String("owner"),
 			Value: aws.String(shardName),
@@ -887,7 +877,7 @@ func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName 
 
 	// Add compliance tags from the map
 	for key, value := range complianceTags {
-		tags = append(tags, &organizations.Tag{
+		tags = append(tags, organizationstypes.Tag{
 			Key:   aws.String(key),
 			Value: aws.String(value),
 		})
@@ -898,7 +888,7 @@ func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName 
 		Tags:       tags,
 	}
 
-	_, err := awsSetupClient.TagResource(inputTag)
+	_, err := awsSetupClient.TagResource(context.TODO(), inputTag)
 	if err != nil {
 		return err
 	}
@@ -924,7 +914,7 @@ func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcct
 	reqLogger.Info("Created AWS Client for region initialization")
 
 	// Get a list of regions enabled in the current account
-	regionsEnabledInAccount, err := awsClient.DescribeRegions(&ec2.DescribeRegionsInput{
+	regionsEnabledInAccount, err := awsClient.DescribeRegions(context.TODO(), &ec2.DescribeRegionsInput{
 		AllRegions: aws.Bool(false),
 	})
 	if err != nil {
@@ -1067,19 +1057,20 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 		Email:       aws.String(accountEmail),
 	}
 
-	createOutput, err := client.CreateAccount(&createInput)
+	createOutput, err := client.CreateAccount(context.TODO(), &createInput)
 	if err != nil {
 		errMsg := "Error creating account"
 		var returnErr error
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case organizations.ErrCodeConcurrentModificationException:
+		var aerr smithy.APIError
+		if errors.As(err, &aerr) {
+			switch aerr.ErrorCode() {
+			case "ConcurrentModificationException":
 				returnErr = awsv1alpha1.ErrAwsConcurrentModification
-			case organizations.ErrCodeConstraintViolationException:
+			case "ConstraintViolationException":
 				returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
-			case organizations.ErrCodeServiceException:
+			case "ServiceException":
 				returnErr = awsv1alpha1.ErrAwsInternalFailure
-			case organizations.ErrCodeTooManyRequestsException:
+			case "TooManyRequestsException":
 				returnErr = awsv1alpha1.ErrAwsTooManyRequests
 			default:
 				returnErr = awsv1alpha1.ErrAwsFailedCreateAccount
@@ -1096,17 +1087,17 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 
 	var accountStatus *organizations.DescribeCreateAccountStatusOutput
 	for {
-		status, err := client.DescribeCreateAccountStatus(&describeStatusInput)
+		status, err := client.DescribeCreateAccountStatus(context.TODO(), &describeStatusInput)
 		if err != nil {
 			return &organizations.DescribeCreateAccountStatusOutput{}, err
 		}
 
 		accountStatus = status
-		createStatus := *status.CreateAccountStatus.State
+		createStatus := status.CreateAccountStatus.State
 
 		if createStatus == "FAILED" {
 			var returnErr error
-			switch *status.CreateAccountStatus.FailureReason {
+			switch status.CreateAccountStatus.FailureReason {
 			case "ACCOUNT_LIMIT_EXCEEDED":
 				returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
 			case "INTERNAL_FAILURE":
@@ -1298,9 +1289,11 @@ func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountCondition
 		return "InvalidClientTokenId", awsv1alpha1.AccountAuthenticationError
 	} else if err == awsv1alpha1.ErrAccessDenied {
 		return "AccessDenied", awsv1alpha1.AccountAuthorizationError
-	} else if _, ok := err.(awserr.Error); ok {
-		return "ClientError", awsv1alpha1.AccountClientError
 	} else {
+		var aerr smithy.APIError
+		if errors.As(err, &aerr) {
+			return "ClientError", awsv1alpha1.AccountClientError
+		}
 		return "UnhandledError", awsv1alpha1.AccountUnhandledError
 	}
 }
@@ -1379,7 +1372,7 @@ func parseTagsFromString(tags string) []awsclient.AWSTag {
 	return parsedTags
 }
 
-func castAWSRegionType(regions []*ec2.Region) []awsv1alpha1.AwsRegions {
+func castAWSRegionType(regions []ec2types.Region) []awsv1alpha1.AwsRegions {
 	var awsRegions []awsv1alpha1.AwsRegions
 	for _, region := range regions {
 		awsRegions = append(awsRegions, awsv1alpha1.AwsRegions{Name: *region.RegionName})
@@ -1495,12 +1488,21 @@ func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		log.Error(err, "missing max reconciles for controller", "controller", controllerName)
 	}
 
-	// Initialize shardName to empty string. It will be read from configMap in Reconcile()
-	r.shardName = ""
+	// AlexVulaj: We're seeing errors here on startup during local testing, we may need to move this to later in the startup process
+	// ERROR   controller_account      failed retrieving configmap     {"error": "the cache is not started, can not read objects"}
+	configMap, err := utils.GetOperatorConfigMap(r.Client)
+	if err != nil {
+		log.Error(err, "failed retrieving configmap")
+	}
+
+	hiveName, ok := configMap.Data["shard-name"]
+	if !ok {
+		log.Error(err, "shard-name key not available in configmap")
+	}
+	r.shardName = hiveName
 
 	rwm := utils.NewReconcilerWithMetrics(r, controllerName)
 	return ctrl.NewControllerManagedBy(mgr).
-		Named("account").
 		For(&awsv1alpha1.Account{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxReconciles,
