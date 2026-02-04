@@ -1,9 +1,9 @@
 package awsclient
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
@@ -126,30 +126,30 @@ var _ = Describe("AWS Resource Tag Builder", func() {
 	})
 })
 
-func iamTag(key string, value string) *iam.Tag {
-	return &iam.Tag{
+func iamTag(key string, value string) iamtypes.Tag {
+	return iamtypes.Tag{
 		Key:   aws.String(key),
 		Value: aws.String(value),
 	}
 }
 
-func iamTags(tags []AWSTag) []*iam.Tag {
-	var convertedTags []*iam.Tag
+func iamTags(tags []AWSTag) []iamtypes.Tag {
+	var convertedTags []iamtypes.Tag
 	for _, tag := range tags {
 		convertedTags = append(convertedTags, iamTag(tag.Key, tag.Value))
 	}
 	return convertedTags
 }
 
-func ec2Tag(key string, value string) *ec2.Tag {
-	return &ec2.Tag{
+func ec2Tag(key string, value string) ec2types.Tag {
+	return ec2types.Tag{
 		Key:   aws.String(key),
 		Value: aws.String(value),
 	}
 }
 
-func ec2Tags(tags []AWSTag) []*ec2.Tag {
-	var convertedTags []*ec2.Tag
+func ec2Tags(tags []AWSTag) []ec2types.Tag {
+	var convertedTags []ec2types.Tag
 	for _, tag := range tags {
 		convertedTags = append(convertedTags, ec2Tag(tag.Key, tag.Value))
 	}
