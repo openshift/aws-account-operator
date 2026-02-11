@@ -181,9 +181,6 @@ func (r *AccountReconciler) InitializeRegion(
 			Value: int(vCPUQuota),
 		})
 		if err != nil {
-			quotaErr := fmt.Sprintf("Unable to handle service quota request in region: %s", region)
-			controllerutils.LogAwsError(reqLogger, quotaErr, nil, err)
-			ec2Errors <- regionInitializationError{ErrorMsg: quotaErr, Region: region}
 			return err
 		}
 	}
@@ -441,7 +438,7 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 			{
 				Name: aws.String("instance-state-name"),
 				Values: []string{
-					"running",
+					string(ec2types.InstanceStateNameRunning),
 				},
 			},
 			{
@@ -529,7 +526,7 @@ func RetrieveAmi(awsClient awsclient.Client, amiOwner string) (string, error) {
 			{
 				Name: aws.String("architecture"),
 				Values: []string{
-					"x86_64",
+					string(ec2types.ArchitectureTypeX8664),
 				},
 			},
 		},

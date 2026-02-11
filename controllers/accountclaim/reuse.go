@@ -17,7 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/smithy-go"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
@@ -366,30 +366,26 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountS3(reqLogger logr.Logger, awsC
 		err := DeleteBucketContent(awsClient, *bucket.Name)
 		if err != nil {
 			ContentDelErr := fmt.Errorf("failed to delete bucket content: %s: %w", *bucket.Name, err).Error()
-			var aerr smithy.APIError
-			if errors.As(err, &aerr) {
-				switch aerr.ErrorCode() {
-				case "NoSuchBucket":
-					//ignore these errors
-				default:
-					awsErrors <- ContentDelErr
-					return err
-				}
+			// Check for specific S3 exception types
+			var noSuchBucketErr *s3types.NoSuchBucket
+			if !errors.As(err, &noSuchBucketErr) {
+				// If it's not NoSuchBucket, it's an error we care about
+				awsErrors <- ContentDelErr
+				return err
 			}
+			// NoSuchBucket - ignore this error
 		}
 		_, err = awsClient.DeleteBucket(context.TODO(), &deleteBucketInput)
 		if err != nil {
 			DelError := fmt.Errorf("failed deleting S3 bucket: %s: %w", *bucket.Name, err).Error()
-			var aerr smithy.APIError
-			if errors.As(err, &aerr) {
-				switch aerr.ErrorCode() {
-				case "NoSuchBucket":
-					//ignore these errors
-				default:
-					awsErrors <- DelError
-					return err
-				}
+			// Check for specific S3 exception types
+			var noSuchBucketErr *s3types.NoSuchBucket
+			if !errors.As(err, &noSuchBucketErr) {
+				// If it's not NoSuchBucket, it's an error we care about
+				awsErrors <- DelError
+				return err
 			}
+			// NoSuchBucket - ignore this error
 		}
 
 	}

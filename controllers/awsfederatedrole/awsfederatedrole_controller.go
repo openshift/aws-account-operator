@@ -8,7 +8,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
-	"github.com/aws/smithy-go"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -147,29 +146,27 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 		PolicyDocument: &jsonPolicy,
 	})
 	if err != nil {
-		var aerr smithy.APIError
-		if errors.As(err, &aerr) {
-			if aerr.ErrorCode() == "MalformedPolicyDocument" {
-				log.Error(err, "Malformed Policy Document")
-				instance.Status.State = awsv1alpha1.AWSFederatedRoleStateInvalid
-				instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
-					instance.Status.Conditions,
-					awsv1alpha1.AWSFederatedRoleInvalid,
-					"True",
-					"InvalidCustomerPolicy",
-					"Custom Policy is malformed",
-					utils.UpdateConditionNever)
-				err = r.Client.Status().Update(context.TODO(), instance)
-				if err != nil {
-					log.Error(err, "Error updating conditions")
-					return reconcile.Result{}, err
-				}
-				return reconcile.Result{}, nil
+		// Check for specific IAM exception types
+		var malformedPolicyErr *iamtypes.MalformedPolicyDocumentException
+		if errors.As(err, &malformedPolicyErr) {
+			log.Error(err, "Malformed Policy Document")
+			instance.Status.State = awsv1alpha1.AWSFederatedRoleStateInvalid
+			instance.Status.Conditions = utils.SetAWSFederatedRoleCondition(
+				instance.Status.Conditions,
+				awsv1alpha1.AWSFederatedRoleInvalid,
+				"True",
+				"InvalidCustomerPolicy",
+				"Custom Policy is malformed",
+				utils.UpdateConditionNever)
+			err = r.Client.Status().Update(context.TODO(), instance)
+			if err != nil {
+				log.Error(err, "Error updating conditions")
+				return reconcile.Result{}, err
 			}
-			utils.LogAwsError(log, "", nil, err)
-		} else {
-			log.Error(err, "Non-AWS Error while creating Policy")
+			return reconcile.Result{}, nil
 		}
+		// Log other AWS errors
+		utils.LogAwsError(log, "AWS Error while creating Policy", nil, err)
 		return reconcile.Result{}, err
 	}
 

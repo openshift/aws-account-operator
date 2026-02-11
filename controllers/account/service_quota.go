@@ -161,21 +161,30 @@ func serviceQuotaNeedsIncrease(reqLogger logr.Logger, client awsclient.Client, q
 
 		// Retry if we receive some specific errors: access denied, rate limit or server-side error
 		retry.RetryIf(func(err error) bool {
+			// Check for specific service quotas exception types
+			var accessDeniedErr *servicequotastypes.AccessDeniedException
+			var serviceErr *servicequotastypes.ServiceException
+			var tooManyRequestsErr *servicequotastypes.TooManyRequestsException
+
+			switch {
+			// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
+			case errors.As(err, &accessDeniedErr):
+				return true
+			case errors.As(err, &serviceErr):
+				return true
+			case errors.As(err, &tooManyRequestsErr):
+				return true
+			}
+
+			// Check for generic errors not specific to service quotas
 			var aerr smithy.APIError
 			if errors.As(err, &aerr) {
-				switch aerr.ErrorCode() {
-				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
-				case "AccessDeniedException":
-					return true
-				case "ServiceException":
-					return true
-				case "TooManyRequestsException":
-					return true
 				// Can be caused by the client token not yet propagated
-				case "UnrecognizedClientException":
+				if aerr.ErrorCode() == "UnrecognizedClientException" {
 					return true
 				}
 			}
+
 			// Otherwise, do not retry
 			return false
 		}),
@@ -213,37 +222,43 @@ func setServiceQuota(reqLogger logr.Logger, client awsclient.Client, quotaCode s
 					QuotaCode:    aws.String(quotaCode),   // TODO change to param
 				})
 			if err != nil {
-				var aerr smithy.APIError
-				if errors.As(err, &aerr) {
-					if aerr.ErrorCode() == "ResourceAlreadyExistsException" {
-						// This error means a request has already been submitted, and we do not have the CaseID, but
-						// we should also *not* return an error - this is a no-op.
-						alreadySubmitted = true
-						return nil
-					}
+				// Check for ResourceAlreadyExistsException
+				var resourceExistsErr *servicequotastypes.ResourceAlreadyExistsException
+				if errors.As(err, &resourceExistsErr) {
+					// This error means a request has already been submitted, and we do not have the CaseID, but
+					// we should also *not* return an error - this is a no-op.
+					alreadySubmitted = true
+					return nil
 				}
 			}
 			return err
 		},
 
 		retry.RetryIf(func(err error) bool {
+			// Check for specific service quotas exception types
+			var accessDeniedErr *servicequotastypes.AccessDeniedException
+			var tooManyRequestsErr *servicequotastypes.TooManyRequestsException
+			var serviceErr *servicequotastypes.ServiceException
+
+			switch {
+			// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
+			case errors.As(err, &accessDeniedErr):
+				return true
+			case errors.As(err, &tooManyRequestsErr):
+				return true
+			case errors.As(err, &serviceErr):
+				return true
+			}
+
+			// Check for generic errors not specific to service quotas
 			var aerr smithy.APIError
 			if errors.As(err, &aerr) {
-				switch aerr.ErrorCode() {
-				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
-				case "AccessDeniedException":
-					return true
-				case "TooManyRequestsException":
-					// Retry
-					return true
-				case "ServiceException":
-					// Retry
-					return true
 				// Can be caused by the client token not yet propagated
-				case "UnrecognizedClientException":
+				if aerr.ErrorCode() == "UnrecognizedClientException" {
 					return true
 				}
 			}
+
 			// Otherwise, do not retry
 			return false
 		}),
@@ -305,21 +320,30 @@ func checkQuotaRequestStatus(reqLogger logr.Logger, awsClient awsclient.Client, 
 
 			// Retry if we receive some specific errors: access denied, rate limit or server-side error
 			retry.RetryIf(func(err error) bool {
+				// Check for specific service quotas exception types
+				var accessDeniedErr *servicequotastypes.AccessDeniedException
+				var serviceErr *servicequotastypes.ServiceException
+				var tooManyRequestsErr *servicequotastypes.TooManyRequestsException
+
+				switch {
+				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
+				case errors.As(err, &accessDeniedErr):
+					return true
+				case errors.As(err, &serviceErr):
+					return true
+				case errors.As(err, &tooManyRequestsErr):
+					return true
+				}
+
+				// Check for generic errors not specific to service quotas
 				var aerr smithy.APIError
 				if errors.As(err, &aerr) {
-					switch aerr.ErrorCode() {
-					// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
-					case "AccessDeniedException":
-						return true
-					case "ServiceException":
-						return true
-					case "TooManyRequestsException":
-						return true
 					// Can be caused by the client token not yet propagated
-					case "UnrecognizedClientException":
+					if aerr.ErrorCode() == "UnrecognizedClientException" {
 						return true
 					}
 				}
+
 				// Otherwise, do not retry
 				return false
 			}),

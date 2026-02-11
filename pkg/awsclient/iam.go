@@ -23,18 +23,22 @@ func ListIAMUserTags(reqLogger logr.Logger, client Client, userName string) (*ia
 
 	result, err := client.ListUserTags(context.TODO(), input)
 	if err != nil {
-		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) {
-			switch apiErr.ErrorCode() {
-			case "NoSuchEntity":
-				fmt.Println("NoSuchEntity", apiErr.ErrorMessage())
-			case "ServiceFailure":
-				fmt.Println("ServiceFailure", apiErr.ErrorMessage())
-			default:
+		// Check for specific IAM exception types
+		var noSuchEntityErr *types.NoSuchEntityException
+		var serviceFailureErr *types.ServiceFailureException
+
+		switch {
+		case errors.As(err, &noSuchEntityErr):
+			fmt.Println("NoSuchEntity", noSuchEntityErr.ErrorMessage())
+		case errors.As(err, &serviceFailureErr):
+			fmt.Println("ServiceFailure", serviceFailureErr.ErrorMessage())
+		default:
+			var apiErr smithy.APIError
+			if errors.As(err, &apiErr) {
 				fmt.Println(apiErr.ErrorMessage())
+			} else {
+				fmt.Println(err.Error())
 			}
-		} else {
-			fmt.Println(err.Error())
 		}
 		return result, err
 	}
@@ -55,18 +59,19 @@ func ListIAMUsers(reqLogger logr.Logger, client Client) ([]types.User, error) {
 		})
 
 	if err != nil {
+		// Check for specific IAM exception types
+		var serviceFailureErr *types.ServiceFailureException
+		if errors.As(err, &serviceFailureErr) {
+			msg := "Service failure exception"
+			utils.LogAwsError(reqLogger, msg, nil, err)
+			return iamUserList, err
+		}
+
+		// Unexpected error
 		var apiErr smithy.APIError
 		if errors.As(err, &apiErr) {
-			switch apiErr.ErrorCode() {
-			case "ServiceFailure":
-				msg := "Service failure exception"
-				utils.LogAwsError(reqLogger, msg, nil, err)
-				return iamUserList, err
-			default:
-				msg := "Unexpected AWS error"
-				utils.LogAwsError(reqLogger, msg, nil, err)
-				return iamUserList, err
-			}
+			msg := "Unexpected AWS error"
+			utils.LogAwsError(reqLogger, msg, nil, err)
 		} else {
 			utils.LogAwsError(reqLogger, "Unexpected error when listing IAM users", nil, err)
 			fmt.Println(err.Error())
@@ -94,11 +99,16 @@ func CheckIAMUserExists(reqLogger logr.Logger, client Client, userName string) (
 
 		// handle errors
 		if err != nil {
+			// Check for specific IAM exception types
+			var noSuchEntityErr *types.NoSuchEntityException
+			if errors.As(err, &noSuchEntityErr) {
+				return false, nil, nil
+			}
+
+			// Check for generic AWS auth errors (no typed exceptions)
 			var apiErr smithy.APIError
 			if errors.As(err, &apiErr) {
 				switch apiErr.ErrorCode() {
-				case "NoSuchEntity":
-					return false, nil, nil
 				case "InvalidClientTokenId":
 					invalidTokenMsg := fmt.Sprintf("Invalid Token error from AWS when attempting get IAM user %s, trying again", userName)
 					reqLogger.Info(invalidTokenMsg)
@@ -143,6 +153,18 @@ func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Ac
 
 		// handle errors
 		if err != nil {
+			// Check for specific IAM exception types
+			var entityExistsErr *types.EntityAlreadyExistsException
+			if errors.As(err, &entityExistsErr) {
+				// createUserOutput inconsistently returns "InvalidClientTokenId" if that happens then the next call to
+				// create the user will fail with EntityAlreadyExists. Since we verify the user doesn't exist before this
+				// loop we can safely assume we created the user on our first loop.
+				invalidTokenMsg := fmt.Sprintf("IAM User %s was created", userName)
+				reqLogger.Info(invalidTokenMsg)
+				return &iam.CreateUserOutput{}, err
+			}
+
+			// Check for generic AWS auth errors (no typed exceptions)
 			var apiErr smithy.APIError
 			if errors.As(err, &apiErr) {
 				switch apiErr.ErrorCode() {
@@ -159,13 +181,6 @@ func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Ac
 					if i == 10 {
 						return &iam.CreateUserOutput{}, err
 					}
-				// createUserOutput inconsistently returns "InvalidClientTokenId" if that happens then the next call to
-				// create the user will fail with EntitiyAlreadyExists. Since we verity the user doesn't exist before this
-				// loop we can safely assume we created the user on our first loop.
-				case "EntityAlreadyExists":
-					invalidTokenMsg := fmt.Sprintf("IAM User %s was created", userName)
-					reqLogger.Info(invalidTokenMsg)
-					return &iam.CreateUserOutput{}, err
 				default:
 					utils.LogAwsError(reqLogger, "CreateIAMUser: Unexpected AWS Error during creation of IAM user", nil, err)
 					return &iam.CreateUserOutput{}, err

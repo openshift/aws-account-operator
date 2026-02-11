@@ -10,6 +10,7 @@ import (
 	"github.com/avast/retry-go"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/account"
+	accounttypes "github.com/aws/aws-sdk-go-v2/service/account/types"
 	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
@@ -143,7 +144,6 @@ func updateOptInRegionRequests(reqLogger logr.Logger, awsClientBuilder awsclient
 func enableOptInRegions(reqLogger logr.Logger, client awsclient.Client, regionCode string) (bool, error) {
 	var result *account.EnableRegionOutput
 	var alreadySubmitted bool
-	var aerr smithy.APIError
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
@@ -155,39 +155,47 @@ func enableOptInRegions(reqLogger logr.Logger, client awsclient.Client, regionCo
 				RegionName: aws.String(regionCode),
 			})
 			if err != nil {
-				if errors.As(err, &aerr) {
-					if aerr.ErrorCode() == "ResourceAlreadyExistsException" {
-						alreadySubmitted = true
-						return nil
-					}
+				// Check for ConflictException
+				var conflictErr *accounttypes.ConflictException
+				if errors.As(err, &conflictErr) {
+					alreadySubmitted = true
+					return nil
 				}
 			}
 			return err
 		},
 
 		retry.RetryIf(func(err error) bool {
+			// Check for specific AWS Account exception types
+			var accessDeniedErr *accounttypes.AccessDeniedException
+			var tooManyRequestsErr *accounttypes.TooManyRequestsException
+			var internalServerErr *accounttypes.InternalServerException
+
+			switch {
+			// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
+			case errors.As(err, &accessDeniedErr):
+				return true
+			case errors.As(err, &tooManyRequestsErr):
+				return true
+			case errors.As(err, &internalServerErr):
+				return true
+			}
+
+			// Check for generic errors not specific to account service
+			var aerr smithy.APIError
 			if errors.As(err, &aerr) {
-				switch aerr.ErrorCode() {
-				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
-				case "AccessDeniedException":
-					return true
-				case "TooManyRequestsException":
-					// Retry
-					return true
-				case "InternalServerException":
-					// Retry
-					return true
 				// Can be caused by the client token not yet propagated
-				case "UnrecognizedClientException":
+				if aerr.ErrorCode() == "UnrecognizedClientException" {
 					return true
 				}
 			}
+
 			// Otherwise, do not retry
 			return false
 		}),
 	)
 
-	// If the attempt to submit a request returns "ResourceAlreadyExistsException"
+	// If the attempt to submit a request returns ConflictException
 	// then a request has already been submitted, since we first polled. No further action.
 	if alreadySubmitted {
 		return true, nil
@@ -208,7 +216,6 @@ func enableOptInRegions(reqLogger logr.Logger, client awsclient.Client, regionCo
 
 func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode string) (bool, error) {
 	var result *account.GetRegionOptStatusOutput
-	var aerr smithy.APIError
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
@@ -224,20 +231,30 @@ func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode
 
 		// Retry if we receive some specific errors: access denied, rate limit or server-side error
 		retry.RetryIf(func(err error) bool {
+			// Check for specific AWS Account exception types
+			var accessDeniedErr *accounttypes.AccessDeniedException
+			var internalServerErr *accounttypes.InternalServerException
+			var tooManyRequestsErr *accounttypes.TooManyRequestsException
+
+			switch {
+			// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
+			case errors.As(err, &accessDeniedErr):
+				return true
+			case errors.As(err, &internalServerErr):
+				return true
+			case errors.As(err, &tooManyRequestsErr):
+				return true
+			}
+
+			// Check for generic errors not specific to account service
+			var aerr smithy.APIError
 			if errors.As(err, &aerr) {
-				switch aerr.ErrorCode() {
-				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
-				case "AccessDeniedException":
-					return true
-				case "InternalServerException":
-					return true
-				case "TooManyRequestsException":
-					return true
 				// Can be caused by the client token not yet propagated
-				case "UnrecognizedClientException":
+				if aerr.ErrorCode() == "UnrecognizedClientException" {
 					return true
 				}
 			}
+
 			// Otherwise, do not retry
 			return false
 		}),
@@ -256,7 +273,6 @@ func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode
 }
 
 func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, regionCode string) (awsv1alpha1.OptInRequestStatus, error) {
-	var aerr smithy.APIError
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
 	retry.DefaultDelay = 3 * time.Second
@@ -276,17 +292,26 @@ func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, r
 
 			// Retry if we receive some specific errors: access denied, rate limit or server-side error
 			retry.RetryIf(func(err error) bool {
+				// Check for specific AWS Account exception types
+				var accessDeniedErr *accounttypes.AccessDeniedException
+				var internalServerErr *accounttypes.InternalServerException
+				var tooManyRequestsErr *accounttypes.TooManyRequestsException
+
+				switch {
+				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
+				case errors.As(err, &accessDeniedErr):
+					return true
+				case errors.As(err, &internalServerErr):
+					return true
+				case errors.As(err, &tooManyRequestsErr):
+					return true
+				}
+
+				// Check for generic errors not specific to account service
+				var aerr smithy.APIError
 				if errors.As(err, &aerr) {
-					switch aerr.ErrorCode() {
-					// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
-					case "AccessDeniedException":
-						return true
-					case "InternalServerException":
-						return true
-					case "TooManyRequestsException":
-						return true
 					// Can be caused by the client token not yet propagated
-					case "UnrecognizedClientException":
+					if aerr.ErrorCode() == "UnrecognizedClientException" {
 						return true
 					}
 				}

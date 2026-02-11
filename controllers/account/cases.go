@@ -7,7 +7,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/support"
-	"github.com/aws/smithy-go"
+	supporttypes "github.com/aws/aws-sdk-go-v2/service/support/types"
 	"github.com/go-logr/logr"
 
 	"github.com/openshift/aws-account-operator/api/v1alpha1"
@@ -58,19 +58,21 @@ Thanks.
 	caseResult, caseErr := client.CreateCase(context.TODO(), &createCaseInput)
 	if caseErr != nil {
 		var returnErr error
-		var apiErr smithy.APIError
-		if errors.As(caseErr, &apiErr) {
-			switch apiErr.ErrorCode() {
-			case "CaseCreationLimitExceeded":
-				returnErr = v1alpha1.ErrAwsCaseCreationLimitExceeded
-			case "InternalServerError":
-				returnErr = v1alpha1.ErrAwsInternalFailure
-			default:
-				returnErr = v1alpha1.ErrAwsFailedCreateSupportCase
-			}
 
-			controllerutils.LogAwsError(reqLogger, "New AWS Error while creating case", returnErr, caseErr)
+		// Check for specific AWS Support exception types
+		var caseCreationLimitErr *supporttypes.CaseCreationLimitExceeded
+		var internalServerErr *supporttypes.InternalServerError
+
+		switch {
+		case errors.As(caseErr, &caseCreationLimitErr):
+			returnErr = v1alpha1.ErrAwsCaseCreationLimitExceeded
+		case errors.As(caseErr, &internalServerErr):
+			returnErr = v1alpha1.ErrAwsInternalFailure
+		default:
+			returnErr = v1alpha1.ErrAwsFailedCreateSupportCase
 		}
+
+		controllerutils.LogAwsError(reqLogger, "New AWS Error while creating case", returnErr, caseErr)
 		return "", returnErr
 	}
 
@@ -91,18 +93,21 @@ func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.
 	if caseErr != nil {
 
 		var returnErr error
-		var apiErr smithy.APIError
-		if errors.As(caseErr, &apiErr) {
-			switch apiErr.ErrorCode() {
-			case "CaseIdNotFound":
-				returnErr = v1alpha1.ErrAwsSupportCaseIDNotFound
-			case "InternalServerError":
-				returnErr = v1alpha1.ErrAwsInternalFailure
-			default:
-				returnErr = v1alpha1.ErrAwsFailedDescribeSupportCase
-			}
-			controllerutils.LogAwsError(reqLogger, "New AWS Error while checking case resolution", returnErr, caseErr)
+
+		// Check for specific AWS Support exception types
+		var caseIdNotFoundErr *supporttypes.CaseIdNotFound
+		var internalServerErr *supporttypes.InternalServerError
+
+		switch {
+		case errors.As(caseErr, &caseIdNotFoundErr):
+			returnErr = v1alpha1.ErrAwsSupportCaseIDNotFound
+		case errors.As(caseErr, &internalServerErr):
+			returnErr = v1alpha1.ErrAwsInternalFailure
+		default:
+			returnErr = v1alpha1.ErrAwsFailedDescribeSupportCase
 		}
+
+		controllerutils.LogAwsError(reqLogger, "New AWS Error while checking case resolution", returnErr, caseErr)
 
 		return false, returnErr
 	}

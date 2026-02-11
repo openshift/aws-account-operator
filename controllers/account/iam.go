@@ -80,10 +80,18 @@ func (r *AccountReconciler) CreateSecret(reqLogger logr.Logger, account *awsv1al
 }
 
 func retryIfAwsServiceFailureOrInvalidToken(err error) bool {
+	// Check for specific IAM exception types
+	var serviceFailureErr *iamtypes.ServiceFailureException
+	if errors.As(err, &serviceFailureErr) {
+		// ServiceFailure may be an unspecified server-side error, and is worth retrying
+		return true
+	}
+
+	// Check for generic AWS errors
 	var aerr smithy.APIError
 	if errors.As(err, &aerr) {
 		switch aerr.ErrorCode() {
-		// ServiceFailure may be an unspecified server-side error, and is worth retrying
+		// ServiceFailure may also appear as a generic error code
 		case "ServiceFailure":
 			return true
 		// InvalidClientTokenId may be a transient auth issue, retry

@@ -1076,22 +1076,26 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 	if err != nil {
 		errMsg := "Error creating account"
 		var returnErr error
-		var aerr smithy.APIError
-		if errors.As(err, &aerr) {
-			switch aerr.ErrorCode() {
-			case "ConcurrentModificationException":
-				returnErr = awsv1alpha1.ErrAwsConcurrentModification
-			case "ConstraintViolationException":
-				returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
-			case "ServiceException":
-				returnErr = awsv1alpha1.ErrAwsInternalFailure
-			case "TooManyRequestsException":
-				returnErr = awsv1alpha1.ErrAwsTooManyRequests
-			default:
-				returnErr = awsv1alpha1.ErrAwsFailedCreateAccount
-			}
 
+		// Check for specific AWS Organizations exception types
+		var concurrentModErr *organizationstypes.ConcurrentModificationException
+		var constraintViolationErr *organizationstypes.ConstraintViolationException
+		var serviceErr *organizationstypes.ServiceException
+		var tooManyRequestsErr *organizationstypes.TooManyRequestsException
+
+		switch {
+		case errors.As(err, &concurrentModErr):
+			returnErr = awsv1alpha1.ErrAwsConcurrentModification
+		case errors.As(err, &constraintViolationErr):
+			returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
+		case errors.As(err, &serviceErr):
+			returnErr = awsv1alpha1.ErrAwsInternalFailure
+		case errors.As(err, &tooManyRequestsErr):
+			returnErr = awsv1alpha1.ErrAwsTooManyRequests
+		default:
+			returnErr = awsv1alpha1.ErrAwsFailedCreateAccount
 		}
+
 		utils.LogAwsError(reqLogger, errMsg, returnErr, err)
 		return &organizations.DescribeCreateAccountStatusOutput{}, returnErr
 	}
@@ -1308,7 +1312,7 @@ func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountCondition
 	default:
 		var aerr smithy.APIError
 		if errors.As(err, &aerr) {
-			return "ClientError", awsv1alpha1.AccountClientError
+			return aerr.ErrorCode(), awsv1alpha1.AccountClientError
 		}
 		return "UnhandledError", awsv1alpha1.AccountUnhandledError
 	}
