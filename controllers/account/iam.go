@@ -347,17 +347,17 @@ func (r *AccountReconciler) BuildIAMUser(reqLogger logr.Logger, awsClient awscli
 
 	iamUserSecretName = createIAMUserSecretName(account.Name)
 
-	reqLogger.Info(fmt.Sprintf("Attaching Admin Policy to IAM user %s", *(createdIAMUser.UserName)))
+	reqLogger.Info(fmt.Sprintf("Attaching Admin Policy to IAM user %s", aws.ToString(createdIAMUser.UserName)))
 
 	// Setting IAM user policy
 	_, err = AttachAdminUserPolicy(awsClient, createdIAMUser)
 	if err != nil {
-		errMsg := fmt.Sprintf("Failed to attach admin policy to IAM user %s", *(createdIAMUser.UserName))
+		errMsg := fmt.Sprintf("Failed to attach admin policy to IAM user %s", aws.ToString(createdIAMUser.UserName))
 		reqLogger.Error(err, errMsg)
 		return nil, err
 	}
 
-	reqLogger.Info(fmt.Sprintf("Creating Secrets for IAM user %s", *(createdIAMUser.UserName)))
+	reqLogger.Info(fmt.Sprintf("Creating Secrets for IAM user %s", aws.ToString(createdIAMUser.UserName)))
 
 	// Create a NamespacedName for the secret
 	secretNamespacedName := types.NamespacedName{Name: iamUserSecretName, Namespace: nameSpace}
@@ -371,7 +371,7 @@ func (r *AccountReconciler) BuildIAMUser(reqLogger logr.Logger, awsClient awscli
 	if !secretExists {
 		iamAccessKeyOutput, err := r.RotateIAMAccessKeys(reqLogger, awsClient, account, createdIAMUser)
 		if err != nil {
-			errMsg := fmt.Sprintf("Unable to rotate access keys for IAM user: %s", *(createdIAMUser.UserName))
+			errMsg := fmt.Sprintf("Unable to rotate access keys for IAM user: %s", aws.ToString(createdIAMUser.UserName))
 			reqLogger.Error(err, errMsg)
 			return nil, err
 		}
@@ -455,22 +455,21 @@ func DeleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR
 		if err != nil {
 			return fmt.Errorf("failed to get aws user: %v", err)
 		}
-		user = *getUser.User
-		for _, tag := range user.Tags {
-			if *tag.Key == awsv1alpha1.ClusterAccountNameTagKey && *tag.Value == accountCR.Name {
+		for _, tag := range getUser.User.Tags {
+			if aws.ToString(tag.Key) == awsv1alpha1.ClusterAccountNameTagKey && aws.ToString(tag.Value) == accountCR.Name {
 				clusterNameTag = true
 			}
-			if *tag.Key == awsv1alpha1.ClusterNamespaceTagKey && *tag.Value == accountCR.Namespace {
+			if aws.ToString(tag.Key) == awsv1alpha1.ClusterNamespaceTagKey && aws.ToString(tag.Value) == accountCR.Namespace {
 				clusterNamespaceTag = true
 			}
 		}
 		if clusterNameTag && clusterNamespaceTag {
-			err = deleteIAMUser(reqLogger, awsClient, &user)
+			err = deleteIAMUser(reqLogger, awsClient, getUser.User)
 			if err != nil {
 				return err
 			}
 		} else {
-			reqLogger.Info(fmt.Sprintf("not deleting user: %s", *user.UserName))
+			reqLogger.Info(fmt.Sprintf("not deleting user: %s", aws.ToString(getUser.User.UserName)))
 		}
 	}
 	return nil
@@ -505,24 +504,23 @@ func cleanIAMRoles(reqLogger logr.Logger, awsClient awsclient.Client, accountCR 
 		if err != nil {
 			return err
 		}
-		role = *getRole.Role
 
-		for _, tag := range role.Tags {
-			if *tag.Key == awsv1alpha1.ClusterAccountNameTagKey && *tag.Value == accountCR.Name {
+		for _, tag := range getRole.Role.Tags {
+			if aws.ToString(tag.Key) == awsv1alpha1.ClusterAccountNameTagKey && aws.ToString(tag.Value) == accountCR.Name {
 				clusterNameTag = true
 			}
-			if *tag.Key == awsv1alpha1.ClusterNamespaceTagKey && *tag.Value == accountCR.Namespace {
+			if aws.ToString(tag.Key) == awsv1alpha1.ClusterNamespaceTagKey && aws.ToString(tag.Value) == accountCR.Namespace {
 				clusterNamespaceTag = true
 			}
 		}
 
 		if clusterNameTag && clusterNamespaceTag {
-			err = cleanIAMRole(reqLogger, awsClient, &role)
+			err = cleanIAMRole(reqLogger, awsClient, getRole.Role)
 			if err != nil {
 				return err
 			}
 		} else {
-			reqLogger.Info(fmt.Sprintf("Not deleting role: %s", *getRole.Role.RoleName))
+			reqLogger.Info(fmt.Sprintf("Not deleting role: %s", aws.ToString(getRole.Role.RoleName)))
 		}
 	}
 
@@ -572,7 +570,7 @@ func (r *AccountReconciler) RotateIAMAccessKeys(reqLogger logr.Logger, awsClient
 	// Delete all current access keys
 	err := deleteAllAccessKeys(awsClient, iamUser)
 	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Failed to delete IAM access keys for %s", *(iamUser.UserName)))
+		reqLogger.Error(err, fmt.Sprintf("Failed to delete IAM access keys for %s", aws.ToString(iamUser.UserName)))
 		return nil, err
 	}
 	// Create new access key
@@ -637,7 +635,7 @@ func (r *AccountReconciler) createManagedOpenShiftSupportRole(reqLogger logr.Log
 		return roleID, err
 	}
 
-	principalARN := *getCallerIdentityOutput.Arn
+	principalARN := aws.ToString(getCallerIdentityOutput.Arn)
 	SREAccessARN, err := r.GetSREAccessARN(reqLogger, awsv1alpha1.SupportJumpRole)
 	if err != nil {
 		reqLogger.Error(err, "Unable to find STS JUMP ROLE in configmap")
@@ -658,7 +656,7 @@ func (r *AccountReconciler) createManagedOpenShiftSupportRole(reqLogger logr.Log
 	if existingRole.Role != nil {
 		reqLogger.Info(fmt.Sprintf("Found pre-existing role: %s", managedSupRoleWithID))
 		reqLogger.Info("Verifying role policies are correct")
-		roleID = *existingRole.Role.RoleId
+		roleID = aws.ToString(existingRole.Role.RoleId)
 		// existingRole is not empty
 		policyList, err := GetAttachedPolicies(reqLogger, managedSupRoleWithID, client)
 		if err != nil {

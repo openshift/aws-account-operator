@@ -184,10 +184,10 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 	}
 
 	for _, tag := range resp.Tags {
-		if ownerKey == *tag.Key {
-			if shardName != *tag.Value {
+		if ownerKey == aws.ToString(tag.Key) {
+			if shardName != aws.ToString(tag.Value) {
 				if accountTagEnabled {
-					err := untagAccountOwner(client, *accountId)
+					err := untagAccountOwner(client, aws.ToString(accountId))
 					if err != nil {
 						log.Error(err, "Unable to remove incorrect owner tag from aws account.", "AWSAccountId", accountId)
 						return &AccountValidationError{
@@ -197,7 +197,7 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 					}
 
 					complianceTags := make(map[string]string)
-					err = account.TagAccount(client, *accountId, shardName, complianceTags)
+					err = account.TagAccount(client, aws.ToString(accountId), shardName, complianceTags)
 					if err != nil {
 						log.Error(err, "Unable to tag aws account.", "AWSAccountID", accountId)
 						return &AccountValidationError{
@@ -208,7 +208,7 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 
 					return nil
 				} else {
-					log.Info(fmt.Sprintf("Account is not tagged with the correct owner, has %s; want %s", *tag.Value, shardName))
+					log.Info(fmt.Sprintf("Account is not tagged with the correct owner, has %s; want %s", aws.ToString(tag.Value), shardName))
 					return nil
 				}
 			} else {
@@ -240,7 +240,7 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 func buildTagMap(tags []organizationstypes.Tag) map[string]string {
 	tagMap := make(map[string]string)
 	for _, tag := range tags {
-		tagMap[*tag.Key] = *tag.Value
+		tagMap[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
 	}
 	return tagMap
 }
