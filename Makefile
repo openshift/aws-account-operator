@@ -3,6 +3,7 @@ SHELL := /usr/bin/env bash
 
 OPERATOR_DOCKERFILE = ./build/Dockerfile
 OPERATOR_SDK ?= operator-sdk
+OPERATOR_NAMESPACE ?= aws-account-operator
 
 # GOLANGCI_LINT_CACHE needs to be set to a directory which is writeable
 # Relevant issue - https://github.com/golangci/golangci-lint/issues/734
@@ -101,13 +102,23 @@ deploy-aws-account-operator-credentials:  ## Deploy the operator secrets, CRDs a
 .PHONY: predeploy-aws-account-operator
 predeploy-aws-account-operator: ## Predeploy AWS Account Operator
 	# Create aws-account-operator namespace
-	@oc get namespace ${NAMESPACE} && oc project ${NAMESPACE} || oc create namespace ${NAMESPACE}
+	@oc get namespace ${OPERATOR_NAMESPACE} && oc project ${OPERATOR_NAMESPACE} || oc create namespace ${OPERATOR_NAMESPACE}
+	# Wait for namespace to be fully ready before creating resources in it
+	@echo "Waiting for namespace to be ready..."
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		if oc get namespace ${OPERATOR_NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null | grep -q "Active"; then \
+			echo "Namespace is ready"; \
+			break; \
+		fi; \
+		echo "Waiting for namespace (attempt $$i/10)..."; \
+		sleep 2; \
+	done
 	# Create aws-account-operator CRDs
 	@ls deploy/crds/*.yaml | xargs -L1 oc apply -f
 	# Create zero size account pool
-	@oc process --local -p NAME="zero-size-accountpool" -p SIZE=0 -p TYPE="Default" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountpool.tmpl | oc apply -f -	
+	@oc process --local -p NAME="zero-size-accountpool" -p SIZE=0 -p TYPE="Default" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountpool.tmpl | oc apply --namespace=${OPERATOR_NAMESPACE} -f -
 	# Create zero size account pool
-	@oc process --local -p NAME="hs-zero-size-accountpool" -p SIZE=1 -p TYPE="Hypershift" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountpool.tmpl | oc apply -f -
+	@oc process --local -p NAME="hs-zero-size-accountpool" -p SIZE=1 -p TYPE="Hypershift" -f hack/templates/aws.managed.openshift.io_v1alpha1_accountpool.tmpl | oc apply --namespace=${OPERATOR_NAMESPACE} -f -
 
 .PHONY: validate-deployment
 validate-deployment: check-aws-account-id-env check-sts-setup ## Validates deployment configuration
