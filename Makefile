@@ -105,7 +105,7 @@ predeploy-aws-account-operator: ## Predeploy AWS Account Operator
 	@oc get namespace ${OPERATOR_NAMESPACE} && oc project ${OPERATOR_NAMESPACE} || oc create namespace ${OPERATOR_NAMESPACE}
 	# Wait for namespace to be fully ready before creating resources in it
 	@echo "Waiting for namespace to be ready..."
-	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+	@for i in {1..10}; do \
 		if oc get namespace ${OPERATOR_NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null | grep -q "Active"; then \
 			echo "Namespace is ready"; \
 			break; \

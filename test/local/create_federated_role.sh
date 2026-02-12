@@ -9,4 +9,4 @@ then
   exit 1
 fi
 
-yq '. | del(.parameters) | del( .objects[] | select(.kind != "AWSFederatedRole"))' hack/olm-registry/olm-artifacts-template.yaml | oc process -f - | oc apply -f -
+yq '. | del(.parameters) | del( .objects[] | select(.kind != "AWSFederatedRole"))' hack/olm-registry/olm-artifacts-template.yaml | oc process --local -f - | oc apply -f -

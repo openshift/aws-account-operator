@@ -19,4 +19,4 @@ while [ "$1" != "" ]; do
 done
 
 echo "# Delete federatedaccountaccess with secret"
-oc process -p AWS_IAM_ARN="${AWS_IAM_ARN}" -p IAM_USER_SECRET="${IAM_USER_SECRET}" -p AWS_FEDERATED_ROLE_NAME="${AWS_FEDERATED_ROLE_NAME}" -p NAMESPACE="${NAMESPACE}" -p FED_USER="${FED_USER}" -f hack/templates/aws.managed.openshift.io_v1alpha1_awsfederatedaccountaccess_cr.tmpl | oc delete -f -
+oc process --local -p AWS_IAM_ARN="${AWS_IAM_ARN}" -p IAM_USER_SECRET="${IAM_USER_SECRET}" -p AWS_FEDERATED_ROLE_NAME="${AWS_FEDERATED_ROLE_NAME}" -p NAMESPACE="${NAMESPACE}" -p FED_USER="${FED_USER}" -f hack/templates/aws.managed.openshift.io_v1alpha1_awsfederatedaccountaccess_cr.tmpl | oc delete -f -

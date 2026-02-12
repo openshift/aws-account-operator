@@ -21,7 +21,7 @@ done
 AWS_IAM_ARN=$(aws sts get-caller-identity --profile=osd-staging-2 | jq -r '.Arn')
 
 echo "# Create awsFederatedAccountAccess CR"
-oc process -p AWS_IAM_ARN="${AWS_IAM_ARN}" -p IAM_USER_SECRET="${IAM_USER_SECRET}" -p AWS_FEDERATED_ROLE_NAME="${AWS_FEDERATED_ROLE_NAME}" -p NAMESPACE="${NAMESPACE}" -p FED_USER="${FED_USER}" -f hack/templates/aws.managed.openshift.io_v1alpha1_awsfederatedaccountaccess_cr.tmpl | oc apply -f -
+oc process --local -p AWS_IAM_ARN="${AWS_IAM_ARN}" -p IAM_USER_SECRET="${IAM_USER_SECRET}" -p AWS_FEDERATED_ROLE_NAME="${AWS_FEDERATED_ROLE_NAME}" -p NAMESPACE="${NAMESPACE}" -p FED_USER="${FED_USER}" -f hack/templates/aws.managed.openshift.io_v1alpha1_awsfederatedaccountaccess_cr.tmpl | oc apply -f -
 
 echo "# Wait for awsFederatedAccountAccess CR to become ready"
 while true; do
