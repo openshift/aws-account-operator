@@ -186,8 +186,18 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 		attempt++
 		// handle errors
 		if err != nil {
-			var aerr smithy.APIError
+			// Check for EntityAlreadyExistsException first before checking generic error codes
 			var entityExistsErr *iamtypes.EntityAlreadyExistsException
+			if errors.As(err, &entityExistsErr) {
+				// createUserOutput inconsistently returns "InvalidClientTokenId" if that happens then the next call to
+				// create the user will fail with EntityAlreadyExists. Since we verify the user doesn't exist before this
+				// loop we can safely assume we created the user on our first loop.
+				invalidTokenMsg := fmt.Sprintf("IAM User %s was created", userName)
+				reqLogger.Info(invalidTokenMsg)
+				return &iam.CreateUserOutput{}, err
+			}
+
+			var aerr smithy.APIError
 			if errors.As(err, &aerr) {
 				switch aerr.ErrorCode() {
 				// Since we're using the same credentials to create the user as we did to check if the user exists
@@ -203,18 +213,16 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 					if attempt == 10 {
 						return &iam.CreateUserOutput{}, err
 					}
+				case "EntityAlreadyExists":
+					// Fallback for when error is returned as generic error code
+					invalidTokenMsg := fmt.Sprintf("IAM User %s was created", userName)
+					reqLogger.Info(invalidTokenMsg)
+					return &iam.CreateUserOutput{}, err
 				default:
 					utils.LogAwsError(reqLogger, "CreateIAMUser: Unexpected AWS Error during creation of IAM user", nil, err)
 					return &iam.CreateUserOutput{}, err
 				}
 				time.Sleep(time.Duration(time.Duration(attempt*5*testSleepModifier) * time.Second))
-			} else if errors.As(err, &entityExistsErr) {
-				// createUserOutput inconsistently returns "InvalidClientTokenId" if that happens then the next call to
-				// create the user will fail with EntityAlreadyExists. Since we verify the user doesn't exist before this
-				// loop we can safely assume we created the user on our first loop.
-				invalidTokenMsg := fmt.Sprintf("IAM User %s was created", userName)
-				reqLogger.Info(invalidTokenMsg)
-				return &iam.CreateUserOutput{}, err
 			} else {
 				return &iam.CreateUserOutput{}, err
 			}
