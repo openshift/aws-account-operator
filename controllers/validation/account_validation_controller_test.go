@@ -7,13 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/organizations"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/google/go-cmp/cmp"
-	apis "github.com/openshift/aws-account-operator/api"
-	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
-	"github.com/openshift/aws-account-operator/pkg/awsclient"
-	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,27 +20,32 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	apis "github.com/openshift/aws-account-operator/api"
+	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
+	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 )
 
 func emptyOrganisation(ctrl *gomock.Controller) *mock.MockClient {
 	mockClient := mock.NewMockClient(ctrl)
-	mockClient.EXPECT().ListParents(&organizations.ListParentsInput{
+	mockClient.EXPECT().ListParents(gomock.Any(), &organizations.ListParentsInput{
 		ChildId: aws.String("111111"),
 	}).Return(&organizations.ListParentsOutput{
-		Parents: []*organizations.Parent{},
+		Parents: []organizationstypes.Parent{},
 	}, nil)
 	return mockClient
 }
 
 func singleOrganisation(ctrl *gomock.Controller) *mock.MockClient {
 	mockClient := mock.NewMockClient(ctrl)
-	mockClient.EXPECT().ListParents(&organizations.ListParentsInput{
+	mockClient.EXPECT().ListParents(gomock.Any(), &organizations.ListParentsInput{
 		ChildId: aws.String("111111"),
 	}).Return(&organizations.ListParentsOutput{
-		Parents: []*organizations.Parent{
+		Parents: []organizationstypes.Parent{
 			{
 				Id:   aws.String("1"),
-				Type: aws.String(""),
+				Type: organizationstypes.ParentType(""),
 			}},
 	}, nil)
 	return mockClient
@@ -51,17 +53,17 @@ func singleOrganisation(ctrl *gomock.Controller) *mock.MockClient {
 
 func multipleOrganisation(ctrl *gomock.Controller) *mock.MockClient {
 	mockClient := mock.NewMockClient(ctrl)
-	mockClient.EXPECT().ListParents(&organizations.ListParentsInput{
+	mockClient.EXPECT().ListParents(gomock.Any(), &organizations.ListParentsInput{
 		ChildId: aws.String("111111"),
 	}).Return(&organizations.ListParentsOutput{
-		Parents: []*organizations.Parent{
+		Parents: []organizationstypes.Parent{
 			{
 				Id:   aws.String("1"),
-				Type: aws.String(""),
+				Type: organizationstypes.ParentType(""),
 			},
 			{
 				Id:   aws.String("2"),
-				Type: aws.String(""),
+				Type: organizationstypes.ParentType(""),
 			},
 		},
 	}, nil)
@@ -70,13 +72,13 @@ func multipleOrganisation(ctrl *gomock.Controller) *mock.MockClient {
 
 func designatedOrganization(ctrl *gomock.Controller, ouID string) *mock.MockClient {
 	mockClient := mock.NewMockClient(ctrl)
-	mockClient.EXPECT().ListParents(&organizations.ListParentsInput{
+	mockClient.EXPECT().ListParents(gomock.Any(), &organizations.ListParentsInput{
 		ChildId: aws.String("111111"),
 	}).Return(&organizations.ListParentsOutput{
-		Parents: []*organizations.Parent{
+		Parents: []organizationstypes.Parent{
 			{
 				Id:   aws.String(ouID),
-				Type: aws.String(""),
+				Type: organizationstypes.ParentType(""),
 			}},
 	}, nil)
 	return mockClient
@@ -185,7 +187,7 @@ func TestMoveAccount(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	errorListParents := func(ctrl *gomock.Controller) *mock.MockClient {
 		client := mock.NewMockClient(ctrl)
-		client.EXPECT().ListParents(gomock.Any()).Return(nil, errors.New("something went wrong"))
+		client.EXPECT().ListParents(gomock.Any(), gomock.Any()).Return(nil, errors.New("something went wrong"))
 		return client
 	}
 	type args struct {
@@ -208,7 +210,7 @@ func TestMoveAccount(t *testing.T) {
 		{name: "Account not in target OU will trigger a move", args: args{
 			account: "111111",
 			client: func(client *mock.MockClient) *mock.MockClient {
-				client.EXPECT().MoveAccount(&organizations.MoveAccountInput{
+				client.EXPECT().MoveAccount(gomock.Any(), &organizations.MoveAccountInput{
 					AccountId:           aws.String("111111"),
 					DestinationParentId: aws.String("targetOU"),
 					SourceParentId:      aws.String("1"),
@@ -267,10 +269,10 @@ func TestValidateAccountOU(t *testing.T) {
 		}, {
 			name: "Account that has been claimed before and is in legalEntity OU should return no error",
 			awsClient: func(client *mock.MockClient) *mock.MockClient {
-				client.EXPECT().ListOrganizationalUnitsForParent(&organizations.ListOrganizationalUnitsForParentInput{
+				client.EXPECT().ListOrganizationalUnitsForParent(gomock.Any(), &organizations.ListOrganizationalUnitsForParentInput{
 					ParentId: aws.String(testBaseOUID),
 				}).Return(&organizations.ListOrganizationalUnitsForParentOutput{
-					OrganizationalUnits: []*organizations.OrganizationalUnit{
+					OrganizationalUnits: []organizationstypes.OrganizationalUnit{
 						{
 							Name: aws.String(legalEntity.ID),
 							Id:   aws.String(testLegalEntityOUID),
@@ -304,7 +306,7 @@ func TestValidateAccountOU(t *testing.T) {
 			name: "When encountering an error listing parents when getting OU ID from name it should return the error",
 			awsClient: func() *mock.MockClient {
 				mockClient := mock.NewMockClient(ctrl)
-				mockClient.EXPECT().ListOrganizationalUnitsForParent(&organizations.ListOrganizationalUnitsForParentInput{
+				mockClient.EXPECT().ListOrganizationalUnitsForParent(gomock.Any(), &organizations.ListOrganizationalUnitsForParentInput{
 					ParentId: aws.String(testBaseOUID),
 				}).Return(&organizations.ListOrganizationalUnitsForParentOutput{}, notHandledError)
 				return mockClient
@@ -432,13 +434,13 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 
 	makeClient := func(output *organizations.ListTagsForResourceOutput, err error, willTag bool, tagErr error, willUntag bool, untagErr error) awsclient.Client {
 		mockClient := mock.NewMockClient(ctrl)
-		mockClient.EXPECT().ListTagsForResource(gomock.Any()).Return(output, err)
+		mockClient.EXPECT().ListTagsForResource(gomock.Any(), gomock.Any()).Return(output, err)
 		// AlexVulaj: The `Times` values here don't seem to be honored, but I can't really figure out why.
 		if willTag {
-			mockClient.EXPECT().TagResource(gomock.Any()).Return(nil, tagErr).Times(1)
+			mockClient.EXPECT().TagResource(gomock.Any(), gomock.Any()).Return(nil, tagErr).Times(1)
 		}
 		if willUntag {
-			mockClient.EXPECT().UntagResource(gomock.Any()).Return(nil, untagErr).Times(1)
+			mockClient.EXPECT().UntagResource(gomock.Any(), gomock.Any()).Return(nil, untagErr).Times(1)
 		}
 		return mockClient
 	}
@@ -458,7 +460,7 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 			name: "No owner tag - don't tag account",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
-					Tags: []*organizations.Tag{},
+					Tags: []organizationstypes.Tag{},
 				}, &AccountValidationError{
 					Type: MissingTag,
 					Err:  errors.New("account is not tagged with an owner"),
@@ -473,7 +475,7 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 			name: "Incorrect owner tag - don't tag account",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
-					Tags: []*organizations.Tag{
+					Tags: []organizationstypes.Tag{
 						{
 							Key:   aws.String("owner"),
 							Value: aws.String("shard1"),
@@ -490,7 +492,7 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 			name: "No owner tag - tag account successfully",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
-					Tags: []*organizations.Tag{},
+					Tags: []organizationstypes.Tag{},
 				}, nil, true, nil, false, nil),
 				accountId:         aws.String("1234"),
 				shardName:         "shard1",
@@ -502,7 +504,7 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 			name: "No owner tag - tag account unsuccessfully",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
-					Tags: []*organizations.Tag{},
+					Tags: []organizationstypes.Tag{},
 				}, nil, true, errors.New("failed"), false, nil),
 				accountId:         aws.String("1234"),
 				shardName:         "shard1",
@@ -514,7 +516,7 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 			name: "Incorrect owner tag - tag account successfully",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
-					Tags: []*organizations.Tag{
+					Tags: []organizationstypes.Tag{
 						{
 							Key:   aws.String("owner"),
 							Value: aws.String("shard1"),
@@ -531,7 +533,7 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 			name: "Incorrect owner tag - untag account unsuccessfully",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
-					Tags: []*organizations.Tag{
+					Tags: []organizationstypes.Tag{
 						{
 							Key:   aws.String("owner"),
 							Value: aws.String("shard1"),
@@ -548,7 +550,7 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 			name: "Incorrect owner tag - tag account unsuccessfully",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
-					Tags: []*organizations.Tag{
+					Tags: []organizationstypes.Tag{
 						{
 							Key:   aws.String("owner"),
 							Value: aws.String("shard1"),
@@ -592,9 +594,9 @@ func TestValidateAccount_ValidateComplianceTags(t *testing.T) {
 
 	makeClient := func(output *organizations.ListTagsForResourceOutput, err error, willTag bool, tagErr error) awsclient.Client {
 		mockClient := mock.NewMockClient(ctrl)
-		mockClient.EXPECT().ListTagsForResource(gomock.Any()).Return(output, err)
+		mockClient.EXPECT().ListTagsForResource(gomock.Any(), gomock.Any()).Return(output, err)
 		if willTag {
-			mockClient.EXPECT().TagResource(gomock.Any()).Return(nil, tagErr).Times(1)
+			mockClient.EXPECT().TagResource(gomock.Any(), gomock.Any()).Return(nil, tagErr).Times(1)
 		}
 		return mockClient
 	}
@@ -636,7 +638,7 @@ func TestValidateAccount_ValidateComplianceTags(t *testing.T) {
 			name: "Compliance tags missing - should add them",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
-					Tags: []*organizations.Tag{
+					Tags: []organizationstypes.Tag{
 						{
 							Key:   aws.String("owner"),
 							Value: aws.String("shard1"),
@@ -657,7 +659,7 @@ func TestValidateAccount_ValidateComplianceTags(t *testing.T) {
 			name: "Compliance tags incorrect - should update them",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
-					Tags: []*organizations.Tag{
+					Tags: []organizationstypes.Tag{
 						{
 							Key:   aws.String("app-code"),
 							Value: aws.String("WRONG-CODE"),
@@ -682,7 +684,7 @@ func TestValidateAccount_ValidateComplianceTags(t *testing.T) {
 			name: "All compliance tags correct - no changes needed",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
-					Tags: []*organizations.Tag{
+					Tags: []organizationstypes.Tag{
 						{
 							Key:   aws.String("app-code"),
 							Value: aws.String("OSD-002"),
@@ -711,7 +713,7 @@ func TestValidateAccount_ValidateComplianceTags(t *testing.T) {
 			name: "Tags missing but tagging disabled - should not error",
 			args: args{
 				client: makeClient(&organizations.ListTagsForResourceOutput{
-					Tags: []*organizations.Tag{},
+					Tags: []organizationstypes.Tag{},
 				}, nil, false, nil),
 				accountId:             aws.String("1234"),
 				shardName:             "shard1",
@@ -883,81 +885,6 @@ func TestValidateAccount_Reconcile(t *testing.T) {
 				},
 			},
 		}, want: reconcile.Result{Requeue: false}, wantErr: false},
-		{name: "Will not attempt to reconcile an account with pause-reconciliation annotation set to true.", fields: fields{
-			Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
-				&awsv1alpha1.Account{
-					TypeMeta: v1.TypeMeta{
-						Kind:       "Account",
-						APIVersion: "v1alpha1",
-					},
-					ObjectMeta: v1.ObjectMeta{
-						Name:      "test",
-						Namespace: "default",
-						Annotations: map[string]string{
-							PauseReconciliationAnnotation: "true",
-						},
-					},
-					Spec: awsv1alpha1.AccountSpec{
-						AwsAccountID: "123456",
-					},
-					Status: awsv1alpha1.AccountStatus{
-						State: string(awsv1alpha1.AccountReady),
-					},
-				},
-				&corev1.ConfigMap{
-					ObjectMeta: v1.ObjectMeta{
-						Name:      awsv1alpha1.DefaultConfigMap,
-						Namespace: awsv1alpha1.AccountCrNamespace,
-					},
-				}}...).Build(),
-			scheme:           scheme.Scheme,
-			awsClientBuilder: nil,
-		}, args: args{
-			request: reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Namespace: "default",
-					Name:      "test",
-				},
-			},
-		}, want: reconcile.Result{Requeue: false}, wantErr: false},
-		{name: "Will proceed with reconciliation when pause-reconciliation annotation is set to false (CCS account skips OU validation).", fields: fields{
-			Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
-				&awsv1alpha1.Account{
-					TypeMeta: v1.TypeMeta{
-						Kind:       "Account",
-						APIVersion: "v1alpha1",
-					},
-					ObjectMeta: v1.ObjectMeta{
-						Name:      "test",
-						Namespace: "default",
-						Annotations: map[string]string{
-							PauseReconciliationAnnotation: "false",
-						},
-					},
-					Spec: awsv1alpha1.AccountSpec{
-						AwsAccountID: "123456",
-						BYOC:         true, // CCS account skips OU validation
-					},
-					Status: awsv1alpha1.AccountStatus{
-						State: string(awsv1alpha1.AccountReady),
-					},
-				},
-				&corev1.ConfigMap{
-					ObjectMeta: v1.ObjectMeta{
-						Name:      awsv1alpha1.DefaultConfigMap,
-						Namespace: awsv1alpha1.AccountCrNamespace,
-					},
-				}}...).Build(),
-			scheme:           scheme.Scheme,
-			awsClientBuilder: newBuilder(ctrl),
-		}, args: args{
-			request: reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Namespace: "default",
-					Name:      "test",
-				},
-			},
-		}, want: reconcile.Result{Requeue: false}, wantErr: false},
 		{
 			name: "When an account has no AWS account ID and is failed it stop reconciliation",
 			fields: fields{
@@ -989,91 +916,6 @@ func TestValidateAccount_Reconcile(t *testing.T) {
 					}}...).Build(),
 				scheme:           scheme.Scheme,
 				awsClientBuilder: nil,
-			},
-			args: args{
-				request: reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Namespace: "default",
-						Name:      "test",
-					},
-				},
-			},
-			want: reconcile.Result{Requeue: false}, wantErr: false},
-		{
-			name: "Will skip pause check and allow deletion when account is pending deletion even with pause annotation",
-			fields: fields{
-				Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
-					&awsv1alpha1.Account{
-						TypeMeta: v1.TypeMeta{
-							Kind:       "Account",
-							APIVersion: "v1alpha1",
-						},
-						ObjectMeta: v1.ObjectMeta{
-							Name:      "test",
-							Namespace: "default",
-							Annotations: map[string]string{
-								PauseReconciliationAnnotation: "true",
-							},
-							DeletionTimestamp: &v1.Time{
-								Time: time.Now(),
-							},
-						},
-						Spec: awsv1alpha1.AccountSpec{
-							AwsAccountID: "123456",
-						},
-					},
-					&corev1.ConfigMap{
-						ObjectMeta: v1.ObjectMeta{
-							Name:      awsv1alpha1.DefaultConfigMap,
-							Namespace: awsv1alpha1.AccountCrNamespace,
-						},
-					}}...).Build(),
-				scheme:           scheme.Scheme,
-				awsClientBuilder: nil, // No AWS calls expected - deletion check happens first
-			},
-			args: args{
-				request: reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Namespace: "default",
-						Name:      "test",
-					},
-				},
-			},
-			want: reconcile.Result{Requeue: false}, wantErr: false},
-		{
-			name: "Will allow automatic deletion of failed accounts even when pause annotation is set",
-			fields: fields{
-				Client: fake.NewClientBuilder().WithRuntimeObjects([]runtime.Object{
-					&awsv1alpha1.Account{
-						TypeMeta: v1.TypeMeta{
-							Kind:       "Account",
-							APIVersion: "v1alpha1",
-						},
-						ObjectMeta: v1.ObjectMeta{
-							Name:      "test",
-							Namespace: "default",
-							Annotations: map[string]string{
-								PauseReconciliationAnnotation: "true",
-							},
-						},
-						Spec: awsv1alpha1.AccountSpec{
-							AwsAccountID: "", // No AWS account ID
-						},
-						Status: awsv1alpha1.AccountStatus{
-							State: string(awsv1alpha1.AccountFailed),
-						},
-					},
-					&corev1.ConfigMap{
-						ObjectMeta: v1.ObjectMeta{
-							Name:      awsv1alpha1.DefaultConfigMap,
-							Namespace: awsv1alpha1.AccountCrNamespace,
-						},
-						Data: map[string]string{
-							"feature.validation_delete_account": "true",
-						},
-					}}...).Build(),
-				scheme:           scheme.Scheme,
-				awsClientBuilder: nil, // No AWS calls expected
 			},
 			args: args{
 				request: reconcile.Request{

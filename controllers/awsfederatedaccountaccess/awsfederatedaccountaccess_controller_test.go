@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 
 	"go.uber.org/mock/gomock"
 
@@ -74,14 +74,14 @@ func TestCheckAndDeletePolicy(t *testing.T) {
 		{
 			name: "Multiple Versions",
 			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{
-				Versions: []*iam.PolicyVersion{
+				Versions: []iamtypes.PolicyVersion{
 					{
 						VersionId:        aws.String("v1"),
-						IsDefaultVersion: aws.Bool(false),
+						IsDefaultVersion: false,
 					},
 					{
 						VersionId:        aws.String("v2"),
-						IsDefaultVersion: aws.Bool(true),
+						IsDefaultVersion: true,
 					},
 				},
 			},
@@ -90,31 +90,31 @@ func TestCheckAndDeletePolicy(t *testing.T) {
 			name:                     "TestNoSuchEntity",
 			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{},
 			deletePolicyOut:          nil,
-			err:                      awserr.New(iam.ErrCodeNoSuchEntityException, "", nil),
+			err:                      &iamtypes.NoSuchEntityException{Message: aws.String("")},
 		},
 		{
 			name:                     "TestLimitExceeded",
 			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{},
 			deletePolicyOut:          nil,
-			err:                      awserr.New(iam.ErrCodeLimitExceededException, "", nil),
+			err:                      &iamtypes.LimitExceededException{Message: aws.String("")},
 		},
 		{
 			name:                     "TestInvalidInput",
 			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{},
 			deletePolicyOut:          nil,
-			err:                      awserr.New(iam.ErrCodeInvalidInputException, "", nil),
+			err:                      &iamtypes.InvalidInputException{Message: aws.String("")},
 		},
 		{
 			name:                     "TestDeleteConflict",
 			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{},
 			deletePolicyOut:          nil,
-			err:                      awserr.New(iam.ErrCodeDeleteConflictException, "", nil),
+			err:                      &iamtypes.DeleteConflictException{Message: aws.String("")},
 		},
 		{
 			name:                     "TestServiceFailure",
 			listPolicyVersionsOutput: &iam.ListPolicyVersionsOutput{},
 			deletePolicyOut:          nil,
-			err:                      awserr.New(iam.ErrCodeServiceFailureException, "", nil),
+			err:                      &iamtypes.ServiceFailureException{Message: aws.String("")},
 		},
 	}
 
@@ -130,11 +130,12 @@ func TestCheckAndDeletePolicy(t *testing.T) {
 
 			mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 
-			mockAWSClient.EXPECT().ListPolicyVersions(&iam.ListPolicyVersionsInput{PolicyArn: policyArn}).Return(test.listPolicyVersionsOutput, nil)
+			mockAWSClient.EXPECT().ListPolicyVersions(gomock.Any(), &iam.ListPolicyVersionsInput{PolicyArn: policyArn}).Return(test.listPolicyVersionsOutput, nil)
 			mockAWSClient.EXPECT().DeletePolicy(
-				&iam.DeletePolicyInput{PolicyArn: policyArn}).Return(test.deletePolicyOut, test.err)
+				gomock.Any(),
+			&iam.DeletePolicyInput{PolicyArn: policyArn}).Return(test.deletePolicyOut, test.err)
 			if test.listPolicyVersionsOutput.Versions != nil {
-				mockAWSClient.EXPECT().DeletePolicyVersion(gomock.Any()).Return(nil, test.err)
+				mockAWSClient.EXPECT().DeletePolicyVersion(gomock.Any(), gomock.Any()).Return(nil, test.err)
 			}
 
 			err := checkAndDeletePolicy(mockAWSClient, uidLabel, crPolicyName, &policyName, policyArn)
@@ -182,13 +183,13 @@ func TestGetPolicyNameWithUID(t *testing.T) {
 func TestCreateIAMPolicy(t *testing.T) {
 
 	awsOutputPolicy := &iam.CreatePolicyOutput{
-		Policy: &iam.Policy{},
+		Policy: &iamtypes.Policy{},
 	}
 
 	tests := []struct {
 		name                  string
 		uidLabel              map[string]string
-		createIAMPolicyOutput *iam.Policy
+		createIAMPolicyOutput *iamtypes.Policy
 		expectedErr           error
 	}{
 		{
@@ -215,7 +216,7 @@ func TestCreateIAMPolicy(t *testing.T) {
 			defer mocks.mockCtrl.Finish()
 
 			if test.createIAMPolicyOutput != nil {
-				mockAWSClient.EXPECT().CreatePolicy(gomock.Any()).Return(
+				mockAWSClient.EXPECT().CreatePolicy(gomock.Any(), gomock.Any()).Return(
 					awsOutputPolicy,
 					nil,
 				)
@@ -244,13 +245,13 @@ func TestCreateIAMPolicy(t *testing.T) {
 func TestCreateIAMRole(t *testing.T) {
 
 	awsOutputRole := &iam.CreateRoleOutput{
-		Role: &iam.Role{},
+		Role: &iamtypes.Role{},
 	}
 
 	tests := []struct {
 		name                string
 		uidLabel            map[string]string
-		createIAMRoleOutput *iam.Role
+		createIAMRoleOutput *iamtypes.Role
 		expectedErr         error
 	}{
 		{
@@ -277,7 +278,7 @@ func TestCreateIAMRole(t *testing.T) {
 			defer mocks.mockCtrl.Finish()
 
 			if test.createIAMRoleOutput != nil {
-				mockAWSClient.EXPECT().CreateRole(gomock.Any()).Return(
+				mockAWSClient.EXPECT().CreateRole(gomock.Any(), gomock.Any()).Return(
 					awsOutputRole,
 					nil,
 				)
@@ -339,35 +340,35 @@ func TestCreateOrUpdateIAMPolicy(t *testing.T) {
 		Account: aws.String(""),
 	}
 
-	mockAWSClient.EXPECT().GetCallerIdentity(gomock.Any()).Return(
+	mockAWSClient.EXPECT().GetCallerIdentity(gomock.Any(), gomock.Any()).Return(
 		awsOutputGci,
 		nil,
 	)
 
 	customPolArns := createPolicyArns(*awsOutputGci.Account, []string{afr.Spec.AWSCustomPolicy.Name + "-" + uidLabel}, false)
 
-	mockAWSClient.EXPECT().CreatePolicy(&iam.CreatePolicyInput{
+	mockAWSClient.EXPECT().CreatePolicy(gomock.Any(), &iam.CreatePolicyInput{
 		PolicyName:     aws.String(policyName),
 		Description:    aws.String(afr.Spec.AWSCustomPolicy.Description),
 		PolicyDocument: aws.String(string(jsonPolicyDoc)),
 	}).Return(
 		nil,
-		awserr.New("EntityAlreadyExists", "", nil),
+		&iamtypes.EntityAlreadyExistsException{Message: aws.String("")},
 	)
 
-	mockAWSClient.EXPECT().ListPolicyVersions(&iam.ListPolicyVersionsInput{PolicyArn: aws.String(customPolArns[0])}).Return(&iam.ListPolicyVersionsOutput{}, nil)
-	mockAWSClient.EXPECT().DeletePolicy(&iam.DeletePolicyInput{PolicyArn: aws.String(customPolArns[0])}).Return(
+	mockAWSClient.EXPECT().ListPolicyVersions(gomock.Any(), &iam.ListPolicyVersionsInput{PolicyArn: aws.String(customPolArns[0])}).Return(&iam.ListPolicyVersionsOutput{}, nil)
+	mockAWSClient.EXPECT().DeletePolicy(gomock.Any(), &iam.DeletePolicyInput{PolicyArn: aws.String(customPolArns[0])}).Return(
 		&iam.DeletePolicyOutput{},
 		nil,
 	)
 
-	mockAWSClient.EXPECT().CreatePolicy(&iam.CreatePolicyInput{
+	mockAWSClient.EXPECT().CreatePolicy(gomock.Any(), &iam.CreatePolicyInput{
 		PolicyName:     aws.String(policyName),
 		Description:    aws.String(afr.Spec.AWSCustomPolicy.Description),
 		PolicyDocument: aws.String(string(jsonPolicyDoc)),
 	}).Return(
 		&iam.CreatePolicyOutput{
-			Policy: &iam.Policy{},
+			Policy: &iamtypes.Policy{},
 		},
 		nil,
 	)
@@ -426,25 +427,25 @@ func TestCreateOrUpdateIAMRole(t *testing.T) {
 	roleName := afaa.Spec.AWSFederatedRole.Name + "-" + uidLabel
 
 	createRoleOutput := &iam.CreateRoleOutput{
-		Role: &iam.Role{},
+		Role: &iamtypes.Role{},
 	}
 
-	mockAWSClient.EXPECT().CreateRole(&iam.CreateRoleInput{
+	mockAWSClient.EXPECT().CreateRole(gomock.Any(), &iam.CreateRoleInput{
 		RoleName:                 aws.String(roleName),
 		Description:              aws.String(afr.Spec.RoleDescription),
 		AssumeRolePolicyDocument: aws.String(string(jsonAssumeRolePolicyDoc)),
 	}).Return(
 		nil,
-		awserr.New("EntityAlreadyExists", "", nil),
+		&iamtypes.EntityAlreadyExistsException{Message: aws.String("")},
 	)
 
-	mockAWSClient.EXPECT().DeleteRole(&iam.DeleteRoleInput{
+	mockAWSClient.EXPECT().DeleteRole(gomock.Any(), &iam.DeleteRoleInput{
 		RoleName: aws.String(roleName)}).Return(
 		&iam.DeleteRoleOutput{},
 		nil,
 	)
 
-	mockAWSClient.EXPECT().CreateRole(&iam.CreateRoleInput{
+	mockAWSClient.EXPECT().CreateRole(gomock.Any(), &iam.CreateRoleInput{
 		RoleName:                 aws.String(roleName),
 		Description:              aws.String(afr.Spec.RoleDescription),
 		AssumeRolePolicyDocument: aws.String(string(jsonAssumeRolePolicyDoc)),
@@ -474,7 +475,7 @@ func TestAttachIAMPolicies(t *testing.T) {
 
 	awsOutputAttachPolicies := &iam.AttachRolePolicyOutput{}
 
-	mockAWSClient.EXPECT().AttachRolePolicy(gomock.Any()).Return(
+	mockAWSClient.EXPECT().AttachRolePolicy(gomock.Any(), gomock.Any()).Return(
 		awsOutputAttachPolicies,
 		nil,
 	)

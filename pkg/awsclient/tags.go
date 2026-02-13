@@ -1,9 +1,9 @@
 package awsclient
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 )
 
@@ -23,28 +23,28 @@ var AWSTags *AWSAccountOperatorTags
 
 // AWSTagBuilder provides a common interface to generate AWS Tags
 type AWSTagBuilder interface {
-	GetIAMTags() []*iam.Tag
-	GetEC2Tags() []*ec2.Tag
+	GetIAMTags() []iamtypes.Tag
+	GetEC2Tags() []ec2types.Tag
 }
 
 // GetIAMTags returns IAM tags
-func (t *AWSAccountOperatorTags) GetIAMTags() []*iam.Tag {
-	var tags []*iam.Tag
+func (t *AWSAccountOperatorTags) GetIAMTags() []iamtypes.Tag {
+	var tags []iamtypes.Tag
 	for _, tag := range t.Tags {
-		tags = append(tags, &iam.Tag{Key: aws.String(tag.Key), Value: aws.String(tag.Value)})
+		tags = append(tags, iamtypes.Tag{Key: aws.String(tag.Key), Value: aws.String(tag.Value)})
 	}
 	return tags
 }
 
 // GetEC2Tags returns EC2 tags
-func (t *AWSAccountOperatorTags) GetEC2Tags() []*ec2.Tag {
-	var tags []*ec2.Tag
+func (t *AWSAccountOperatorTags) GetEC2Tags() []ec2types.Tag {
+	var tags []ec2types.Tag
 	for _, tag := range t.Tags {
-		tags = append(tags, &ec2.Tag{Key: aws.String(tag.Key), Value: aws.String(tag.Value)})
+		tags = append(tags, ec2types.Tag{Key: aws.String(tag.Key), Value: aws.String(tag.Value)})
 	}
 
 	//make sure the ec2 instance has a descriptive name to avoid customer confusion
-	tags = append(tags, &ec2.Tag{Key: aws.String(awsv1alpha1.EC2InstanceNameTagKey), Value: aws.String(awsv1alpha1.EC2InstanceNameTagValue)})
+	tags = append(tags, ec2types.Tag{Key: aws.String(awsv1alpha1.EC2InstanceNameTagKey), Value: aws.String(awsv1alpha1.EC2InstanceNameTagValue)})
 
 	return tags
 }

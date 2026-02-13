@@ -11,18 +11,18 @@ import (
 
 	"github.com/rkt/rkt/tests/testutils/logger"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/route53"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/route53"
+	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/pkg/utils"
-	k8serr "k8s.io/apimachinery/pkg/api/errors"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -80,7 +80,8 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 		}
 		awsClient, err = r.awsClientBuilder.GetClient(controllerName, r.Client, awsClientInput)
 		if err != nil {
-			reqLogger.Error(err, "Unable to create aws client for region", "region", clusterAwsRegion)
+			connErr := fmt.Sprintf("Unable to create aws client for region %s", clusterAwsRegion)
+			reqLogger.Error(err, connErr)
 			return err
 		}
 	} else {
@@ -100,7 +101,8 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 		// e.g. https://github.com/parallelworks/interactive_session/pull/65
 		awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, reusedAccount, r.Client, awsSetupClient, clusterAwsRegion, awsv1alpha1.AccountOperatorIAMRole, "")
 		if err != nil {
-			reqLogger.Error(err, "Unable to create aws client for region", "region", clusterAwsRegion)
+			connErr := fmt.Sprintf("Unable to create aws client for region %s", clusterAwsRegion)
+			reqLogger.Error(err, connErr)
 			return err
 		}
 	}
@@ -144,72 +146,41 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 
 func (r *AccountClaimReconciler) resetAccountSpecStatus(reqLogger logr.Logger, reusedAccount *awsv1alpha1.Account, deletedAccountClaim *awsv1alpha1.AccountClaim, accountState awsv1alpha1.AccountConditionType, conditionStatus string) error {
 
-	maxRetries := 5
-	for attempt := range maxRetries {
-		if attempt > 0 {
-			reqLogger.Info("Retrying account update due to conflict", "attempt", attempt+1, "maxRetries", maxRetries)
-			err := r.Get(context.TODO(), client.ObjectKey{
-				Namespace: reusedAccount.Namespace,
-				Name:      reusedAccount.Name,
-			}, reusedAccount)
-			if err != nil {
-				if k8serr.IsNotFound(err) {
-					return nil
-				}
-				reqLogger.Error(err, "Failed to refetch account for retry")
-				return err
-			}
-		}
+	// Reset claimlink and carry over legal entity from deleted claim
+	reusedAccount.Spec.ClaimLink = ""
+	reusedAccount.Spec.ClaimLinkNamespace = ""
 
-		// Reset claimlink and carry over legal entity from deleted claim
-		reusedAccount.Spec.ClaimLink = ""
-		reusedAccount.Spec.ClaimLinkNamespace = ""
-
-		// LegalEntity is being carried over here to support older accounts, that were claimed
-		// prior to the introduction of reuse (their account's legalEntity will be blank )
-		if reusedAccount.Spec.LegalEntity.ID == "" {
-			reusedAccount.Spec.LegalEntity.ID = deletedAccountClaim.Spec.LegalEntity.ID
-			reusedAccount.Spec.LegalEntity.Name = deletedAccountClaim.Spec.LegalEntity.Name
-		}
-
-		err := r.accountSpecUpdate(reqLogger, reusedAccount)
-		if err != nil {
-			if k8serr.IsNotFound(err) {
-				return nil
-			}
-			if k8serr.IsConflict(err) && attempt < maxRetries-1 {
-				continue
-			}
-			reqLogger.Error(err, "Failed to update account spec for reuse")
-			return err
-		}
-
-		reqLogger.Info("Setting RotateCredentials and RotateConsoleCredentials for account", "awsAccountID", reusedAccount.Spec.AwsAccountID)
-		reusedAccount.Status.RotateConsoleCredentials = true
-		reusedAccount.Status.RotateCredentials = true
-
-		reusedAccount.Status.State = conditionStatus
-		reusedAccount.Status.Claimed = false
-		reusedAccount.Status.Reused = true
-		conditionMsg := fmt.Sprintf("Account Reuse - %s", conditionStatus)
-		utils.SetAccountStatus(reusedAccount, conditionMsg, accountState, conditionStatus)
-		err = r.accountStatusUpdate(reqLogger, reusedAccount)
-		if err != nil {
-			if k8serr.IsNotFound(err) {
-				return nil
-			}
-			if k8serr.IsConflict(err) && attempt < maxRetries-1 {
-				continue
-			}
-			reqLogger.Error(err, "Failed to update account status for reuse")
-			return err
-		}
-
-		reqLogger.Info("Successfully reset account for reuse")
-		return nil
+	// LegalEntity is being carried over here to support older accounts, that were claimed
+	// prior to the introduction of reuse (their account's legalEntity will be blank )
+	if reusedAccount.Spec.LegalEntity.ID == "" {
+		reusedAccount.Spec.LegalEntity.ID = deletedAccountClaim.Spec.LegalEntity.ID
+		reusedAccount.Spec.LegalEntity.Name = deletedAccountClaim.Spec.LegalEntity.Name
 	}
 
-	return fmt.Errorf("failed to update account after %d retries due to conflicts", maxRetries)
+	err := r.accountSpecUpdate(reqLogger, reusedAccount)
+	if err != nil {
+		reqLogger.Error(err, "Failed to update account spec for reuse")
+		return err
+	}
+
+	reqLogger.Info(fmt.Sprintf(
+		"Setting RotateCredentials and RotateConsoleCredentials for account %s", reusedAccount.Spec.AwsAccountID))
+	reusedAccount.Status.RotateConsoleCredentials = true
+	reusedAccount.Status.RotateCredentials = true
+
+	// Update account status and add conditions indicating account reuse
+	reusedAccount.Status.State = conditionStatus
+	reusedAccount.Status.Claimed = false
+	reusedAccount.Status.Reused = true
+	conditionMsg := fmt.Sprintf("Account Reuse - %s", conditionStatus)
+	utils.SetAccountStatus(reusedAccount, conditionMsg, accountState, conditionStatus)
+	err = r.accountStatusUpdate(reqLogger, reusedAccount)
+	if err != nil {
+		reqLogger.Error(err, "Failed to update account status for reuse")
+		return err
+	}
+
+	return nil
 }
 
 func (r *AccountClaimReconciler) cleanUpAwsAccount(reqLogger logr.Logger, awsClient awsclient.Client) error {
@@ -221,13 +192,6 @@ func (r *AccountClaimReconciler) cleanUpAwsAccount(reqLogger logr.Logger, awsCli
 
 	defer close(awsNotifications)
 	defer close(awsErrors)
-
-	reqLogger.Info("Starting EC2 instance cleanup before EBS volume cleanup")
-	err := r.cleanUpAwsAccountEc2Instances(reqLogger, awsClient)
-	if err != nil {
-		reqLogger.Error(err, "EC2 instance cleanup failed")
-		return err
-	}
 
 	// Declare un array of cleanup functions
 	cleanUpFunctions := []func(logr.Logger, awsclient.Client, chan string, chan string) error{
@@ -244,6 +208,7 @@ func (r *AccountClaimReconciler) cleanUpAwsAccount(reqLogger logr.Logger, awsCli
 		go cleanUpFunc(reqLogger, awsClient, awsNotifications, awsErrors)
 	}
 
+	var err error
 	// Wait for clean up functions to end
 	for i := 0; i < len(cleanUpFunctions); i++ {
 		select {
@@ -268,96 +233,21 @@ func (r *AccountClaimReconciler) cleanUpAwsAccount(reqLogger logr.Logger, awsCli
 	return nil
 }
 
-func (r *AccountClaimReconciler) cleanUpAwsAccountEc2Instances(reqLogger logr.Logger, awsClient awsclient.Client) error {
-	describeInstancesInput := ec2.DescribeInstancesInput{}
-	reservations, err := awsClient.DescribeInstances(&describeInstancesInput)
-	if err != nil {
-		reqLogger.Error(err, "Failed describing EC2 instances")
-		return err
-	}
-
-	var instanceIdsToTerminate []*string
-	for _, reservation := range reservations.Reservations {
-		for _, instance := range reservation.Instances {
-			if instance.State != nil && *instance.State.Name != "terminated" && *instance.State.Name != "terminating" {
-				instanceIdsToTerminate = append(instanceIdsToTerminate, instance.InstanceId)
-			}
-		}
-	}
-
-	if len(instanceIdsToTerminate) == 0 {
-		reqLogger.Info("EC2 instance cleanup finished successfully (no instances to terminate)")
-		return nil
-	}
-
-	reqLogger.Info("Terminating EC2 instances", "count", len(instanceIdsToTerminate))
-	terminateInstancesInput := ec2.TerminateInstancesInput{
-		InstanceIds: instanceIdsToTerminate,
-	}
-	_, err = awsClient.TerminateInstances(&terminateInstancesInput)
-	if err != nil {
-		reqLogger.Error(err, "Failed terminating EC2 instances")
-		return err
-	}
-
-	reqLogger.Info("Waiting for EC2 instances to terminate (max 5 minutes)")
-	maxWaitTime := 5 * time.Minute
-	pollInterval := 15 * time.Second
-	startTime := time.Now()
-
-	for {
-		if time.Since(startTime) > maxWaitTime {
-			reqLogger.Info("Timeout waiting for instances to terminate, proceeding with cleanup")
-			break
-		}
-
-		describeOutput, descErr := awsClient.DescribeInstances(&ec2.DescribeInstancesInput{
-			InstanceIds: instanceIdsToTerminate,
-		})
-		if descErr != nil {
-			reqLogger.Info("Error checking instance states, proceeding with cleanup", "error", descErr)
-			break
-		}
-
-		allTerminated := true
-		for _, reservation := range describeOutput.Reservations {
-			for _, instance := range reservation.Instances {
-				if instance.State != nil && *instance.State.Name != "terminated" {
-					allTerminated = false
-					break
-				}
-			}
-			if !allTerminated {
-				break
-			}
-		}
-
-		if allTerminated {
-			reqLogger.Info("All EC2 instances terminated successfully")
-			break
-		}
-
-		time.Sleep(pollInterval)
-	}
-
-	reqLogger.Info("EC2 instance cleanup finished successfully", "instancesTerminated", len(instanceIdsToTerminate))
-	return nil
-}
-
 func (r *AccountClaimReconciler) cleanUpAwsAccountSnapshots(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
 
-	selfOwnerFilter := ec2.Filter{
+	// Filter only for snapshots owned by the account
+	selfOwnerFilter := ec2types.Filter{
 		Name: aws.String("owner-alias"),
-		Values: []*string{
-			aws.String("self"),
+		Values: []string{
+			"self",
 		},
 	}
 	describeSnapshotsInput := ec2.DescribeSnapshotsInput{
-		Filters: []*ec2.Filter{
-			&selfOwnerFilter,
+		Filters: []ec2types.Filter{
+			selfOwnerFilter,
 		},
 	}
-	ebsSnapshots, err := awsClient.DescribeSnapshots(&describeSnapshotsInput)
+	ebsSnapshots, err := awsClient.DescribeSnapshots(context.TODO(), &describeSnapshotsInput)
 	if err != nil {
 		descError := "Failed describing EBS snapshots"
 		awsErrors <- descError
@@ -367,10 +257,10 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountSnapshots(reqLogger logr.Logge
 	for _, snapshot := range ebsSnapshots.Snapshots {
 
 		deleteSnapshotInput := ec2.DeleteSnapshotInput{
-			SnapshotId: aws.String(*snapshot.SnapshotId),
+			SnapshotId: snapshot.SnapshotId,
 		}
 
-		_, err = awsClient.DeleteSnapshot(&deleteSnapshotInput)
+		_, err = awsClient.DeleteSnapshot(context.TODO(), &deleteSnapshotInput)
 		if err != nil {
 			delError := fmt.Errorf("failed deleting EBS snapshot: %s: %w", *snapshot.SnapshotId, err).Error()
 			awsErrors <- delError
@@ -385,17 +275,17 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountSnapshots(reqLogger logr.Logge
 
 func (r *AccountClaimReconciler) CleanUpAwsAccountVpcEndpointServiceConfigurations(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
 	describeVpcEndpointServiceConfigurationsInput := ec2.DescribeVpcEndpointServiceConfigurationsInput{}
-	vpcEndpointServiceConfigurations, err := awsClient.DescribeVpcEndpointServiceConfigurations(&describeVpcEndpointServiceConfigurationsInput)
+	vpcEndpointServiceConfigurations, err := awsClient.DescribeVpcEndpointServiceConfigurations(context.TODO(), &describeVpcEndpointServiceConfigurationsInput)
 	if vpcEndpointServiceConfigurations == nil || err != nil {
 		descError := "Failed describing VPC endpoint service configurations"
 		awsErrors <- descError
 		return err
 	}
 
-	serviceIds := []*string{}
+	serviceIds := []string{}
 
 	for _, config := range vpcEndpointServiceConfigurations.ServiceConfigurations {
-		serviceIds = append(serviceIds, config.ServiceId)
+		serviceIds = append(serviceIds, *config.ServiceId)
 	}
 
 	successMsg := "VPC endpoint service configuration cleanup finished successfully"
@@ -408,7 +298,7 @@ func (r *AccountClaimReconciler) CleanUpAwsAccountVpcEndpointServiceConfiguratio
 		ServiceIds: serviceIds,
 	}
 
-	output, err := awsClient.DeleteVpcEndpointServiceConfigurations(&deleteVpcEndpointServiceConfigurationsInput)
+	output, err := awsClient.DeleteVpcEndpointServiceConfigurations(context.TODO(), &deleteVpcEndpointServiceConfigurationsInput)
 	if err != nil {
 		unsuccessfulList := ""
 		for i, unsuccessfulEndpoint := range output.Unsuccessful {
@@ -429,52 +319,37 @@ func (r *AccountClaimReconciler) CleanUpAwsAccountVpcEndpointServiceConfiguratio
 func (r *AccountClaimReconciler) cleanUpAwsAccountEbsVolumes(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
 
 	describeVolumesInput := ec2.DescribeVolumesInput{}
-	ebsVolumes, err := awsClient.DescribeVolumes(&describeVolumesInput)
+	ebsVolumes, err := awsClient.DescribeVolumes(context.TODO(), &describeVolumesInput)
 	if err != nil {
 		descError := "Failed describing EBS volumes"
 		awsErrors <- descError
 		return err
 	}
 
-	deletedCount := 0
-	skippedCount := 0
 	for _, volume := range ebsVolumes.Volumes {
 
 		deleteVolumeInput := ec2.DeleteVolumeInput{
-			VolumeId: aws.String(*volume.VolumeId),
+			VolumeId: volume.VolumeId,
 		}
 
-		_, err = awsClient.DeleteVolume(&deleteVolumeInput)
+		_, err = awsClient.DeleteVolume(context.TODO(), &deleteVolumeInput)
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				if aerr.Code() == "VolumeInUse" {
-					reqLogger.Info("Skipping EBS volume (still attached to instance)", "volumeId", *volume.VolumeId)
-					skippedCount++
-					continue
-				}
-			}
 			delError := fmt.Errorf("failed deleting EBS volume: %s: %w", *volume.VolumeId, err).Error()
 			logger.Error(delError)
 			awsErrors <- delError
 			return err
 		}
-		deletedCount++
+
 	}
 
-	if skippedCount > 0 {
-		warnMsg := fmt.Sprintf("EBS Volume cleanup finished (deleted: %d, skipped attached: %d - will retry on next reconciliation)", deletedCount, skippedCount)
-		reqLogger.Info(warnMsg)
-		awsNotifications <- warnMsg
-		return nil
-	}
-	successMsg := fmt.Sprintf("EBS Volume cleanup finished successfully (deleted: %d)", deletedCount)
+	successMsg := "EBS Volume cleanup finished successfully"
 	awsNotifications <- successMsg
 	return nil
 }
 
 func (r *AccountClaimReconciler) cleanUpAwsAccountS3(reqLogger logr.Logger, awsClient awsclient.Client, awsNotifications chan string, awsErrors chan string) error {
 	listBucketsInput := s3.ListBucketsInput{}
-	s3Buckets, err := awsClient.ListBuckets(&listBucketsInput)
+	s3Buckets, err := awsClient.ListBuckets(context.TODO(), &listBucketsInput)
 	if err != nil {
 		listError := fmt.Errorf("failed listing S3 buckets: %w", err).Error()
 		awsErrors <- listError
@@ -484,35 +359,33 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountS3(reqLogger logr.Logger, awsC
 	for _, bucket := range s3Buckets.Buckets {
 
 		deleteBucketInput := s3.DeleteBucketInput{
-			Bucket: aws.String(*bucket.Name),
+			Bucket: bucket.Name,
 		}
 
 		// delete any content if any
 		err := DeleteBucketContent(awsClient, *bucket.Name)
 		if err != nil {
 			ContentDelErr := fmt.Errorf("failed to delete bucket content: %s: %w", *bucket.Name, err).Error()
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				case s3.ErrCodeNoSuchBucket:
-					//ignore these errors
-				default:
-					awsErrors <- ContentDelErr
-					return err
-				}
+			// Check for specific S3 exception types
+			var noSuchBucketErr *s3types.NoSuchBucket
+			if !errors.As(err, &noSuchBucketErr) {
+				// If it's not NoSuchBucket, it's an error we care about
+				awsErrors <- ContentDelErr
+				return err
 			}
+			// NoSuchBucket - ignore this error
 		}
-		_, err = awsClient.DeleteBucket(&deleteBucketInput)
+		_, err = awsClient.DeleteBucket(context.TODO(), &deleteBucketInput)
 		if err != nil {
 			DelError := fmt.Errorf("failed deleting S3 bucket: %s: %w", *bucket.Name, err).Error()
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				case s3.ErrCodeNoSuchBucket:
-					//ignore these errors
-				default:
-					awsErrors <- DelError
-					return err
-				}
+			// Check for specific S3 exception types
+			var noSuchBucketErr *s3types.NoSuchBucket
+			if !errors.As(err, &noSuchBucketErr) {
+				// If it's not NoSuchBucket, it's an error we care about
+				awsErrors <- DelError
+				return err
 			}
+			// NoSuchBucket - ignore this error
 		}
 
 	}
@@ -529,7 +402,7 @@ func (r *AccountClaimReconciler) cleanUpAwsRoute53(reqLogger logr.Logger, awsCli
 	// Paginate through hosted zones
 	for {
 		// Get list of hosted zones by page
-		hostedZonesOutput, err := awsClient.ListHostedZones(&route53.ListHostedZonesInput{Marker: nextZoneMarker})
+		hostedZonesOutput, err := awsClient.ListHostedZones(context.TODO(), &route53.ListHostedZonesInput{Marker: nextZoneMarker})
 		if err != nil {
 			listError := fmt.Errorf("failed to list Hosted Zones: %w", err).Error()
 			awsErrors <- listError
@@ -542,35 +415,36 @@ func (r *AccountClaimReconciler) cleanUpAwsRoute53(reqLogger logr.Logger, awsCli
 			var nextRecordName *string
 			// Pagination again!!!!!
 			for {
-				recordSet, listRecordsError := awsClient.ListResourceRecordSets(&route53.ListResourceRecordSetsInput{HostedZoneId: zone.Id, StartRecordName: nextRecordName})
+				recordSet, listRecordsError := awsClient.ListResourceRecordSets(context.TODO(), &route53.ListResourceRecordSetsInput{HostedZoneId: zone.Id, StartRecordName: nextRecordName})
 				if listRecordsError != nil {
 					recordSetListError := fmt.Errorf("failed to list Record sets for hosted zone %s: %w", *zone.Name, err).Error()
 					awsErrors <- recordSetListError
 					return listRecordsError
 				}
 
-				changeBatch := &route53.ChangeBatch{}
+				changeBatch := &route53types.ChangeBatch{}
 				for _, record := range recordSet.ResourceRecordSets {
 					// Build ChangeBatch
-					// https://docs.aws.amazon.com/sdk-for-go/api/service/route53/#ChangeBatch
-					//https://docs.aws.amazon.com/sdk-for-go/api/service/route53/#Change
-					if *record.Type != "NS" && *record.Type != "SOA" {
-						changeBatch.Changes = append(changeBatch.Changes, &route53.Change{
-							Action:            aws.String("DELETE"),
-							ResourceRecordSet: record,
+					// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/route53/types#ChangeBatch
+					// https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/route53/types#Change
+					if record.Type != "NS" && record.Type != "SOA" {
+						deleteAction := route53types.ChangeActionDelete
+						changeBatch.Changes = append(changeBatch.Changes, route53types.Change{
+							Action:            deleteAction,
+							ResourceRecordSet: &record,
 						})
 					}
 				}
 
 				if changeBatch.Changes != nil {
-					_, changeErr := awsClient.ChangeResourceRecordSets(&route53.ChangeResourceRecordSetsInput{HostedZoneId: zone.Id, ChangeBatch: changeBatch})
+					_, changeErr := awsClient.ChangeResourceRecordSets(context.TODO(), &route53.ChangeResourceRecordSetsInput{HostedZoneId: zone.Id, ChangeBatch: changeBatch})
 					if changeErr != nil {
 						recordDeleteError := fmt.Errorf("failed to delete record sets for hosted zone %s: %w", *zone.Name, err).Error()
 						awsErrors <- recordDeleteError
 						return changeErr
 					}
 				}
-				if *recordSet.IsTruncated {
+				if recordSet.IsTruncated {
 					nextRecordName = recordSet.NextRecordName
 				} else {
 					break
@@ -578,7 +452,7 @@ func (r *AccountClaimReconciler) cleanUpAwsRoute53(reqLogger logr.Logger, awsCli
 
 			}
 
-			_, deleteError := awsClient.DeleteHostedZone(&route53.DeleteHostedZoneInput{Id: zone.Id})
+			_, deleteError := awsClient.DeleteHostedZone(context.TODO(), &route53.DeleteHostedZoneInput{Id: zone.Id})
 			if deleteError != nil {
 				zoneDelErr := fmt.Errorf("failed to delete hosted zone: %s: %w", *zone.Name, err).Error()
 				awsErrors <- zoneDelErr
@@ -586,7 +460,7 @@ func (r *AccountClaimReconciler) cleanUpAwsRoute53(reqLogger logr.Logger, awsCli
 			}
 		}
 
-		if *hostedZonesOutput.IsTruncated {
+		if hostedZonesOutput.IsTruncated {
 			nextZoneMarker = hostedZonesOutput.Marker
 		} else {
 			break
@@ -601,7 +475,7 @@ func (r *AccountClaimReconciler) cleanUpAwsRoute53(reqLogger logr.Logger, awsCli
 // DeleteBucketContent deletes any content in a bucket if it is not empty
 func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
 	// check if objects exits
-	objects, err := awsClient.ListObjectsV2(&s3.ListObjectsV2Input{
+	objects, err := awsClient.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucketName),
 	})
 	if err != nil {
@@ -611,7 +485,7 @@ func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
 		return nil
 	}
 
-	err = awsClient.BatchDeleteBucketObjects(aws.String(bucketName))
+	err = awsClient.BatchDeleteBucketObjects(context.TODO(), aws.String(bucketName))
 	if err != nil {
 		return err
 	}
@@ -621,7 +495,7 @@ func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
 func (r *AccountClaimReconciler) accountStatusUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
 	err := r.Client.Status().Update(context.TODO(), account)
 	if err != nil {
-		reqLogger.Error(err, "Status update failed", "account", account.Name)
+		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", account.Name))
 	}
 	return err
 }

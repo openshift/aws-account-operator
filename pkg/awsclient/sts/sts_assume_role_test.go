@@ -1,15 +1,17 @@
 package sts
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/sts"
-	"go.uber.org/mock/gomock"
+	"testing"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	ststypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
+	"github.com/aws/smithy-go"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
+	"go.uber.org/mock/gomock"
 )
 
 func TestGetSTSCredentials(t *testing.T) {
@@ -24,9 +26,9 @@ func TestGetSTSCredentials(t *testing.T) {
 	SecretAccessKey := aws.String("MySecretAccessKey")
 	SessionToken := aws.String("MySessionToken")
 
-	mockAWSClient.EXPECT().AssumeRole(gomock.Any()).Return(
+	mockAWSClient.EXPECT().AssumeRole(gomock.Any(), gomock.Any()).Return(
 		&sts.AssumeRoleOutput{
-			Credentials: &sts.Credentials{
+			Credentials: &ststypes.Credentials{
 				AccessKeyId:     AccessKeyId,
 				Expiration:      Expiration,
 				SecretAccessKey: SecretAccessKey,
@@ -51,10 +53,10 @@ func TestGetSTSCredentials(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Test AWS Failure
-	expectedErr := awserr.New("AccessDenied", "", nil)
-	mockAWSClient.EXPECT().AssumeRole(gomock.Any()).Return(
+	expectedErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: ""}
+	mockAWSClient.EXPECT().AssumeRole(gomock.Any(), gomock.Any()).Return(
 		&sts.AssumeRoleOutput{
-			Credentials: &sts.Credentials{
+			Credentials: &ststypes.Credentials{
 				AccessKeyId:     AccessKeyId,
 				Expiration:      Expiration,
 				SecretAccessKey: SecretAccessKey,
