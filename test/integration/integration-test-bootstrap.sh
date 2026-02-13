@@ -483,7 +483,7 @@ EOF
         echo -e "\n========================================================================"
         echo "= Building/Running Operator using operator-sdk"
         echo "========================================================================"
-        make deploy-local OPERATOR_NAMESPACE=$NAMESPACE > $LOCAL_LOG_FILE 2>&1 &
+        make deploy-local > $LOCAL_LOG_FILE 2>&1 &
         localOperatorPID=$!
         echo "Operator running in background with PID $localOperatorPID"
         echo "You can follow operator logs with: tail -f $LOCAL_LOG_FILE"
