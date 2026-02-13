@@ -1,4 +1,5 @@
 #!/bin/bash
+# Script to deploy AWS Account Operator ConfigMap
 
 usage() {
     cat <<EOF
@@ -103,4 +104,4 @@ hs-zero-size-accountpool:
       L-1216C47A: '11'"
 
 echo "Deploying AWS Account Operator Configmap"
-oc process -p ROOT="${AWS_ROOT_OU}" -p BASE="${AWS_BASE_OU}" -p ACCOUNT_LIMIT="${AWS_ACCOUNT_LIMIT}" -p VCPU_QUOTA="${AWS_VCPU_QUOTA}" -p OPERATOR_NAMESPACE=aws-account-operator -p STS_JUMP_ARN="${STS_JUMP_ARN}" -p SUPPORT_JUMP_ROLE="${SUPPORT_JUMP_ROLE}" -p ACCOUNTPOOL_CONFIG="${ACCOUNTPOOL_CONFIG}" -f hack/templates/aws.managed.openshift.io_v1alpha1_configmap.tmpl | oc apply -f -
+oc process --local -p ROOT="${AWS_ROOT_OU}" -p BASE="${AWS_BASE_OU}" -p ACCOUNT_LIMIT="${AWS_ACCOUNT_LIMIT}" -p VCPU_QUOTA="${AWS_VCPU_QUOTA}" -p OPERATOR_NAMESPACE=aws-account-operator -p STS_JUMP_ARN="${STS_JUMP_ARN}" -p SUPPORT_JUMP_ROLE="${SUPPORT_JUMP_ROLE}" -p ACCOUNTPOOL_CONFIG="${ACCOUNTPOOL_CONFIG}" -f hack/templates/aws.managed.openshift.io_v1alpha1_configmap.tmpl | oc apply -f -
