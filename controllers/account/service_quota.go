@@ -359,11 +359,11 @@ func checkQuotaRequestStatus(reqLogger logr.Logger, awsClient awsclient.Client, 
 		for _, change := range result.RequestedQuotas {
 			if changeRequestMatches(change, quotaCode, serviceCode, expectedQuota) {
 				switch change.Status {
-				case "PENDING", "CASE_OPENED":
+				case servicequotastypes.RequestStatusPending, servicequotastypes.RequestStatusCaseOpened:
 					return awsv1alpha1.ServiceRequestInProgress, nil
-				case "APPROVED", "CASE_CLOSED":
+				case servicequotastypes.RequestStatusApproved, servicequotastypes.RequestStatusCaseClosed:
 					return awsv1alpha1.ServiceRequestCompleted, nil
-				case "DENIED":
+				case servicequotastypes.RequestStatusDenied:
 					return awsv1alpha1.ServiceRequestDenied, nil
 				}
 			}

@@ -327,11 +327,11 @@ func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, r
 
 		if result.RegionOptStatus != "" {
 			switch result.RegionOptStatus {
-			case "ENABLING":
+			case accounttypes.RegionOptStatusEnabling:
 				return awsv1alpha1.OptInRequestEnabling, nil
-			case "ENABLED", "ENABLED_BY_DEFAULT":
+			case accounttypes.RegionOptStatusEnabled, accounttypes.RegionOptStatusEnabledByDefault:
 				return awsv1alpha1.OptInRequestEnabled, nil
-			case "DISABLED", "DISABLING":
+			case accounttypes.RegionOptStatusDisabled, accounttypes.RegionOptStatusDisabling:
 				return awsv1alpha1.OptInRequestTodo, nil
 			}
 		}

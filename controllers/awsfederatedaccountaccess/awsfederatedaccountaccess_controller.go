@@ -493,9 +493,8 @@ func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMPolicy(awsClient 
 
 	_, err = r.createIAMPolicy(awsClient, afr, afaa)
 	if err != nil {
-		var aerr smithy.APIError
 		var entityExists *iamtypes.EntityAlreadyExistsException
-		if errors.As(err, &aerr) && errors.As(err, &entityExists) {
+		if errors.As(err, &entityExists) {
 			policyName := afr.Spec.AWSCustomPolicy.Name + "-" + uidLabel
 			err = checkAndDeletePolicy(awsClient, uidLabel, afr.Spec.AWSCustomPolicy.Name, &policyName, &customPolArns[0])
 			if err != nil {
@@ -522,29 +521,23 @@ func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMRole(awsClient aw
 
 	role, err := r.createIAMRole(awsClient, afr, afaa)
 	if err != nil {
-		var aerr smithy.APIError
 		var entityExists *iamtypes.EntityAlreadyExistsException
-		if errors.As(err, &aerr) {
-			if errors.As(err, &entityExists) {
-				_, err := awsClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{RoleName: aws.String(roleName)})
+		if errors.As(err, &entityExists) {
+			_, err := awsClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{RoleName: aws.String(roleName)})
 
-				if err != nil {
-					return nil, err
-				}
-
-				role, err := r.createIAMRole(awsClient, afr, afaa)
-
-				if err != nil {
-					return nil, err
-				}
-
-				return role, nil
+			if err != nil {
+				return nil, err
 			}
-			// Handle unexpected AWS API errors
-			controllerutils.LogAwsError(reqLogger, "createOrUpdateIAMRole: Unexpected AWS Error creating IAM Role", nil, err)
-			return nil, err
+
+			role, err := r.createIAMRole(awsClient, afr, afaa)
+
+			if err != nil {
+				return nil, err
+			}
+
+			return role, nil
 		}
-		// Return all other (non-AWS) errors
+		// Handle all other errors
 		return nil, err
 	}
 

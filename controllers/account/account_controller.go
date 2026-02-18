@@ -1114,12 +1114,12 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 		accountStatus = status
 		createStatus := status.CreateAccountStatus.State
 
-		if createStatus == "FAILED" {
+		if createStatus == organizationstypes.CreateAccountStateFailed {
 			var returnErr error
 			switch status.CreateAccountStatus.FailureReason {
-			case "ACCOUNT_LIMIT_EXCEEDED":
+			case organizationstypes.CreateAccountFailureReasonAccountLimitExceeded:
 				returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
-			case "INTERNAL_FAILURE":
+			case organizationstypes.CreateAccountFailureReasonInternalFailure:
 				returnErr = awsv1alpha1.ErrAwsInternalFailure
 			default:
 				returnErr = awsv1alpha1.ErrAwsFailedCreateAccount
@@ -1128,7 +1128,7 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 			return &organizations.DescribeCreateAccountStatusOutput{}, returnErr
 		}
 
-		if createStatus != "IN_PROGRESS" {
+		if createStatus != organizationstypes.CreateAccountStateInProgress {
 			break
 		}
 	}

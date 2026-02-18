@@ -152,32 +152,11 @@ func MoveAccount(reqLogger logr.Logger, client awsclient.Client, account *awsv1a
 			reqLogger.Info(ConcurrentModificationExceptionMsg)
 			return awsv1alpha1.ErrAccMoveRaceCondition
 		default:
-			// Check for generic error codes as fallback
+			// Log unexpected error for unhandled exceptions
 			var aerr smithy.APIError
 			if errors.As(err, &aerr) {
-				switch aerr.ErrorCode() {
-				case "AccountNotFoundException":
-					// if the account has been moved out of root we check if it is in the desired OU and update the accountclaim spec
-					accountNotFound := fmt.Sprintf("Account %s was not found in root, checking if the account already in the correct OU", account.Spec.LegalEntity.Name)
-					reqLogger.Info(accountNotFound)
-					childType := "ACCOUNT"
-					found, accErr := findChildInOU(reqLogger, client, ouID, childType, account.Spec.AwsAccountID)
-					if accErr != nil {
-						return accErr
-					}
-					if found {
-						return awsv1alpha1.ErrAccAlreadyInOU
-					}
-				case "ConcurrentModificationException":
-					// if we encounter a race condition we can assume that the account has already been moved, therefore we simply log the condition and requeue
-					ConcurrentModificationExceptionMsg := fmt.Sprintf("OU:CreateOrganizationalUnit:ConcurrentModificationException: Race condition while attempting to move Account: %s to OU: %s", account.Spec.AwsAccountID, ouID)
-					reqLogger.Info(ConcurrentModificationExceptionMsg)
-					return awsv1alpha1.ErrAccMoveRaceCondition
-				default:
-					// Log unexpected error
-					unexpectedErrorMsg := fmt.Sprintf("CreateOrganizationalUnit: Unexpected AWS Error when attempting to move AWS Account: %s to OU: %s, Error: %s", account.Spec.AwsAccountID, ouID, aerr.ErrorCode())
-					reqLogger.Info(unexpectedErrorMsg)
-				}
+				unexpectedErrorMsg := fmt.Sprintf("CreateOrganizationalUnit: Unexpected AWS Error when attempting to move AWS Account: %s to OU: %s, Error: %s", account.Spec.AwsAccountID, ouID, aerr.ErrorCode())
+				reqLogger.Info(unexpectedErrorMsg)
 			}
 		}
 		return err

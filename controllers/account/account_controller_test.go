@@ -60,6 +60,15 @@ const (
 	TestAccountEmail     = "test@example.com"
 )
 
+var (
+	errCodeConstraintViolationException    = (&organizationstypes.ConstraintViolationException{}).ErrorCode()
+	errCodeServiceException                = (&organizationstypes.ServiceException{}).ErrorCode()
+	errCodeTooManyRequestsException        = (&organizationstypes.TooManyRequestsException{}).ErrorCode()
+	errCodeDuplicateAccountException       = (&organizationstypes.DuplicateAccountException{}).ErrorCode()
+	errCodeConcurrentModificationException = (&organizationstypes.ConcurrentModificationException{}).ErrorCode()
+	errCodeAccessDeniedException           = (&organizationstypes.AccessDeniedException{}).ErrorCode()
+)
+
 func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
 	mocks := &mocks{
 		fakeKubeClient: fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(localObjects...).Build(),
@@ -1337,7 +1346,7 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsAccountLimitExceeded).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring("ConstraintViolationException")))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(errCodeConstraintViolationException)))
 		})
 
 		It("AWS returns ErrCodeServiceException from CreateAccount", func() {
@@ -1347,7 +1356,7 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsInternalFailure).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring("ServiceException")))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(errCodeServiceException)))
 		})
 
 		It("AWS returns ErrCodeTooManyRequestsException from CreateAccount", func() {
@@ -1357,7 +1366,7 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsTooManyRequests).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring("TooManyRequestsException")))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(errCodeTooManyRequestsException)))
 		})
 
 		It("AWS returns error from CreateAccount", func() {
@@ -1367,7 +1376,7 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsFailedCreateAccount).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring("DuplicateAccountException")))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(errCodeDuplicateAccountException)))
 		})
 
 		It("AWS returns ErrCodeConcurrentModificationException from CreateAccount", func() {
@@ -1377,7 +1386,7 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsConcurrentModification).To(Equal(err))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring("ConcurrentModificationException")))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(errCodeConcurrentModificationException)))
 		})
 
 		It("AWS returns an error from DescribeCreateAccountStatus", func() {
@@ -1451,22 +1460,22 @@ var _ = Describe("Account Controller", func() {
 				"ConcurrentModificationException": {
 					err:         &organizationstypes.ConcurrentModificationException{Message: aws.String("Error String")},
 					expectedErr: awsv1alpha1.ErrAwsConcurrentModification,
-					errorSubstr: "ConcurrentModificationException",
+					errorSubstr: errCodeConcurrentModificationException,
 				},
 				"ConstraintViolationException": {
 					err:         &organizationstypes.ConstraintViolationException{Message: aws.String("Error String")},
 					expectedErr: awsv1alpha1.ErrAwsAccountLimitExceeded,
-					errorSubstr: "ConstraintViolationException",
+					errorSubstr: errCodeConstraintViolationException,
 				},
 				"ServiceException": {
 					err:         &organizationstypes.ServiceException{Message: aws.String("Error String")},
 					expectedErr: awsv1alpha1.ErrAwsInternalFailure,
-					errorSubstr: "ServiceException",
+					errorSubstr: errCodeServiceException,
 				},
 				"TooManyRequestsException": {
 					err:         &organizationstypes.TooManyRequestsException{Message: aws.String("Error String")},
 					expectedErr: awsv1alpha1.ErrAwsTooManyRequests,
-					errorSubstr: "TooManyRequestsException",
+					errorSubstr: errCodeTooManyRequestsException,
 				},
 			}
 		)
@@ -1493,7 +1502,7 @@ var _ = Describe("Account Controller", func() {
 			Expect(actualErr).To(HaveOccurred())
 			Expect(acctId).To(BeEmpty())
 			Expect(actualErr).To(MatchError(awsv1alpha1.ErrAwsFailedCreateAccount))
-			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring("AccessDeniedException")))
+			Expect(nullTestLogger.Messages()).Should(ContainElement(ContainSubstring(errCodeAccessDeniedException)))
 			Expect(account.Status.State).To(BeEquivalentTo(awsv1alpha1.AccountFailed))
 		})
 	})

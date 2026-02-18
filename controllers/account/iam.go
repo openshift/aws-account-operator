@@ -213,11 +213,6 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 					if attempt == 10 {
 						return &iam.CreateUserOutput{}, err
 					}
-				case "EntityAlreadyExists":
-					// Fallback for when error is returned as generic error code
-					invalidTokenMsg := fmt.Sprintf("IAM User %s was created", userName)
-					reqLogger.Info(invalidTokenMsg)
-					return &iam.CreateUserOutput{}, err
 				default:
 					utils.LogAwsError(reqLogger, "CreateIAMUser: Unexpected AWS Error during creation of IAM user", nil, err)
 					return &iam.CreateUserOutput{}, err

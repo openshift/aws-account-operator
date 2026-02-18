@@ -155,24 +155,26 @@ func GetExistingRole(reqLogger logr.Logger, byocRole string, byocAWSClient awscl
 		var noSuchEntityErr *iamtypes.NoSuchEntityException
 		var serviceFailureErr *iamtypes.ServiceFailureException
 		var apiErr smithy.APIError
-		if errors.As(err, &noSuchEntityErr) {
+
+		switch {
+		case errors.As(err, &noSuchEntityErr):
 			// This is OK and to be expected if the role hasn't been created yet
 			reqLogger.Info(fmt.Sprintf("%s role does not yet exist", byocRole))
 			return &iam.GetRoleOutput{}, nil
-		} else if errors.As(err, &serviceFailureErr) {
+		case errors.As(err, &serviceFailureErr):
 			reqLogger.Error(
 				err,
 				fmt.Sprintf("AWS Internal Server Error checking for %s role existence", byocRole),
 			)
 			return &iam.GetRoleOutput{}, err
-		} else if errors.As(err, &apiErr) {
+		case errors.As(err, &apiErr):
 			// Currently only two errors returned by AWS.  This is a catch-all for any that may appear in the future.
 			reqLogger.Error(
 				err,
 				fmt.Sprintf("Unknown error (%s) checking for %s role existence: %s", apiErr.ErrorCode(), byocRole, apiErr.ErrorMessage()),
 			)
 			return &iam.GetRoleOutput{}, err
-		} else {
+		default:
 			return &iam.GetRoleOutput{}, err
 		}
 	}

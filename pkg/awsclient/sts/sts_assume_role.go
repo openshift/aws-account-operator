@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
@@ -39,11 +40,10 @@ func GetSTSCredentials(
 	roleSessionName string) (*sts.AssumeRoleOutput, error) {
 	// Default duration in seconds of the session token 3600. We need to have the roles policy
 	// changed if we want it to be longer than 3600 seconds
-	var roleSessionDuration int32 = 3600
 	reqLogger.Info(fmt.Sprintf("Creating STS credentials for AWS ARN: %s", roleArn))
 	// Build input for AssumeRole
 	assumeRoleInput := sts.AssumeRoleInput{
-		DurationSeconds: &roleSessionDuration,
+		DurationSeconds: aws.Int32(3600),
 		RoleArn:         &roleArn,
 		RoleSessionName: &roleSessionName,
 	}

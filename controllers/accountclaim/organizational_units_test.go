@@ -4,6 +4,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/aws/smithy-go"
@@ -150,7 +151,7 @@ var _ = Describe("Organizational Unit", func() {
 			)
 
 			// Needed for
-			expectedErr := &smithy.GenericAPIError{Code: "AccountNotFoundException", Message: "Some AWS Error"}
+			expectedErr := &organizationstypes.AccountNotFoundException{Message: aws.String("Some AWS Error")}
 			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
 			mockAWSClient.EXPECT().ListChildren(gomock.Any(), gomock.Any()).Return(
 				&organizations.ListChildrenOutput{
@@ -289,7 +290,7 @@ var _ = Describe("Organizational Unit", func() {
 		})
 
 		It("Should error when Account already in correct OU", func() {
-			expectedErr := &smithy.GenericAPIError{Code: "AccountNotFoundException", Message: "Some AWS Error"}
+			expectedErr := &organizationstypes.AccountNotFoundException{Message: aws.String("Some AWS Error")}
 			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
 			mockAWSClient.EXPECT().ListChildren(gomock.Any(), gomock.Any()).Return(
 				&organizations.ListChildrenOutput{
@@ -309,7 +310,7 @@ var _ = Describe("Organizational Unit", func() {
 		It("Should throw an error when Account cannot be found", func() {
 			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(
 				nil,
-				&smithy.GenericAPIError{Code: "AccountNotFoundException", Message: "Some AWS Error"},
+				&organizationstypes.AccountNotFoundException{Message: aws.String("Some AWS Error")},
 			)
 			mockAWSClient.EXPECT().ListChildren(gomock.Any(), gomock.Any()).Return(
 				&organizations.ListChildrenOutput{
@@ -324,7 +325,7 @@ var _ = Describe("Organizational Unit", func() {
 		})
 
 		It("Should error when encountering a race condition when attempting to move account", func() {
-			expectedErr := &smithy.GenericAPIError{Code: "ConcurrentModificationException", Message: "Some AWS Error"}
+			expectedErr := &organizationstypes.ConcurrentModificationException{Message: aws.String("Some AWS Error")}
 			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
 			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
 			Expect(err).To(HaveOccurred())
