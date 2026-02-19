@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/organizations"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/smithy-go"
 	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 
 	corev1 "k8s.io/api/core/v1"
@@ -189,8 +191,9 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			if err != nil {
 				reqLogger.Error(err, "failed building BYOC client from assume_role")
 				_, err = r.handleAWSClientError(reqLogger, currentAcctInstance, err)
-				if aerr, ok := err.(awserr.Error); ok {
-					switch aerr.Code() {
+				var aerr smithy.APIError
+				if errors.As(err, &aerr) {
+					switch aerr.ErrorCode() {
 					// If it's AccessDenied we want to just delete the finalizer and continue as we assume
 					// the credentials have been deleted by the customer. For additional safety we also only
 					// want to do this for CCS accounts.
@@ -522,18 +525,18 @@ func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, c
 // Error with the error code "OptInRequired". This usually indicates that a
 // newly created aws account is not yet fully operational.
 //
-// returns true only if the error can be cast to an instance of awserr.Error and has the appropriate code set. Passing in `nil` also returns false.
+// returns true only if the error can be cast to an instance of smithy.APIError and has the appropriate code set. Passing in `nil` also returns false.
 func isAwsOptInError(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	awsError, ok := err.(awserr.Error)
-	if !ok {
+	var awsError smithy.APIError
+	if !errors.As(err, &awsError) {
 		return false
 	}
 
-	return awsError.Code() == "OptInRequired"
+	return awsError.ErrorCode() == "OptInRequired"
 }
 
 func (r *AccountReconciler) handleIAMUserCreation(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, namespace string) (reconcile.Result, *sts.AssumeRoleOutput, error) {
@@ -576,8 +579,9 @@ func (r *AccountReconciler) handleIAMUserCreation(reqLogger logr.Logger, current
 func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, err error) (reconcile.Result, error) {
 	// Get custom failure reason to update account status
 	reason := ""
-	if aerr, ok := err.(awserr.Error); ok {
-		reason = aerr.Code()
+	var aerr smithy.APIError
+	if errors.As(err, &aerr) {
+		reason = aerr.ErrorCode()
 	}
 	errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s: %s", currentAcctInstance.Spec.AwsAccountID, err)
 	_, stateErr := r.setAccountFailed(
@@ -776,13 +780,14 @@ func SetCurrentAccountServiceQuotas(reqLogger logr.Logger, awsClientBuilder awsc
 	}
 
 	// Get a list of regions enabled in the current account
-	regionsEnabledInAccount, err := awsAssumedRoleClient.DescribeRegions(&ec2.DescribeRegionsInput{
+	regionsEnabledInAccount, err := awsAssumedRoleClient.DescribeRegions(context.TODO(), &ec2.DescribeRegionsInput{
 		AllRegions: aws.Bool(false),
 	})
 	if err != nil {
 		// Retry on failures related to the slow AWS API
-		if aerr, ok := err.(awserr.Error); ok {
-			if aerr.Code() == "OptInRequired" {
+		var aerr smithy.APIError
+		if errors.As(err, &aerr) {
+			if aerr.ErrorCode() == "OptInRequired" {
 				return nil
 			}
 		}
@@ -878,7 +883,7 @@ func (r *AccountReconciler) nonCCSAssignAccountID(reqLogger logr.Logger, current
 
 func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName string, complianceTags map[string]string) error {
 	// Start with the owner tag
-	tags := []*organizations.Tag{
+	tags := []organizationstypes.Tag{
 		{
 			Key:   aws.String("owner"),
 			Value: aws.String(shardName),
@@ -887,7 +892,7 @@ func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName 
 
 	// Add compliance tags from the map
 	for key, value := range complianceTags {
-		tags = append(tags, &organizations.Tag{
+		tags = append(tags, organizationstypes.Tag{
 			Key:   aws.String(key),
 			Value: aws.String(value),
 		})
@@ -898,7 +903,7 @@ func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName 
 		Tags:       tags,
 	}
 
-	_, err := awsSetupClient.TagResource(inputTag)
+	_, err := awsSetupClient.TagResource(context.TODO(), inputTag)
 	if err != nil {
 		return err
 	}
@@ -924,7 +929,7 @@ func (r *AccountReconciler) initializeRegions(reqLogger logr.Logger, currentAcct
 	reqLogger.Info("Created AWS Client for region initialization")
 
 	// Get a list of regions enabled in the current account
-	regionsEnabledInAccount, err := awsClient.DescribeRegions(&ec2.DescribeRegionsInput{
+	regionsEnabledInAccount, err := awsClient.DescribeRegions(context.TODO(), &ec2.DescribeRegionsInput{
 		AllRegions: aws.Bool(false),
 	})
 	if err != nil {
@@ -1067,25 +1072,30 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 		Email:       aws.String(accountEmail),
 	}
 
-	createOutput, err := client.CreateAccount(&createInput)
+	createOutput, err := client.CreateAccount(context.TODO(), &createInput)
 	if err != nil {
 		errMsg := "Error creating account"
 		var returnErr error
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case organizations.ErrCodeConcurrentModificationException:
-				returnErr = awsv1alpha1.ErrAwsConcurrentModification
-			case organizations.ErrCodeConstraintViolationException:
-				returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
-			case organizations.ErrCodeServiceException:
-				returnErr = awsv1alpha1.ErrAwsInternalFailure
-			case organizations.ErrCodeTooManyRequestsException:
-				returnErr = awsv1alpha1.ErrAwsTooManyRequests
-			default:
-				returnErr = awsv1alpha1.ErrAwsFailedCreateAccount
-			}
 
+		// Check for specific AWS Organizations exception types
+		var concurrentModErr *organizationstypes.ConcurrentModificationException
+		var constraintViolationErr *organizationstypes.ConstraintViolationException
+		var serviceErr *organizationstypes.ServiceException
+		var tooManyRequestsErr *organizationstypes.TooManyRequestsException
+
+		switch {
+		case errors.As(err, &concurrentModErr):
+			returnErr = awsv1alpha1.ErrAwsConcurrentModification
+		case errors.As(err, &constraintViolationErr):
+			returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
+		case errors.As(err, &serviceErr):
+			returnErr = awsv1alpha1.ErrAwsInternalFailure
+		case errors.As(err, &tooManyRequestsErr):
+			returnErr = awsv1alpha1.ErrAwsTooManyRequests
+		default:
+			returnErr = awsv1alpha1.ErrAwsFailedCreateAccount
 		}
+
 		utils.LogAwsError(reqLogger, errMsg, returnErr, err)
 		return &organizations.DescribeCreateAccountStatusOutput{}, returnErr
 	}
@@ -1096,20 +1106,20 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 
 	var accountStatus *organizations.DescribeCreateAccountStatusOutput
 	for {
-		status, err := client.DescribeCreateAccountStatus(&describeStatusInput)
+		status, err := client.DescribeCreateAccountStatus(context.TODO(), &describeStatusInput)
 		if err != nil {
 			return &organizations.DescribeCreateAccountStatusOutput{}, err
 		}
 
 		accountStatus = status
-		createStatus := *status.CreateAccountStatus.State
+		createStatus := status.CreateAccountStatus.State
 
-		if createStatus == "FAILED" {
+		if createStatus == organizationstypes.CreateAccountStateFailed {
 			var returnErr error
-			switch *status.CreateAccountStatus.FailureReason {
-			case "ACCOUNT_LIMIT_EXCEEDED":
+			switch status.CreateAccountStatus.FailureReason {
+			case organizationstypes.CreateAccountFailureReasonAccountLimitExceeded:
 				returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
-			case "INTERNAL_FAILURE":
+			case organizationstypes.CreateAccountFailureReasonInternalFailure:
 				returnErr = awsv1alpha1.ErrAwsInternalFailure
 			default:
 				returnErr = awsv1alpha1.ErrAwsFailedCreateAccount
@@ -1118,7 +1128,7 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 			return &organizations.DescribeCreateAccountStatusOutput{}, returnErr
 		}
 
-		if createStatus != "IN_PROGRESS" {
+		if createStatus != organizationstypes.CreateAccountStateInProgress {
 			break
 		}
 	}
@@ -1294,13 +1304,16 @@ func matchSubstring(roleID, role string) (bool, error) {
 }
 
 func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountConditionType) {
-	if err == awsv1alpha1.ErrInvalidToken {
+	switch err {
+	case awsv1alpha1.ErrInvalidToken:
 		return "InvalidClientTokenId", awsv1alpha1.AccountAuthenticationError
-	} else if err == awsv1alpha1.ErrAccessDenied {
+	case awsv1alpha1.ErrAccessDenied:
 		return "AccessDenied", awsv1alpha1.AccountAuthorizationError
-	} else if _, ok := err.(awserr.Error); ok {
-		return "ClientError", awsv1alpha1.AccountClientError
-	} else {
+	default:
+		var aerr smithy.APIError
+		if errors.As(err, &aerr) {
+			return aerr.ErrorCode(), awsv1alpha1.AccountClientError
+		}
 		return "UnhandledError", awsv1alpha1.AccountUnhandledError
 	}
 }
@@ -1379,7 +1392,7 @@ func parseTagsFromString(tags string) []awsclient.AWSTag {
 	return parsedTags
 }
 
-func castAWSRegionType(regions []*ec2.Region) []awsv1alpha1.AwsRegions {
+func castAWSRegionType(regions []ec2types.Region) []awsv1alpha1.AwsRegions {
 	var awsRegions []awsv1alpha1.AwsRegions
 	for _, region := range regions {
 		awsRegions = append(awsRegions, awsv1alpha1.AwsRegions{Name: *region.RegionName})
@@ -1500,7 +1513,6 @@ func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	rwm := utils.NewReconcilerWithMetrics(r, controllerName)
 	return ctrl.NewControllerManagedBy(mgr).
-		Named("account").
 		For(&awsv1alpha1.Account{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxReconciles,

@@ -1,15 +1,17 @@
 package account
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
@@ -250,9 +252,9 @@ func (r *AccountReconciler) BuildAndDestroyEC2Instances(
 		// Log an error and make sure that instance is terminated
 		DescErrorMsg := fmt.Sprintf("Could not get EC2 instance state, terminating instance %s", instanceID)
 
-		var DescError awserr.Error
-		if errors.As(err, &DescError) {
-			DescErrorMsg = fmt.Sprintf("Could not get EC2 instance state: %s, terminating instance %s", DescError.Code(), instanceID)
+		var descApiErr smithy.APIError
+		if errors.As(DescError, &descApiErr) {
+			DescErrorMsg = fmt.Sprintf("Could not get EC2 instance state: %s, terminating instance %s", descApiErr.ErrorCode(), instanceID)
 		}
 
 		reqLogger.Error(DescError, DescErrorMsg)
@@ -289,8 +291,8 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 		time.Sleep(time.Duration(currentWait) * time.Second)
 		tags := awsclient.AWSTags.BuildTags(account, managedTags, customerTags).GetEC2Tags()
 
-		ebsBlockDeviceSetup := &ec2.EbsBlockDevice{
-			VolumeSize:          aws.Int64(10),
+		ebsBlockDeviceSetup := &ec2types.EbsBlockDevice{
+			VolumeSize:          aws.Int32(10),
 			DeleteOnTermination: aws.Bool(true),
 			Encrypted:           aws.Bool(true),
 		}
@@ -300,21 +302,21 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 		// Specify the details of the instance that you want to create.
 		input := &ec2.RunInstancesInput{
 			ImageId:      aws.String(instanceInfo.Ami),
-			InstanceType: aws.String(instanceInfo.InstanceType),
-			MinCount:     aws.Int64(1),
-			MaxCount:     aws.Int64(1),
-			TagSpecifications: []*ec2.TagSpecification{
+			InstanceType: ec2types.InstanceType(instanceInfo.InstanceType),
+			MinCount:     aws.Int32(1),
+			MaxCount:     aws.Int32(1),
+			TagSpecifications: []ec2types.TagSpecification{
 				{
-					ResourceType: &awsv1alpha1.InstanceResourceType,
+					ResourceType: ec2types.ResourceType(awsv1alpha1.InstanceResourceType),
 					Tags:         tags,
 				},
 				{
-					ResourceType: &awsv1alpha1.VolumeResourceType,
+					ResourceType: ec2types.ResourceType(awsv1alpha1.VolumeResourceType),
 					Tags:         tags,
 				},
 			},
 			// We specify block devices mainly to enable EBS encryption
-			BlockDeviceMappings: []*ec2.BlockDeviceMapping{
+			BlockDeviceMappings: []ec2types.BlockDeviceMapping{
 				{
 					DeviceName: aws.String("/dev/sda1"),
 					Ebs:        ebsBlockDeviceSetup,
@@ -322,18 +324,18 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 			},
 		}
 
-		runResult, runErr := client.RunInstances(input)
+		runResult, runErr := client.RunInstances(context.TODO(), input)
 
 		// Return on unexpected errors:
 		if runErr != nil {
-			var aerr awserr.Error
+			var aerr smithy.APIError
 			if errors.As(runErr, &aerr) {
 				// We want to ensure that we don't leave any instances around when there is an error
 				// possible that there is no instance here
 				if len(runResult.Instances) > 0 {
 					timeoutInstanceID = *runResult.Instances[0].InstanceId
 				}
-				switch aerr.Code() {
+				switch aerr.ErrorCode() {
 				case "PendingVerification", "OptInRequired":
 					continue
 				default:
@@ -363,15 +365,15 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instan
 	// 80 : stopped
 	// 401 : failed
 
-	result, err := client.DescribeInstanceStatus(&ec2.DescribeInstanceStatusInput{
-		InstanceIds: aws.StringSlice([]string{instanceID}),
+	result, err := client.DescribeInstanceStatus(context.TODO(), &ec2.DescribeInstanceStatusInput{
+		InstanceIds: []string{instanceID},
 	})
 
 	if err != nil {
 		controllerutils.LogAwsError(reqLogger, "New AWS Error while describing EC2 instance", nil, err)
-		var aerr awserr.Error
+		var aerr smithy.APIError
 		if errors.As(err, &aerr) {
-			if aerr.Code() == "UnauthorizedOperation" {
+			if aerr.ErrorCode() == "UnauthorizedOperation" {
 				return 401, err
 			}
 		}
@@ -390,8 +392,8 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instan
 
 // TerminateEC2Instance terminates the ec2 instance from the instanceID provided
 func TerminateEC2Instance(reqLogger logr.Logger, client awsclient.Client, instanceID string) error {
-	_, err := client.TerminateInstances(&ec2.TerminateInstancesInput{
-		InstanceIds: aws.StringSlice([]string{instanceID}),
+	_, err := client.TerminateInstances(context.TODO(), &ec2.TerminateInstancesInput{
+		InstanceIds: []string{instanceID},
 	})
 	if err != nil {
 		controllerutils.LogAwsError(reqLogger, "New AWS Error while terminating EC2 instance", nil, err)
@@ -405,14 +407,14 @@ func TerminateEC2Instance(reqLogger logr.Logger, client awsclient.Client, instan
 func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string, region string) (bool, error) {
 	var cleaned bool
 	// Make a dry run to certify we have required authentication
-	_, err := client.DescribeInstances(&ec2.DescribeInstancesInput{
+	_, err := client.DescribeInstances(context.TODO(), &ec2.DescribeInstancesInput{
 		DryRun: aws.Bool(true),
 	})
 
 	// If we receive an AuthFailure alert we do not attempt to clean this region
-	var aerr awserr.Error
+	var aerr smithy.APIError
 	if errors.As(err, &aerr) {
-		if aerr.Code() == "AuthFailure" {
+		if aerr.ErrorCode() == "AuthFailure" {
 			logger.Error(err, fmt.Sprintf("We do not have the correct authentication to clean or initialize region: %s backing out gracefully", region))
 			return cleaned, err
 		}
@@ -424,43 +426,43 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 		return cleaned, err
 	}
 	// Get a list of all running t2.micro instances
-	output, err := client.DescribeInstances(&ec2.DescribeInstancesInput{
-		MaxResults: aws.Int64(100),
-		Filters: []*ec2.Filter{
+	output, err := client.DescribeInstances(context.TODO(), &ec2.DescribeInstancesInput{
+		MaxResults: aws.Int32(100),
+		Filters: []ec2types.Filter{
 			{
 				Name: aws.String("instance-type"),
-				Values: []*string{
-					aws.String(instanceType),
+				Values: []string{
+					instanceType,
 				},
 			},
 			{
 				Name: aws.String("instance-state-name"),
-				Values: []*string{
-					aws.String("running"),
+				Values: []string{
+					string(ec2types.InstanceStateNameRunning),
 				},
 			},
 			{
 				Name: aws.String("tag-key"),
-				Values: []*string{
-					aws.String(awsv1alpha1.ClusterAccountNameTagKey),
+				Values: []string{
+					awsv1alpha1.ClusterAccountNameTagKey,
 				},
 			},
 			{
 				Name: aws.String("tag-key"),
-				Values: []*string{
-					aws.String(awsv1alpha1.ClusterNamespaceTagKey),
+				Values: []string{
+					awsv1alpha1.ClusterNamespaceTagKey,
 				},
 			},
 			{
 				Name: aws.String("tag-key"),
-				Values: []*string{
-					aws.String(awsv1alpha1.ClusterClaimLinkTagKey),
+				Values: []string{
+					awsv1alpha1.ClusterClaimLinkTagKey,
 				},
 			},
 			{
 				Name: aws.String("tag-key"),
-				Values: []*string{
-					aws.String(awsv1alpha1.ClusterClaimLinkNamespaceTagKey),
+				Values: []string{
+					awsv1alpha1.ClusterClaimLinkNamespaceTagKey,
 				},
 			},
 		},
@@ -490,46 +492,46 @@ func RetrieveAvailableMicroInstanceType(logger logr.Logger, awsClient awsclient.
 	// FIXME: For unknown reasons attempting to use the free-tier-eligible
 	// filter from go returns *nothing*, but works fine from the CLI.
 	// HTTP-requests looks the same using both options.
-	availableTypes, err := awsClient.DescribeInstanceTypes(&ec2.DescribeInstanceTypesInput{
-		InstanceTypes: []*string{aws.String(T3INSTANCETYPE)},
+	availableTypes, err := awsClient.DescribeInstanceTypes(context.TODO(), &ec2.DescribeInstanceTypesInput{
+		InstanceTypes: []ec2types.InstanceType{ec2types.InstanceType(T3INSTANCETYPE)},
 	})
 	if err != nil {
-		var aerr awserr.Error
+		var aerr smithy.APIError
 		if errors.As(err, &aerr) {
-			switch aerr.Code() {
+			switch aerr.ErrorCode() {
 			case "InvalidInstanceType":
 				logger.Info("Did not find t3.micro - falling back to t2.micro")
-				availableTypes, err := awsClient.DescribeInstanceTypes(&ec2.DescribeInstanceTypesInput{
-					InstanceTypes: []*string{aws.String(T2INSTANCETYPE)},
+				availableTypes, err := awsClient.DescribeInstanceTypes(context.TODO(), &ec2.DescribeInstanceTypesInput{
+					InstanceTypes: []ec2types.InstanceType{ec2types.InstanceType(T2INSTANCETYPE)},
 				})
 				if err != nil {
 					return "", err
 				}
-				return *availableTypes.InstanceTypes[0].InstanceType, nil
+				return string(availableTypes.InstanceTypes[0].InstanceType), nil
 			default:
 				return "", err
 			}
 		}
 		return "", err
 	}
-	return *availableTypes.InstanceTypes[0].InstanceType, nil
+	return string(availableTypes.InstanceTypes[0].InstanceType), nil
 }
 
 func RetrieveAmi(awsClient awsclient.Client, amiOwner string) (string, error) {
 	var imageId string
 	input := ec2.DescribeImagesInput{
-		ExecutableUsers: []*string{aws.String(EXECUTABLEBY)},
-		Owners:          []*string{&amiOwner},
-		Filters: []*ec2.Filter{
+		ExecutableUsers: []string{EXECUTABLEBY},
+		Owners:          []string{amiOwner},
+		Filters: []ec2types.Filter{
 			{
 				Name: aws.String("architecture"),
-				Values: []*string{
-					aws.String("x86_64"),
+				Values: []string{
+					string(ec2types.ArchitectureTypeX8664),
 				},
 			},
 		},
 	}
-	availableAmis, err := awsClient.DescribeImages(&input)
+	availableAmis, err := awsClient.DescribeImages(context.TODO(), &input)
 	if err != nil {
 		return "", err
 	}

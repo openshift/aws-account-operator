@@ -4,8 +4,10 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/organizations"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	"go.uber.org/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -139,9 +141,9 @@ var _ = Describe("Organizational Unit", func() {
 				Client: fake.NewClientBuilder().WithRuntimeObjects(localObjects...).Build(),
 			}
 
-			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any()).Return(
+			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any(), gomock.Any()).Return(
 				&organizations.CreateOrganizationalUnitOutput{
-					OrganizationalUnit: &organizations.OrganizationalUnit{
+					OrganizationalUnit: &organizationstypes.OrganizationalUnit{
 						Id: &myID,
 					},
 				},
@@ -149,11 +151,11 @@ var _ = Describe("Organizational Unit", func() {
 			)
 
 			// Needed for
-			expectedErr := awserr.New("AccountNotFoundException", "Some AWS Error", nil)
-			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
-			mockAWSClient.EXPECT().ListChildren(gomock.Any()).Return(
+			expectedErr := &organizationstypes.AccountNotFoundException{Message: aws.String("Some AWS Error")}
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
+			mockAWSClient.EXPECT().ListChildren(gomock.Any(), gomock.Any()).Return(
 				&organizations.ListChildrenOutput{
-					Children: []*organizations.Child{
+					Children: []organizationstypes.Child{
 						{
 							Id: &awsAccountID,
 						},
@@ -190,15 +192,15 @@ var _ = Describe("Organizational Unit", func() {
 				Client: fake.NewClientBuilder().WithRuntimeObjects(localObjects...).Build(),
 			}
 
-			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any()).Return(
+			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any(), gomock.Any()).Return(
 				&organizations.CreateOrganizationalUnitOutput{
-					OrganizationalUnit: &organizations.OrganizationalUnit{
+					OrganizationalUnit: &organizationstypes.OrganizationalUnit{
 						Id: &myID,
 					},
 				},
 				nil,
 			)
-			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, nil)
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(nil, nil)
 
 			err := MoveAccountToOU(&r, nullLogger, mockAWSClient, &accountClaim, &account)
 			Expect(err).ToNot(HaveOccurred())
@@ -209,13 +211,14 @@ var _ = Describe("Organizational Unit", func() {
 	When("Creating or Finding an OU", func() {
 		It("Should create new OU if it doesn't already exists", func() {
 			mockAWSClient.EXPECT().CreateOrganizationalUnit(
+				gomock.Any(),
 				&organizations.CreateOrganizationalUnitInput{
 					Name:     &ouName,
 					ParentId: &baseID,
 				},
 			).Return(
 				&organizations.CreateOrganizationalUnitOutput{
-					OrganizationalUnit: &organizations.OrganizationalUnit{
+					OrganizationalUnit: &organizationstypes.OrganizationalUnit{
 						Id: &myID,
 					},
 				},
@@ -234,17 +237,17 @@ var _ = Describe("Organizational Unit", func() {
 		})
 
 		It("Should return OU ID when OU already exists", func() {
-			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any()).Return(
+			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any(), gomock.Any()).Return(
 				&organizations.CreateOrganizationalUnitOutput{
-					OrganizationalUnit: &organizations.OrganizationalUnit{
+					OrganizationalUnit: &organizationstypes.OrganizationalUnit{
 						Id: &myID,
 					},
 				},
-				awserr.New("DuplicateOrganizationalUnitException", "Some AWS Error", nil),
+				&smithy.GenericAPIError{Code: "DuplicateOrganizationalUnitException", Message: "Some AWS Error"},
 			)
-			mockAWSClient.EXPECT().ListOrganizationalUnitsForParent(gomock.Any()).Return(
+			mockAWSClient.EXPECT().ListOrganizationalUnitsForParent(gomock.Any(), gomock.Any()).Return(
 				&organizations.ListOrganizationalUnitsForParentOutput{
-					OrganizationalUnits: []*organizations.OrganizationalUnit{
+					OrganizationalUnits: []organizationstypes.OrganizationalUnit{
 						{
 							Id:   &myID,
 							Name: &ouName,
@@ -259,10 +262,10 @@ var _ = Describe("Organizational Unit", func() {
 		})
 
 		It("Should return unhandled aws errors when attempting to create OU", func() {
-			expectedErr := awserr.New("defaultErr", "Some AWS Error", nil)
-			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any()).Return(
+			expectedErr := &smithy.GenericAPIError{Code: "defaultErr", Message: "Some AWS Error"}
+			mockAWSClient.EXPECT().CreateOrganizationalUnit(gomock.Any(), gomock.Any()).Return(
 				&organizations.CreateOrganizationalUnitOutput{
-					OrganizationalUnit: &organizations.OrganizationalUnit{
+					OrganizationalUnit: &organizationstypes.OrganizationalUnit{
 						Id: &myID,
 					},
 				},
@@ -277,7 +280,7 @@ var _ = Describe("Organizational Unit", func() {
 
 	When("Moving Account", func() {
 		It("Should move successfully", func() {
-			mockAWSClient.EXPECT().MoveAccount(&organizations.MoveAccountInput{
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), &organizations.MoveAccountInput{
 				AccountId:           &awsAccountID,
 				DestinationParentId: &ouID,
 				SourceParentId:      &parentID,
@@ -287,11 +290,11 @@ var _ = Describe("Organizational Unit", func() {
 		})
 
 		It("Should error when Account already in correct OU", func() {
-			expectedErr := awserr.New("AccountNotFoundException", "Some AWS Error", nil)
-			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
-			mockAWSClient.EXPECT().ListChildren(gomock.Any()).Return(
+			expectedErr := &organizationstypes.AccountNotFoundException{Message: aws.String("Some AWS Error")}
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
+			mockAWSClient.EXPECT().ListChildren(gomock.Any(), gomock.Any()).Return(
 				&organizations.ListChildrenOutput{
-					Children: []*organizations.Child{
+					Children: []organizationstypes.Child{
 						{
 							Id: &awsAccountID,
 						},
@@ -305,13 +308,13 @@ var _ = Describe("Organizational Unit", func() {
 		})
 
 		It("Should throw an error when Account cannot be found", func() {
-			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(
 				nil,
-				awserr.New("AccountNotFoundException", "Some AWS Error", nil),
+				&organizationstypes.AccountNotFoundException{Message: aws.String("Some AWS Error")},
 			)
-			mockAWSClient.EXPECT().ListChildren(gomock.Any()).Return(
+			mockAWSClient.EXPECT().ListChildren(gomock.Any(), gomock.Any()).Return(
 				&organizations.ListChildrenOutput{
-					Children:  []*organizations.Child{},
+					Children:  []organizationstypes.Child{},
 					NextToken: nil,
 				},
 				nil,
@@ -322,16 +325,16 @@ var _ = Describe("Organizational Unit", func() {
 		})
 
 		It("Should error when encountering a race condition when attempting to move account", func() {
-			expectedErr := awserr.New("ConcurrentModificationException", "Some AWS Error", nil)
-			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
+			expectedErr := &organizationstypes.ConcurrentModificationException{Message: aws.String("Some AWS Error")}
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
 			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(Equal(awsv1alpha1.ErrAccMoveRaceCondition))
 		})
 
 		It("Should return error directly when an unexpected error has occurred", func() {
-			expectedErr := awserr.New("OtherErr", "Some AWS Error", nil)
-			mockAWSClient.EXPECT().MoveAccount(gomock.Any()).Return(nil, expectedErr)
+			expectedErr := &smithy.GenericAPIError{Code: "OtherErr", Message: "Some AWS Error"}
+			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
 			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(Equal(expectedErr))
@@ -347,7 +350,7 @@ func TestFindOUIDFromName(t *testing.T) {
 	nameOne := "one"
 	idTwo := "02"
 	nameTwo := "two"
-	ouList := []*organizations.OrganizationalUnit{
+	ouList := []organizationstypes.OrganizationalUnit{
 		{
 			Id:   &idZero,
 			Name: &nameZero,
@@ -387,11 +390,11 @@ func TestFindOUIDFromName(t *testing.T) {
 		{
 			name:                 "ListOrganizationalUnitsForParent Err encountered",
 			listOUForParentOut:   &organizations.ListOrganizationalUnitsForParentOutput{},
-			listOUForParentErr:   awserr.New("AccountNotFoundException", "Some AWS Error", nil),
+			listOUForParentErr:   &smithy.GenericAPIError{Code: "AccountNotFoundException", Message: "Some AWS Error"},
 			parentID:             "000",
 			ouName:               "one",
 			expectedOUID:         "",
-			expectedErr:          awserr.New("AccountNotFoundException", "Some AWS Error", nil),
+			expectedErr:          &smithy.GenericAPIError{Code: "AccountNotFoundException", Message: "Some AWS Error"},
 			findOUIDFromNameFunc: findouIDFromName,
 		},
 	}
@@ -402,7 +405,7 @@ func TestFindOUIDFromName(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			mocks := mock.NewMockClient(ctrl)
-			mocks.EXPECT().ListOrganizationalUnitsForParent(&organizations.ListOrganizationalUnitsForParentInput{
+			mocks.EXPECT().ListOrganizationalUnitsForParent(gomock.Any(), &organizations.ListOrganizationalUnitsForParentInput{
 				ParentId: &test.parentID, // #nosec G601
 			}).Return(test.listOUForParentOut, test.listOUForParentErr)
 			reqLogger := log.WithValues()
@@ -578,7 +581,7 @@ func TestValidateListChildrenInput(t *testing.T) {
 		{
 			name: "Passing test",
 			localObjects: organizations.ListChildrenInput{
-				ChildType: &childType,
+				ChildType: organizationstypes.ChildType(childType),
 				ParentId:  &parentID,
 			},
 			expectedError: nil,
@@ -587,7 +590,7 @@ func TestValidateListChildrenInput(t *testing.T) {
 		{
 			name: "Two nil values",
 			localObjects: organizations.ListChildrenInput{
-				ChildType: nil,
+				ChildType: "",
 				ParentId:  nil,
 			},
 			expectedError: awsv1alpha1.ErrUnexpectedValue,
@@ -596,7 +599,7 @@ func TestValidateListChildrenInput(t *testing.T) {
 		{
 			name: "Name nil",
 			localObjects: organizations.ListChildrenInput{
-				ChildType: nil,
+				ChildType: "",
 				ParentId:  &parentID,
 			},
 			expectedError: awsv1alpha1.ErrUnexpectedValue,
@@ -605,7 +608,7 @@ func TestValidateListChildrenInput(t *testing.T) {
 		{
 			name: "ParentID nil",
 			localObjects: organizations.ListChildrenInput{
-				ChildType: &childType,
+				ChildType: organizationstypes.ChildType(childType),
 				ParentId:  nil,
 			},
 			expectedError: awsv1alpha1.ErrUnexpectedValue,

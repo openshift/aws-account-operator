@@ -2,15 +2,17 @@ package account
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	retry "github.com/avast/retry-go"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/servicequotas"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/servicequotas"
+	servicequotastypes "github.com/aws/aws-sdk-go-v2/service/servicequotas/types"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
@@ -148,6 +150,7 @@ func serviceQuotaNeedsIncrease(reqLogger logr.Logger, client awsclient.Client, q
 		func() (err error) {
 			// Get the current existing quota setting
 			result, err = client.GetServiceQuota(
+				context.TODO(),
 				&servicequotas.GetServiceQuotaInput{
 					QuotaCode:   aws.String(quotaCode),
 					ServiceCode: aws.String(serviceCode),
@@ -158,20 +161,30 @@ func serviceQuotaNeedsIncrease(reqLogger logr.Logger, client awsclient.Client, q
 
 		// Retry if we receive some specific errors: access denied, rate limit or server-side error
 		retry.RetryIf(func(err error) bool {
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
-				case "AccessDeniedException":
-					return true
-				case "ServiceException":
-					return true
-				case "TooManyRequestsException":
-					return true
+			// Check for specific service quotas exception types
+			var accessDeniedErr *servicequotastypes.AccessDeniedException
+			var serviceErr *servicequotastypes.ServiceException
+			var tooManyRequestsErr *servicequotastypes.TooManyRequestsException
+
+			switch {
+			// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
+			case errors.As(err, &accessDeniedErr):
+				return true
+			case errors.As(err, &serviceErr):
+				return true
+			case errors.As(err, &tooManyRequestsErr):
+				return true
+			}
+
+			// Check for generic errors not specific to service quotas
+			var aerr smithy.APIError
+			if errors.As(err, &aerr) {
 				// Can be caused by the client token not yet propagated
-				case "UnrecognizedClientException":
+				if aerr.ErrorCode() == "UnrecognizedClientException" {
 					return true
 				}
 			}
+
 			// Otherwise, do not retry
 			return false
 		}),
@@ -202,41 +215,50 @@ func setServiceQuota(reqLogger logr.Logger, client awsclient.Client, quotaCode s
 	err := retry.Do(
 		func() (err error) {
 			result, err = client.RequestServiceQuotaIncrease(
+				context.TODO(),
 				&servicequotas.RequestServiceQuotaIncreaseInput{
 					DesiredValue: aws.Float64(desiredQuota),
 					ServiceCode:  aws.String(serviceCode), // TODO change to param
 					QuotaCode:    aws.String(quotaCode),   // TODO change to param
 				})
 			if err != nil {
-				if aerr, ok := err.(awserr.Error); ok {
-					if aerr.Code() == "ResourceAlreadyExistsException" {
-						// This error means a request has already been submitted, and we do not have the CaseID, but
-						// we should also *not* return an error - this is a no-op.
-						alreadySubmitted = true
-						return nil
-					}
+				// Check for ResourceAlreadyExistsException
+				var resourceExistsErr *servicequotastypes.ResourceAlreadyExistsException
+				if errors.As(err, &resourceExistsErr) {
+					// This error means a request has already been submitted, and we do not have the CaseID, but
+					// we should also *not* return an error - this is a no-op.
+					alreadySubmitted = true
+					return nil
 				}
 			}
 			return err
 		},
 
 		retry.RetryIf(func(err error) bool {
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
-				case "AccessDeniedException":
-					return true
-				case "TooManyRequestsException":
-					// Retry
-					return true
-				case "ServiceException":
-					// Retry
-					return true
+			// Check for specific service quotas exception types
+			var accessDeniedErr *servicequotastypes.AccessDeniedException
+			var tooManyRequestsErr *servicequotastypes.TooManyRequestsException
+			var serviceErr *servicequotastypes.ServiceException
+
+			switch {
+			// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
+			case errors.As(err, &accessDeniedErr):
+				return true
+			case errors.As(err, &tooManyRequestsErr):
+				return true
+			case errors.As(err, &serviceErr):
+				return true
+			}
+
+			// Check for generic errors not specific to service quotas
+			var aerr smithy.APIError
+			if errors.As(err, &aerr) {
 				// Can be caused by the client token not yet propagated
-				case "UnrecognizedClientException":
+				if aerr.ErrorCode() == "UnrecognizedClientException" {
 					return true
 				}
 			}
+
 			// Otherwise, do not retry
 			return false
 		}),
@@ -253,12 +275,12 @@ func setServiceQuota(reqLogger logr.Logger, client awsclient.Client, quotaCode s
 		return false, err
 	}
 
-	if (servicequotas.RequestServiceQuotaIncreaseOutput{}) == *result {
+	if result == nil {
 		err := fmt.Errorf("returned RequestServiceQuotaIncreaseOutput is nil")
 		return false, err
 	}
 
-	if (servicequotas.RequestedServiceQuotaChange{}) == *result.RequestedQuota {
+	if result.RequestedQuota == nil {
 		err := fmt.Errorf("returned RequestedServiceQuotasIncreaseOutput field RequestedServiceQuotaChange is nil")
 		return false, err
 	}
@@ -286,6 +308,7 @@ func checkQuotaRequestStatus(reqLogger logr.Logger, awsClient awsclient.Client, 
 			func() (err error) {
 				// Get a (possibly paginated) list of quota change requests by quota
 				result, err = awsClient.ListRequestedServiceQuotaChangeHistoryByQuota(
+					context.TODO(),
 					&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaInput{
 						NextToken:   nextToken,
 						ServiceCode: aws.String(serviceCode),
@@ -297,20 +320,30 @@ func checkQuotaRequestStatus(reqLogger logr.Logger, awsClient awsclient.Client, 
 
 			// Retry if we receive some specific errors: access denied, rate limit or server-side error
 			retry.RetryIf(func(err error) bool {
-				if aerr, ok := err.(awserr.Error); ok {
-					switch aerr.Code() {
-					// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
-					case "AccessDeniedException":
-						return true
-					case "ServiceException":
-						return true
-					case "TooManyRequestsException":
-						return true
+				// Check for specific service quotas exception types
+				var accessDeniedErr *servicequotastypes.AccessDeniedException
+				var serviceErr *servicequotastypes.ServiceException
+				var tooManyRequestsErr *servicequotastypes.TooManyRequestsException
+
+				switch {
+				// AccessDenied may indicate the BYOCAdminAccess role has not yet propagated
+				case errors.As(err, &accessDeniedErr):
+					return true
+				case errors.As(err, &serviceErr):
+					return true
+				case errors.As(err, &tooManyRequestsErr):
+					return true
+				}
+
+				// Check for generic errors not specific to service quotas
+				var aerr smithy.APIError
+				if errors.As(err, &aerr) {
 					// Can be caused by the client token not yet propagated
-					case "UnrecognizedClientException":
+					if aerr.ErrorCode() == "UnrecognizedClientException" {
 						return true
 					}
 				}
+
 				// Otherwise, do not retry
 				return false
 			}),
@@ -325,12 +358,12 @@ func checkQuotaRequestStatus(reqLogger logr.Logger, awsClient awsclient.Client, 
 		// If so, it's already been submitted
 		for _, change := range result.RequestedQuotas {
 			if changeRequestMatches(change, quotaCode, serviceCode, expectedQuota) {
-				switch *change.Status {
-				case "PENDING", "CASE_OPENED":
+				switch change.Status {
+				case servicequotastypes.RequestStatusPending, servicequotastypes.RequestStatusCaseOpened:
 					return awsv1alpha1.ServiceRequestInProgress, nil
-				case "APPROVED", "CASE_CLOSED":
+				case servicequotastypes.RequestStatusApproved, servicequotastypes.RequestStatusCaseClosed:
 					return awsv1alpha1.ServiceRequestCompleted, nil
-				case "DENIED":
+				case servicequotastypes.RequestStatusDenied:
 					return awsv1alpha1.ServiceRequestDenied, nil
 				}
 			}
@@ -345,7 +378,7 @@ func checkQuotaRequestStatus(reqLogger logr.Logger, awsClient awsclient.Client, 
 }
 
 // changeRequestMatches returns true if the QuotaCode, ServiceCode and desired value match
-func changeRequestMatches(change *servicequotas.RequestedServiceQuotaChange, quotaCode string, serviceCode string, quota float64) bool {
+func changeRequestMatches(change servicequotastypes.RequestedServiceQuotaChange, quotaCode string, serviceCode string, quota float64) bool {
 	if *change.ServiceCode != serviceCode {
 		return false
 	}

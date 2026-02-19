@@ -3,13 +3,15 @@ package account
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -106,7 +108,7 @@ func (r *AccountReconciler) GetSREAccessARN(reqLogger logr.Logger, arnName strin
 }
 
 // CreateRole creates the role with the correct assume policy for BYOC for a given roleName
-func CreateRole(reqLogger logr.Logger, byocRole string, accessArnList []string, byocAWSClient awsclient.Client, tags []*iam.Tag) (string, error) {
+func CreateRole(reqLogger logr.Logger, byocRole string, accessArnList []string, byocAWSClient awsclient.Client, tags []iamtypes.Tag) (string, error) {
 	assumeRolePolicyDoc := struct {
 		Version   string
 		Statement []awsStatement
@@ -128,7 +130,7 @@ func CreateRole(reqLogger logr.Logger, byocRole string, accessArnList []string, 
 	}
 
 	reqLogger.Info(fmt.Sprintf("Creating role: %s", byocRole))
-	createRoleOutput, err := byocAWSClient.CreateRole(&iam.CreateRoleInput{
+	createRoleOutput, err := byocAWSClient.CreateRole(context.TODO(), &iam.CreateRoleInput{
 		Tags:                     tags,
 		RoleName:                 aws.String(byocRole),
 		Description:              aws.String("AdminAccess for BYOC"),
@@ -145,32 +147,34 @@ func CreateRole(reqLogger logr.Logger, byocRole string, accessArnList []string, 
 // GetExistingRole checks to see if a given role exists in the AWS account already.  If it does not, we return an empty response and nil for an error.  If it does, we return the existing role.  Otherwise, we return any error we get.
 func GetExistingRole(reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.Client) (*iam.GetRoleOutput, error) {
 	// Check if Role already exists
-	existingRole, err := byocAWSClient.GetRole(&iam.GetRoleInput{
+	existingRole, err := byocAWSClient.GetRole(context.TODO(), &iam.GetRoleInput{
 		RoleName: aws.String(byocRole),
 	})
 
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case iam.ErrCodeNoSuchEntityException:
-				// This is OK and to be expected if the role hasn't been created yet
-				reqLogger.Info(fmt.Sprintf("%s role does not yet exist", byocRole))
-				return &iam.GetRoleOutput{}, nil
-			case iam.ErrCodeServiceFailureException:
-				reqLogger.Error(
-					aerr,
-					fmt.Sprintf("AWS Internal Server Error (%s) checking for %s role existence: %s", aerr.Code(), byocRole, aerr.Message()),
-				)
-				return &iam.GetRoleOutput{}, err
-			default:
-				// Currently only two errors returned by AWS.  This is a catch-all for any that may appear in the future.
-				reqLogger.Error(
-					aerr,
-					fmt.Sprintf("Unknown error (%s) checking for %s role existence: %s", aerr.Code(), byocRole, aerr.Message()),
-				)
-				return &iam.GetRoleOutput{}, err
-			}
-		} else {
+		var noSuchEntityErr *iamtypes.NoSuchEntityException
+		var serviceFailureErr *iamtypes.ServiceFailureException
+		var apiErr smithy.APIError
+
+		switch {
+		case errors.As(err, &noSuchEntityErr):
+			// This is OK and to be expected if the role hasn't been created yet
+			reqLogger.Info(fmt.Sprintf("%s role does not yet exist", byocRole))
+			return &iam.GetRoleOutput{}, nil
+		case errors.As(err, &serviceFailureErr):
+			reqLogger.Error(
+				err,
+				fmt.Sprintf("AWS Internal Server Error checking for %s role existence", byocRole),
+			)
+			return &iam.GetRoleOutput{}, err
+		case errors.As(err, &apiErr):
+			// Currently only two errors returned by AWS.  This is a catch-all for any that may appear in the future.
+			reqLogger.Error(
+				err,
+				fmt.Sprintf("Unknown error (%s) checking for %s role existence: %s", apiErr.ErrorCode(), byocRole, apiErr.ErrorMessage()),
+			)
+			return &iam.GetRoleOutput{}, err
+		default:
 			return &iam.GetRoleOutput{}, err
 		}
 	}
@@ -183,17 +187,15 @@ func GetAttachedPolicies(reqLogger logr.Logger, byocRole string, byocAWSClient a
 	listRoleInput := &iam.ListAttachedRolePoliciesInput{
 		RoleName: aws.String(byocRole),
 	}
-	policyList, err := byocAWSClient.ListAttachedRolePolicies(listRoleInput)
+	policyList, err := byocAWSClient.ListAttachedRolePolicies(context.TODO(), listRoleInput)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			default:
-				reqLogger.Error(
-					aerr,
-					aerr.Error(),
-				)
-				return &iam.ListAttachedRolePoliciesOutput{}, err
-			}
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			reqLogger.Error(
+				err,
+				apiErr.ErrorMessage(),
+			)
+			return &iam.ListAttachedRolePoliciesOutput{}, err
 		} else {
 			return &iam.ListAttachedRolePoliciesOutput{}, err
 		}
@@ -202,23 +204,21 @@ func GetAttachedPolicies(reqLogger logr.Logger, byocRole string, byocAWSClient a
 }
 
 // DetachPolicyFromRole detaches a given AttachedPolicy from a role
-func DetachPolicyFromRole(reqLogger logr.Logger, policy *iam.AttachedPolicy, byocRole string, byocAWSClient awsclient.Client) error {
+func DetachPolicyFromRole(reqLogger logr.Logger, policy *iamtypes.AttachedPolicy, byocRole string, byocAWSClient awsclient.Client) error {
 	reqLogger.Info(fmt.Sprintf("Detaching Policy %s from role %s", *policy.PolicyName, byocRole))
 	// Must detach the RolePolicy before it can be deleted
-	_, err := byocAWSClient.DetachRolePolicy(&iam.DetachRolePolicyInput{
+	_, err := byocAWSClient.DetachRolePolicy(context.TODO(), &iam.DetachRolePolicyInput{
 		RoleName:  aws.String(byocRole),
 		PolicyArn: aws.String(*policy.PolicyArn),
 	})
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			default:
-				reqLogger.Error(
-					aerr,
-					aerr.Error(),
-				)
-				reqLogger.Error(err, err.Error())
-			}
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			reqLogger.Error(
+				err,
+				apiErr.ErrorMessage(),
+			)
+			reqLogger.Error(err, err.Error())
 		}
 	}
 	return err
@@ -227,21 +227,19 @@ func DetachPolicyFromRole(reqLogger logr.Logger, policy *iam.AttachedPolicy, byo
 // DeleteRole deletes an existing role from AWS and handles the error
 func DeleteRole(reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.Client) error {
 	reqLogger.Info(fmt.Sprintf("Deleting Role: %s", byocRole))
-	_, err := byocAWSClient.DeleteRole(&iam.DeleteRoleInput{
+	_, err := byocAWSClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{
 		RoleName: aws.String(byocRole),
 	})
 
 	// Delete the existing role
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			default:
-				reqLogger.Error(
-					aerr,
-					aerr.Error(),
-				)
-				reqLogger.Error(err, err.Error())
-			}
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			reqLogger.Error(
+				err,
+				apiErr.ErrorMessage(),
+			)
+			reqLogger.Error(err, err.Error())
 		}
 	}
 	return err

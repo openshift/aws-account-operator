@@ -2,10 +2,12 @@ package accountclaim
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/organizations"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -90,19 +92,27 @@ func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, ouName strin
 		return "", err
 	}
 
-	ouOutput, ouErr := client.CreateOrganizationalUnit(&createCreateOrganizationalUnitInput)
+	ouOutput, ouErr := client.CreateOrganizationalUnit(context.TODO(), &createCreateOrganizationalUnitInput)
 	if ouErr != nil {
-		if aerr, ok := ouErr.(awserr.Error); ok {
-			switch aerr.Code() {
-			case "DuplicateOrganizationalUnitException":
+		// Check for specific Organizations exception types
+		var duplicateOUErr *organizationstypes.DuplicateOrganizationalUnitException
+		if errors.As(ouErr, &duplicateOUErr) {
+			duplicateOUMsg := fmt.Sprintf("OU: %s Already exists", ouName)
+			reqLogger.Info(duplicateOUMsg)
+			return findouIDFromName(reqLogger, client, baseID, ouName)
+		}
+
+		// Check for generic error codes
+		var aerr smithy.APIError
+		if errors.As(ouErr, &aerr) {
+			if aerr.ErrorCode() == "DuplicateOrganizationalUnitException" {
 				duplicateOUMsg := fmt.Sprintf("OU: %s Already exists", ouName)
 				reqLogger.Info(duplicateOUMsg)
 				return findouIDFromName(reqLogger, client, baseID, ouName)
-			default:
-				unexpectedErrorMsg := fmt.Sprintf("OU: Unexpected AWS Error when attempting to create AWS OU: %s", aerr.Code())
-				reqLogger.Info(unexpectedErrorMsg)
-				return "", ouErr
 			}
+			// Log unexpected error
+			unexpectedErrorMsg := fmt.Sprintf("OU: Unexpected AWS Error when attempting to create AWS OU: %s", aerr.ErrorCode())
+			reqLogger.Info(unexpectedErrorMsg)
 		}
 		return "", ouErr
 	}
@@ -117,29 +127,35 @@ func MoveAccount(reqLogger logr.Logger, client awsclient.Client, account *awsv1a
 		DestinationParentId: &ouID,
 		SourceParentId:      &parentID,
 	}
-	_, err := client.MoveAccount(&moveAccountInput)
+	_, err := client.MoveAccount(context.TODO(), &moveAccountInput)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case "AccountNotFoundException":
-				// if the account has been moved out of root we check if it is in the desired OU and update the accountclaim spec
-				accountNotFound := fmt.Sprintf("Account %s was not found in root, checking if the account already in the correct OU", account.Spec.LegalEntity.Name)
-				reqLogger.Info(accountNotFound)
-				childType := "ACCOUNT"
-				found, accErr := findChildInOU(reqLogger, client, ouID, childType, account.Spec.AwsAccountID)
-				if accErr != nil {
-					return accErr
-				}
-				if found {
-					return awsv1alpha1.ErrAccAlreadyInOU
-				}
-			case "ConcurrentModificationException":
-				// if we encounter a race condition we can assume that the account has already been moved, therefore we simply log the condition and requeue
-				ConcurrentModificationExceptionMsg := fmt.Sprintf("OU:CreateOrganizationalUnit:ConcurrentModificationException: Race condition while attempting to move Account: %s to OU: %s", account.Spec.AwsAccountID, ouID)
-				reqLogger.Info(ConcurrentModificationExceptionMsg)
-				return awsv1alpha1.ErrAccMoveRaceCondition
-			default:
-				unexpectedErrorMsg := fmt.Sprintf("CreateOrganizationalUnit: Unexpected AWS Error when attempting to move AWS Account: %s to OU: %s, Error: %s", account.Spec.AwsAccountID, ouID, aerr.Code())
+		// Check for specific Organizations exception types
+		var accountNotFoundErr *organizationstypes.AccountNotFoundException
+		var concurrentModErr *organizationstypes.ConcurrentModificationException
+
+		switch {
+		case errors.As(err, &accountNotFoundErr):
+			// if the account has been moved out of root we check if it is in the desired OU and update the accountclaim spec
+			accountNotFound := fmt.Sprintf("Account %s was not found in root, checking if the account already in the correct OU", account.Spec.LegalEntity.Name)
+			reqLogger.Info(accountNotFound)
+			childType := "ACCOUNT"
+			found, accErr := findChildInOU(reqLogger, client, ouID, childType, account.Spec.AwsAccountID)
+			if accErr != nil {
+				return accErr
+			}
+			if found {
+				return awsv1alpha1.ErrAccAlreadyInOU
+			}
+		case errors.As(err, &concurrentModErr):
+			// if we encounter a race condition we can assume that the account has already been moved, therefore we simply log the condition and requeue
+			ConcurrentModificationExceptionMsg := fmt.Sprintf("OU:CreateOrganizationalUnit:ConcurrentModificationException: Race condition while attempting to move Account: %s to OU: %s", account.Spec.AwsAccountID, ouID)
+			reqLogger.Info(ConcurrentModificationExceptionMsg)
+			return awsv1alpha1.ErrAccMoveRaceCondition
+		default:
+			// Log unexpected error for unhandled exceptions
+			var aerr smithy.APIError
+			if errors.As(err, &aerr) {
+				unexpectedErrorMsg := fmt.Sprintf("CreateOrganizationalUnit: Unexpected AWS Error when attempting to move AWS Account: %s to OU: %s, Error: %s", account.Spec.AwsAccountID, ouID, aerr.ErrorCode())
 				reqLogger.Info(unexpectedErrorMsg)
 			}
 		}
@@ -152,7 +168,7 @@ func findChildInOU(reqLogger logr.Logger, client awsclient.Client, parentid stri
 	// Loop through all children in the parent
 	check := ""
 	listChildrenInput := organizations.ListChildrenInput{
-		ChildType: &childType,
+		ChildType: organizationstypes.ChildType(childType),
 		ParentId:  &parentid,
 	}
 	err := validateListChildrenInput(&listChildrenInput)
@@ -161,10 +177,12 @@ func findChildInOU(reqLogger logr.Logger, client awsclient.Client, parentid stri
 	}
 	for check == "" {
 		// Loop until we find the location of the child
-		listOut, err := client.ListChildren(&listChildrenInput)
+		listOut, err := client.ListChildren(context.TODO(), &listChildrenInput)
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				unexpectedErrorMsg := fmt.Sprintf("FindOUNameFromChildID: Unexpected AWS Error when attempting to list children from %s OU: %s", parentid, aerr.Code())
+			// Log unexpected error
+			var aerr smithy.APIError
+			if errors.As(err, &aerr) {
+				unexpectedErrorMsg := fmt.Sprintf("FindOUNameFromChildID: Unexpected AWS Error when attempting to list children from %s OU: %s", parentid, aerr.ErrorCode())
 				reqLogger.Info(unexpectedErrorMsg)
 			}
 			return false, err
@@ -192,10 +210,12 @@ func findouIDFromName(reqLogger logr.Logger, client awsclient.Client, parentid s
 	}
 	for ouID == "" {
 		// Get a list with a fraction of the OUs in this parent starting from NextToken
-		listOut, err := client.ListOrganizationalUnitsForParent(&listOrgUnitsForParentID)
+		listOut, err := client.ListOrganizationalUnitsForParent(context.TODO(), &listOrgUnitsForParentID)
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				unexpectedErrorMsg := fmt.Sprintf("FindOUFromParentID: Unexpected AWS Error when attempting to find OU ID from Parent: %s", aerr.Code())
+			// Log unexpected error
+			var aerr smithy.APIError
+			if errors.As(err, &aerr) {
+				unexpectedErrorMsg := fmt.Sprintf("FindOUFromParentID: Unexpected AWS Error when attempting to find OU ID from Parent: %s", aerr.ErrorCode())
 				reqLogger.Info(unexpectedErrorMsg)
 			}
 			return "", err
@@ -234,7 +254,7 @@ func validateOrganizationalUnitInput(input *organizations.CreateOrganizationalUn
 }
 
 func validateListChildrenInput(input *organizations.ListChildrenInput) error {
-	if input == nil || validateValue(input.ChildType) != nil || validateValue(input.ParentId) != nil {
+	if input == nil || string(input.ChildType) == "" || validateValue(input.ParentId) != nil {
 		return awsv1alpha1.ErrUnexpectedValue
 	}
 	return nil

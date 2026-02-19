@@ -1,17 +1,21 @@
 package sts
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/sts"
+	"regexp"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/rkt/rkt/tests/testutils/logger"
-	"regexp"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"time"
 )
 
 var (
@@ -36,11 +40,10 @@ func GetSTSCredentials(
 	roleSessionName string) (*sts.AssumeRoleOutput, error) {
 	// Default duration in seconds of the session token 3600. We need to have the roles policy
 	// changed if we want it to be longer than 3600 seconds
-	var roleSessionDuration int64 = 3600
 	reqLogger.Info(fmt.Sprintf("Creating STS credentials for AWS ARN: %s", roleArn))
 	// Build input for AssumeRole
 	assumeRoleInput := sts.AssumeRoleInput{
-		DurationSeconds: &roleSessionDuration,
+		DurationSeconds: aws.Int32(3600),
 		RoleArn:         &roleArn,
 		RoleSessionName: &roleSessionName,
 	}
@@ -52,7 +55,7 @@ func GetSTSCredentials(
 	var err error
 	for i := 0; i < 100; i++ {
 		time.Sleep(defaultSleepDelay)
-		assumeRoleOutput, err = client.AssumeRole(&assumeRoleInput)
+		assumeRoleOutput, err = client.AssumeRole(context.TODO(), &assumeRoleInput)
 		if err == nil {
 			break
 		}
@@ -62,13 +65,14 @@ func GetSTSCredentials(
 	}
 	if err != nil {
 		// Log AWS error
-		if aerr, ok := err.(awserr.Error); ok {
-			reqLogger.Error(aerr,
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			reqLogger.Error(err,
 				fmt.Sprintf(`New AWS Error while getting STS credentials,
 					AWS Error Code: %s,
 					AWS Error Message: %s`,
-					aerr.Code(),
-					aerr.Message()))
+					apiErr.ErrorCode(),
+					apiErr.ErrorMessage()))
 		} else {
 			reqLogger.Error(err,
 				fmt.Sprintf(`Unknown error while getting STS credentials: %s`, err))
