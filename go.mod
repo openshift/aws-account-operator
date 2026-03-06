@@ -4,8 +4,8 @@ go 1.25.7
 
 require (
 	github.com/avast/retry-go v2.6.1+incompatible
-	github.com/aws/aws-sdk-go v1.55.8
 	github.com/aws/aws-sdk-go-v2 v1.41.1
+	github.com/aws/aws-sdk-go-v2/config v1.32.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.7
 	github.com/aws/aws-sdk-go-v2/service/account v1.20.0
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.187.0
@@ -41,7 +41,6 @@ replace github.com/openshift/aws-account-operator/api => ./api
 
 require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.6 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.32.7 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.17 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.17 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.17 // indirect
