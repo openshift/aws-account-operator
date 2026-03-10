@@ -1,0 +1,15 @@
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: aws-account-operator
+  annotations:
+    package-operator.run/phase: rbac
+    package-operator.run/collision-protection: IfNoController
+subjects:
+- kind: ServiceAccount
+  name: aws-account-operator
+  namespace: aws-account-operator
+roleRef:
+  kind: ClusterRole
+  name: aws-account-operator
+  apiGroup: rbac.authorization.k8s.io
