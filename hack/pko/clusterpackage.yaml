@@ -16,6 +16,26 @@ parameters:
   - name: REPO_NAME
     value: aws-account-operator
     required: true
+  - name: ACCOUNT_LIMIT
+    required: true
+  - name: ROOT_OU_ID
+    required: true
+  - name: BASE_OU_ID
+    required: true
+  - name: STS_JUMP_ROLE
+    required: true
+  - name: SUPPORT_JUMP_ROLE
+    required: true
+  - name: SHARD_NAME
+    required: true
+  - name: ACCOUNT_POOL_CONFIG
+    required: true
+  - name: AWS_MANAGED_TAGS
+    required: false
+  - name: FEDRAMP
+    required: false
+  - name: DEBUG_LOGGING
+    required: false
 metadata:
   name: clusterpackage-template
 objects:
@@ -29,3 +49,13 @@ objects:
       image: ${PKO_IMAGE}:${IMAGE_TAG}
       config:
         image: ${OPERATOR_IMAGE}:${IMAGE_TAG}
+        accountLimit: ${ACCOUNT_LIMIT}
+        rootOuId: ${ROOT_OU_ID}
+        baseOuId: ${BASE_OU_ID}
+        stsJumpRole: ${STS_JUMP_ROLE}
+        supportJumpRole: ${SUPPORT_JUMP_ROLE}
+        shardName: ${SHARD_NAME}
+        accountPoolConfig: ${ACCOUNT_POOL_CONFIG}
+        awsManagedTags: ${AWS_MANAGED_TAGS}
+        fedramp: ${FEDRAMP}
+        debugLogging: ${DEBUG_LOGGING}
