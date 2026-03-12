@@ -33,4 +33,113 @@ spec:
           description: Operator image to deploy
           type: string
           default: None
-        type: object
+        accountLimit:
+          description: Maximum number of AWS accounts
+          type: string
+        rootOuId:
+          description: AWS Organization root OU ID
+          type: string
+        baseOuId:
+          description: AWS Organization base OU ID
+          type: string
+        stsJumpRole:
+          description: STS jump role ARN
+          type: string
+        supportJumpRole:
+          description: Support jump role ARN
+          type: string
+        shardName:
+          description: Cluster shard name
+          type: string
+        accountPoolConfig:
+          description: Account pool configuration
+          type: string
+        awsManagedTags:
+          description: AWS managed tags configuration
+          type: string
+          default: ""
+        maxConcurrentReconcilesAccount:
+          description: Max concurrent reconciles for Account controller
+          type: string
+          default: "1"
+        maxConcurrentReconcilesAccountValidation:
+          description: Max concurrent reconciles for AccountValidation controller
+          type: string
+          default: "1"
+        maxConcurrentReconcilesAccountPoolValidation:
+          description: Max concurrent reconciles for AccountPoolValidation controller
+          type: string
+          default: "1"
+        maxConcurrentReconcilesAccountClaim:
+          description: Max concurrent reconciles for AccountClaim controller
+          type: string
+          default: "1"
+        maxConcurrentReconcilesAccountPool:
+          description: Max concurrent reconciles for AccountPool controller
+          type: string
+          default: "1"
+        maxConcurrentReconcilesAwsFederatedAccountAccess:
+          description: Max concurrent reconciles for AWSFederatedAccountAccess controller
+          type: string
+          default: "1"
+        maxConcurrentReconcilesAwsFederatedRole:
+          description: Max concurrent reconciles for AWSFederatedRole controller
+          type: string
+          default: "1"
+        amiOwner:
+          description: AMI owner account ID
+          type: string
+          default: "309956199498"
+        fedramp:
+          description: FedRAMP mode flag
+          type: string
+          default: "false"
+        featureValidateMoveAccount:
+          description: Enable account move validation
+          type: string
+          default: "false"
+        featureValidateTagAccount:
+          description: Enable account tag validation
+          type: string
+          default: "false"
+        featureValidateDeleteAccount:
+          description: Enable account delete validation
+          type: string
+          default: "false"
+        featureAccountPoolValidation:
+          description: Enable account pool validation
+          type: string
+          default: "false"
+        featureAccountClaimFleetManagerTrustedArn:
+          description: Enable fleet manager trusted ARN for account claims
+          type: string
+          default: "false"
+        featureOptInRegions:
+          description: Enable opt-in regions feature
+          type: string
+          default: "false"
+        featureComplianceTags:
+          description: Enable compliance tags feature
+          type: string
+          default: "false"
+        optInRegions:
+          description: Comma-separated list of opt-in regions
+          type: string
+          default: ""
+        debugLogging:
+          description: Enable debug logging
+          type: string
+          default: "false"
+        appCode:
+          description: Application code for billing
+          type: string
+          default: ""
+        servicePhase:
+          description: Service phase for billing
+          type: string
+          default: ""
+        costCenter:
+          description: Cost center for billing
+          type: string
+          default: ""
+      type: object

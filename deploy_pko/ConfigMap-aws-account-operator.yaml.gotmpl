@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-account-operator-configmap
+  namespace: aws-account-operator
+  annotations:
+    package-operator.run/phase: namespace
+    package-operator.run/collision-protection: IfNoController
+data:
+  account-limit: "{{ .config.accountLimit }}"
+  root: {{ .config.rootOuId }}
+  base: {{ .config.baseOuId }}
+  sts-jump-role: {{ .config.stsJumpRole }}
+  support-jump-role: {{ .config.supportJumpRole }}
+  shard-name: {{ .config.shardName }}
+  aws-managed-tags: "{{ .config.awsManagedTags }}"
+  accountpool: "{{ .config.accountPoolConfig }}"
+  MaxConcurrentReconciles.account: "{{ .config.maxConcurrentReconcilesAccount }}"
+  MaxConcurrentReconciles.accountvalidation: "{{ .config.maxConcurrentReconcilesAccountValidation }}"
+  MaxConcurrentReconciles.accountpoolvalidation: "{{ .config.maxConcurrentReconcilesAccountPoolValidation }}"
+  MaxConcurrentReconciles.accountclaim: "{{ .config.maxConcurrentReconcilesAccountClaim }}"
+  MaxConcurrentReconciles.accountpool: "{{ .config.maxConcurrentReconcilesAccountPool }}"
+  MaxConcurrentReconciles.awsfederatedaccountaccess: "{{ .config.maxConcurrentReconcilesAwsFederatedAccountAccess }}"
+  MaxConcurrentReconciles.awsfederatedrole: "{{ .config.maxConcurrentReconcilesAwsFederatedRole }}"
+  ami-owner: "{{ .config.amiOwner }}"
+  fedramp: "{{ .config.fedramp }}"
+  feature.validation_move_account: "{{ .config.featureValidateMoveAccount }}"
+  feature.validation_tag_account: "{{ .config.featureValidateTagAccount }}"
+  feature.validation_delete_account: "{{ .config.featureValidateDeleteAccount }}"
+  feature.accountpool_validation: "{{ .config.featureAccountPoolValidation }}"
+  feature.accountclaim_fleet_manager_trusted_arn: "{{ .config.featureAccountClaimFleetManagerTrustedArn }}"
+  feature.opt_in_regions: "{{ .config.featureOptInRegions }}"
+  feature.compliance_tags: "{{ .config.featureComplianceTags }}"
+  opt-in-regions: "{{ .config.optInRegions }}"
+  app-code: "{{ .config.appCode }}"
+  service-phase: "{{ .config.servicePhase }}"
+  cost-center: "{{ .config.costCenter }}"
