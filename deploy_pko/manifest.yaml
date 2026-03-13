@@ -142,4 +142,4 @@ spec:
           description: Cost center for billing
           type: string
           default: ""
-      type: object
+    type: object
