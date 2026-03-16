@@ -77,9 +77,9 @@ spec:
               #!/bin/sh
               set -euxo pipefail
               oc -n aws-account-operator delete csv -l "operators.coreos.com/aws-account-operator.aws-account-operator" || true
-              oc -n aws-account-operator delete subscription aws-account-operator || true
-              oc -n aws-account-operator delete catalogsource aws-account-operator-catalog || true
-              oc -n aws-account-operator delete operatorgroup aws-account-operator-og || true
+              oc -n aws-account-operator delete subscription.operators.coreos.com aws-account-operator || true
+              oc -n aws-account-operator delete catalogsource.operators.coreos.com aws-account-operator-catalog || true
+              oc -n aws-account-operator delete operatorgroup.operators.coreos.com aws-account-operator-og || true
           resources:
             requests:
               cpu: 100m
