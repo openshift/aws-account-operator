@@ -33,8 +33,10 @@ parameters:
   - name: AWS_MANAGED_TAGS
     required: false
   - name: FEDRAMP
+    value: "false"
     required: false
   - name: DEBUG_LOGGING
+    value: "false"
     required: false
 metadata:
   name: clusterpackage-template
