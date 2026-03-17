@@ -13,8 +13,10 @@ data:
   sts-jump-role: {{ .config.stsJumpRole }}
   support-jump-role: {{ .config.supportJumpRole }}
   shard-name: {{ .config.shardName }}
-  aws-managed-tags: "{{ .config.awsManagedTags }}"
-  accountpool: "{{ .config.accountPoolConfig }}"
+  aws-managed-tags: |
+{{ .config.awsManagedTags | indent 4 }}
+  accountpool: |
+{{ .config.accountPoolConfig | indent 4 }}
   MaxConcurrentReconciles.account: "{{ .config.maxConcurrentReconcilesAccount }}"
   MaxConcurrentReconciles.accountvalidation: "{{ .config.maxConcurrentReconcilesAccountValidation }}"
   MaxConcurrentReconciles.accountpoolvalidation: "{{ .config.maxConcurrentReconcilesAccountPoolValidation }}"
