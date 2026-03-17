@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/openshift/aws-account-operator/config"
@@ -31,6 +32,19 @@ const (
 	// AccountFailed indicates account reuse has failed
 	AccountFailed = "Failed"
 )
+
+// Payer account IDs that should NEVER have cleanup operations performed on them
+// These are root/payer accounts in AWS Organizations that contain critical infrastructure
+var payerAccountBlocklist = []string{
+	"277304166082", // osd-staging-1 payer account
+	// Add additional payer account IDs here as needed
+}
+
+// IsPayerAccount checks if the given AWS account ID is a payer/root account
+// that should be protected from cleanup operations
+func IsPayerAccount(accountID string) bool {
+	return slices.Contains(payerAccountBlocklist, accountID)
+}
 
 func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 
@@ -122,6 +136,18 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 		}
 
 		return nil
+	}
+
+	// CRITICAL SAFETY CHECK: Prevent cleanup on payer/root accounts
+	// This protects against accidentally deleting critical infrastructure in payer accounts
+	if IsPayerAccount(reusedAccount.Spec.AwsAccountID) {
+		err := fmt.Errorf("BLOCKED: Account %s is a payer account and cannot be cleaned up. This is a safety check to prevent deletion of critical infrastructure", reusedAccount.Spec.AwsAccountID)
+		reqLogger.Error(err, "CRITICAL: Attempted to clean up a payer account",
+			"accountID", reusedAccount.Spec.AwsAccountID,
+			"accountCR", reusedAccount.Name,
+			"accountClaim", accountClaim.Name)
+		localmetrics.Collector.AddAccountReuseCleanupFailure()
+		return err
 	}
 
 	before := time.Now()
