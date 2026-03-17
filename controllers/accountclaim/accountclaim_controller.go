@@ -208,6 +208,22 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		return reconcile.Result{}, nil
 	}
 
+	// CRITICAL SAFETY CHECK: Block operations on payer/root accounts
+	// Check both BYOC account ID and linked Account CR
+	if accountClaim.Spec.BYOCAWSAccountID != "" {
+		isPayer, err := config.IsPayerAccount(accountClaim.Spec.BYOCAWSAccountID, r.Client)
+		if err != nil {
+			reqLogger.Error(err, "Failed to check if BYOC account is a payer account")
+			return reconcile.Result{}, err
+		}
+		if isPayer {
+			reqLogger.Error(nil, "CRITICAL: AccountClaim references a payer account - rejecting claim",
+				"accountID", accountClaim.Spec.BYOCAWSAccountID,
+				"accountClaim", accountClaim.Name)
+			return reconcile.Result{}, fmt.Errorf("BLOCKED: Account %s is a payer account and cannot be claimed", accountClaim.Spec.BYOCAWSAccountID)
+		}
+	}
+
 	if accountClaim.DeletionTimestamp != nil {
 		if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" {
 			if r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {

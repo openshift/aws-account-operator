@@ -226,27 +226,6 @@ var _ = Describe("Account Reuse", func() {
 		})
 	})
 
-	Describe("Payer Account Blocklist", func() {
-		Context("When checking if an account is a payer account", func() {
-			It("Returns true for osd-staging-1 payer account", func() {
-				result := accountclaim.IsPayerAccount("277304166082")
-				Expect(result).To(BeTrue())
-			})
-
-			It("Returns false for regular child accounts", func() {
-				result := accountclaim.IsPayerAccount("288712778925")
-				Expect(result).To(BeFalse())
-			})
-
-			It("Returns false for empty account ID", func() {
-				result := accountclaim.IsPayerAccount("")
-				Expect(result).To(BeFalse())
-			})
-
-			It("Returns false for unknown account IDs", func() {
-				result := accountclaim.IsPayerAccount("123456789012")
-				Expect(result).To(BeFalse())
-			})
-		})
-	})
+	// Payer Account Blocklist tests removed - functionality tested at config package level
+	// All controllers call config.IsPayerAccount() directly
 })

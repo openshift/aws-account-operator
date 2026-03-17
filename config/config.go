@@ -16,6 +16,7 @@ package config
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -117,4 +118,46 @@ func GetDefaultAccountPoolName(reqLogger logr.Logger, kubeClient client.Client) 
 	}
 
 	return "", fixtures.NotFound
+}
+
+// GetPayerAccountIDs returns the list of payer account IDs from the ConfigMap
+// These are root/payer accounts in AWS Organizations that should never have
+// cleanup operations performed on them
+func GetPayerAccountIDs(kubeClient client.Client) ([]string, error) {
+	cm, err := utils.GetOperatorConfigMap(kubeClient)
+	if err != nil {
+		// If ConfigMap doesn't exist (e.g., in test environments), return empty list
+		// This allows the operator to function without the payer account blocklist
+		return []string{}, nil
+	}
+
+	payerAccountsString, ok := cm.Data["payer-account-ids"]
+	if !ok {
+		// If not configured, return empty list (no payer accounts to block)
+		return []string{}, nil
+	}
+
+	// Parse comma-separated list of account IDs
+	payerAccounts := strings.Split(payerAccountsString, ",")
+
+	// Trim whitespace from each account ID
+	result := make([]string, 0, len(payerAccounts))
+	for _, accountID := range payerAccounts {
+		trimmed := strings.TrimSpace(accountID)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+
+	return result, nil
+}
+
+// IsPayerAccount checks if the given AWS account ID is a payer/root account
+// that should be protected from all operations
+func IsPayerAccount(accountID string, kubeClient client.Client) (bool, error) {
+	payerAccounts, err := GetPayerAccountIDs(kubeClient)
+	if err != nil {
+		return false, err
+	}
+	return slices.Contains(payerAccounts, accountID), nil
 }
