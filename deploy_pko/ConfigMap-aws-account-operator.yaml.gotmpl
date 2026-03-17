@@ -14,7 +14,8 @@ data:
   support-jump-role: {{ .config.supportJumpRole }}
   shard-name: {{ .config.shardName }}
   aws-managed-tags: "{{ .config.awsManagedTags }}"
-  accountpool: "{{ .config.accountPoolConfig }}"
+  accountpool: |
+{{ .config.accountPoolConfig | indent 4 }}
   MaxConcurrentReconciles.account: "{{ .config.maxConcurrentReconcilesAccount }}"
   MaxConcurrentReconciles.accountvalidation: "{{ .config.maxConcurrentReconcilesAccountValidation }}"
   MaxConcurrentReconciles.accountpoolvalidation: "{{ .config.maxConcurrentReconcilesAccountPoolValidation }}"
