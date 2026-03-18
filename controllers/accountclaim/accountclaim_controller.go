@@ -217,10 +217,11 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			return reconcile.Result{}, err
 		}
 		if isPayer {
-			reqLogger.Error(nil, "CRITICAL: AccountClaim references a payer account - rejecting claim",
+			reqLogger.Info(fmt.Sprintf("WARNING: PROTECTED PAYER ACCOUNT %s - skipping all operations on payer/root account", accountClaim.Spec.BYOCAWSAccountID),
 				"accountID", accountClaim.Spec.BYOCAWSAccountID,
-				"accountClaim", accountClaim.Name)
-			return reconcile.Result{}, fmt.Errorf("BLOCKED: Account %s is a payer account and cannot be claimed", accountClaim.Spec.BYOCAWSAccountID)
+				"accountClaim", accountClaim.Name,
+				"action", "blocked")
+			return reconcile.Result{}, nil
 		}
 	}
 

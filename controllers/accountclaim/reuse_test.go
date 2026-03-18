@@ -7,12 +7,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/go-logr/logr"
-	"go.uber.org/mock/gomock"
 	"github.com/openshift/aws-account-operator/controllers/accountclaim"
 	mock "github.com/openshift/aws-account-operator/controllers/accountclaim/mock"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	awsmock "github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
+	"go.uber.org/mock/gomock"
 	"k8s.io/client-go/kubernetes/scheme"
 	kclient "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -225,7 +225,4 @@ var _ = Describe("Account Reuse", func() {
 			})
 		})
 	})
-
-	// Payer Account Blocklist tests removed - functionality tested at config package level
-	// All controllers call config.IsPayerAccount() directly
 })

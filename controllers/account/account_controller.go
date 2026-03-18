@@ -130,10 +130,11 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			return reconcile.Result{}, err
 		}
 		if isPayer {
-			reqLogger.Error(nil, "CRITICAL: Refusing to reconcile payer account - this Account CR should not exist",
+			reqLogger.Info(fmt.Sprintf("WARNING: PROTECTED PAYER ACCOUNT %s - skipping all operations on payer/root account", currentAcctInstance.Spec.AwsAccountID),
 				"accountID", currentAcctInstance.Spec.AwsAccountID,
-				"accountCR", currentAcctInstance.Name)
-			return reconcile.Result{}, fmt.Errorf("BLOCKED: Account %s is a payer account and should not be managed by this operator", currentAcctInstance.Spec.AwsAccountID)
+				"accountCR", currentAcctInstance.Name,
+				"action", "blocked")
+			return reconcile.Result{}, nil
 		}
 	}
 

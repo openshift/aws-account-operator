@@ -133,13 +133,13 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 		return err
 	}
 	if isPayer {
-		err := fmt.Errorf("BLOCKED: Account %s is a payer account and cannot be cleaned up. This is a safety check to prevent deletion of critical infrastructure", reusedAccount.Spec.AwsAccountID)
-		reqLogger.Error(err, "CRITICAL: Attempted to clean up a payer account",
+		reqLogger.Error(nil, fmt.Sprintf("WARNING: PROTECTED PAYER ACCOUNT %s - skipping all operations on payer/root account", reusedAccount.Spec.AwsAccountID),
 			"accountID", reusedAccount.Spec.AwsAccountID,
 			"accountCR", reusedAccount.Name,
-			"accountClaim", accountClaim.Name)
+			"accountClaim", accountClaim.Name,
+			"action", "blocked")
 		localmetrics.Collector.AddAccountReuseCleanupFailure()
-		return err
+		return fmt.Errorf("cannot clean up payer account %s - protected by blocklist", reusedAccount.Spec.AwsAccountID)
 	}
 
 	before := time.Now()
