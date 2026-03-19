@@ -130,7 +130,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			return reconcile.Result{}, err
 		}
 		if isPayer {
-			reqLogger.Info(fmt.Sprintf("WARNING: PROTECTED PAYER ACCOUNT %s - skipping all operations on payer/root account", currentAcctInstance.Spec.AwsAccountID),
+			reqLogger.Info(fmt.Sprintf("Warning: protected payer account %s - skipping all operations on payer/root account", currentAcctInstance.Spec.AwsAccountID),
 				"accountID", currentAcctInstance.Spec.AwsAccountID,
 				"accountCR", currentAcctInstance.Name,
 				"action", "blocked")

@@ -209,7 +209,6 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	}
 
 	// CRITICAL SAFETY CHECK: Block operations on payer/root accounts
-	// Check both BYOC account ID and linked Account CR
 	if accountClaim.Spec.BYOCAWSAccountID != "" {
 		isPayer, err := config.IsPayerAccount(accountClaim.Spec.BYOCAWSAccountID, r.Client)
 		if err != nil {
@@ -217,7 +216,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			return reconcile.Result{}, err
 		}
 		if isPayer {
-			reqLogger.Info(fmt.Sprintf("WARNING: PROTECTED PAYER ACCOUNT %s - skipping all operations on payer/root account", accountClaim.Spec.BYOCAWSAccountID),
+			reqLogger.Info(fmt.Sprintf("Warning: protected payer account %s - skipping all operations on payer/root account", accountClaim.Spec.BYOCAWSAccountID),
 				"accountID", accountClaim.Spec.BYOCAWSAccountID,
 				"accountClaim", accountClaim.Name,
 				"action", "blocked")

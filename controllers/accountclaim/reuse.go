@@ -133,7 +133,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 		return err
 	}
 	if isPayer {
-		reqLogger.Error(nil, fmt.Sprintf("WARNING: PROTECTED PAYER ACCOUNT %s - skipping all operations on payer/root account", reusedAccount.Spec.AwsAccountID),
+		reqLogger.Error(nil, fmt.Sprintf("Warning: protected payer account %s - skipping all operations on payer/root account", reusedAccount.Spec.AwsAccountID),
 			"accountID", reusedAccount.Spec.AwsAccountID,
 			"accountCR", reusedAccount.Name,
 			"accountClaim", accountClaim.Name,
@@ -143,7 +143,6 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 	}
 
 	before := time.Now()
-	// Perform account clean up in AWS
 	err = r.cleanUpAwsAccount(reqLogger, awsClient)
 	if err != nil {
 		localmetrics.Collector.AddAccountReuseCleanupFailure()

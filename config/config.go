@@ -133,14 +133,11 @@ func GetPayerAccountIDs(kubeClient client.Client) ([]string, error) {
 
 	payerAccountsString, ok := cm.Data["payer-account-ids"]
 	if !ok {
-		// If not configured, return empty list (no payer accounts to block)
 		return []string{}, nil
 	}
 
-	// Parse comma-separated list of account IDs
 	payerAccounts := strings.Split(payerAccountsString, ",")
 
-	// Trim whitespace from each account ID
 	result := make([]string, 0, len(payerAccounts))
 	for _, accountID := range payerAccounts {
 		trimmed := strings.TrimSpace(accountID)
