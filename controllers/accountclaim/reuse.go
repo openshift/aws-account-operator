@@ -124,8 +124,25 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 		return nil
 	}
 
+	// CRITICAL SAFETY CHECK: Prevent cleanup on payer/root accounts
+	// This protects against accidentally deleting critical infrastructure in payer accounts
+	isPayer, err := config.IsPayerAccount(reusedAccount.Spec.AwsAccountID, r.Client)
+	if err != nil {
+		reqLogger.Error(err, "Failed to check if account is a payer account",
+			"accountID", reusedAccount.Spec.AwsAccountID)
+		return err
+	}
+	if isPayer {
+		reqLogger.Error(nil, fmt.Sprintf("Warning: protected payer account %s - skipping all operations on payer/root account", reusedAccount.Spec.AwsAccountID),
+			"accountID", reusedAccount.Spec.AwsAccountID,
+			"accountCR", reusedAccount.Name,
+			"accountClaim", accountClaim.Name,
+			"action", "blocked")
+		localmetrics.Collector.AddAccountReuseCleanupFailure()
+		return fmt.Errorf("cannot clean up payer account %s - protected by blocklist", reusedAccount.Spec.AwsAccountID)
+	}
+
 	before := time.Now()
-	// Perform account clean up in AWS
 	err = r.cleanUpAwsAccount(reqLogger, awsClient)
 	if err != nil {
 		localmetrics.Collector.AddAccountReuseCleanupFailure()

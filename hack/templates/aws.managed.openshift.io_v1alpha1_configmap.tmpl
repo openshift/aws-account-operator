@@ -12,6 +12,8 @@ parameters:
 - name: APP_CODE
 - name: SERVICE_PHASE
 - name: COST_CENTER
+- name: PAYER_ACCOUNT_IDS
+  value: "277304166082,811685182089,922711891673"
 metadata:
   name: test-aws-ou-mapping-configmap-template
 objects:
@@ -48,3 +50,4 @@ objects:
     app-code: ${APP_CODE}
     service-phase: ${SERVICE_PHASE}
     cost-center: ${COST_CENTER}
+    payer-account-ids: ${PAYER_ACCOUNT_IDS}

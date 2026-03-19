@@ -121,6 +121,23 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return reconcile.Result{}, nil
 	}
 
+	// CRITICAL SAFETY CHECK: Block all operations on payer/root accounts
+	// This prevents accidental modification or deletion of critical infrastructure
+	if currentAcctInstance.Spec.AwsAccountID != "" {
+		isPayer, err := config.IsPayerAccount(currentAcctInstance.Spec.AwsAccountID, r.Client)
+		if err != nil {
+			reqLogger.Error(err, "Failed to check if account is a payer account")
+			return reconcile.Result{}, err
+		}
+		if isPayer {
+			reqLogger.Info(fmt.Sprintf("Warning: protected payer account %s - skipping all operations on payer/root account", currentAcctInstance.Spec.AwsAccountID),
+				"accountID", currentAcctInstance.Spec.AwsAccountID,
+				"accountCR", currentAcctInstance.Name,
+				"action", "blocked")
+			return reconcile.Result{}, nil
+		}
+	}
+
 	configMap, err := utils.GetOperatorConfigMap(r.Client)
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
