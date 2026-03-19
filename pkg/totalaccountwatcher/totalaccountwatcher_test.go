@@ -88,8 +88,8 @@ func TestTotalAwsAccounts(t *testing.T) {
 				r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []organizationstypes.Account{
-							{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
-							{Name: aws.String("test2"), Status: organizationstypes.AccountStatusActive},
+							{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
+							{Name: aws.String("test2"), State: organizationstypes.AccountStateActive},
 						},
 					},
 					nil).Times(1)
@@ -106,9 +106,9 @@ func TestTotalAwsAccounts(t *testing.T) {
 				r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []organizationstypes.Account{
-							{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
-							{Name: aws.String("test2"), Status: organizationstypes.AccountStatusActive},
-							{Name: aws.String("test3"), Status: organizationstypes.AccountStatusSuspended},
+							{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
+							{Name: aws.String("test2"), State: organizationstypes.AccountStateActive},
+							{Name: aws.String("test3"), State: organizationstypes.AccountStateSuspended},
 						},
 					},
 					nil).Times(1)
@@ -126,8 +126,8 @@ func TestTotalAwsAccounts(t *testing.T) {
 				r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []organizationstypes.Account{
-							{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
-							{Name: aws.String("test2"), Status: organizationstypes.AccountStatusActive},
+							{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
+							{Name: aws.String("test2"), State: organizationstypes.AccountStateActive},
 						},
 					},
 					nil).Times(1)
@@ -152,15 +152,15 @@ func TestTotalAwsAccounts(t *testing.T) {
 						&organizations.ListAccountsOutput{
 							NextToken: aws.String("NextToken"),
 							Accounts: []organizationstypes.Account{
-								{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
-								{Name: aws.String("test2"), Status: organizationstypes.AccountStatusActive},
+								{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
+								{Name: aws.String("test2"), State: organizationstypes.AccountStateActive},
 							}},
 						nil).Times(1),
 					r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 						&organizations.ListAccountsOutput{
 							Accounts: []organizationstypes.Account{
-								{Name: aws.String("test2"), Status: organizationstypes.AccountStatusActive},
-								{Name: aws.String("test3"), Status: organizationstypes.AccountStatusActive},
+								{Name: aws.String("test2"), State: organizationstypes.AccountStateActive},
+								{Name: aws.String("test3"), State: organizationstypes.AccountStateActive},
 							}},
 						nil).Times(1),
 				)
@@ -181,17 +181,17 @@ func TestTotalAwsAccounts(t *testing.T) {
 						&organizations.ListAccountsOutput{
 							NextToken: aws.String("NextToken"),
 							Accounts: []organizationstypes.Account{
-								{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
-								{Name: aws.String("test2"), Status: organizationstypes.AccountStatusSuspended},
+								{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
+								{Name: aws.String("test2"), State: organizationstypes.AccountStateSuspended},
 							}},
 						nil).Times(1),
 					r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 						&organizations.ListAccountsOutput{
 							Accounts: []organizationstypes.Account{
-								{Name: aws.String("test2"), Status: organizationstypes.AccountStatusActive},
-								{Name: aws.String("test3"), Status: organizationstypes.AccountStatusActive},
-								{Name: aws.String("test4"), Status: organizationstypes.AccountStatusSuspended},
-								{Name: aws.String("test5"), Status: organizationstypes.AccountStatusActive},
+								{Name: aws.String("test2"), State: organizationstypes.AccountStateActive},
+								{Name: aws.String("test3"), State: organizationstypes.AccountStateActive},
+								{Name: aws.String("test4"), State: organizationstypes.AccountStateSuspended},
+								{Name: aws.String("test5"), State: organizationstypes.AccountStateActive},
 							}},
 						nil).Times(1),
 				)
@@ -210,8 +210,8 @@ func TestTotalAwsAccounts(t *testing.T) {
 				r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []organizationstypes.Account{
-							{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
-							{Name: aws.String("test2"), Status: organizationstypes.AccountStatusActive},
+							{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
+							{Name: aws.String("test2"), State: organizationstypes.AccountStateActive},
 						},
 					},
 					nil).Times(1)
@@ -355,7 +355,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []organizationstypes.Account{
-							{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
+							{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
 						}},
 					nil)
 				r.ListCreateAccountStatus(gomock.Any(), gomock.Any()).Return(
@@ -380,7 +380,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []organizationstypes.Account{
-							{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
+							{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
 						}},
 					nil)
 				r.ListCreateAccountStatus(gomock.Any(), gomock.Any()).Return(
@@ -405,7 +405,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []organizationstypes.Account{
-							{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
+							{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
 						}},
 					nil)
 				r.ListCreateAccountStatus(gomock.Any(), gomock.Any()).Return(
@@ -452,8 +452,8 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []organizationstypes.Account{
-							{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
-							{Name: aws.String("test2"), Status: organizationstypes.AccountStatusActive},
+							{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
+							{Name: aws.String("test2"), State: organizationstypes.AccountStateActive},
 						}},
 					nil)
 				r.ListCreateAccountStatus(gomock.Any(), gomock.Any()).Return(
@@ -478,7 +478,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []organizationstypes.Account{
-							{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
+							{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
 						}},
 					nil)
 				r.ListCreateAccountStatus(gomock.Any(), gomock.Any()).Return(
@@ -503,8 +503,8 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []organizationstypes.Account{
-							{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
-							{Name: aws.String("test2"), Status: organizationstypes.AccountStatusActive},
+							{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
+							{Name: aws.String("test2"), State: organizationstypes.AccountStateActive},
 						}},
 					nil)
 				r.ListCreateAccountStatus(gomock.Any(), gomock.Any()).Return(
@@ -534,8 +534,8 @@ func TestTotalAccountsUpdate(t *testing.T) {
 				r.ListAccounts(gomock.Any(), gomock.Any()).Return(
 					&organizations.ListAccountsOutput{
 						Accounts: []organizationstypes.Account{
-							{Name: aws.String("test1"), Status: organizationstypes.AccountStatusActive},
-							{Name: aws.String("test2"), Status: organizationstypes.AccountStatusActive},
+							{Name: aws.String("test1"), State: organizationstypes.AccountStateActive},
+							{Name: aws.String("test2"), State: organizationstypes.AccountStateActive},
 						}},
 					nil)
 				r.ListCreateAccountStatus(gomock.Any(), gomock.Any()).Return(
