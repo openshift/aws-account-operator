@@ -156,7 +156,7 @@ func (s *AccountWatcher) getTotalAwsAccounts() (int, error) {
 
 		// Count only ACTIVE accounts
 		for _, account := range awsAccountList.Accounts {
-			if account.Status == organizationstypes.AccountStatusActive {
+			if account.State == organizationstypes.AccountStateActive {
 				accountTotal++
 			}
 		}
