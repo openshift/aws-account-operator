@@ -38,6 +38,39 @@ parameters:
   - name: DEBUG_LOGGING
     value: "false"
     required: false
+  - name: FEATURE_VALIDATE_MOVE_ACCOUNT
+    value: "false"
+    required: false
+  - name: FEATURE_VALIDATE_TAG_ACCOUNT
+    value: "false"
+    required: false
+  - name: FEATURE_VALIDATE_DELETE_ACCOUNT
+    value: "false"
+    required: false
+  - name: FEATURE_ACCOUNTPOOL_VALIDATION
+    value: "false"
+    required: false
+  - name: FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN
+    value: "false"
+    required: false
+  - name: FEATURE_OPT_IN_REGIONS
+    value: "false"
+    required: false
+  - name: FEATURE_COMPLIANCE_TAGS
+    value: "false"
+    required: false
+  - name: OPT_IN_REGIONS
+    value: ""
+    required: false
+  - name: APP_CODE
+    value: ""
+    required: false
+  - name: SERVICE_PHASE
+    value: ""
+    required: false
+  - name: COST_CENTER
+    value: ""
+    required: false
 metadata:
   name: clusterpackage-template
 objects:
@@ -61,3 +94,14 @@ objects:
         awsManagedTags: ${AWS_MANAGED_TAGS}
         fedramp: ${FEDRAMP}
         debugLogging: ${DEBUG_LOGGING}
+        featureValidateMoveAccount: ${FEATURE_VALIDATE_MOVE_ACCOUNT}
+        featureValidateTagAccount: ${FEATURE_VALIDATE_TAG_ACCOUNT}
+        featureValidateDeleteAccount: ${FEATURE_VALIDATE_DELETE_ACCOUNT}
+        featureAccountPoolValidation: ${FEATURE_ACCOUNTPOOL_VALIDATION}
+        featureAccountClaimFleetManagerTrustedArn: ${FEATURE_ACCOUNTCLAIM_FLEET_MANAGER_TRUSTED_ARN}
+        featureOptInRegions: ${FEATURE_OPT_IN_REGIONS}
+        featureComplianceTags: ${FEATURE_COMPLIANCE_TAGS}
+        optInRegions: ${OPT_IN_REGIONS}
+        appCode: ${APP_CODE}
+        servicePhase: ${SERVICE_PHASE}
+        costCenter: ${COST_CENTER}
