@@ -5,6 +5,7 @@ metadata:
   namespace: aws-account-operator
   annotations:
     package-operator.run/phase: deploy
+    package-operator.run/collision-protection: IfNoController
 spec:
   roleDisplayName: Network management
   roleDescription: User can view all AWS resources, and can edit VPC related resources to enable services such as IPsec VPN and VPC peering.
