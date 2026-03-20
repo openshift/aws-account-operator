@@ -60,6 +60,8 @@ type Principal struct {
 type Condition struct {
 	// A map of the condition
 	StringEquals map[string]string `json:"StringEquals,omitempty"`
+	// A map of the condition
+	StringLike map[string]string `json:"StringLike,omitempty"`
 }
 
 // AWSFederatedRoleStatus defines the observed state of AWSFederatedRole

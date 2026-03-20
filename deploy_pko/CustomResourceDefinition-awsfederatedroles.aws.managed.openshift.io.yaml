@@ -80,6 +80,11 @@ spec:
                                 type: string
                               description: A map of the condition
                               type: object
+                            StringLike:
+                              additionalProperties:
+                                type: string
+                              description: A map of the condition
+                              type: object
                           type: object
                         effect:
                           type: string
