@@ -1,0 +1,11 @@
+{{- if .config.accountPoolName }}
+apiVersion: aws.managed.openshift.io/v1alpha1
+kind: AccountPool
+metadata:
+  name: "{{ .config.accountPoolName }}"
+  namespace: aws-account-operator
+  annotations:
+    package-operator.run/phase: deploy
+spec:
+  poolSize: {{ .config.accountPoolSize }}
+{{- end }}

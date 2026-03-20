@@ -142,4 +142,12 @@ spec:
           description: Cost center for billing
           type: string
           default: ""
+        accountPoolName:
+          description: Name of the default AccountPool CR
+          type: string
+          default: ""
+        accountPoolSize:
+          description: Pool size for the default AccountPool CR
+          type: string
+          default: "0"
       type: object

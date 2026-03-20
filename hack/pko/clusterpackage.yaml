@@ -71,6 +71,12 @@ parameters:
   - name: COST_CENTER
     value: ""
     required: false
+  - name: ACCOUNT_POOL_NAME
+    value: ""
+    required: false
+  - name: ACCOUNT_POOL_SIZE
+    value: "0"
+    required: false
 metadata:
   name: clusterpackage-template
 objects:
@@ -105,3 +111,5 @@ objects:
         appCode: ${APP_CODE}
         servicePhase: ${SERVICE_PHASE}
         costCenter: ${COST_CENTER}
+        accountPoolName: ${ACCOUNT_POOL_NAME}
+        accountPoolSize: ${ACCOUNT_POOL_SIZE}
