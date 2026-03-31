@@ -20,11 +20,11 @@ spec:
           image: quay.io/app-sre/aws-account-operator:latest
           command:
           - aws-account-operator
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           resources:
             limits:
               cpu: "200m"
-              memory: "2Gi"
+              memory: "3Gi"
           env:
             - name: WATCH_NAMESPACE
               value: ""
