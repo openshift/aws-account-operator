@@ -16,6 +16,20 @@ prow-ci-entrypoint: ## Triggers integration test bootstrap bash script for prow 
 stage-ci-entrypoint: ## Triggers integration test bootstrap bash script for staging cluster
 	test/integration/integration-test-bootstrap.sh -p stage --skip-cleanup -n $(OPERATOR_NAMESPACE)
 
+#############################################################################################
+# Go-based Integration Tests
+#############################################################################################
+
+.PHONY: test-integration-go
+test-integration-go: ## Run Go-based integration tests
+	@echo "Running Go integration tests..."
+	go test -v -timeout 30m ./test/integration/tests/
+
+.PHONY: test-integration-go-fake
+test-integration-go-fake: ## Run FAKE AccountClaim Go integration test
+	@echo "Running FAKE AccountClaim Go integration test..."
+	go test -v -timeout 10m -run TestFakeAccountClaim ./test/integration/tests/
+
 .PHONY: ci-aws-resources-cleanup
 ci-aws-resources-cleanup: 
 	hack/scripts/cleanup-aws-resources.sh "$(STS_ROLE_ARN)" "$(OSD_STAGING_1_AWS_ACCOUNT_ID)"
