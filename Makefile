@@ -101,9 +101,9 @@ deploy-aws-account-operator-credentials:  ## Deploy the operator secrets, CRDs a
 
 .PHONY: predeploy-aws-account-operator
 predeploy-aws-account-operator: ## Predeploy AWS Account Operator
-	# Create aws-account-operator namespace
-	@oc get namespace ${OPERATOR_NAMESPACE} && oc project ${OPERATOR_NAMESPACE} || (oc create namespace ${OPERATOR_NAMESPACE} && oc project ${OPERATOR_NAMESPACE})
-	# Wait for namespace to be fully ready before creating resources in it
+	# Create aws-account-operator namespace if it doesn't exist
+	@oc get namespace ${OPERATOR_NAMESPACE} >/dev/null 2>&1 || oc create namespace ${OPERATOR_NAMESPACE}
+	# Wait for namespace to be fully ready before switching to it
 	@echo "Waiting for namespace to be ready..."
 	@for i in {1..10}; do \
 		if oc get namespace ${OPERATOR_NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null | grep -q "Active"; then \
@@ -113,6 +113,8 @@ predeploy-aws-account-operator: ## Predeploy AWS Account Operator
 		echo "Waiting for namespace (attempt $$i/10)..."; \
 		sleep 2; \
 	done
+	# Switch to the namespace now that it's ready
+	@oc project ${OPERATOR_NAMESPACE}
 	# Create aws-account-operator CRDs
 	@ls deploy/crds/*.yaml | xargs -L1 oc apply -f
 	# Create zero size account pool
