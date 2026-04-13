@@ -22,9 +22,9 @@ import (
 //  7. Cleans up the claim and namespace
 //
 // This validates:
-//  - FAKE AccountClaims don't create Account CRs
-//  - FAKE AccountClaims create AWS credential secrets
-//  - FAKE mode works for testing without real AWS resources
+//   - FAKE AccountClaims don't create Account CRs
+//   - FAKE AccountClaims create AWS credential secrets
+//   - FAKE mode works for testing without real AWS resources
 func TestFakeAccountClaim(t *testing.T) {
 	const (
 		claimName     = "test-fake"
@@ -75,7 +75,6 @@ func TestFakeAccountClaim(t *testing.T) {
 			t.Fatalf("Failed to get AccountClaim: %v", err)
 		}
 
-		// Verify finalizers are present
 		t.Log("Validating AccountClaim has finalizers...")
 		if len(claim.Finalizers) < 1 {
 			t.Error("FAIL: No finalizers set on FAKE AccountClaim")
@@ -91,7 +90,6 @@ func TestFakeAccountClaim(t *testing.T) {
 			t.Log("✓ No accountLink (as expected for FAKE claims)")
 		}
 
-		// Verify secret exists
 		t.Log("Validating secret exists in namespace...")
 		err = helpers.VerifySecretExists(ctx, kubeClient, secretName, namespaceName)
 		if err != nil {
@@ -115,14 +113,12 @@ func TestFakeAccountClaim(t *testing.T) {
 		t.Log("CLEANUP: Removing test resources")
 		t.Log("=============================================================")
 
-		// Delete AccountClaim (with finalizer removal for faster cleanup)
 		t.Log("Deleting FAKE AccountClaim...")
 		err := helpers.DeleteAccountClaim(ctx, kubeClient, claimName, namespaceName, resourceDeleteTimeout, true)
 		if err != nil {
 			t.Errorf("WARNING: Failed to delete FAKE AccountClaim: %v", err)
 		}
 
-		// Delete namespace
 		t.Log("Deleting namespace...")
 		err = helpers.DeleteNamespace(ctx, kubeClient, namespaceName, resourceDeleteTimeout)
 		if err != nil {

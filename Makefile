@@ -113,8 +113,6 @@ predeploy-aws-account-operator: ## Predeploy AWS Account Operator
 		echo "Waiting for namespace (attempt $$i/10)..."; \
 		sleep 2; \
 	done
-	# Switch to the namespace now that it's ready
-	@oc project ${OPERATOR_NAMESPACE}
 	# Create aws-account-operator CRDs
 	@ls deploy/crds/*.yaml | xargs -L1 oc apply -f
 	# Create zero size account pool
