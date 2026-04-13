@@ -102,7 +102,7 @@ deploy-aws-account-operator-credentials:  ## Deploy the operator secrets, CRDs a
 .PHONY: predeploy-aws-account-operator
 predeploy-aws-account-operator: ## Predeploy AWS Account Operator
 	# Create aws-account-operator namespace
-	@oc get namespace ${OPERATOR_NAMESPACE} && oc project ${OPERATOR_NAMESPACE} || oc create namespace ${OPERATOR_NAMESPACE}
+	@oc get namespace ${OPERATOR_NAMESPACE} && oc project ${OPERATOR_NAMESPACE} || (oc create namespace ${OPERATOR_NAMESPACE} && oc project ${OPERATOR_NAMESPACE})
 	# Wait for namespace to be fully ready before creating resources in it
 	@echo "Waiting for namespace to be ready..."
 	@for i in {1..10}; do \
