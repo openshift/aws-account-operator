@@ -30,6 +30,11 @@ test-integration-go-fake: ## Run FAKE AccountClaim Go integration test
 	@echo "Running FAKE AccountClaim Go integration test..."
 	go test -v -timeout 10m -run TestFakeAccountClaim ./test/integration/tests/
 
+.PHONY: prow-ci-go-entrypoint
+prow-ci-go-entrypoint: ## Simplified PROW entrypoint for Go tests (uses PROW's pre-built image)
+	@echo "Running Go integration tests with PROW's pre-built image..."
+	test/integration/run-go-tests.sh
+
 .PHONY: ci-aws-resources-cleanup
 ci-aws-resources-cleanup: 
 	hack/scripts/cleanup-aws-resources.sh "$(STS_ROLE_ARN)" "$(OSD_STAGING_1_AWS_ACCOUNT_ID)"
