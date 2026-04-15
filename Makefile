@@ -45,10 +45,6 @@ test-integration-local: ## Run integration tests locally with automated setup
 test-integration: ## Run full integration test suite (for CI/PROW)
 	@./test/integration/integration-test-bootstrap.sh -p prow
 
-.PHONY: test-integration-go-prow
-test-integration-go-prow: ## Run Go integration tests in PROW (uses pre-built image, no rebuild)
-	@./test/integration/run-go-tests.sh
-
 .PHONY: test-all
 test-all: lint clean-operator test test-apis test-integration ## Runs all tests
 

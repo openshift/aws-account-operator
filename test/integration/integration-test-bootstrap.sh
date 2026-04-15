@@ -239,21 +239,44 @@ function cleanupPost {
 }
 
 function buildOperatorImage {
+    # PROW pre-builds the operator image - use it instead of rebuilding in-cluster
+    # This avoids dependency on OpenShift Build API and saves 2-3 minutes
+    if [ -n "${IMAGE_FORMAT:-}" ]; then
+        echo "==========================================================================="
+        echo "PROW environment detected - using pre-built operator image"
+        echo "Skipping in-cluster rebuild (IMAGE_FORMAT is set)"
+        echo "==========================================================================="
+        # PROW's IMAGE_FORMAT is like: "registry.ci.../pipeline:${component}"
+        # We want the "src" component which contains our operator binary
+        export PROW_BUILT_IMAGE="${IMAGE_FORMAT//\$\{component\}/src}"
+        echo "Using PROW image: ${PROW_BUILT_IMAGE}"
+        return 0
+    fi
+
+    # Local dev / staging: build in cluster as usual
+    echo "Building operator image in-cluster (local/staging mode)..."
+
     # quirk with oc build process which requires the dockerfile be in the project root directory
     ln ./build/Dockerfile Dockerfile
 
     $OC_WITH_NAMESPACE new-build --binary --strategy=docker --build-arg=FIPS_ENABLED=false  --name $BUILD_CONFIG || true
     $OC_WITH_NAMESPACE start-build $BUILD_CONFIG --from-dir . -F --exclude='(^|/)((\.git)|(\.venv)|(\.idea))(/|$)'
-    
+
     # allow image lookup for the images produced by the build config
     $OC_WITH_NAMESPACE set image-lookup $BUILD_CONFIG
 }
 
 function verifyBuildSuccess {
+    # Skip verification if using PROW's pre-built image
+    if [ -n "${PROW_BUILT_IMAGE:-}" ]; then
+        echo "Using PROW's pre-built image - skipping build verification"
+        return 0
+    fi
+
     echo "Verifying build success"
     sleep 5
     local latestJobName phase
-    latestJobName="$BUILD_CONFIG"-$($OC_WITH_NAMESPACE get buildconfig "$BUILD_CONFIG" -ojsonpath='{.status.lastVersion}') 
+    latestJobName="$BUILD_CONFIG"-$($OC_WITH_NAMESPACE get buildconfig "$BUILD_CONFIG" -ojsonpath='{.status.lastVersion}')
     phase=$($OC_WITH_NAMESPACE get build "$latestJobName" -ojsonpath='{.status.phase}')
     if [[ $phase != "Complete" ]]; then
         echo "ERROR - build was not completed fully, the state was $phase but expected to be 'Complete'"
@@ -265,13 +288,23 @@ function verifyBuildSuccess {
 }
 
 function configureKustomization {
-    # make the AAO image (quay.io/app-sre/aws-account-operator:latest) resolve to the image we just built
+    # Determine which image to use: PROW's pre-built image or the one we just built
+    local IMAGE_TO_USE
+    if [ -n "${PROW_BUILT_IMAGE:-}" ]; then
+        IMAGE_TO_USE="${PROW_BUILT_IMAGE}"
+        echo "Configuring kustomization to use PROW image: ${IMAGE_TO_USE}"
+    else
+        IMAGE_TO_USE="${BUILD_CONFIG}"
+        echo "Configuring kustomization to use in-cluster built image: ${IMAGE_TO_USE}"
+    fi
+
+    # make the AAO image (quay.io/app-sre/aws-account-operator:latest) resolve to the image we want
     cat <<EOF >./deploy/kustomization.yaml
 resources:
 - operator.yaml
 images:
 - name: quay.io/app-sre/aws-account-operator:latest
-  newName: $BUILD_CONFIG
+  newName: ${IMAGE_TO_USE}
 patchesJson6902:
 - target:
     group: apps
