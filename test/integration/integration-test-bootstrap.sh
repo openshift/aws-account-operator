@@ -241,6 +241,15 @@ function cleanupPost {
 function buildOperatorImage {
     # PROW pre-builds the operator image - use it instead of rebuilding in-cluster
     # This avoids dependency on OpenShift Build API and saves 2-3 minutes
+
+    # DEBUG: Print PROW-related environment variables
+    echo "DEBUG: Checking for PROW environment variables..."
+    echo "  IMAGE_FORMAT=${IMAGE_FORMAT:-<not set>}"
+    echo "  CI=${CI:-<not set>}"
+    echo "  OPENSHIFT_CI=${OPENSHIFT_CI:-<not set>}"
+    echo "  PULL_BASE_REF=${PULL_BASE_REF:-<not set>}"
+    echo "  JOB_NAME=${JOB_NAME:-<not set>}"
+
     if [ -n "${IMAGE_FORMAT:-}" ]; then
         echo "==========================================================================="
         echo "PROW environment detected - using pre-built operator image"
