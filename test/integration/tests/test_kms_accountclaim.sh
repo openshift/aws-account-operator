@@ -97,6 +97,16 @@ function setup {
     sleep "${sleepInterval}"
     echo "✓ CCS secret created"
 
+    echo "Creating placeholder 'aws' secret (operator will populate after account setup)..."
+    if ! oc create secret generic aws \
+        --namespace="${kmsNamespace}" \
+        --from-literal=aws_access_key_id=placeholder \
+        --from-literal=aws_secret_access_key=placeholder; then
+        echo "ERROR: Failed to create placeholder aws secret"
+        return $EXIT_TEST_FAIL_SECRET_CREATION_FAILED
+    fi
+    echo "✓ Placeholder aws secret created"
+
     echo "Creating KMS AccountClaim: ${kmsClaimName}"
     local claimYaml
     claimYaml=$(oc process --local -p NAME="${kmsClaimName}" -p NAMESPACE="${kmsNamespace}" -p CCS_ACCOUNT_ID="${kmsAccountId}" -p KMS_KEY_ID="${kmsKeyId}" -f hack/templates/aws.managed.openshift.io_v1alpha1_kms_accountclaim_cr.tmpl)
@@ -232,6 +242,11 @@ function cleanup {
     echo "Deleting CCS secret..."
     oc delete secret byoc -n "${kmsNamespace}" 2>/dev/null || {
         echo "WARNING: Failed to delete CCS secret"
+    }
+
+    echo "Deleting aws secret..."
+    oc delete secret aws -n "${kmsNamespace}" 2>/dev/null || {
+        echo "WARNING: Failed to delete aws secret"
     }
 
     echo "Deleting namespace..."
