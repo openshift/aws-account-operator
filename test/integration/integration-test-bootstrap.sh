@@ -239,21 +239,44 @@ function cleanupPost {
 }
 
 function buildOperatorImage {
+    if [ -n "${OPERATOR_IMAGE:-}" ] && [ -n "${OPENSHIFT_CI:-}" ]; then
+        echo "Using PROW-built operator image: ${OPERATOR_IMAGE}"
+        export PROW_BUILT_IMAGE="${OPERATOR_IMAGE}"
+        return 0
+    fi
+
+    if [ -n "${IMAGES_TO_BUILD:-}" ] && [ -n "${OPENSHIFT_CI:-}" ]; then
+        PROW_BUILT_IMAGE=$(echo "${IMAGES_TO_BUILD}" | awk 'NR==1 {print $2; exit}')
+
+        if [ -n "${PROW_BUILT_IMAGE}" ]; then
+            echo "Using PROW-built operator image: ${PROW_BUILT_IMAGE}"
+            export PROW_BUILT_IMAGE
+            return 0
+        fi
+    fi
+
+    echo "Building operator image in-cluster (local/staging mode)..."
+
     # quirk with oc build process which requires the dockerfile be in the project root directory
     ln ./build/Dockerfile Dockerfile
 
     $OC_WITH_NAMESPACE new-build --binary --strategy=docker --build-arg=FIPS_ENABLED=false  --name $BUILD_CONFIG || true
     $OC_WITH_NAMESPACE start-build $BUILD_CONFIG --from-dir . -F --exclude='(^|/)((\.git)|(\.venv)|(\.idea))(/|$)'
-    
+
     # allow image lookup for the images produced by the build config
     $OC_WITH_NAMESPACE set image-lookup $BUILD_CONFIG
 }
 
 function verifyBuildSuccess {
+    if [ -n "${PROW_BUILT_IMAGE:-}" ]; then
+        echo "Using PROW's pre-built image - skipping build verification"
+        return 0
+    fi
+
     echo "Verifying build success"
     sleep 5
     local latestJobName phase
-    latestJobName="$BUILD_CONFIG"-$($OC_WITH_NAMESPACE get buildconfig "$BUILD_CONFIG" -ojsonpath='{.status.lastVersion}') 
+    latestJobName="$BUILD_CONFIG"-$($OC_WITH_NAMESPACE get buildconfig "$BUILD_CONFIG" -ojsonpath='{.status.lastVersion}')
     phase=$($OC_WITH_NAMESPACE get build "$latestJobName" -ojsonpath='{.status.phase}')
     if [[ $phase != "Complete" ]]; then
         echo "ERROR - build was not completed fully, the state was $phase but expected to be 'Complete'"
@@ -265,13 +288,49 @@ function verifyBuildSuccess {
 }
 
 function configureKustomization {
-    # make the AAO image (quay.io/app-sre/aws-account-operator:latest) resolve to the image we just built
+    local NEW_NAME NEW_TAG NEW_DIGEST IMAGE_TO_PARSE
+
+    if [ -n "${PROW_BUILT_IMAGE:-}" ]; then
+        IMAGE_TO_PARSE="${PROW_BUILT_IMAGE}"
+    else
+        NEW_NAME="${BUILD_CONFIG}"
+        IMAGE_TO_PARSE=""
+    fi
+
+    if [ -n "${IMAGE_TO_PARSE}" ]; then
+        if [[ "${IMAGE_TO_PARSE}" == *"@sha256:"* ]]; then
+            NEW_NAME="${IMAGE_TO_PARSE%%@*}"
+            NEW_DIGEST="${IMAGE_TO_PARSE##*@}"
+        elif [[ "${IMAGE_TO_PARSE}" == *":"* ]]; then
+            local REPO_PATH="${IMAGE_TO_PARSE##*/}"
+            if [[ "${REPO_PATH}" == *":"* ]]; then
+                NEW_NAME="${IMAGE_TO_PARSE%:*}"
+                NEW_TAG="${IMAGE_TO_PARSE##*:}"
+            else
+                NEW_NAME="${IMAGE_TO_PARSE}"
+            fi
+        else
+            NEW_NAME="${IMAGE_TO_PARSE}"
+        fi
+    fi
+
     cat <<EOF >./deploy/kustomization.yaml
 resources:
 - operator.yaml
 images:
 - name: quay.io/app-sre/aws-account-operator:latest
-  newName: $BUILD_CONFIG
+  newName: ${NEW_NAME}
+EOF
+
+    if [ -n "${NEW_TAG:-}" ]; then
+        echo "  newTag: ${NEW_TAG}" >> ./deploy/kustomization.yaml
+    fi
+
+    if [ -n "${NEW_DIGEST:-}" ]; then
+        echo "  digest: ${NEW_DIGEST}" >> ./deploy/kustomization.yaml
+    fi
+
+    cat <<EOF >> ./deploy/kustomization.yaml
 patchesJson6902:
 - target:
     group: apps
@@ -292,12 +351,23 @@ EOF
 
 function deployOperator {
     configureKustomization
-    $OC apply -k ./deploy
+    $OC_WITH_NAMESPACE apply -k ./deploy
 }
 
 function waitForDeployment {
-    echo "Waiting for operator deployment to finish (timeout in 60s)"
-    $OC_WITH_NAMESPACE wait --for=condition=available --timeout=60s deployment $OPERATOR_DEPLOYMENT || (echo -e '\nERROR - Waited for operator deployment to complete for 60s\n' && return 1)
+    echo "Waiting for operator deployment to finish (timeout in 120s)"
+    $OC_WITH_NAMESPACE wait --for=condition=available --timeout=120s deployment $OPERATOR_DEPLOYMENT || {
+        echo -e '\nERROR - Waited for operator deployment to complete for 120s\n'
+        echo "Pod status:"
+        $OC_WITH_NAMESPACE get pods
+        echo -e "\nPod details:"
+        $OC_WITH_NAMESPACE describe pod -l name=aws-account-operator
+        echo -e "\nPod events:"
+        $OC_WITH_NAMESPACE get events --sort-by='.lastTimestamp'
+        echo -e "\nPod logs (if any):"
+        $OC_WITH_NAMESPACE logs -l name=aws-account-operator --tail=50 2>&1 || echo "No pod logs available"
+        return 1
+    }
     echo "Deployment Completed"
 }
 

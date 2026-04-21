@@ -2,7 +2,7 @@ include test/integration/test_envs
 
 .PHONY: prow-ci-predeploy
 prow-ci-predeploy: predeploy-aws-account-operator deploy-aws-account-operator-credentials create-ou-map
-	@ls deploy/*.yaml | grep -v operator.yaml | xargs -L1 oc apply -f
+	@ls deploy/*.yaml | grep -v operator.yaml | xargs -L1 oc apply -n ${OPERATOR_NAMESPACE} -f
 
 .PHONY: local-ci-entrypoint
 local-ci-entrypoint: ## Triggers integration test bootstrap bash script for local cluster
@@ -10,7 +10,7 @@ local-ci-entrypoint: ## Triggers integration test bootstrap bash script for loca
 
 .PHONY: prow-ci-entrypoint
 prow-ci-entrypoint: ## Triggers integration test bootstrap bash script for prow ci
-	test/integration/integration-test-bootstrap.sh -p prow
+	OPERATOR_IMAGE="$(PROW_OPERATOR_IMAGE)" test/integration/integration-test-bootstrap.sh -p prow
 
 .PHONY: stage-ci-entrypoint
 stage-ci-entrypoint: ## Triggers integration test bootstrap bash script for staging cluster
