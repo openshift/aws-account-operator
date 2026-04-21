@@ -10,7 +10,7 @@ local-ci-entrypoint: ## Triggers integration test bootstrap bash script for loca
 
 .PHONY: prow-ci-entrypoint
 prow-ci-entrypoint: ## Triggers integration test bootstrap bash script for prow ci
-	OPERATOR_IMAGE="$$OPERATOR_IMAGE" test/integration/integration-test-bootstrap.sh -p prow
+	OPERATOR_IMAGE="$(PROW_OPERATOR_IMAGE)" test/integration/integration-test-bootstrap.sh -p prow
 
 .PHONY: stage-ci-entrypoint
 stage-ci-entrypoint: ## Triggers integration test bootstrap bash script for staging cluster

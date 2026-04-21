@@ -9,6 +9,9 @@ OPERATOR_NAMESPACE ?= aws-account-operator
 # Relevant issue - https://github.com/golangci/golangci-lint/issues/734
 GOLANGCI_LINT_CACHE ?= /tmp/golangci-cache
 
+# Preserve PROW's OPERATOR_IMAGE environment variable before boilerplate overwrites it
+PROW_OPERATOR_IMAGE ?= $(shell printenv OPERATOR_IMAGE 2>/dev/null)
+
 include test/integration/int-testing.mk
 
 # Boilerplate
