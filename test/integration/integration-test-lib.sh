@@ -36,7 +36,7 @@ function retryWithBackoff {
 # Default timeouts (can be overridden by bootstrap script for local profile)
 # Use := to only set if not already set (preserves values from bootstrap)
 export ACCOUNT_READY_TIMEOUT="${ACCOUNT_READY_TIMEOUT:-3m}"
-export ACCOUNT_CLAIM_READY_TIMEOUT="${ACCOUNT_CLAIM_READY_TIMEOUT:-1m}"
+export ACCOUNT_CLAIM_READY_TIMEOUT="${ACCOUNT_CLAIM_READY_TIMEOUT:-3m}"
 export RESOURCE_DELETE_TIMEOUT="${RESOURCE_DELETE_TIMEOUT:-7m}"  # Increased for PROW - EC2 instance cleanup can take 5m + additional cleanup time
 export MAX_RETRIES="${MAX_RETRIES:-5}"
 
