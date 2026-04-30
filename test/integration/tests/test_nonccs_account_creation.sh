@@ -42,7 +42,7 @@ timeout="5m"
 function setupTestPhase {
     echo "Creating Account CR."
     createAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" || exit "$?"
-    
+
     exit "$EXIT_PASS"
 }
 
@@ -50,7 +50,7 @@ function cleanupTestPhase {
     timeout="${RESOURCE_DELETE_TIMEOUT}"
     local removeFinalizers=true
     local cleanupExitCode="${EXIT_PASS}"
-    
+
     #note: dont delete the accountCrNamespace because AAO is running there, but we should cleanup the Account CR
     if ! deleteAccountCR "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}" "${timeout}" $removeFinalizers; then
         echo "Failed to delete Account CR"

@@ -91,7 +91,7 @@ if [ -z "${SUPPORT_JUMP_ROLE+x}" ]; then
 fi
 
 ACCOUNTPOOL_CONFIG="
-zero-size-accountpool: 
+zero-size-accountpool:
   default: true
 hs-zero-size-accountpool:
   servicequotas:

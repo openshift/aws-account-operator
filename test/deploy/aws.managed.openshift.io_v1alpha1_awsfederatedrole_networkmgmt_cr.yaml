@@ -87,7 +87,7 @@ spec:
           - "route53:DisassociateVPCFromHostedZone"
         resource:
           - "*"
-      # Manage VPC Association Authorizations for 
+      # Manage VPC Association Authorizations for
       # Ref https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/hosted-zone-private-associate-vpcs-different-accounts.html
       - effect: Allow
         action:
@@ -96,7 +96,7 @@ spec:
           - "route53:DeleteVPCAssociationAuthorization"
           - "route53:AssociateVPCWithHostedZone"
         resource:
-          - "*"          
+          - "*"
       - effect: Allow
         action:
           - "ram:*"

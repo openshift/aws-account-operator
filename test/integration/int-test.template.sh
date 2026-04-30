@@ -15,7 +15,7 @@
 source test/integration/integration-test-lib.sh
 
 
-# TODO: define custom exit codes for different failure scenarios 
+# TODO: define custom exit codes for different failure scenarios
 # and user friendly messages to associate with them
 # EXIT_TEST_FAILED_VALIDATION=1
 declare -A exitCodeMessages
@@ -26,39 +26,39 @@ exitCodeMessages[$EXIT_TEST_FAILED_EXAMPLE_EXIT_CODE]="This is an example test f
 # The before test phase is used to do setup needed by the test before it runs.
 # For example creating CRs which the operator you are testing acts on.
 #
-# If you need to wait for some condition to be met before proceeding it is up to 
-# you to implement that polling logic, good examples of how to do that with 
-# timeouts can be found in the integration-test-lib.sh file. 
+# If you need to wait for some condition to be met before proceeding it is up to
+# you to implement that polling logic, good examples of how to do that with
+# timeouts can be found in the integration-test-lib.sh file.
 #
 # If this step was successful, or encounters failures that dont matter, your implementation
-# should return a $EXIT_PASS (0) exit code so the next phase will be executed.If the step 
+# should return a $EXIT_PASS (0) exit code so the next phase will be executed.If the step
 # failed in a unrecoverable way and the test should not proceed, return any other exit code.
 #
-# input: 
+# input:
 #   None
-# return: 
+# return:
 #   $EXIT_PASS          - the function succeeded and the test should proceed to the next phase (test/testPhase)
-#   any other exit code - the function failed and the test should not proceed 
+#   any other exit code - the function failed and the test should not proceed
 #       (note, the cleanup/afterTestPhase phase will still be executed)
 function setupTestPhase {
     exit "$EXIT_PASS"
 }
 
 #
-# The after test phase is used to do cleanup after the test has run. For example 
-# deleting CRs created by setupTestPhase. 
+# The after test phase is used to do cleanup after the test has run. For example
+# deleting CRs created by setupTestPhase.
 #
-# If you need to wait for some condition to be met before proceeding it is up to 
-# you to implement that polling logic, good examples of how to do that with 
-# timeouts can be found in the integration-test-lib.sh file. 
+# If you need to wait for some condition to be met before proceeding it is up to
+# you to implement that polling logic, good examples of how to do that with
+# timeouts can be found in the integration-test-lib.sh file.
 #
 # If this step was successful, or encounters failures that dont matter, your implementation
-# should return a $EXIT_PASS (0) exit code so the next phase will be executed. If the step 
+# should return a $EXIT_PASS (0) exit code so the next phase will be executed. If the step
 # failed in a unrecoverable way and the test should not proceed, return any other exit code.
 #
-# input: 
+# input:
 #   None
-# return: 
+# return:
 #   $EXIT_PASS          - the function succeeded and the test should proceed to the next phase (none)
 #   any other exit code - the function failed and the test should not proceed
 function cleanupTestPhase {
@@ -71,26 +71,26 @@ function cleanupTestPhase {
 # this function should generally be dedicated to validating the expected outcome after the operator
 # has done its work.
 #
-# If you need to wait for some condition to be met before proceeding it is up to 
-# you to implement that polling logic, good examples of how to do that with 
-# timeouts can be found in the integration-test-lib.sh file. 
+# If you need to wait for some condition to be met before proceeding it is up to
+# you to implement that polling logic, good examples of how to do that with
+# timeouts can be found in the integration-test-lib.sh file.
 #
 # If this step was successful, or encounters failures that dont matter, your implementation
-# should return a $EXIT_PASS (0) exit code so the next phase will be executed. If the step 
+# should return a $EXIT_PASS (0) exit code so the next phase will be executed. If the step
 # failed in a unrecoverable way and the test should not proceed, return any other exit code.
 #
-# input: 
+# input:
 #   None
-# return: 
+# return:
 #   $EXIT_PASS          - the function succeeded and the test should proceed to the next phase (test/testPhase)
-#   any other exit code - the function failed and the test should not proceed 
+#   any other exit code - the function failed and the test should not proceed
 #       (note, the cleanup/afterTestPhase phase will still be executed)
 function testPhase {
     exit "$EXIT_PASS"
 }
 
 # This is a convenience method for getting a human friendly message for an exit code.
-# It should not perform any long running tasks and should only print a message to stdout 
+# It should not perform any long running tasks and should only print a message to stdout
 # based on the provided exit code.
 #
 # input:

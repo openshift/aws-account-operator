@@ -131,6 +131,43 @@ Set these environment variables for testing (in `.envrc`):
 
 **Note**: Credentials are now managed via temporary STS tokens using `rh-aws-saml-login`, stored in `~/.aws/credentials`. No long-lived IAM user keys are used. Credentials expire after a few hours and need refreshing via `update_aws_credentials.sh`.
 
+## Development Workflow
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions. Quick start:
+
+```bash
+# Install prek pre-commit hooks
+prek install
+
+# Run validation locally
+prek run --all-files
+
+# Run linting
+make lint
+```
+
+Pre-commit hooks run automatically on `git commit`. The Claude Code stop hook runs `prek run --all-files` before Claude stops, catching issues early.
+
+## Validation and Linting
+
+This project uses:
+- **prek** — Git hook manager for pre-commit validation
+- **golangci-lint** — Go linting via boilerplate framework
+- **Built-in checks** — File hygiene (trailing whitespace, EOF, YAML/JSON validation)
+
+```bash
+# Run all validations
+prek run --all-files
+
+# Run linting only
+make lint
+
+# Run golangci-lint only
+make go-check
+```
+
+For CI, use `hack/ci.sh` which uses the same validation as local development.
+
 ## Architecture
 
 ### Core Components

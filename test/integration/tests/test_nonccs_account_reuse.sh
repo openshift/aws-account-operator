@@ -78,7 +78,7 @@ function setupTestPhase {
 
 
     echo "Simulating \"customer resource\" by creating an S3 bucket."
-    reuseBucketName="${testName}-bucket" 
+    reuseBucketName="${testName}-bucket"
 
     if ! aws s3api create-bucket --bucket "${reuseBucketName}" --region=us-east-1; then
         echo "Failed to create s3 bucket ${reuseBucketName}."
@@ -118,7 +118,7 @@ function testPhase {
         echo "AccountClaim CR $accountClaimCrName failed to delete."
         exit $EXIT_TEST_FAIL_ACCOUNT_CLAIM_NOT_DELETED
     fi
-    
+
     # do we really need to delete the namespace?
     if ! deleteNamespace "${accountClaimCrNamespace}" "${timeout}"; then
         echo "AccountClaim Namespace $accountClaimCrNamespace failed to delete."

@@ -16,7 +16,7 @@ spec:
         action:
         - "aws-portal:ViewAccount"
         - "aws-portal:ViewBilling"
-        resource: 
+        resource:
         - "*"
   # list of  AWS managed
   awsManagedPolicies:

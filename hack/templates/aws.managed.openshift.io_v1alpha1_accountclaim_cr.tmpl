@@ -1,7 +1,7 @@
 apiVersion: template.openshift.io/v1
 kind: Template
 parameters:
-- name: NAME 
+- name: NAME
 - name: NAMESPACE
 metadata:
   name: test-aws-accountclaim-template
@@ -18,7 +18,7 @@ objects:
       - name: us-east-1
     awsCredentialSecret:
       name: aws
-      namespace: ${NAMESPACE} 
+      namespace: ${NAMESPACE}
     legalEntity:
       id: "111111"
       name: ${NAME}

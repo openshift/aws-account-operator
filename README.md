@@ -16,7 +16,22 @@ The operator is deployed to an OpenShift cluster in the `aws-account-operator` n
 ## Documentation
 For information on the inner-workings, installation, development and testing of the operator, please refer to our [Documentation](./docs/README.md).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, testing, and contribution guidelines.
+
+**Quick Start:**
+```bash
+# Install pre-commit hooks
+prek install
+
+# Run validation
+prek run --all-files
+
+# Run tests
+make test
+```
+
 ## Boilerplate
 This repository subscribes to the [openshift/golang-osd-operator](https://github.com/openshift/boilerplate/tree/master/boilerplate/openshift/golang-osd-operator) convention of [boilerplate](https://github.com/openshift/boilerplate/).
 See the [README](boilerplate/openshift/golang-osd-operator/README.md) for details about the functionality that brings in.
-

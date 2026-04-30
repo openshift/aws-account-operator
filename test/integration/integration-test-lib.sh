@@ -119,20 +119,20 @@ function ocDeleteResourceIfExists {
 }
 
 # see `oc wait --help` for details on the --for flag
-# timeout uses oc's timeout syntax (e.g. 30s, 1m, 2h) 
+# timeout uses oc's timeout syntax (e.g. 30s, 1m, 2h)
 function ocWaitForResourceCondition {
     local crYaml=$1
     local timeout=$2
     local forCondition=$3
 
     # oc wait doesnt seem to like when the resource doesnt exist at all
-    if echo "${crYaml}" | oc get -f - &>/dev/null; then 
+    if echo "${crYaml}" | oc get -f - &>/dev/null; then
         echo "${crYaml}" | oc wait --for="${forCondition}" --timeout="${timeout}" -f -
         return $?
     else
         echo "Cluster resource does not exist. Cannot wait for condition."
         return $EXIT_FAIL_UNEXPECTED_ERROR
-    fi    
+    fi
 }
 
 # Note: fetching resources this way returns results wrapped in a list:
@@ -144,7 +144,7 @@ function ocWaitForResourceCondition {
 #            "apiVersion": "aws.managed.openshift.io/v1alpha1",
 #            "kind": "Account",
 #            ...
-#        } 
+#        }
 #    ]
 # }
 function ocGetResourceAsJson {
@@ -254,7 +254,7 @@ function waitForAccountCRReadyOrFailed {
     local accountCrNamespace=$3
     local timeout=$4
     local crYaml=$(generateAccountCRYaml "${awsAccountId}" "${accountCrName}" "${accountCrNamespace}")
-    
+
     echo -e "\nWaiting for Account CR to become ready (timeout: ${timeout})"
     if ! ocWaitForResourceCondition "${crYaml}" "${timeout}" "condition=Ready"; then
         if status=$(ocGetResourceAsJson "${crYaml}" | jq -r '.items[0].status.state'); then
@@ -282,12 +282,12 @@ function waitForAccountClaimCRReadyOrFailed {
     local accountClaimCrNamespace=$2
     local timeout=$3
     local crYaml=$(generateAccountClaimCRYaml "${accountClaimCrName}" "${accountClaimCrNamespace}")
-    
+
     echo "Waiting for AccountClaim CR to become ready (timeout: ${timeout})"
 
     # oc wait --for condition=Ready looks for an entry in the status.conditions array with a type of Ready and a status of True
-    # this works for Account CRs, however, even though we set .status.state=Ready on AccountClaim CRs, we dont actually add a 
-    # "Ready" condition entry to the .status.conditions array. We can use --for=jsonpath={.status.state}=Ready instead, however, 
+    # this works for Account CRs, however, even though we set .status.state=Ready on AccountClaim CRs, we dont actually add a
+    # "Ready" condition entry to the .status.conditions array. We can use --for=jsonpath={.status.state}=Ready instead, however,
     # prow infra has an old version of oc that doesnt support the jsonpath queries and we get an error.
     if ! ocWaitForResourceCondition "${crYaml}" "${timeout}" "condition=Claimed"; then
         if status=$(ocGetResourceAsJson "${crYaml}" | jq -r '.items[0].status.state'); then

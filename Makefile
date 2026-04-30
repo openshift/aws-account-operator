@@ -166,13 +166,13 @@ clean-operator: ## Clean Operator
 
 	# Delete STS namespace
 	@oc process --local -p NAME=${STS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete --now --ignore-not-found -f -
-	
+
 	# Delete CCS Namespace
 	@oc process --local -p NAME=${CCS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete --now --ignore-not-found -f -
 
 	# Delete Fake Account namespace
 	@oc process --local -p NAME=${FAKE_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete --now --ignore-not-found -f -
-	
+
 	# Delete KMS Namespace
 	@oc process --local -p NAME=${KMS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete --now --ignore-not-found -f -
 
@@ -400,5 +400,3 @@ create-fake-accountclaim: ## Creates a templated FAKE accountclaim
 delete-fake-accountclaim: ## Deletes a templated FAKE accountclaim
 	# Delete fake accountclaim
 	@oc process --local -p NAME=${FAKE_CLAIM_NAME} -p NAMESPACE=${FAKE_NAMESPACE_NAME} -f hack/templates/aws.managed.openshift.io_v1alpha1_fake_accountclaim_cr.tmpl | oc delete -f -
-
-

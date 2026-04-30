@@ -161,7 +161,7 @@ function dumpOperatorLogsToConsole {
         echo -e "\nOPERATOR LOGS\n"
         $OC_WITH_NAMESPACE logs "$operatorPodName" --since-time="$OPERATOR_START_TIME"
     fi
-    
+
 }
 
 function cleanGeneratedBuildResources {
@@ -635,12 +635,12 @@ function profileStage {
     echo -e "\n========================================================================"
     echo "= Int Testing Bootstrap Profile - Stage Cluster"
     echo "========================================================================"
-    
+
     echo "Configuring local build environment"
     export FORCE_DEV_MODE=cluster
     sourceEnvrcConfig
     sanityCheck
-    
+
     ## OSD Staging cluster require cluster-admin roles for accessing & applying some manifests like CRDs etc.
     ## So, cluster-admin role is added to the user for the script's lifetime.
     ## The role is removed as the part of mandatory cleanup.
@@ -851,7 +851,7 @@ if [ "${PROFILE}" = "local" ]; then
 
 else
     # ===== CI/PROW PROFILE: FULL INTEGRATION TEST SUITE =====
-    
+
     runTest "test/integration/tests/test_fake_accountclaim.sh"
     runTest "test/integration/tests/test_accountpool_size.sh"
     runTest "test/integration/tests/test_sts_accountclaim.sh"
