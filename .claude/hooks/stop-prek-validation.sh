@@ -3,8 +3,8 @@ set -uo pipefail
 
 # Verify jq is available (required for JSON parsing)
 if ! command -v jq &>/dev/null; then
-  echo '{"decision": "block", "reason": "jq is not installed. Install jq to use prek validation hooks."}' >&2
-  exit 1
+  echo '{"decision": "block", "reason": "jq is not installed. Install jq to use prek validation hooks."}'
+  exit 0
 fi
 
 HOOK_INPUT=$(cat)
