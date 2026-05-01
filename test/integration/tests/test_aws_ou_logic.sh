@@ -4,11 +4,11 @@
 #   When an AccountClaim is created, AAO finds an available Account CR in the account pool to satisfy
 #   the claim. AAO then moves the AWS Account from the root OU ($OSD_STAGING_1_OU_ROOT_ID) to an OU
 #   under the base OU ($OSD_STAGING_1_OU_BASE_ID) based on the legal entity that owns the cluster.
-#   
-#   In otherwords the AWS OU structure for an unclaimed account looks like this:
-#     ou: $OSD_STAGING_1_OU_ROOT_ID -> aws account: $OSD_STAGING_1_AWS_ACCOUNT_ID 
 #
-#   After the account is claimed, the OU structure looks like this: 
+#   In otherwords the AWS OU structure for an unclaimed account looks like this:
+#     ou: $OSD_STAGING_1_OU_ROOT_ID -> aws account: $OSD_STAGING_1_AWS_ACCOUNT_ID
+#
+#   After the account is claimed, the OU structure looks like this:
 #     ou: $OSD_STAGING_1_OU_ROOT_ID -> ou: $OSD_STAGING_1_OU_BASE_ID -> ou: legal entity id from account claim -> aws account: $OSD_STAGING_1_AWS_ACCOUNT_ID
 #
 #   So, this test validates that the AWS account is moved from the root OU to the base OU.

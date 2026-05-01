@@ -17,13 +17,13 @@ stage-ci-entrypoint: ## Triggers integration test bootstrap bash script for stag
 	test/integration/integration-test-bootstrap.sh -p stage --skip-cleanup -n $(OPERATOR_NAMESPACE)
 
 .PHONY: ci-aws-resources-cleanup
-ci-aws-resources-cleanup: 
+ci-aws-resources-cleanup:
 	hack/scripts/cleanup-aws-resources.sh "$(STS_ROLE_ARN)" "$(OSD_STAGING_1_AWS_ACCOUNT_ID)"
 	hack/scripts/cleanup-aws-resources.sh "$(STS_JUMP_ARN)" "$(OSD_STAGING_2_AWS_ACCOUNT_ID)"
 
 #############################################################################################
 # Everything below this should be reimplemented in the new test pattern
-# i.e. a self contained script like test/integration/tests/test_nonccs_account_creation.sh 
+# i.e. a self contained script like test/integration/tests/test_nonccs_account_creation.sh
 #############################################################################################
 
 #############################################################################################
@@ -61,7 +61,7 @@ test-awsfederatedrole: check-aws-account-id-env ## Test Federated Access Roles
 test-awsfederatedaccountaccess: check-aws-account-id-env create-awsfederatedrole create-awsfederatedaccountaccess ## Test awsFederatedAccountAccess
 	# Retrieve role UID
 	$(eval UID=$(shell oc get awsfederatedaccountaccesses.aws.managed.openshift.io -n ${NAMESPACE} ${FED_USER} -o=json |jq -r .metadata.labels.uid))
-	
+
 	# Test Assume role
 	aws sts assume-role --role-arn arn:aws:iam::${OSD_STAGING_1_AWS_ACCOUNT_ID}:role/read-only-$(UID) --role-session-name RedHatTest --profile osd-staging-2
 
@@ -74,7 +74,7 @@ test-sts: create-sts-accountclaim ## Runs a full integration test for STS workfl
 	test/integration/tests/validate_sts_accountclaim.sh
 	@oc process --local -p NAME=${STS_CLAIM_NAME} -p NAMESPACE=${STS_NAMESPACE_NAME} -p STS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p STS_ROLE_ARN=${STS_ROLE_ARN} -f hack/templates/aws.managed.openshift.io_v1alpha1_sts_accountclaim_cr.tmpl | oc delete -f -
 	@oc process --local -p NAME=${STS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete -f -
-	
+
 .PHONY: test-fake-accountclaim
 test-fake-accountclaim: create-fake-accountclaim ## Runs a full integration test for FAKE workflow
 	test/integration/tests/validate_fake_accountclaim.sh
@@ -86,7 +86,7 @@ test-fake-accountclaim: create-fake-accountclaim ## Runs a full integration test
 .PHONY: test-kms
 test-kms: create-kms-ccs-secret create-kms-accountclaim validate-kms delete-kms-accountclaim delete-kms-ccs-secret delete-kms-accountclaim-namespace
 	test/integration/tests/validate_kms_key.sh
-	
+
 	@oc process --local -p NAME=${KMS_CLAIM_NAME} -p NAMESPACE=${KMS_NAMESPACE_NAME} -p CCS_ACCOUNT_ID=${OSD_STAGING_2_AWS_ACCOUNT_ID} -p KMS_KEY_ID=${KMS_KEY_ID} -f hack/templates/aws.managed.openshift.io_v1alpha1_kms_accountclaim_cr.tmpl | oc delete -f -
 	@oc delete secret byoc -n ${KMS_NAMESPACE_NAME}
 	@oc process --local -p NAME=${KMS_NAMESPACE_NAME} -f hack/templates/namespace.tmpl | oc delete -f -

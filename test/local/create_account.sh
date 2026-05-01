@@ -10,7 +10,7 @@ if [[ ${ACCOUNT_CR_EXISTS} = 0 ]]; then
     echo "Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD} already exists, skipping creation."
     exit 0
 else
-    echo "Creating Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}" 
+    echo "Creating Account ${OSD_STAGING_1_ACCOUNT_CR_NAME_OSD}"
 fi
 
 # Create Account CR

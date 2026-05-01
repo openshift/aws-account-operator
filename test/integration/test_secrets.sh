@@ -20,7 +20,7 @@ for secret_map in "${EXPECTED_SECRETS[@]}"; do
   secret=${secret_map%%:*}
   expected_keys=${secret_map#*:}
   test_secret="$(oc get secret osd-creds-mgmt-$TEST_ACCOUNT_CR_NAME-$secret -n $TEST_NAMESPACE -o json | jq '.data')"
-  
+
   if [ "$test_secret" == "" ]; then
     EXIT_STATUS="FAIL"
     continue

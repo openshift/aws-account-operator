@@ -41,7 +41,7 @@ EOF
 if ( ! getopts ":a:n:rh" opt); then
     echo -e "\n    $0 requires an argument!\n"
     usage
-    exit 1 
+    exit 1
 fi
 
 while getopts ":a:n:rh" opt; do
@@ -119,7 +119,7 @@ if ! [ -z "${RESET_CLUSTER_ACCOUNT_CR+x}" ]; then
         if ! [ "$RETURN_CODE" = 'HTTP/1.1 200' ]; then
             echo "Return code: $RETURN_CODE"
             echo "Authentication failure?"
-            exit 1 
+            exit 1
         fi
 
         #{"op": "add", "path": "/status/conditions", "value": []}

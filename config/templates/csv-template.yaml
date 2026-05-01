@@ -6,7 +6,7 @@ metadata:
   annotations:
     categories: A list of comma separated categories that your operator falls under.
     certified: "false"
-    description: AWS account creator. 
+    description: AWS account creator.
     containerImage: quay.io/app-sre/aws-account-operator:latest
     createdAt: "2019-04-10T17:34:33Z"
     support: James Harrington

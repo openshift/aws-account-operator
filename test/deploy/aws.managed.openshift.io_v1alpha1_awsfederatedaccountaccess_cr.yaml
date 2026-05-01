@@ -1,10 +1,10 @@
 apiVersion: aws.managed.openshift.io/v1alpha1
 kind: AWSFederatedAccountAccess
 metadata:
-  name: test-account-access 
+  name: test-account-access
   namespace: aws-account-operator
 spec:
-  awsCustomerCredentialSecret: 
+  awsCustomerCredentialSecret:
     name: secret-name
     namespace: example-namespace
   externalCustomerAWSIAMARN: arn:aws:iam::${AWS_ACCOUNT_ID}:user/${AWS_IAM_USER}

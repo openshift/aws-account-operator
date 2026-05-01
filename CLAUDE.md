@@ -131,6 +131,12 @@ Set these environment variables for testing (in `.envrc`):
 
 **Note**: Credentials are now managed via temporary STS tokens using `rh-aws-saml-login`, stored in `~/.aws/credentials`. No long-lived IAM user keys are used. Credentials expire after a few hours and need refreshing via `update_aws_credentials.sh`.
 
+## Development Workflow
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for complete setup instructions, validation commands, and testing procedures.
+
+**Note for Claude Code users:** The stop hook automatically runs `prek run --all-files` before Claude stops, catching validation issues early. Human developers should follow the setup in CONTRIBUTING.md to install pre-commit hooks.
+
 ## Architecture
 
 ### Core Components

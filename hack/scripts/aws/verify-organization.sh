@@ -69,7 +69,7 @@ verify_account_in_org() {
             aws --output json --profile "$AWS_PROFILE" organizations move-account --account-id "$ACCOUNT_ID" --source-parent-id "${PARENTS[0]}" --destination-parent-id "${PARENTS[$last_index]}"
         else
             echo -e "You can move the account with the following command: ${CLEAR}"
-        
+
             echo "aws --profile $AWS_PROFILE organizations move-account --account-id $ACCOUNT_ID --source-parent-id  ${PARENTS[0]} --destination-parent-id ${PARENTS[$last_index]}"
             echo -e "\nOr, rerun this script with the -m/--move flag${CLEAR}"
         fi

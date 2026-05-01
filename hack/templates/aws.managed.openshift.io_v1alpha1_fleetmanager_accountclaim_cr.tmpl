@@ -1,7 +1,7 @@
 apiVersion: template.openshift.io/v1
 kind: Template
 parameters:
-- name: NAME 
+- name: NAME
 - name: NAMESPACE
 - name: TRUSTED_ARN
 metadata:
@@ -22,7 +22,7 @@ objects:
       - name: us-east-1
     awsCredentialSecret:
       name: aws-sts
-      namespace: ${NAMESPACE} 
+      namespace: ${NAMESPACE}
     legalEntity:
       id: "111111"
       name: ${NAME}
