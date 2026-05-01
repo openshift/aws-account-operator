@@ -18,19 +18,7 @@ For information on the inner-workings, installation, development and testing of 
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, testing, and contribution guidelines.
-
-**Quick Start:**
-```bash
-# Install pre-commit hooks
-prek install
-
-# Run validation
-prek run --all-files
-
-# Run tests
-make test
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for complete setup instructions, development workflow, validation, testing, and contribution guidelines.
 
 ## Boilerplate
 This repository subscribes to the [openshift/golang-osd-operator](https://github.com/openshift/boilerplate/tree/master/boilerplate/openshift/golang-osd-operator) convention of [boilerplate](https://github.com/openshift/boilerplate/).

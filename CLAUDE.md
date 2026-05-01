@@ -133,40 +133,9 @@ Set these environment variables for testing (in `.envrc`):
 
 ## Development Workflow
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions. Quick start:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for complete setup instructions, validation commands, and testing procedures.
 
-```bash
-# Install prek pre-commit hooks
-prek install
-
-# Run validation locally
-prek run --all-files
-
-# Run linting
-make lint
-```
-
-Pre-commit hooks run automatically on `git commit`. The Claude Code stop hook runs `prek run --all-files` before Claude stops, catching issues early.
-
-## Validation and Linting
-
-This project uses:
-- **prek** — Git hook manager for pre-commit validation
-- **golangci-lint** — Go linting via boilerplate framework
-- **Built-in checks** — File hygiene (trailing whitespace, EOF, YAML/JSON validation)
-
-```bash
-# Run all validations
-prek run --all-files
-
-# Run linting only
-make lint
-
-# Run golangci-lint only
-make go-check
-```
-
-For CI, use `hack/ci.sh` which uses the same validation as local development.
+**Note for Claude Code users:** The stop hook automatically runs `prek run --all-files` before Claude stops, catching validation issues early. Human developers should follow the setup in CONTRIBUTING.md to install pre-commit hooks.
 
 ## Architecture
 

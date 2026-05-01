@@ -1,17 +1,29 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-# Verify jq is available (required for JSON parsing)
-if ! command -v jq &>/dev/null; then
-  echo '{"decision": "block", "reason": "jq is not installed. Install jq to use prek validation hooks."}'
+HOOK_INPUT=$(cat)
+
+# Check for retry loop WITHOUT requiring jq (prevents infinite loop)
+if echo "$HOOK_INPUT" | grep -q '"stop_hook_active"[[:space:]]*:[[:space:]]*true'; then
   exit 0
 fi
 
-HOOK_INPUT=$(cat)
+# Check for jq (will block FIRST time, but loop protection above prevents infinite loop)
+if ! command -v jq &>/dev/null; then
+  echo '{"decision": "block", "reason": "jq is not installed. Install jq to use prek validation hooks. See CONTRIBUTING.md for setup instructions."}'
+  exit 0
+fi
 
-# Allow stop on retry to prevent infinite loops
+# jq is available - use it to check loop protection properly
 STOP_HOOK_ACTIVE=$(echo "$HOOK_INPUT" | jq -r '.stop_hook_active // false')
 if [[ "$STOP_HOOK_ACTIVE" == "true" ]]; then
+  exit 0
+fi
+
+# Check for prek
+if ! command -v prek &>/dev/null; then
+  jq -n --arg reason "prek is not installed. Install prek to use validation hooks. See CONTRIBUTING.md for setup instructions." \
+    '{"decision": "block", "reason": $reason}'
   exit 0
 fi
 
