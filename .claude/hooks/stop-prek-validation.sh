@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
+# Verify jq is available (required for JSON parsing)
+if ! command -v jq &>/dev/null; then
+  echo '{"decision": "block", "reason": "jq is not installed. Install jq to use prek validation hooks."}' >&2
+  exit 1
+fi
+
 HOOK_INPUT=$(cat)
 
 # Allow stop on retry to prevent infinite loops

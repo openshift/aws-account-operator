@@ -33,10 +33,10 @@ The validation runs automatically via pre-commit hooks, or you can run it manual
 # Run all validations (file hygiene + golangci-lint)
 prek run --all-files
 
-# Run only golangci-lint
+# Run linting (olm-deploy-yaml-validate + golangci-lint)
 make lint
 
-# Run golangci-lint directly
+# Run only golangci-lint
 make go-check
 ```
 
