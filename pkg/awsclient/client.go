@@ -124,6 +124,8 @@ type Client interface {
 	UntagResource(context.Context, *organizations.UntagResourceInput) (*organizations.UntagResourceOutput, error)
 	ListParents(context.Context, *organizations.ListParentsInput) (*organizations.ListParentsOutput, error)
 	ListTagsForResource(context.Context, *organizations.ListTagsForResourceInput) (*organizations.ListTagsForResourceOutput, error)
+	CloseAccount(context.Context, *organizations.CloseAccountInput) (*organizations.CloseAccountOutput, error)
+	DescribeAccount(context.Context, *organizations.DescribeAccountInput) (*organizations.DescribeAccountOutput, error)
 
 	//sts
 	AssumeRole(context.Context, *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error)
@@ -459,6 +461,14 @@ func (c *awsClient) ListParents(ctx context.Context, input *organizations.ListPa
 
 func (c *awsClient) ListTagsForResource(ctx context.Context, input *organizations.ListTagsForResourceInput) (*organizations.ListTagsForResourceOutput, error) {
 	return c.orgClient.ListTagsForResource(ctx, input)
+}
+
+func (c *awsClient) CloseAccount(ctx context.Context, input *organizations.CloseAccountInput) (*organizations.CloseAccountOutput, error) {
+	return c.orgClient.CloseAccount(ctx, input)
+}
+
+func (c *awsClient) DescribeAccount(ctx context.Context, input *organizations.DescribeAccountInput) (*organizations.DescribeAccountOutput, error) {
+	return c.orgClient.DescribeAccount(ctx, input)
 }
 
 func (c *awsClient) AssumeRole(ctx context.Context, input *sts.AssumeRoleInput) (*sts.AssumeRoleOutput, error) {

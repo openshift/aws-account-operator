@@ -304,6 +304,159 @@ func GetFeatureFlagValue(configMap *corev1.ConfigMap, key string) (bool, error) 
 	return false, nil // Default to false if key not found
 }
 
+// Feature flag keys for account closure
+const (
+	// FeatureCloseOnRelease enables closing AWS accounts when AccountClaims are deleted
+	// instead of returning them to the pool for reuse
+	FeatureCloseOnRelease = "feature.close_on_release"
+
+	// CloseAccountDryRun when true, logs what would be closed without calling CloseAccount API
+	CloseAccountDryRun = "close_account.dry_run"
+)
+
+// IsCloseOnReleaseEnabled returns true if the close-on-release feature is enabled
+// When enabled, AWS accounts will be closed when their AccountClaim is deleted
+// instead of being returned to the account pool for reuse
+func IsCloseOnReleaseEnabled(configMap *corev1.ConfigMap) bool {
+	if configMap == nil {
+		return false
+	}
+	enabled, err := GetFeatureFlagValue(configMap, FeatureCloseOnRelease)
+	if err != nil {
+		return false
+	}
+	return enabled
+}
+
+// IsCloseAccountDryRun returns true if account closure is in dry-run mode
+// In dry-run mode, the operator logs which accounts would be closed but does not
+// actually call the AWS CloseAccount API
+func IsCloseAccountDryRun(configMap *corev1.ConfigMap) bool {
+	if configMap == nil {
+		return true // Default to dry-run if no configmap (safer)
+	}
+	dryRun, err := GetFeatureFlagValue(configMap, CloseAccountDryRun)
+	if err != nil {
+		return true // Default to dry-run on error (safer)
+	}
+	// If the key is not set, default to true (dry-run enabled for safety)
+	if _, ok := configMap.Data[CloseAccountDryRun]; !ok {
+		return true
+	}
+	return dryRun
+}
+
+// Rate limiting constants for CloseAccount API
+const (
+	// CloseAccountRateLimitAnnotation stores the timestamp until which we should
+	// not retry closing this account due to AWS quota limits
+	CloseAccountRateLimitAnnotation = "aws.managed.openshift.io/close-rate-limited-until"
+
+	// CloseAccountBackoffAnnotation stores the current backoff duration for exponential backoff
+	CloseAccountBackoffAnnotation = "aws.managed.openshift.io/close-backoff-seconds"
+
+	// CloseAccountInitialBackoff is the initial backoff duration when rate limited
+	CloseAccountInitialBackoff = 1 * time.Hour
+
+	// CloseAccountMaxBackoff is the maximum backoff duration (check once daily)
+	// This is appropriate for a 30-day rolling quota window
+	CloseAccountMaxBackoff = 24 * time.Hour
+)
+
+// IsCloseAccountRateLimited checks if the account is currently rate-limited for closure
+// Returns true if we should skip attempting to close this account, along with the
+// time when we should retry
+func IsCloseAccountRateLimited(annotations map[string]string) (bool, time.Time) {
+	if annotations == nil {
+		return false, time.Time{}
+	}
+
+	untilStr, ok := annotations[CloseAccountRateLimitAnnotation]
+	if !ok || untilStr == "" {
+		return false, time.Time{}
+	}
+
+	rateLimitedUntil, err := time.Parse(time.RFC3339, untilStr)
+	if err != nil {
+		// Invalid timestamp, treat as not rate limited
+		return false, time.Time{}
+	}
+
+	if time.Now().Before(rateLimitedUntil) {
+		return true, rateLimitedUntil
+	}
+
+	// Backoff period has expired
+	return false, time.Time{}
+}
+
+// CalculateCloseAccountBackoff calculates the next backoff duration using exponential backoff
+// Returns the backoff duration and the timestamp when we should retry
+func CalculateCloseAccountBackoff(annotations map[string]string) (time.Duration, time.Time) {
+	var backoff time.Duration
+
+	if annotations != nil {
+		if backoffStr, ok := annotations[CloseAccountBackoffAnnotation]; ok {
+			backoffSeconds, err := strconv.ParseInt(backoffStr, 10, 64)
+			if err == nil && backoffSeconds > 0 {
+				// Double the previous backoff
+				backoff = time.Duration(backoffSeconds) * time.Second * 2
+			}
+		}
+	}
+
+	// Use initial backoff if this is the first rate limit hit
+	if backoff == 0 {
+		backoff = CloseAccountInitialBackoff
+	}
+
+	// Cap at maximum backoff
+	if backoff > CloseAccountMaxBackoff {
+		backoff = CloseAccountMaxBackoff
+	}
+
+	retryAt := time.Now().Add(backoff)
+	return backoff, retryAt
+}
+
+// SetCloseAccountRateLimited sets the rate limit annotations on an account
+// Call this when CloseAccount fails with quota exceeded error
+func SetCloseAccountRateLimited(annotations map[string]string) map[string]string {
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+
+	backoff, retryAt := CalculateCloseAccountBackoff(annotations)
+
+	annotations[CloseAccountRateLimitAnnotation] = retryAt.Format(time.RFC3339)
+	annotations[CloseAccountBackoffAnnotation] = strconv.FormatInt(int64(backoff.Seconds()), 10)
+
+	return annotations
+}
+
+// ClearCloseAccountRateLimited removes the rate limit annotations from an account
+// Call this when CloseAccount succeeds
+func ClearCloseAccountRateLimited(annotations map[string]string) map[string]string {
+	if annotations == nil {
+		return annotations
+	}
+
+	delete(annotations, CloseAccountRateLimitAnnotation)
+	delete(annotations, CloseAccountBackoffAnnotation)
+
+	return annotations
+}
+
+// GetCloseAccountRetryAfter returns the duration to wait before retrying account closure
+// Returns 0 if not rate limited
+func GetCloseAccountRetryAfter(annotations map[string]string) time.Duration {
+	isLimited, retryAt := IsCloseAccountRateLimited(annotations)
+	if !isLimited {
+		return 0
+	}
+	return time.Until(retryAt)
+}
+
 func DoNotRequeue() (reconcile.Result, error) {
 	return reconcile.Result{Requeue: false}, nil
 }

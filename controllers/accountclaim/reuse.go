@@ -14,6 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	orgtypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -23,6 +25,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
 	"github.com/openshift/aws-account-operator/pkg/utils"
+	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -30,7 +33,15 @@ const (
 	AccountReady = "Ready"
 	// AccountFailed indicates account reuse has failed
 	AccountFailed = "Failed"
+	// closeAccountTimeout is the timeout for CloseAccount API calls
+	closeAccountTimeout = 30 * time.Second
 )
+
+// ErrDryRunMode is returned when close-on-release is in dry-run mode
+var ErrDryRunMode = errors.New("dry-run mode enabled")
+
+// ErrRateLimited is returned when CloseAccount hits AWS quota limits
+var ErrRateLimited = errors.New("rate limited")
 
 func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 
@@ -151,6 +162,39 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 	}
 	localmetrics.Collector.SetAccountReusedCleanupDuration(time.Since(before).Seconds())
 
+	// Check if close-on-release feature is enabled
+	configMap, cmErr := utils.GetOperatorConfigMap(r.Client)
+	if cmErr != nil {
+		reqLogger.Info("Could not get operator configmap, defaulting to reuse behavior", "error", cmErr)
+	}
+
+	// Close account instead of reusing if feature is enabled
+	// Skip for FedRAMP (different compliance requirements)
+	if utils.IsCloseOnReleaseEnabled(configMap) && !config.IsFedramp() {
+		closeErr := r.closeAndDeleteAccount(context.TODO(), reqLogger, reusedAccount, awsClient, configMap)
+		if closeErr != nil {
+			if errors.Is(closeErr, ErrDryRunMode) {
+				reqLogger.Info("Dry-run mode active, falling back to reuse",
+					"accountID", reusedAccount.Spec.AwsAccountID)
+				// Continue to reuse logic below
+			} else if errors.Is(closeErr, ErrRateLimited) {
+				// Rate limited - don't put account back in pool, let finalizer retry
+				reqLogger.Info("Account closure rate limited, will retry",
+					"accountID", reusedAccount.Spec.AwsAccountID,
+					"error", closeErr)
+				return closeErr
+			} else {
+				reqLogger.Error(closeErr, "Failed to close account, falling back to reuse",
+					"accountID", reusedAccount.Spec.AwsAccountID)
+				// Continue to reuse logic below
+			}
+		} else {
+			reqLogger.Info("Successfully closed and deleted account",
+				"accountID", reusedAccount.Spec.AwsAccountID)
+			return nil
+		}
+	}
+
 	err = r.resetAccountSpecStatus(reqLogger, reusedAccount, accountClaim, awsv1alpha1.AccountReused, "Ready")
 	if err != nil {
 		reqLogger.Error(err, "Failed to reset account entity")
@@ -198,6 +242,106 @@ func (r *AccountClaimReconciler) resetAccountSpecStatus(reqLogger logr.Logger, r
 	}
 
 	return nil
+}
+
+// closeAndDeleteAccount closes the AWS account via Organizations API and deletes the Account CR
+// This is called when close-on-release feature is enabled instead of resetting for reuse
+func (r *AccountClaimReconciler) closeAndDeleteAccount(
+	ctx context.Context,
+	reqLogger logr.Logger,
+	account *awsv1alpha1.Account,
+	awsClient awsclient.Client,
+	configMap *corev1.ConfigMap,
+) error {
+	awsAccountID := account.Spec.AwsAccountID
+
+	// Check if we're currently rate limited
+	if retryAfter := utils.GetCloseAccountRetryAfter(account.Annotations); retryAfter > 0 {
+		reqLogger.Info("Account closure is rate limited, will retry later",
+			"accountID", awsAccountID,
+			"retryAfter", retryAfter.Round(time.Minute))
+		return fmt.Errorf("%w: retry after %v", ErrRateLimited, retryAfter)
+	}
+
+	// Check dry-run mode
+	if utils.IsCloseAccountDryRun(configMap) {
+		reqLogger.Info("DRY-RUN: Would close account",
+			"accountID", awsAccountID,
+			"accountCR", account.Name)
+		return ErrDryRunMode
+	}
+
+	// Call CloseAccount API
+	reqLogger.Info("Closing AWS account", "accountID", awsAccountID)
+	callCtx, cancel := context.WithTimeout(ctx, closeAccountTimeout)
+	defer cancel()
+
+	_, err := awsClient.CloseAccount(callCtx, &organizations.CloseAccountInput{
+		AccountId: aws.String(awsAccountID),
+	})
+
+	if err != nil {
+		// Check if account is already closed
+		var alreadyClosedErr *orgtypes.AccountAlreadyClosedException
+		if errors.As(err, &alreadyClosedErr) {
+			reqLogger.Info("Account already closed, proceeding with CR deletion",
+				"accountID", awsAccountID)
+			// Continue to delete the Account CR
+		} else if isCloseAccountRateLimitError(err) {
+			// Rate limit hit - set backoff and return error
+			reqLogger.Info("CloseAccount rate limit exceeded, setting backoff",
+				"accountID", awsAccountID)
+
+			account.Annotations = utils.SetCloseAccountRateLimited(account.Annotations)
+			if updateErr := r.Update(ctx, account); updateErr != nil {
+				reqLogger.Error(updateErr, "Failed to update account annotations for rate limit")
+				return fmt.Errorf("failed to persist rate limit state: %w", updateErr)
+			}
+
+			retryAfter := utils.GetCloseAccountRetryAfter(account.Annotations)
+			return fmt.Errorf("%w: will retry after %v", ErrRateLimited, retryAfter)
+		} else {
+			// Other error - log and return
+			reqLogger.Error(err, "Failed to close AWS account", "accountID", awsAccountID)
+			return err
+		}
+	} else {
+		reqLogger.Info("Successfully initiated account closure",
+			"accountID", awsAccountID,
+			"note", "Account will be in PENDING_CLOSURE for 90 days")
+
+		// Clear any rate limit state on success
+		account.Annotations = utils.ClearCloseAccountRateLimited(account.Annotations)
+	}
+
+	// Delete the Account CR
+	// This triggers the Account controller's finalizer which cleans up IAM resources
+	reqLogger.Info("Deleting Account CR", "accountCR", account.Name)
+	if err := r.Delete(ctx, account); err != nil {
+		reqLogger.Error(err, "Failed to delete Account CR after closing AWS account",
+			"accountID", awsAccountID,
+			"accountCR", account.Name)
+		return err
+	}
+
+	localmetrics.Collector.AddAccountClosed()
+	return nil
+}
+
+// isCloseAccountRateLimitError checks if the error is a rate limit error from CloseAccount
+func isCloseAccountRateLimitError(err error) bool {
+	var constraintErr *orgtypes.ConstraintViolationException
+	if errors.As(err, &constraintErr) {
+		//nolint:exhaustive // We only care about close-account-related rate limit reasons
+		switch constraintErr.Reason {
+		case orgtypes.ConstraintViolationExceptionReasonCloseAccountQuotaExceeded,
+			orgtypes.ConstraintViolationExceptionReasonCloseAccountRequestsLimitExceeded:
+			return true
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 func (r *AccountClaimReconciler) cleanUpAwsAccount(reqLogger logr.Logger, awsClient awsclient.Client) error {
