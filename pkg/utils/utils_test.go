@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo/v2"
@@ -353,6 +354,358 @@ func TestJoinLabelMaps(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsCloseOnReleaseEnabled(t *testing.T) {
+	tests := []struct {
+		name      string
+		configMap *v1.ConfigMap
+		expected  bool
+	}{
+		{
+			name:      "nil configmap returns false",
+			configMap: nil,
+			expected:  false,
+		},
+		{
+			name: "feature not set returns false",
+			configMap: &v1.ConfigMap{
+				Data: map[string]string{},
+			},
+			expected: false,
+		},
+		{
+			name: "feature set to false returns false",
+			configMap: &v1.ConfigMap{
+				Data: map[string]string{
+					FeatureCloseOnRelease: "false",
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "feature set to true returns true",
+			configMap: &v1.ConfigMap{
+				Data: map[string]string{
+					FeatureCloseOnRelease: "true",
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "feature set to invalid value returns false",
+			configMap: &v1.ConfigMap{
+				Data: map[string]string{
+					FeatureCloseOnRelease: "invalid",
+				},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsCloseOnReleaseEnabled(tt.configMap)
+			if result != tt.expected {
+				t.Errorf("IsCloseOnReleaseEnabled() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsCloseAccountDryRun(t *testing.T) {
+	tests := []struct {
+		name      string
+		configMap *v1.ConfigMap
+		expected  bool
+	}{
+		{
+			name:      "nil configmap returns true (safe default)",
+			configMap: nil,
+			expected:  true,
+		},
+		{
+			name: "dry_run not set returns true (safe default)",
+			configMap: &v1.ConfigMap{
+				Data: map[string]string{},
+			},
+			expected: true,
+		},
+		{
+			name: "dry_run set to true returns true",
+			configMap: &v1.ConfigMap{
+				Data: map[string]string{
+					CloseAccountDryRun: "true",
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "dry_run set to false returns false",
+			configMap: &v1.ConfigMap{
+				Data: map[string]string{
+					CloseAccountDryRun: "false",
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "dry_run set to invalid value returns true (safe default)",
+			configMap: &v1.ConfigMap{
+				Data: map[string]string{
+					CloseAccountDryRun: "invalid",
+				},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsCloseAccountDryRun(tt.configMap)
+			if result != tt.expected {
+				t.Errorf("IsCloseAccountDryRun() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsCloseAccountRateLimited(t *testing.T) {
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		wantLimited bool
+		description string
+	}{
+		{
+			name:        "nil annotations returns not limited",
+			annotations: nil,
+			wantLimited: false,
+			description: "nil map should not be rate limited",
+		},
+		{
+			name:        "empty annotations returns not limited",
+			annotations: map[string]string{},
+			wantLimited: false,
+			description: "empty map should not be rate limited",
+		},
+		{
+			name: "missing annotation returns not limited",
+			annotations: map[string]string{
+				"other-annotation": "value",
+			},
+			wantLimited: false,
+			description: "missing rate limit annotation should not be rate limited",
+		},
+		{
+			name: "future timestamp returns limited",
+			annotations: map[string]string{
+				CloseAccountRateLimitAnnotation: time.Now().Add(1 * time.Hour).Format(time.RFC3339),
+			},
+			wantLimited: true,
+			description: "future timestamp should be rate limited",
+		},
+		{
+			name: "past timestamp returns not limited",
+			annotations: map[string]string{
+				CloseAccountRateLimitAnnotation: time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
+			},
+			wantLimited: false,
+			description: "past timestamp should not be rate limited",
+		},
+		{
+			name: "invalid timestamp returns not limited",
+			annotations: map[string]string{
+				CloseAccountRateLimitAnnotation: "invalid-timestamp",
+			},
+			wantLimited: false,
+			description: "invalid timestamp should not be rate limited",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isLimited, _ := IsCloseAccountRateLimited(tt.annotations)
+			if isLimited != tt.wantLimited {
+				t.Errorf("IsCloseAccountRateLimited() = %v, want %v: %s", isLimited, tt.wantLimited, tt.description)
+			}
+		})
+	}
+}
+
+func TestCalculateCloseAccountBackoff(t *testing.T) {
+	tests := []struct {
+		name            string
+		annotations     map[string]string
+		expectedBackoff time.Duration
+	}{
+		{
+			name:            "nil annotations returns initial backoff",
+			annotations:     nil,
+			expectedBackoff: CloseAccountInitialBackoff,
+		},
+		{
+			name:            "empty annotations returns initial backoff",
+			annotations:     map[string]string{},
+			expectedBackoff: CloseAccountInitialBackoff,
+		},
+		{
+			name: "first backoff is initial value",
+			annotations: map[string]string{
+				CloseAccountBackoffAnnotation: "0",
+			},
+			expectedBackoff: CloseAccountInitialBackoff,
+		},
+		{
+			name: "second backoff doubles initial (1h -> 2h)",
+			annotations: map[string]string{
+				CloseAccountBackoffAnnotation: "3600", // 1 hour in seconds
+			},
+			expectedBackoff: 2 * time.Hour,
+		},
+		{
+			name: "third backoff doubles again (2h -> 4h)",
+			annotations: map[string]string{
+				CloseAccountBackoffAnnotation: "7200", // 2 hours in seconds
+			},
+			expectedBackoff: 4 * time.Hour,
+		},
+		{
+			name: "backoff caps at max (24h)",
+			annotations: map[string]string{
+				CloseAccountBackoffAnnotation: "86400", // 24 hours in seconds
+			},
+			expectedBackoff: CloseAccountMaxBackoff,
+		},
+		{
+			name: "large backoff caps at max",
+			annotations: map[string]string{
+				CloseAccountBackoffAnnotation: "172800", // 48 hours in seconds
+			},
+			expectedBackoff: CloseAccountMaxBackoff,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			backoff, _ := CalculateCloseAccountBackoff(tt.annotations)
+			if backoff != tt.expectedBackoff {
+				t.Errorf("CalculateCloseAccountBackoff() = %v, want %v", backoff, tt.expectedBackoff)
+			}
+		})
+	}
+}
+
+func TestSetCloseAccountRateLimited(t *testing.T) {
+	t.Run("sets annotations on nil map", func(t *testing.T) {
+		result := SetCloseAccountRateLimited(nil)
+		if result == nil {
+			t.Error("SetCloseAccountRateLimited(nil) returned nil, want non-nil map")
+		}
+		if _, ok := result[CloseAccountRateLimitAnnotation]; !ok {
+			t.Error("SetCloseAccountRateLimited() did not set rate limit annotation")
+		}
+		if _, ok := result[CloseAccountBackoffAnnotation]; !ok {
+			t.Error("SetCloseAccountRateLimited() did not set backoff annotation")
+		}
+	})
+
+	t.Run("sets annotations on empty map", func(t *testing.T) {
+		result := SetCloseAccountRateLimited(map[string]string{})
+		if _, ok := result[CloseAccountRateLimitAnnotation]; !ok {
+			t.Error("SetCloseAccountRateLimited() did not set rate limit annotation")
+		}
+	})
+
+	t.Run("preserves existing annotations", func(t *testing.T) {
+		annotations := map[string]string{
+			"existing-key": "existing-value",
+		}
+		result := SetCloseAccountRateLimited(annotations)
+		if result["existing-key"] != "existing-value" {
+			t.Error("SetCloseAccountRateLimited() did not preserve existing annotation")
+		}
+	})
+
+	t.Run("doubles backoff on subsequent calls", func(t *testing.T) {
+		// First call
+		annotations := SetCloseAccountRateLimited(nil)
+		backoff1, _ := CalculateCloseAccountBackoff(nil)
+
+		// Second call with annotations from first
+		annotations = SetCloseAccountRateLimited(annotations)
+		backoff2, _ := CalculateCloseAccountBackoff(map[string]string{
+			CloseAccountBackoffAnnotation: annotations[CloseAccountBackoffAnnotation],
+		})
+
+		// The stored backoff should have doubled
+		if backoff2 <= backoff1 {
+			t.Errorf("Backoff did not increase: first=%v, second=%v", backoff1, backoff2)
+		}
+	})
+}
+
+func TestClearCloseAccountRateLimited(t *testing.T) {
+	t.Run("handles nil map", func(t *testing.T) {
+		result := ClearCloseAccountRateLimited(nil)
+		if result != nil {
+			t.Error("ClearCloseAccountRateLimited(nil) should return nil")
+		}
+	})
+
+	t.Run("removes rate limit annotations", func(t *testing.T) {
+		annotations := map[string]string{
+			CloseAccountRateLimitAnnotation: time.Now().Format(time.RFC3339),
+			CloseAccountBackoffAnnotation:   "3600",
+			"other-annotation":              "value",
+		}
+		result := ClearCloseAccountRateLimited(annotations)
+
+		if _, ok := result[CloseAccountRateLimitAnnotation]; ok {
+			t.Error("ClearCloseAccountRateLimited() did not remove rate limit annotation")
+		}
+		if _, ok := result[CloseAccountBackoffAnnotation]; ok {
+			t.Error("ClearCloseAccountRateLimited() did not remove backoff annotation")
+		}
+		if result["other-annotation"] != "value" {
+			t.Error("ClearCloseAccountRateLimited() removed unrelated annotation")
+		}
+	})
+}
+
+func TestGetCloseAccountRetryAfter(t *testing.T) {
+	t.Run("returns zero when not limited", func(t *testing.T) {
+		duration := GetCloseAccountRetryAfter(nil)
+		if duration != 0 {
+			t.Errorf("GetCloseAccountRetryAfter(nil) = %v, want 0", duration)
+		}
+	})
+
+	t.Run("returns positive duration when limited", func(t *testing.T) {
+		retryAt := time.Now().Add(1 * time.Hour)
+		annotations := map[string]string{
+			CloseAccountRateLimitAnnotation: retryAt.Format(time.RFC3339),
+		}
+		duration := GetCloseAccountRetryAfter(annotations)
+		if duration <= 0 {
+			t.Errorf("GetCloseAccountRetryAfter() = %v, want positive duration", duration)
+		}
+		// Should be approximately 1 hour (allow some tolerance for test execution)
+		if duration < 59*time.Minute || duration > 61*time.Minute {
+			t.Errorf("GetCloseAccountRetryAfter() = %v, want ~1 hour", duration)
+		}
+	})
+
+	t.Run("returns zero when backoff expired", func(t *testing.T) {
+		retryAt := time.Now().Add(-1 * time.Hour)
+		annotations := map[string]string{
+			CloseAccountRateLimitAnnotation: retryAt.Format(time.RFC3339),
+		}
+		duration := GetCloseAccountRetryAfter(annotations)
+		if duration != 0 {
+			t.Errorf("GetCloseAccountRetryAfter() with expired backoff = %v, want 0", duration)
+		}
+	})
 }
 
 var _ = Describe("Utils", func() {
