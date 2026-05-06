@@ -5,7 +5,7 @@ set -eo pipefail
 source test/integration/test_envs
 source test/integration/integration-test-lib.sh
 
-# Extended timeouts for local development (AWS operations can be slow)
+# Extended timeouts for local development (AWS operations can be slow) test
 # These are set early so parseArgs can detect PROFILE and apply conditionally
 function applyLocalTimeouts {
     if [ "${PROFILE}" = "local" ]; then
