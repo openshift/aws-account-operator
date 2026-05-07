@@ -73,14 +73,13 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 
 	reqLogger.Info("Checking ConfigMap for ServiceQuotas")
 	// check if accountpool has servicequota defined in configmap
-	reginalServiceQuotas, err := utils.GetServiceQuotasFromAccountPool(reqLogger, currentAccountPool.Name, r.Client)
+	regionalServiceQuotas, globalServiceQuotas, err := utils.GetServiceQuotasFromAccountPool(ctx, reqLogger, currentAccountPool.Name, r.Client)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
 	reqLogger.Info("Updating Account ServiceQuotas")
-	_, err = r.checkAccountServiceQuota(reqLogger, currentAccountPool.Name, reginalServiceQuotas, isEnabled)
-	if err != nil {
+	if err = r.checkAccountServiceQuota(ctx, reqLogger, currentAccountPool.Name, regionalServiceQuotas, globalServiceQuotas, isEnabled); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -103,13 +102,13 @@ func (r *AccountPoolValidationReconciler) accountStatusUpdate(reqLogger logr.Log
 	return err
 }
 
-func (r *AccountPoolValidationReconciler) getAccountPoolAccounts(accountPoolName string) ([]awsv1alpha1.Account, error) {
+func (r *AccountPoolValidationReconciler) getAccountPoolAccounts(ctx context.Context, accountPoolName string) ([]awsv1alpha1.Account, error) {
 	//Get the number of actual unclaimed AWS accounts in the pool
 	accountList := &awsv1alpha1.AccountList{}
 	listOpts := []client.ListOption{
 		client.InNamespace(awsv1alpha1.AccountCrNamespace),
 	}
-	if err := r.Client.List(context.TODO(), accountList, listOpts...); err != nil {
+	if err := r.Client.List(ctx, accountList, listOpts...); err != nil {
 		return nil, err
 	}
 	var accounts []awsv1alpha1.Account
@@ -123,12 +122,13 @@ func (r *AccountPoolValidationReconciler) getAccountPoolAccounts(accountPoolName
 
 }
 
-// Updates Account Spec ServiceQuotas to match what's in the ConfigMap
-func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger logr.Logger, accountPoolName string, parsedRegionalServiceQuotas awsv1alpha1.RegionalServiceQuotas, isEnabled bool) (ctrl.Result, error) {
-	accountList, err := r.getAccountPoolAccounts(accountPoolName)
+// checkAccountServiceQuota updates Account Spec service quotas to match what's in the ConfigMap,
+// covering both per-region and account-global quotas.
+func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(ctx context.Context, reqLogger logr.Logger, accountPoolName string, parsedRegionalServiceQuotas awsv1alpha1.RegionalServiceQuotas, parsedGlobalServiceQuotas awsv1alpha1.AccountServiceQuota, isEnabled bool) error {
+	accountList, err := r.getAccountPoolAccounts(ctx, accountPoolName)
 	if err != nil {
 		reqLogger.Error(err, "Failed to get AccountPool accounts")
-		return reconcile.Result{}, err
+		return err
 	}
 	var updatedAccountSpecs []awsv1alpha1.Account
 
@@ -139,30 +139,36 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 			reqLogger.Info("Skipping account with pause reconciliation annotation", "account", accountCopy.Name)
 			continue
 		}
-		if !reflect.DeepEqual(accountCopy.Spec.RegionalServiceQuotas, parsedRegionalServiceQuotas) && isEnabled {
+
+		regionalDrift := !reflect.DeepEqual(accountCopy.Spec.RegionalServiceQuotas, parsedRegionalServiceQuotas)
+		globalDrift := !reflect.DeepEqual(accountCopy.Spec.GlobalServiceQuotas, parsedGlobalServiceQuotas)
+
+		if (regionalDrift || globalDrift) && isEnabled {
 			accountCopy.Spec.RegionalServiceQuotas = parsedRegionalServiceQuotas
+			accountCopy.Spec.GlobalServiceQuotas = parsedGlobalServiceQuotas
 
 			reqLogger.Info(fmt.Sprintf("Attempting to update the account Spec for: %v", accountCopy.Name))
 			err = r.accountSpecUpdate(reqLogger, &accountCopy)
 			if err != nil {
 				logs.Error(err, "failed to update account spec", "account", accountCopy.Name)
-				return reconcile.Result{}, err
+				return err
 			}
 			reqLogger.Info(fmt.Sprintf("Successfully updated %v Spec", accountCopy.Name))
 			updatedAccountSpecs = append(updatedAccountSpecs, accountCopy)
-
-		} else if !reflect.DeepEqual(accountCopy.Spec.RegionalServiceQuotas, parsedRegionalServiceQuotas) && !isEnabled {
+		} else if (regionalDrift || globalDrift) && !isEnabled {
 			reqLogger.Info("Accountpool Validation is not enabled")
-			reqLogger.Info(fmt.Sprintf("Expected Servicequotas:%v", parsedRegionalServiceQuotas))
-			reqLogger.Info(fmt.Sprintf("Account Servicequotas:%v", accountCopy.Spec.RegionalServiceQuotas))
+			reqLogger.Info(fmt.Sprintf("Expected Regional Servicequotas:%v", parsedRegionalServiceQuotas))
+			reqLogger.Info(fmt.Sprintf("Account Regional Servicequotas:%v", accountCopy.Spec.RegionalServiceQuotas))
+			reqLogger.Info(fmt.Sprintf("Expected Global Servicequotas:%v", parsedGlobalServiceQuotas))
+			reqLogger.Info(fmt.Sprintf("Account Global Servicequotas:%v", accountCopy.Spec.GlobalServiceQuotas))
 		}
 	}
 
 	time.Sleep(defaultSleepDelay) // the delay ensures the most recent accountCR version is used
-	updatedAccountList, err := r.getAccountPoolAccounts(accountPoolName)
+	updatedAccountList, err := r.getAccountPoolAccounts(ctx, accountPoolName)
 	if err != nil {
 		reqLogger.Error(err, "Failed to get AccountPool updated accounts")
-		return reconcile.Result{}, err
+		return err
 	}
 
 	updatedAccountMap := make(map[string]bool)
@@ -179,17 +185,18 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 		}
 		if exists := updatedAccountMap[updatedAccountCopy.Name]; exists {
 			updatedAccountCopy.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
+			updatedAccountCopy.Status.GlobalServiceQuotas = make(awsv1alpha1.AccountServiceQuota)
 			reqLogger.Info(fmt.Sprintf("Attempting to update the account status for: %v", updatedAccountCopy.Name))
 			err = r.accountStatusUpdate(reqLogger, &updatedAccountCopy)
 			if err != nil {
 				logs.Error(err, "failed to update account status", "account", updatedAccountCopy.Name)
-				return reconcile.Result{}, err
+				return err
 			}
 			reqLogger.Info(fmt.Sprintf("Successfully updated %v Status", updatedAccountCopy.Name))
 		}
 	}
 
-	return reconcile.Result{}, nil
+	return nil
 }
 
 func (r *AccountPoolValidationReconciler) SetupWithManager(mgr ctrl.Manager) error {

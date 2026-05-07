@@ -243,6 +243,146 @@ testaccount:
 				Expect(expectedAccount.Spec.RegionalServiceQuotas["us-east-1"]["L-1216C47A"].Value).To(Equal(100))
 			})
 		})
+		When("ConfigMap defines GlobalServiceQuotas matching Account Spec", func() {
+			It("Does nothing to global quotas", func() {
+				account.Spec.GlobalServiceQuotas = awsv1alpha1.AccountServiceQuota{
+					awsv1alpha1.IAMRolesPerAccount: {Value: 5000},
+				}
+				var accountPoolConfig = `
+testaccount:
+  servicequotas:
+    us-east-1:
+      L-1216C47A: '100'
+  globalservicequotas:
+    L-FE177D64: '5000'`
+
+				configMap = &v1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      awsv1alpha1.DefaultConfigMap,
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+					Data: map[string]string{
+						"accountpool":                    accountPoolConfig,
+						"feature.accountpool_validation": "true",
+					},
+				}
+
+				r = &AccountPoolValidationReconciler{
+					Scheme: scheme.Scheme,
+					Client: setupDefaultMocks([]runtime.Object{&account, &accontPool, configMap}),
+				}
+
+				_, _ = r.Reconcile(context.TODO(), ctrl.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: awsv1alpha1.AccountCrNamespace,
+						Name:      accountName,
+					},
+				})
+				err := r.Client.Get(context.TODO(), types.NamespacedName{
+					Namespace: awsv1alpha1.AccountCrNamespace,
+					Name:      accountName,
+				}, &expectedAccount)
+
+				Expect(err).To(Not(HaveOccurred()))
+				Expect(expectedAccount.Spec.RegionalServiceQuotas).To(Equal(account.Spec.RegionalServiceQuotas))
+				Expect(expectedAccount.Spec.GlobalServiceQuotas[awsv1alpha1.IAMRolesPerAccount].Value).To(Equal(5000))
+			})
+		})
+		When("ConfigMap GlobalServiceQuota value is increased", func() {
+			It("Updates Account Spec GlobalServiceQuotas", func() {
+				account.Spec.GlobalServiceQuotas = awsv1alpha1.AccountServiceQuota{
+					awsv1alpha1.IAMRolesPerAccount: {Value: 3000},
+				}
+				var accountPoolConfig = `
+testaccount:
+  servicequotas:
+    us-east-1:
+      L-1216C47A: '100'
+  globalservicequotas:
+    L-FE177D64: '5000'`
+
+				configMap = &v1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      awsv1alpha1.DefaultConfigMap,
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+					Data: map[string]string{
+						"accountpool":                    accountPoolConfig,
+						"feature.accountpool_validation": "true",
+					},
+				}
+
+				r = &AccountPoolValidationReconciler{
+					Scheme: scheme.Scheme,
+					Client: setupDefaultMocks([]runtime.Object{&account, &accontPool, configMap}),
+				}
+
+				_, _ = r.Reconcile(context.TODO(), ctrl.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: awsv1alpha1.AccountCrNamespace,
+						Name:      accountName,
+					},
+				})
+				err := r.Client.Get(context.TODO(), types.NamespacedName{
+					Namespace: awsv1alpha1.AccountCrNamespace,
+					Name:      accountName,
+				}, &expectedAccount)
+
+				Expect(err).To(Not(HaveOccurred()))
+				Expect(expectedAccount.Spec.GlobalServiceQuotas[awsv1alpha1.IAMRolesPerAccount].Value).To(Equal(5000))
+				// Status should be reset after spec update
+				Expect(expectedAccount.Status.GlobalServiceQuotas).To(BeEmpty())
+			})
+		})
+		When("Only GlobalServiceQuota drifts while regional matches", func() {
+			It("Updates only GlobalServiceQuotas in Account Spec", func() {
+				account.Spec.GlobalServiceQuotas = awsv1alpha1.AccountServiceQuota{
+					awsv1alpha1.IAMRolesPerAccount: {Value: 2000},
+				}
+				var accountPoolConfig = `
+testaccount:
+  servicequotas:
+    us-east-1:
+      L-1216C47A: '100'
+  globalservicequotas:
+    L-FE177D64: '5000'`
+
+				configMap = &v1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      awsv1alpha1.DefaultConfigMap,
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+					Data: map[string]string{
+						"accountpool":                    accountPoolConfig,
+						"feature.accountpool_validation": "true",
+					},
+				}
+
+				r = &AccountPoolValidationReconciler{
+					Scheme: scheme.Scheme,
+					Client: setupDefaultMocks([]runtime.Object{&account, &accontPool, configMap}),
+				}
+
+				_, _ = r.Reconcile(context.TODO(), ctrl.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: awsv1alpha1.AccountCrNamespace,
+						Name:      accountName,
+					},
+				})
+				err := r.Client.Get(context.TODO(), types.NamespacedName{
+					Namespace: awsv1alpha1.AccountCrNamespace,
+					Name:      accountName,
+				}, &expectedAccount)
+
+				Expect(err).To(Not(HaveOccurred()))
+				// Regional should be unchanged
+				Expect(expectedAccount.Spec.RegionalServiceQuotas["us-east-1"]["L-1216C47A"].Value).To(Equal(100))
+				// Global should be updated
+				Expect(expectedAccount.Spec.GlobalServiceQuotas[awsv1alpha1.IAMRolesPerAccount].Value).To(Equal(5000))
+				// Status should be reset
+				Expect(expectedAccount.Status.GlobalServiceQuotas).To(BeEmpty())
+			})
+		})
 		When("Account has pause-reconciliation annotation set to false", func() {
 			It("Should proceed with updating service quotas", func() {
 				var accountPoolConfig = `

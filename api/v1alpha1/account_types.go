@@ -42,6 +42,10 @@ type AccountSpec struct {
 	ManualSTSMode         bool                  `json:"manualSTSMode,omitempty"`
 	AccountPool           string                `json:"accountPool,omitempty"`
 	RegionalServiceQuotas RegionalServiceQuotas `json:"regionalServiceQuotas,omitempty"`
+	// GlobalServiceQuotas holds desired quota increase requests for AWS services that are
+	// account-global (not per-region), such as IAM. Values set here are applied once via
+	// the us-east-1 endpoint and tracked in Status.GlobalServiceQuotas.
+	GlobalServiceQuotas AccountServiceQuota `json:"globalServiceQuotas,omitempty"`
 }
 
 type RegionalServiceQuotas map[string]AccountServiceQuota
@@ -73,6 +77,7 @@ const (
 	EC2VPCElasticIPsQuotaCode SupportedServiceQuotas = "L-0263D0A3" // EC2-VPC Elastic IPs
 	VPCNetworkAclQuotaCode    SupportedServiceQuotas = "L-2AEEBF1A" // VPC-Network ACL
 	GeneralPurposeSSD         SupportedServiceQuotas = "L-7A658B76" // General Purpose SSD (gp3) volumes
+	IAMRolesPerAccount        SupportedServiceQuotas = "L-FE177D64" // IAM Roles per Account
 )
 
 type SupportedServiceQuotaServices string
@@ -82,7 +87,30 @@ const (
 	VPCServiceQuota      SupportedServiceQuotaServices = "vpc"
 	EBSServiceQuota      SupportedServiceQuotaServices = "ebs"
 	Elasticloadbalancing SupportedServiceQuotaServices = "elasticloadbalancing"
+	IAMServiceQuota      SupportedServiceQuotaServices = "iam"
 )
+
+// ServiceCodeFor returns the AWS service code for the given quota code and whether it was found.
+// To add a new quota, declare a SupportedServiceQuotas constant and add a case here and in IsGlobalQuota.
+func ServiceCodeFor(code SupportedServiceQuotas) (string, bool) {
+	switch code {
+	case RulesPerSecurityGroup:
+		return string(VPCServiceQuota), true
+	case RunningStandardInstances:
+		return string(EC2ServiceQuota), true
+	case NLBPerRegion:
+		return string(Elasticloadbalancing), true
+	case EC2VPCElasticIPsQuotaCode:
+		return string(EC2ServiceQuota), true
+	case VPCNetworkAclQuotaCode:
+		return string(VPCServiceQuota), true
+	case GeneralPurposeSSD:
+		return string(EBSServiceQuota), true
+	case IAMRolesPerAccount:
+		return string(IAMServiceQuota), true
+	}
+	return "", false
+}
 
 type OptInRegions map[string]*OptInRegionStatus
 
@@ -113,7 +141,10 @@ type AccountStatus struct {
 	RotateConsoleCredentials bool                  `json:"rotateConsoleCredentials,omitempty"`
 	Reused                   bool                  `json:"reused,omitempty"`
 	RegionalServiceQuotas    RegionalServiceQuotas `json:"regionalServiceQuotas,omitempty"`
-	OptInRegions             OptInRegions          `json:"optInRegions,omitempty"`
+	// GlobalServiceQuotas holds quota increase requests for AWS services that are account-global
+	// (not per-region), such as IAM. These are applied once via the us-east-1 endpoint.
+	GlobalServiceQuotas AccountServiceQuota `json:"globalServiceQuotas,omitempty"`
+	OptInRegions        OptInRegions        `json:"optInRegions,omitempty"`
 }
 
 // AccountCondition contains details for the current condition of a AWS account
@@ -295,6 +326,11 @@ func (a *Account) HasOpenQuotaIncreaseRequests() bool {
 			}
 		}
 	}
+	for _, v := range a.Status.GlobalServiceQuotas {
+		if v.Status != ServiceRequestCompleted && v.Status != ServiceRequestUnknown {
+			return true
+		}
+	}
 	return false
 }
 
@@ -319,6 +355,24 @@ func (a *Account) GetQuotaRequestsByStatus(stati ...ServiceRequestStatus) (int, 
 		}
 	}
 	return count, returnRegionalServiceQuotaRequest
+}
+
+// GetGlobalQuotaRequestsByStatus returns the count and map of account-global quota requests
+// matching any of the given statuses. These are sourced from Status.GlobalServiceQuotas and
+// are applied once via the us-east-1 endpoint, independent of per-region quota processing.
+func (a *Account) GetGlobalQuotaRequestsByStatus(stati ...ServiceRequestStatus) (int, AccountServiceQuota) {
+	result := make(AccountServiceQuota)
+	count := 0
+	for code, quota := range a.Status.GlobalServiceQuotas {
+		for _, status := range stati {
+			if quota.Status == status {
+				result[code] = quota
+				count++
+				break
+			}
+		}
+	}
+	return count, result
 }
 
 // IsReusedAccountMissingIAMUser returns true if the account is in a ready state and a reused non-byoc account without a IAMUser secret and claimlink

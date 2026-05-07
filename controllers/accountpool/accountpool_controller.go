@@ -96,7 +96,7 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 		return reconcile.Result{}, err
 	}
 
-	if err = r.handleServiceQuotas(reqLogger, newAccount); err != nil {
+	if err = r.handleServiceQuotas(ctx, reqLogger, newAccount); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -109,15 +109,17 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 	return reconcile.Result{}, nil
 }
 
-func (r *AccountPoolReconciler) handleServiceQuotas(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
-	parsedRegionalServiceQuotas, err := utils.GetServiceQuotasFromAccountPool(reqLogger, account.Spec.AccountPool, r.Client)
+func (r *AccountPoolReconciler) handleServiceQuotas(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	parsedRegionalServiceQuotas, parsedGlobalServiceQuotas, err := utils.GetServiceQuotasFromAccountPool(ctx, reqLogger, account.Spec.AccountPool, r.Client)
 	if err != nil {
 		return err
 	}
 	reqLogger.Info("Loaded Service Quotas")
 
 	account.Spec.RegionalServiceQuotas = parsedRegionalServiceQuotas
+	account.Spec.GlobalServiceQuotas = parsedGlobalServiceQuotas
 	account.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
+	account.Status.GlobalServiceQuotas = make(awsv1alpha1.AccountServiceQuota)
 
 	return nil
 }

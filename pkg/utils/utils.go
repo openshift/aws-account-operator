@@ -112,56 +112,86 @@ type AwsPolicy struct {
 	Statement []AwsStatement
 }
 
-// GetServiceQuotasFromAccountPool retrieves and processes the account pool's service quotas from ConfigMap
-func GetServiceQuotasFromAccountPool(reqLogger logr.Logger, accountPoolName string, client client.Client) (awsv1alpha1.RegionalServiceQuotas, error) {
+// GetServiceQuotasFromAccountPool retrieves and processes the account pool's service quotas from
+// the operator ConfigMap. It returns both the per-region quotas (keyed by region name or "default")
+// and the account-global quotas (e.g. IAM quotas that are not per-region).
+//
+// ConfigMap format:
+//
+//	my-pool:
+//	  servicequotas:
+//	    default:
+//	      L-1216C47A: '2500'   # per-region quota (applied to every enabled region)
+//	  globalservicequotas:
+//	    L-FE177D64: '2000'     # account-global quota (applied once via us-east-1)
+func GetServiceQuotasFromAccountPool(ctx context.Context, reqLogger logr.Logger, accountPoolName string, kubeClient client.Client) (awsv1alpha1.RegionalServiceQuotas, awsv1alpha1.AccountServiceQuota, error) {
 	reqLogger.Info("Loading Service Quotas")
 
-	cm, err := GetOperatorConfigMap(client)
-	if err != nil {
+	cm := &corev1.ConfigMap{}
+	if err := kubeClient.Get(ctx, types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm); err != nil {
 		reqLogger.Error(err, "failed retrieving configmap")
-		return nil, err
+		return nil, nil, err
 	}
 
 	accountpoolString, found := cm.Data["accountpool"]
 	if !found {
 		reqLogger.Error(fixtures.NotFound, "failed getting accountpool data from configmap")
-		return nil, fixtures.NotFound
+		return nil, nil, fixtures.NotFound
 	}
 
 	type Servicequotas map[string]string
 	type AccountPoolConfig struct {
 		IsDefault             bool                     `yaml:"default,omitempty"`
 		RegionedServicequotas map[string]Servicequotas `yaml:"servicequotas,omitempty"`
+		GlobalServicequotas   Servicequotas            `yaml:"globalservicequotas,omitempty"`
 	}
 
 	data := make(map[string]AccountPoolConfig)
-	err = yaml.Unmarshal([]byte(accountpoolString), &data)
-
-	if err != nil {
+	if err := yaml.Unmarshal([]byte(accountpoolString), &data); err != nil {
 		reqLogger.Error(err, "Failed to unmarshal yaml")
-		return nil, err
+		return nil, nil, err
 	}
 
-	var parsedRegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
+	parsedRegionalServiceQuotas := make(awsv1alpha1.RegionalServiceQuotas)
+	parsedGlobalServiceQuotas := make(awsv1alpha1.AccountServiceQuota)
 
-	if poolData, ok := data[accountPoolName]; !ok {
+	poolData, ok := data[accountPoolName]
+	if !ok {
 		reqLogger.Info("Accountpool not found in configmap. Not setting servicequotas.")
-		return parsedRegionalServiceQuotas, nil
-	} else {
-		// for each service quota in a given region, we'll need to parse and save to use in the account spec.
-		for regionName, serviceQuotas := range poolData.RegionedServicequotas {
-			var parsedServiceQuotas = make(awsv1alpha1.AccountServiceQuota)
-			for quotaCode, quotaValue := range serviceQuotas {
-				qv, _ := strconv.Atoi(quotaValue)
-				parsedServiceQuotas[awsv1alpha1.SupportedServiceQuotas(quotaCode)] = &awsv1alpha1.ServiceQuotaStatus{
-					Value: qv,
-				}
+		return parsedRegionalServiceQuotas, parsedGlobalServiceQuotas, nil
+	}
+
+	// Parse per-region (and "default") quotas.
+	for regionName, serviceQuotas := range poolData.RegionedServicequotas {
+		parsedServiceQuotas := make(awsv1alpha1.AccountServiceQuota)
+		for quotaCode, quotaValue := range serviceQuotas {
+			qv, convErr := strconv.Atoi(quotaValue)
+			if convErr != nil {
+				err := fmt.Errorf("invalid regional quota value %q for %s in accountpool %q: %w", quotaValue, quotaCode, accountPoolName, convErr)
+				reqLogger.Error(err, "failed parsing regional service quota")
+				return nil, nil, err
 			}
-			parsedRegionalServiceQuotas[regionName] = parsedServiceQuotas
+			parsedServiceQuotas[awsv1alpha1.SupportedServiceQuotas(quotaCode)] = &awsv1alpha1.ServiceQuotaStatus{
+				Value: qv,
+			}
+		}
+		parsedRegionalServiceQuotas[regionName] = parsedServiceQuotas
+	}
+
+	// Parse account-global quotas (flat map, no region nesting).
+	for quotaCode, quotaValue := range poolData.GlobalServicequotas {
+		qv, convErr := strconv.Atoi(quotaValue)
+		if convErr != nil {
+			err := fmt.Errorf("invalid global quota value %q for %s in accountpool %q: %w", quotaValue, quotaCode, accountPoolName, convErr)
+			reqLogger.Error(err, "failed parsing global service quota")
+			return nil, nil, err
+		}
+		parsedGlobalServiceQuotas[awsv1alpha1.SupportedServiceQuotas(quotaCode)] = &awsv1alpha1.ServiceQuotaStatus{
+			Value: qv,
 		}
 	}
 
-	return parsedRegionalServiceQuotas, nil
+	return parsedRegionalServiceQuotas, parsedGlobalServiceQuotas, nil
 }
 
 // MarshalIAMPolicy converts a role CR into a JSON policy that is acceptable to AWS

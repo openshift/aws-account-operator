@@ -750,11 +750,15 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 		}
 	}
 
-	if awsAccount.Spec.RegionalServiceQuotas == nil {
+	// Return early if no quotas (regional or global) are configured in the spec.
+	if awsAccount.Spec.RegionalServiceQuotas == nil && awsAccount.Spec.GlobalServiceQuotas == nil {
 		return nil
 	}
 
-	if awsAccount.Status.RegionalServiceQuotas == nil {
+	// If status quota fields have not been populated yet, expand them from spec and re-queue.
+	regionalStatusMissing := awsAccount.Spec.RegionalServiceQuotas != nil && awsAccount.Status.RegionalServiceQuotas == nil
+	globalStatusMissing := awsAccount.Spec.GlobalServiceQuotas != nil && awsAccount.Status.GlobalServiceQuotas == nil
+	if regionalStatusMissing || globalStatusMissing {
 		err = account.SetCurrentAccountServiceQuotas(reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client)
 		if err != nil {
 			reqLogger.Error(err, "failed to set account service quotas")
@@ -775,20 +779,20 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 			Type: QuotaStatus,
 			Err:  errors.New("service quota status updated, increase request needs to be sent to aws"),
 		}
-	} else {
-		if awsAccount.HasOpenQuotaIncreaseRequests() && utils.DetectDevMode == utils.DevModeProduction {
-			_, err = account.GetServiceQuotaRequest(reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client)
-			if err != nil {
-				return &AccountValidationError{
-					Type: NotAllServicequotasApplied,
-					Err:  err,
-				}
-			}
+	}
 
+	if awsAccount.HasOpenQuotaIncreaseRequests() && utils.DetectDevMode == utils.DevModeProduction {
+		_, err = account.GetServiceQuotaRequest(reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client)
+		if err != nil {
 			return &AccountValidationError{
 				Type: NotAllServicequotasApplied,
-				Err:  errors.New("service quotas not yet applied"),
+				Err:  err,
 			}
+		}
+
+		return &AccountValidationError{
+			Type: NotAllServicequotasApplied,
+			Err:  errors.New("service quotas not yet applied"),
 		}
 	}
 

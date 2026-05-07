@@ -832,6 +832,20 @@ func schema_openshift_aws_account_operator_api_v1alpha1_AccountSpec(ref common.R
 							},
 						},
 					},
+					"globalServiceQuotas": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GlobalServiceQuotas holds desired quota increase requests for AWS services that are account-global (not per-region), such as IAM. Values set here are applied once via the us-east-1 endpoint and tracked in Status.GlobalServiceQuotas.",
+							Type:        []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/openshift/aws-account-operator/api/v1alpha1.ServiceQuotaStatus"),
+									},
+								},
+							},
+						},
+					},
 				},
 				Required: []string{"awsAccountID", "iamUserSecret"},
 			},
@@ -918,6 +932,20 @@ func schema_openshift_aws_account_operator_api_v1alpha1_AccountStatus(ref common
 												},
 											},
 										},
+									},
+								},
+							},
+						},
+					},
+					"globalServiceQuotas": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GlobalServiceQuotas holds quota increase requests for AWS services that are account-global (not per-region), such as IAM. These are applied once via the us-east-1 endpoint.",
+							Type:        []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/openshift/aws-account-operator/api/v1alpha1.ServiceQuotaStatus"),
 									},
 								},
 							},

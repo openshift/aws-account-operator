@@ -8,11 +8,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/servicequotas"
 	servicequotastypes "github.com/aws/aws-sdk-go-v2/service/servicequotas/types"
 	"github.com/go-logr/logr"
-	"go.uber.org/mock/gomock"
 	apis "github.com/openshift/aws-account-operator/api"
 	"github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
+	"go.uber.org/mock/gomock"
 	"k8s.io/client-go/kubernetes/scheme"
 )
 
@@ -26,17 +26,29 @@ func TestAccountReconciler_HandleServiceQuotaRequests(t *testing.T) {
 	nullLogger := testutils.NewTestLogger().Logger()
 
 	tests := []struct {
-		name       string
-		quotaCode  v1alpha1.SupportedServiceQuotas
-		quotaValue v1alpha1.ServiceQuotaStatus
-		reqLogger  logr.Logger
-		wantErr    bool
+		name        string
+		quotaCode   v1alpha1.SupportedServiceQuotas
+		serviceCode v1alpha1.SupportedServiceQuotaServices
+		quotaValue  v1alpha1.ServiceQuotaStatus
+		reqLogger   logr.Logger
+		wantErr     bool
 	}{
 		{
-			name:      "Valid Service Quota Request",
-			quotaCode: v1alpha1.RunningStandardInstances,
+			name:        "Valid Service Quota Request",
+			quotaCode:   v1alpha1.RunningStandardInstances,
+			serviceCode: v1alpha1.EC2ServiceQuota,
 			quotaValue: v1alpha1.ServiceQuotaStatus{
 				Value: 10,
+			},
+			reqLogger: nullLogger,
+			wantErr:   false,
+		},
+		{
+			name:        "Valid IAM Roles Per Account Quota Request",
+			quotaCode:   v1alpha1.IAMRolesPerAccount,
+			serviceCode: v1alpha1.IAMServiceQuota,
+			quotaValue: v1alpha1.ServiceQuotaStatus{
+				Value: 5000,
 			},
 			reqLogger: nullLogger,
 			wantErr:   false,
@@ -69,9 +81,9 @@ func TestAccountReconciler_HandleServiceQuotaRequests(t *testing.T) {
 			)
 
 			mockAWSClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any(), &servicequotas.RequestServiceQuotaIncreaseInput{
-				DesiredValue: aws.Float64(10),
-				QuotaCode:    aws.String(string(v1alpha1.RunningStandardInstances)),
-				ServiceCode:  aws.String(string(v1alpha1.EC2ServiceQuota)),
+				DesiredValue: aws.Float64(float64(test.quotaValue.Value)),
+				QuotaCode:    aws.String(string(test.quotaCode)),
+				ServiceCode:  aws.String(string(test.serviceCode)),
 			}).Return(
 				&servicequotas.RequestServiceQuotaIncreaseOutput{
 					RequestedQuota: &servicequotastypes.RequestedServiceQuotaChange{

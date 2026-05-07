@@ -66,6 +66,22 @@ spec:
                 type: string
               claimLinkNamespace:
                 type: string
+              globalServiceQuotas:
+                additionalProperties:
+                  properties:
+                    status:
+                      type: string
+                    value:
+                      type: integer
+                  required:
+                  - status
+                  - value
+                  type: object
+                description: |-
+                  GlobalServiceQuotas holds desired quota increase requests for AWS services that are
+                  account-global (not per-region), such as IAM. Values set here are applied once via
+                  the us-east-1 endpoint and tracked in Status.GlobalServiceQuotas.
+                type: object
               iamUserSecret:
                 type: string
               legalEntity:
@@ -136,6 +152,21 @@ spec:
                   type: object
                 type: array
                 x-kubernetes-list-type: atomic
+              globalServiceQuotas:
+                additionalProperties:
+                  properties:
+                    status:
+                      type: string
+                    value:
+                      type: integer
+                  required:
+                  - status
+                  - value
+                  type: object
+                description: |-
+                  GlobalServiceQuotas holds quota increase requests for AWS services that are account-global
+                  (not per-region), such as IAM. These are applied once via the us-east-1 endpoint.
+                type: object
               optInRegions:
                 additionalProperties:
                   properties:
