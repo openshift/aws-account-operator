@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -761,35 +762,40 @@ var _ = Describe("Utils", func() {
   default: true
 `
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			quotas, globalQuotas, err := GetServiceQuotasFromAccountPool(context.Background(), nullLogger, "nonexisting", client)
 			Expect(err).To(BeNil())
 			Expect(quotas).To(BeEmpty())
+			Expect(globalQuotas).To(BeEmpty())
 		})
 		It("Should return an Error when the aao configmap isn't found", func() {
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects().Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			quotas, globalQuotas, err := GetServiceQuotasFromAccountPool(context.Background(), nullLogger, "nonexisting", client)
 			Expect(err).ToNot(BeNil())
 			Expect(quotas).To(BeEmpty())
+			Expect(globalQuotas).To(BeEmpty())
 		})
 		It("Should return an Error when there is no accountpool key in the configmap", func() {
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			quotas, globalQuotas, err := GetServiceQuotasFromAccountPool(context.Background(), nullLogger, "nonexisting", client)
 			Expect(err).ToNot(BeNil())
 			Expect(quotas).To(BeEmpty())
+			Expect(globalQuotas).To(BeEmpty())
 		})
 		It("Should return an Error when the accoutpool data is malformed", func() {
 			configMap.Data["accountpool"] = `invalid: true`
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			quotas, globalQuotas, err := GetServiceQuotasFromAccountPool(context.Background(), nullLogger, "nonexisting", client)
 			Expect(err).ToNot(BeNil())
 			Expect(quotas).To(BeEmpty())
+			Expect(globalQuotas).To(BeEmpty())
 		})
 		It("Should return an Error when the accoutpool data is malformed", func() {
 			configMap.Data["accountpool"] = `invalid: true`
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			quotas, globalQuotas, err := GetServiceQuotasFromAccountPool(context.Background(), nullLogger, "nonexisting", client)
 			Expect(err).ToNot(BeNil())
 			Expect(quotas).To(BeEmpty())
+			Expect(globalQuotas).To(BeEmpty())
 		})
 		It("Should return the Regional Servicequotas defined in the cm", func() {
 			configMap.Data["accountpool"] = `hives02ue1:
@@ -802,10 +808,51 @@ fm-accountpool:
       L-69A177A2: '255'
 `
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "fm-accountpool", client)
+			quotas, globalQuotas, err := GetServiceQuotasFromAccountPool(context.Background(), nullLogger, "fm-accountpool", client)
 			Expect(err).To(BeNil())
 			Expect(quotas).ToNot(BeEmpty())
 			Expect(quotas).To(HaveKey("default"))
+			Expect(globalQuotas).To(BeEmpty())
+		})
+		It("Should return the Global Servicequotas defined in the cm", func() {
+			configMap.Data["accountpool"] = `fm-accountpool:
+  servicequotas:
+    default:
+      L-1216C47A: '2500'
+  globalservicequotas:
+    L-FE177D64: '2000'
+`
+			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
+			quotas, globalQuotas, err := GetServiceQuotasFromAccountPool(context.Background(), nullLogger, "fm-accountpool", client)
+			Expect(err).To(BeNil())
+			Expect(quotas).To(HaveKey("default"))
+			Expect(globalQuotas).To(HaveKey(awsv1alpha1.IAMRolesPerAccount))
+			Expect(globalQuotas[awsv1alpha1.IAMRolesPerAccount].Value).To(Equal(2000))
+		})
+		It("Should return an Error when a regional quota value is not a valid integer", func() {
+			configMap.Data["accountpool"] = `fm-accountpool:
+  servicequotas:
+    default:
+      L-1216C47A: 'not-a-number'
+`
+			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
+			quotas, globalQuotas, err := GetServiceQuotasFromAccountPool(context.Background(), nullLogger, "fm-accountpool", client)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("invalid regional quota value"))
+			Expect(quotas).To(BeNil())
+			Expect(globalQuotas).To(BeNil())
+		})
+		It("Should return an Error when a global quota value is not a valid integer", func() {
+			configMap.Data["accountpool"] = `fm-accountpool:
+  globalservicequotas:
+    L-FE177D64: 'bad'
+`
+			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
+			quotas, globalQuotas, err := GetServiceQuotasFromAccountPool(context.Background(), nullLogger, "fm-accountpool", client)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("invalid global quota value"))
+			Expect(quotas).To(BeNil())
+			Expect(globalQuotas).To(BeNil())
 		})
 	})
 

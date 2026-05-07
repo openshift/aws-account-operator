@@ -130,6 +130,12 @@ func (t *testAccountBuilder) WithServiceQuota(regionalServiceQuotas awsv1alpha1.
 	return t
 }
 
+func (t *testAccountBuilder) WithGlobalServiceQuota(globalServiceQuotas awsv1alpha1.AccountServiceQuota) *testAccountBuilder {
+	t.acct.Spec.GlobalServiceQuotas = globalServiceQuotas
+	t.acct.Status.GlobalServiceQuotas = make(awsv1alpha1.AccountServiceQuota)
+	return t
+}
+
 // Just set the whole Spec all in one go
 func (t *testAccountBuilder) WithSpec(spec awsv1alpha1.AccountSpec) *testAccountBuilder {
 	t.acct.Spec = spec
@@ -1453,9 +1459,9 @@ var _ = Describe("Account Controller", func() {
 	Context("Testing BuildAccount", func() {
 		var (
 			knownErrors = map[string]struct {
-				err          error
-				expectedErr  error
-				errorSubstr  string
+				err         error
+				expectedErr error
+				errorSubstr string
 			}{
 				"ConcurrentModificationException": {
 					err:         &organizationstypes.ConcurrentModificationException{Message: aws.String("Error String")},
@@ -2509,6 +2515,242 @@ var _ = Describe("Account Controller", func() {
 					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
 					Expect(account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestDenied))
 					Expect(account.Status.State).To(Equal(AccountFailed))
+				})
+				It("places global quotas in Status.GlobalServiceQuotas, not per-region", func() {
+					// IAMRolesPerAccount is a global (account-wide) quota and must appear only in
+					// Status.GlobalServiceQuotas, never duplicated into each region's quota map.
+					account = &newTestAccountBuilder().BYOC(false).
+						WithServiceQuota(awsv1alpha1.RegionalServiceQuotas{
+							"default": awsv1alpha1.AccountServiceQuota{
+								awsv1alpha1.RunningStandardInstances: {Value: 100},
+							},
+						}).
+						WithGlobalServiceQuota(awsv1alpha1.AccountServiceQuota{
+							awsv1alpha1.IAMRolesPerAccount: {Value: 5000},
+						}).
+						WithState(awsv1alpha1.AccountPendingVerification).WithAwsAccountID("4321").acct
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
+
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRoleAndCreateClient = func(
+						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
+						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+
+					subClient.EXPECT().DescribeRegions(gomock.Any(), gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []ec2types.Region{
+							{RegionName: aws.String("us-east-1")},
+							{RegionName: aws.String("us-west-2")},
+						},
+					}, nil)
+
+					err := SetCurrentAccountServiceQuotas(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client)
+					Expect(err).ToNot(HaveOccurred())
+
+					// Global quota lands in the dedicated GlobalServiceQuotas status field
+					Expect(account.Status.GlobalServiceQuotas).To(HaveKey(awsv1alpha1.IAMRolesPerAccount))
+					Expect(account.Status.GlobalServiceQuotas[awsv1alpha1.IAMRolesPerAccount].Value).To(Equal(5000))
+					Expect(account.Status.GlobalServiceQuotas[awsv1alpha1.IAMRolesPerAccount].Status).To(Equal(awsv1alpha1.ServiceRequestTodo))
+
+					// Global quota must NOT appear in any per-region entry or pollute the regional map
+					for _, regionKey := range []string{"us-east-1", "us-west-2"} {
+						Expect(account.Status.RegionalServiceQuotas[regionKey]).ToNot(HaveKey(awsv1alpha1.IAMRolesPerAccount),
+							"expected IAMRolesPerAccount to be absent from region %s", regionKey)
+						// Regional quota must still be present in per-region entries
+						Expect(account.Status.RegionalServiceQuotas[regionKey]).To(HaveKey(awsv1alpha1.RunningStandardInstances))
+					}
+
+					// Regional map has exactly 2 real regions (no "global" magic key)
+					Expect(account.Status.RegionalServiceQuotas).To(HaveLen(2))
+				})
+				It("routes global quota requests through us-east-1", func() {
+					// UpdateServiceQuotaRequests must assume the account role in us-east-1 when
+					// processing global quotas — not in a literal region named "global".
+					account = &newTestAccountBuilder().BYOC(false).
+						WithGlobalServiceQuota(awsv1alpha1.AccountServiceQuota{
+							awsv1alpha1.IAMRolesPerAccount: {Value: 5000},
+						}).
+						WithState(awsv1alpha1.AccountPendingVerification).WithAwsAccountID("4321").acct
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
+
+					var capturedRegion string
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRoleAndCreateClient = func(
+						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
+						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						capturedRegion = region
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+
+					// Seed Status.GlobalServiceQuotas directly — one global quota in TODO state
+					account.Status.GlobalServiceQuotas = awsv1alpha1.AccountServiceQuota{
+						awsv1alpha1.IAMRolesPerAccount: &awsv1alpha1.ServiceQuotaStatus{
+							Value:  5000,
+							Status: awsv1alpha1.ServiceRequestTodo,
+						},
+					}
+
+					subClient.EXPECT().GetServiceQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotastypes.ServiceQuota{
+							QuotaCode: aws.String(string(awsv1alpha1.IAMRolesPerAccount)),
+							Value:     aws.Float64(0),
+						},
+					}, nil)
+					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any(), gomock.Any()).Return(
+						&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
+							RequestedQuotas: []servicequotastypes.RequestedServiceQuotaChange{},
+						}, nil)
+					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any(), gomock.Any()).Return(
+						&servicequotas.RequestServiceQuotaIncreaseOutput{
+							RequestedQuota: &servicequotastypes.RequestedServiceQuotaChange{
+								CaseId: aws.String("999"),
+							},
+						}, nil)
+
+					// Use GetGlobalQuotaRequestsByStatus to build the global in-flight map.
+					_, inFlightGlobal := account.GetGlobalQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
+					err := UpdateServiceQuotaRequests(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client,
+						awsv1alpha1.RegionalServiceQuotas{}, inFlightGlobal)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(capturedRegion).To(Equal("us-east-1"),
+						"global quota requests must be routed through us-east-1, got %q", capturedRegion)
+				})
+				It("sets service quotas from global-only spec without calling DescribeRegions", func() {
+					// When only GlobalServiceQuotas are configured (no RegionalServiceQuotas),
+					// SetCurrentAccountServiceQuotas must skip the DescribeRegions call entirely.
+					account = &newTestAccountBuilder().BYOC(false).
+						WithGlobalServiceQuota(awsv1alpha1.AccountServiceQuota{
+							awsv1alpha1.IAMRolesPerAccount: {Value: 5000},
+						}).
+						WithState(awsv1alpha1.AccountPendingVerification).WithAwsAccountID("4321").acct
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
+
+					// No DescribeRegions mock — test will fail if it's called unexpectedly
+					err := SetCurrentAccountServiceQuotas(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client)
+					Expect(err).ToNot(HaveOccurred())
+
+					// Global quota should be in status
+					Expect(account.Status.GlobalServiceQuotas).To(HaveKey(awsv1alpha1.IAMRolesPerAccount))
+					Expect(account.Status.GlobalServiceQuotas[awsv1alpha1.IAMRolesPerAccount].Value).To(Equal(5000))
+					Expect(account.Status.GlobalServiceQuotas[awsv1alpha1.IAMRolesPerAccount].Status).To(Equal(awsv1alpha1.ServiceRequestTodo))
+
+					// Regional should be empty
+					Expect(account.Status.RegionalServiceQuotas).To(BeEmpty())
+				})
+				It("does not mark account Ready while global quotas are still in progress", func() {
+					// This tests the readiness gate fix: in dev mode, an account with global
+					// quotas still IN_PROGRESS must NOT be marked Ready.
+					savedDevMode := utils.DetectDevMode
+					utils.DetectDevMode = "local"
+					defer func() { utils.DetectDevMode = savedDevMode }()
+
+					account = &newTestAccountBuilder().BYOC(false).
+						WithState(awsv1alpha1.AccountPendingVerification).WithAwsAccountID("4321").acct
+					// Seed global quota directly into status as IN_PROGRESS
+					account.Status.GlobalServiceQuotas = awsv1alpha1.AccountServiceQuota{
+						awsv1alpha1.IAMRolesPerAccount: &awsv1alpha1.ServiceQuotaStatus{
+							Value:  5000,
+							Status: awsv1alpha1.ServiceRequestInProgress,
+						},
+					}
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
+
+					result, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(account.Status.State).ToNot(Equal(AccountReady),
+						"account should not be Ready while global quotas are IN_PROGRESS")
+					Expect(result.RequeueAfter).To(BeNumerically(">", 0),
+						"should requeue when global quotas are still in progress")
+				})
+				It("marks account Ready when global quotas are completed", func() {
+					// In dev mode, an account with all global quotas COMPLETED and no regional
+					// quotas should be marked Ready.
+					savedDevMode := utils.DetectDevMode
+					utils.DetectDevMode = "local"
+					defer func() { utils.DetectDevMode = savedDevMode }()
+
+					account = &newTestAccountBuilder().BYOC(false).
+						WithState(awsv1alpha1.AccountPendingVerification).WithAwsAccountID("4321").acct
+					account.Status.GlobalServiceQuotas = awsv1alpha1.AccountServiceQuota{
+						awsv1alpha1.IAMRolesPerAccount: &awsv1alpha1.ServiceQuotaStatus{
+							Value:  5000,
+							Status: awsv1alpha1.ServiceRequestCompleted,
+						},
+					}
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
+
+					_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(account.Status.State).To(Equal(AccountReady),
+						"account should be Ready when all global quotas are COMPLETED")
+				})
+				It("fails account when a global quota request is denied", func() {
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRoleAndCreateClient = func(
+						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
+						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+
+					account = &newTestAccountBuilder().BYOC(false).
+						WithGlobalServiceQuota(awsv1alpha1.AccountServiceQuota{
+							awsv1alpha1.IAMRolesPerAccount: {Value: 5000},
+						}).
+						WithState(awsv1alpha1.AccountPendingVerification).WithAwsAccountID("4321").acct
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
+
+					// Seed global quota in TODO state
+					account.Status.GlobalServiceQuotas = awsv1alpha1.AccountServiceQuota{
+						awsv1alpha1.IAMRolesPerAccount: &awsv1alpha1.ServiceQuotaStatus{
+							Value:  5000,
+							Status: awsv1alpha1.ServiceRequestTodo,
+						},
+					}
+
+					subClient.EXPECT().GetServiceQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotastypes.ServiceQuota{
+							QuotaCode: aws.String(string(awsv1alpha1.IAMRolesPerAccount)),
+							Value:     aws.Float64(0),
+						},
+					}, nil)
+					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any(), gomock.Any()).Return(
+						&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
+							RequestedQuotas: []servicequotastypes.RequestedServiceQuotaChange{
+								{
+									DesiredValue: aws.Float64(5000),
+									QuotaCode:    aws.String(string(awsv1alpha1.IAMRolesPerAccount)),
+									ServiceCode:  aws.String(string(awsv1alpha1.IAMServiceQuota)),
+									Status:       servicequotastypes.RequestStatusDenied,
+								},
+							},
+						}, nil)
+
+					_, inFlightGlobal := account.GetGlobalQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
+					err := UpdateServiceQuotaRequests(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client,
+						awsv1alpha1.RegionalServiceQuotas{}, inFlightGlobal)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(account.Status.GlobalServiceQuotas[awsv1alpha1.IAMRolesPerAccount].Status).To(Equal(awsv1alpha1.ServiceRequestDenied))
+					Expect(account.Status.State).To(Equal(AccountFailed),
+						"account should be failed when global quota request is denied")
 				})
 			})
 		})
