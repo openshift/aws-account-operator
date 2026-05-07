@@ -2,7 +2,6 @@ package account
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -35,7 +34,7 @@ func TestIAMCreateSecret(t *testing.T) {
 
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding to scheme in iam_test.go")
+		t.Fatal(err)
 	}
 
 	secret := CreateSecret(
@@ -487,7 +486,7 @@ func TestDeleteIAMUser(t *testing.T) {
 func TestDeleteIAMUsers(t *testing.T) {
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding to scheme in iam_test.go")
+		t.Fatal(err)
 	}
 
 	nullLogger := testutils.NewTestLogger().Logger()
@@ -770,7 +769,7 @@ func TestDetachRolePolicies(t *testing.T) {
 func TestCreateIAMUserSecret(t *testing.T) {
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding to scheme in iam_test.go")
+		t.Fatal(err)
 	}
 
 	nullLogger := testutils.NewTestLogger().Logger()

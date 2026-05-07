@@ -2,7 +2,6 @@ package accountclaim
 
 import (
 	"context"
-	"fmt"
 
 	apis "github.com/openshift/aws-account-operator/api"
 	"github.com/openshift/aws-account-operator/api/v1alpha1"
@@ -66,10 +65,7 @@ var _ = Describe("AccountClaim", func() {
 		ctrl         *gomock.Controller
 	)
 
-	err := apis.AddToScheme(scheme.Scheme)
-	if err != nil {
-		fmt.Printf("failed adding apis to scheme in account controller tests")
-	}
+	_ = apis.AddToScheme(scheme.Scheme)
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
 
 	BeforeEach(func() {

@@ -2,7 +2,6 @@ package account
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -310,7 +309,7 @@ func TestClaimBYOCAccount(t *testing.T) {
 
 				err := apis.AddToScheme(scheme.Scheme)
 				if err != nil {
-					fmt.Printf("failed adding to scheme in byoc_test.go")
+					t.Fatal(err)
 				}
 
 				mocks := setupDefaultMocks(t, []runtime.Object{
@@ -452,7 +451,7 @@ func TestInitializeNewCCSAccount(t *testing.T) {
 
 				err := apis.AddToScheme(scheme.Scheme)
 				if err != nil {
-					fmt.Printf("failed adding to scheme in byoc_test.go")
+					t.Fatal(err)
 				}
 
 				mocks := setupDefaultMocks(t, test.localObjects)

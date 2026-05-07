@@ -1,7 +1,6 @@
 package account
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -20,7 +19,7 @@ func TestAccountReconciler_HandleOptInRegionRequests(t *testing.T) {
 
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding to scheme in region_enablement_test.go")
+		t.Fatal(err)
 	}
 
 	nullLogger := testutils.NewTestLogger().Logger()

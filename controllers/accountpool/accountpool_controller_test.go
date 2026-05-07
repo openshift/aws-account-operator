@@ -88,7 +88,7 @@ func createAccountMock(name string, state string, claimed bool) *awsv1alpha1.Acc
 func TestReconcileAccountPool(t *testing.T) {
 	err := awsaccountapis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding to scheme in accountpoot_controller_test.go")
+		t.Fatal(err)
 	}
 
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
@@ -252,7 +252,7 @@ func TestReconcileAccountPool(t *testing.T) {
 				&ap,
 			)
 			if err != nil {
-				fmt.Printf("Failed returning mock accountPool in accountpool controller tests: %s\n", err)
+				_, _ = fmt.Printf("Failed returning mock accountPool in accountpool controller tests: %s\n", err)
 			}
 
 			_, err = rap.Reconcile(context.TODO(), reconcile.Request{
@@ -274,12 +274,12 @@ func verifyAccountPool(c client.Client, expected *awsv1alpha1.AccountPool) bool 
 	err := c.Get(context.TODO(), types.NamespacedName{Name: expected.Name, Namespace: expected.Namespace}, &ap)
 
 	if err != nil {
-		fmt.Printf("Error returning fakeclient accountPool: %s\n", err)
+		_, _ = fmt.Printf("Error returning fakeclient accountPool: %s\n", err)
 		return false
 	}
 
 	if !reflect.DeepEqual(ap.Status, expected.Status) {
-		fmt.Printf("Error comparing accountPool Status objects.\n\tExpected: %+v\n\tGot: %+v", expected.Status, ap.Status)
+		_, _ = fmt.Printf("Error comparing accountPool Status objects.\n\tExpected: %+v\n\tGot: %+v", expected.Status, ap.Status)
 		return false
 	}
 

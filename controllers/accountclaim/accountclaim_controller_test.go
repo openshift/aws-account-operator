@@ -48,12 +48,10 @@ var _ = Describe("AccountClaim", func() {
 		ctrl         *gomock.Controller
 		req          reconcile.Request
 		configMap    *v1.ConfigMap
+		err          error
 	)
 
-	err := apis.AddToScheme(scheme.Scheme)
-	if err != nil {
-		fmt.Printf("failed adding apis to scheme in account controller tests")
-	}
+	_ = apis.AddToScheme(scheme.Scheme)
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
 
 	BeforeEach(func() {
@@ -536,12 +534,10 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 		ctrl           *gomock.Controller
 		req            reconcile.Request
 		reconcileCount = 2
+		err            error
 	)
 
-	err := apis.AddToScheme(scheme.Scheme)
-	if err != nil {
-		fmt.Printf("failed adding apis to scheme in account controller tests")
-	}
+	_ = apis.AddToScheme(scheme.Scheme)
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
 
 	BeforeEach(func() {

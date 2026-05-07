@@ -362,10 +362,7 @@ var _ = Describe("Utils", func() {
 		ctrl           *gomock.Controller
 		configMap      *v1.ConfigMap
 	)
-	err := apis.AddToScheme(scheme.Scheme)
-	if err != nil {
-		fmt.Printf("failed adding apis to scheme in utils test")
-	}
+	_ = apis.AddToScheme(scheme.Scheme)
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())
 		nullTestLogger = testutils.NewTestLogger()

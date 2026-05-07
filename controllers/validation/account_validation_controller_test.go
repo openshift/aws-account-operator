@@ -738,7 +738,7 @@ func TestValidateAccount_ValidateComplianceTags(t *testing.T) {
 func TestValidateAccount_Reconcile(t *testing.T) {
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding to scheme in account_validation_controller_test.go")
+		t.Fatal(err)
 	}
 	ctrl := gomock.NewController(t)
 	newBuilder := func(ctrl *gomock.Controller) awsclient.IBuilder {

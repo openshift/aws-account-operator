@@ -2,7 +2,6 @@ package validation
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	apis "github.com/openshift/aws-account-operator/api"
@@ -78,10 +77,7 @@ var _ = Describe("AccountPool Validation", func() {
 			Spec: awsv1alpha1.AccountPoolSpec{
 				PoolSize: 1,
 			}}
-		err := apis.AddToScheme(scheme.Scheme)
-		if err != nil {
-			fmt.Printf("failed adding to scheme in account_controller_test.go")
-		}
+		_ = apis.AddToScheme(scheme.Scheme)
 
 	})
 

@@ -29,15 +29,15 @@ func ListIAMUserTags(reqLogger logr.Logger, client Client, userName string) (*ia
 
 		switch {
 		case errors.As(err, &noSuchEntityErr):
-			fmt.Println("NoSuchEntity", noSuchEntityErr.ErrorMessage())
+			utils.LogAwsError(reqLogger, "NoSuchEntity", nil, err)
 		case errors.As(err, &serviceFailureErr):
-			fmt.Println("ServiceFailure", serviceFailureErr.ErrorMessage())
+			utils.LogAwsError(reqLogger, "ServiceFailure", nil, err)
 		default:
 			var apiErr smithy.APIError
 			if errors.As(err, &apiErr) {
-				fmt.Println(apiErr.ErrorMessage())
+				utils.LogAwsError(reqLogger, "AWS API error", nil, err)
 			} else {
-				fmt.Println(err.Error())
+				reqLogger.Error(err, "Unexpected error listing IAM user tags")
 			}
 		}
 		return result, err
@@ -73,8 +73,7 @@ func ListIAMUsers(reqLogger logr.Logger, client Client) ([]types.User, error) {
 			msg := "Unexpected AWS error"
 			utils.LogAwsError(reqLogger, msg, nil, err)
 		} else {
-			utils.LogAwsError(reqLogger, "Unexpected error when listing IAM users", nil, err)
-			fmt.Println(err.Error())
+			reqLogger.Error(err, "Unexpected error when listing IAM users")
 		}
 		return iamUserList, err
 	}

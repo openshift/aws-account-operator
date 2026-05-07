@@ -560,8 +560,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	err = ValidateAccountOrigin(account)
 	if err != nil {
 		// Decide who we will requeue now
-		validationError, ok := err.(*AccountValidationError)
-		if ok && validationError.Type == InvalidAccount {
+		var validationError *AccountValidationError
+		if errors.As(err, &validationError) && validationError.Type == InvalidAccount {
 			return utils.DoNotRequeue()
 		}
 		return utils.RequeueWithError(err)
@@ -569,8 +569,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 
 	err = ValidateAwsAccountId(account)
 	if err != nil {
-		validationError, ok := err.(*AccountValidationError)
-		if ok && validationError.Type == MissingAWSAccount {
+		var validationError *AccountValidationError
+		if errors.As(err, &validationError) && validationError.Type == MissingAWSAccount {
 			return utils.DoNotRequeue()
 		}
 		return utils.RequeueWithError(err)
@@ -579,8 +579,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"], cm.Data["base"])
 	if err != nil {
 		// Decide who we will requeue now
-		validationError, ok := err.(*AccountValidationError)
-		if ok && validationError.Type == AccountMoveFailed {
+		var validationError *AccountValidationError
+		if errors.As(err, &validationError) && validationError.Type == AccountMoveFailed {
 			return utils.RequeueAfter(moveWaitTime)
 		}
 		return utils.RequeueWithError(err)

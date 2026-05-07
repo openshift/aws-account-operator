@@ -1049,8 +1049,8 @@ func (r *AccountReconciler) BuildAccount(reqLogger logr.Logger, awsClient awscli
 	orgOutput, orgErr := CreateAccount(reqLogger, awsClient, account.Name, email)
 	// If it was an api or a limit issue don't modify account and exit if anything else set to failed
 	if orgErr != nil {
-		switch orgErr {
-		case awsv1alpha1.ErrAwsFailedCreateAccount:
+		switch {
+		case errors.Is(orgErr, awsv1alpha1.ErrAwsFailedCreateAccount):
 			utils.SetAccountStatus(account, "Failed to create AWS Account", awsv1alpha1.AccountCreationFailed, AccountFailed)
 			err := r.statusUpdate(account)
 			if err != nil {
@@ -1060,7 +1060,7 @@ func (r *AccountReconciler) BuildAccount(reqLogger logr.Logger, awsClient awscli
 			reqLogger.Error(awsv1alpha1.ErrAwsFailedCreateAccount, "Failed to create AWS Account")
 			return "", orgErr
 
-		case awsv1alpha1.ErrAwsAccountLimitExceeded:
+		case errors.Is(orgErr, awsv1alpha1.ErrAwsAccountLimitExceeded):
 			log.Error(orgErr, "Failed to create AWS Account limit reached")
 			return "", orgErr
 
@@ -1321,10 +1321,10 @@ func matchSubstring(roleID, role string) (bool, error) {
 }
 
 func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountConditionType) {
-	switch err {
-	case awsv1alpha1.ErrInvalidToken:
+	switch {
+	case errors.Is(err, awsv1alpha1.ErrInvalidToken):
 		return "InvalidClientTokenId", awsv1alpha1.AccountAuthenticationError
-	case awsv1alpha1.ErrAccessDenied:
+	case errors.Is(err, awsv1alpha1.ErrAccessDenied):
 		return "AccessDenied", awsv1alpha1.AccountAuthorizationError
 	default:
 		var aerr smithy.APIError

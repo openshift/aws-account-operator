@@ -395,12 +395,12 @@ func CleanUpIAM(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *aw
 
 	// We delete user policies, access keys and finally the IAM user themselves.
 	if err := DeleteIAMUsers(reqLogger, awsClient, accountCR); err != nil {
-		return fmt.Errorf("failed deleting IAM users: %v", err)
+		return fmt.Errorf("failed deleting IAM users: %w", err)
 	}
 
 	// If user deletion is successful we can then clean role policies and roles.
 	if err := cleanIAMRoles(reqLogger, awsClient, accountCR); err != nil {
-		return fmt.Errorf("failed cleaning IAM roles: %v", err)
+		return fmt.Errorf("failed cleaning IAM roles: %w", err)
 	}
 
 	return nil
@@ -410,12 +410,12 @@ func deleteIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, user *iamt
 	var err error
 	// Detach User Policies
 	if err = detachUserPolicies(awsClient, user); err != nil {
-		return fmt.Errorf("failed to detach user policies: %v", err)
+		return fmt.Errorf("failed to detach user policies: %w", err)
 	}
 
 	// Detach User Access Keys
 	if err = deleteAllAccessKeys(awsClient, user); err != nil {
-		return fmt.Errorf("failed to delete all access keys: %v", err)
+		return fmt.Errorf("failed to delete all access keys: %w", err)
 	}
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
@@ -448,7 +448,7 @@ func DeleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR
 
 	users, err := listIAMUsers(reqLogger, awsClient)
 	if err != nil {
-		return fmt.Errorf("failed to list aws iam users: %v", err)
+		return fmt.Errorf("failed to list aws iam users: %w", err)
 	}
 
 	for _, user := range users {
@@ -456,7 +456,7 @@ func DeleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR
 		clusterNamespaceTag := false
 		getUser, err := awsClient.GetUser(context.TODO(), &iam.GetUserInput{UserName: user.UserName})
 		if err != nil {
-			return fmt.Errorf("failed to get aws user: %v", err)
+			return fmt.Errorf("failed to get aws user: %w", err)
 		}
 		for _, tag := range getUser.User.Tags {
 			if aws.ToString(tag.Key) == awsv1alpha1.ClusterAccountNameTagKey && aws.ToString(tag.Value) == accountCR.Name {
@@ -481,13 +481,13 @@ func DeleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR
 func cleanIAMRole(reqLogger logr.Logger, awsClient awsclient.Client, role *iamtypes.Role) error {
 	// remove attached policies from the role before deletion
 	if err := detachRolePolicies(awsClient, *role.RoleName); err != nil {
-		return fmt.Errorf("failed to detach role policies: %v", err)
+		return fmt.Errorf("failed to detach role policies: %w", err)
 	}
 
 	_, err := awsClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{RoleName: role.RoleName})
 	reqLogger.Info(fmt.Sprintf("Deleting IAM role: %s", *role.RoleName))
 	if err != nil {
-		return fmt.Errorf(fmt.Sprintf("unable to delete IAM role %s", *role.RoleName), err)
+		return fmt.Errorf("unable to delete IAM role %s: %w", *role.RoleName, err)
 	}
 
 	return nil

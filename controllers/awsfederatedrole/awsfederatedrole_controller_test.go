@@ -36,7 +36,7 @@ func generateAccountAccesses(num int) []runtime.Object {
 func TestAWSFederatedRoleReconciler_annotateAccountAccesses(t *testing.T) {
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding to scheme in awsfederatedrole_controller_test.go")
+		t.Fatal(err)
 	}
 
 	tests := []struct {
