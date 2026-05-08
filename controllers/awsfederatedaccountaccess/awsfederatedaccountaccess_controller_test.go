@@ -133,7 +133,7 @@ func TestCheckAndDeletePolicy(t *testing.T) {
 			mockAWSClient.EXPECT().ListPolicyVersions(gomock.Any(), &iam.ListPolicyVersionsInput{PolicyArn: policyArn}).Return(test.listPolicyVersionsOutput, nil)
 			mockAWSClient.EXPECT().DeletePolicy(
 				gomock.Any(),
-			&iam.DeletePolicyInput{PolicyArn: policyArn}).Return(test.deletePolicyOut, test.err)
+				&iam.DeletePolicyInput{PolicyArn: policyArn}).Return(test.deletePolicyOut, test.err)
 			if test.listPolicyVersionsOutput.Versions != nil {
 				mockAWSClient.EXPECT().DeletePolicyVersion(gomock.Any(), gomock.Any()).Return(nil, test.err)
 			}
@@ -350,7 +350,7 @@ func TestCreateOrUpdateIAMPolicy(t *testing.T) {
 	mockAWSClient.EXPECT().CreatePolicy(gomock.Any(), &iam.CreatePolicyInput{
 		PolicyName:     aws.String(policyName),
 		Description:    aws.String(afr.Spec.AWSCustomPolicy.Description),
-		PolicyDocument: aws.String(string(jsonPolicyDoc)),
+		PolicyDocument: aws.String(jsonPolicyDoc),
 	}).Return(
 		nil,
 		&iamtypes.EntityAlreadyExistsException{Message: aws.String("")},
@@ -365,7 +365,7 @@ func TestCreateOrUpdateIAMPolicy(t *testing.T) {
 	mockAWSClient.EXPECT().CreatePolicy(gomock.Any(), &iam.CreatePolicyInput{
 		PolicyName:     aws.String(policyName),
 		Description:    aws.String(afr.Spec.AWSCustomPolicy.Description),
-		PolicyDocument: aws.String(string(jsonPolicyDoc)),
+		PolicyDocument: aws.String(jsonPolicyDoc),
 	}).Return(
 		&iam.CreatePolicyOutput{
 			Policy: &iamtypes.Policy{},

@@ -92,17 +92,17 @@ func newTotalAccountWatcher(
 // message is sent on the stopCh
 func (s *AccountWatcher) Start(log logr.Logger, stopCh context.Context, client client.Client, watchInterval time.Duration) {
 	log.Info("Starting the totalAccountWatcher")
-	s = initialize(client, watchInterval)
+	s = initialize(client, watchInterval) //nolint:contextcheck
 	for {
 		select {
 		case <-time.After(s.watchInterval):
-			err := s.UpdateTotalAccounts(log)
+			err := s.UpdateTotalAccounts(log) //nolint:contextcheck
 			if err != nil {
 				log.Error(err, "totalAccountWatcher not started, awsLimit won't be updated")
 			}
 		case <-stopCh.Done():
 			log.Info("Stopping the totalAccountWatcher")
-			//nolint SA4011
+			//nolint:staticcheck // SA4011
 			break
 		}
 	}

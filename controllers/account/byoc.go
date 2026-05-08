@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -45,7 +46,7 @@ func claimBYOCAccount(r *AccountReconciler, reqLogger logr.Logger, currentAcctIn
 	return nil
 }
 
-func (r *AccountReconciler) initializeNewCCSAccount(reqLogger logr.Logger, account *awsv1alpha1.Account) (reconcile.Result, error) {
+func (r *AccountReconciler) initializeNewCCSAccount(reqLogger logr.Logger, account *awsv1alpha1.Account) (reconcile.Result, error) { //nolint:unparam // reqLogger always non-nil but kept for consistent interface
 	accountClaim, acctClaimErr := r.getAccountClaim(account)
 	if acctClaimErr != nil {
 		// TODO: Unrecoverable
@@ -296,7 +297,7 @@ func (r *AccountReconciler) getSTSClient(log logr.Logger, accountClaim *awsv1alp
 	return customerClient, customerAccountCreds, nil
 }
 
-func (r *AccountReconciler) getCCSClient(currentAcct *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) (awsclient.Client, error) {
+func (r *AccountReconciler) getCCSClient(currentAcct *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) (awsclient.Client, error) { //nolint:unparam // currentAcct param reserved for future use
 	awsRegion := config.GetDefaultRegion()
 
 	// Get credentials

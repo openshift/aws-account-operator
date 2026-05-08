@@ -89,11 +89,11 @@ func TestGetPayerAccountIDs(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	tests := []struct {
-		name           string
-		configMap      *corev1.ConfigMap
+		name            string
+		configMap       *corev1.ConfigMap
 		createConfigMap bool
-		expectedIDs    []string
-		expectError    bool
+		expectedIDs     []string
+		expectError     bool
 	}{
 		{
 			name: "valid configmap with multiple account IDs",

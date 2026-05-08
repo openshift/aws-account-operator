@@ -58,12 +58,10 @@ func MoveAccountToOU(r *AccountClaimReconciler, reqLogger logr.Logger, awsClient
 	err = MoveAccount(reqLogger, awsClient, account, ouID, rootID)
 	if err != nil {
 		// If error was cause by the account already being inside the OU, simply update the accountclaim cr and returns
-		switch err {
-		case awsv1alpha1.ErrAccAlreadyInOU:
-			// Log account already in desired location
+		switch {
+		case errors.Is(err, awsv1alpha1.ErrAccAlreadyInOU):
 			accountMovedMsg := fmt.Sprintf("OU: Account %s was already in the desired OU %s", account.Name, ouName)
 			reqLogger.Info(accountMovedMsg)
-			// Update accountclaim spec
 			accountClaim.Spec.AccountOU = ouID
 			return r.specUpdate(reqLogger, accountClaim)
 		}

@@ -80,7 +80,7 @@ var _ = Describe("AccountPool Validation", func() {
 			}}
 		err := apis.AddToScheme(scheme.Scheme)
 		if err != nil {
-			fmt.Printf("failed adding to scheme in account_controller_test.go")
+			fmt.Printf("failed adding to scheme in account_controller_test.go") //nolint:errcheck
 		}
 
 	})

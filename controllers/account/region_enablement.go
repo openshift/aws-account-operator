@@ -44,7 +44,7 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 			reqLogger.Error(err, "failed to get Opt-In status ")
 		}
 
-		switch requestStatus {
+		switch requestStatus { //nolint:exhaustive // only handling known opt-in states
 		case awsv1alpha1.OptInRequestEnabled:
 			reqLogger.Info(
 				fmt.Sprintf("Region Enablement COMPLETED for RegionCode [%s]",
@@ -122,7 +122,7 @@ func GetOptInRegionStatus(reqLogger logr.Logger, awsClientBuilder awsclient.IBui
 	return reconcile.Result{RequeueAfter: 60 * time.Second, Requeue: true}, err
 }
 
-func updateOptInRegionRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, optInRequests awsv1alpha1.OptInRegions, count int) error {
+func updateOptInRegionRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, optInRequests awsv1alpha1.OptInRegions, count int) error { //nolint:unparam // count param reserved for future use
 	for region, regionRequest := range optInRequests {
 		regionLogger := reqLogger.WithValues("Region", region)
 		roleToAssume := currentAcctInstance.GetAssumeRole()
@@ -141,7 +141,7 @@ func updateOptInRegionRequests(reqLogger logr.Logger, awsClientBuilder awsclient
 	return nil
 }
 
-func enableOptInRegions(reqLogger logr.Logger, client awsclient.Client, regionCode string) (bool, error) {
+func enableOptInRegions(reqLogger logr.Logger, client awsclient.Client, regionCode string) (bool, error) { //nolint:unparam // reqLogger param reserved for future logging
 	var result *account.EnableRegionOutput
 	var alreadySubmitted bool
 
@@ -272,7 +272,7 @@ func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode
 	return false, err
 }
 
-func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, regionCode string) (awsv1alpha1.OptInRequestStatus, error) {
+func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, regionCode string) (awsv1alpha1.OptInRequestStatus, error) { //nolint:unparam // reqLogger param reserved for future logging
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
 	retry.DefaultDelay = 3 * time.Second

@@ -68,7 +68,7 @@ var _ = Describe("AccountClaim", func() {
 
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding apis to scheme in account controller tests")
+		fmt.Printf("failed adding apis to scheme in account controller tests") //nolint:errcheck
 	}
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
 

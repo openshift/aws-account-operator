@@ -75,7 +75,7 @@ func printVersion() {
 	setupLog.Info(fmt.Sprintf("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH))
 }
 
-func main() {
+func main() { //nolint:gocyclo // large main function, complexity is inherent
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
@@ -211,7 +211,7 @@ func main() {
 
 	// initialize metrics collector
 	localmetrics.Collector = localmetrics.NewMetricsCollector(mgr.GetCache())
-	switch utils.DetectDevMode {
+	switch utils.DetectDevMode { //nolint:exhaustive // only handling local mode case intentionally
 	case utils.DevModeLocal:
 		if err := prometheus.Register(localmetrics.Collector); err != nil {
 			setupLog.Error(err, "Failed to register Prometheus metrics")

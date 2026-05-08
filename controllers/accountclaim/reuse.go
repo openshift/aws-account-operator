@@ -32,7 +32,7 @@ const (
 	AccountFailed = "Failed"
 )
 
-func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error { //nolint:gocyclo // large function, complexity is inherent
 
 	// Get account claimed by deleted accountclaim
 	reusedAccount, err := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)

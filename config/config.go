@@ -128,7 +128,7 @@ func GetPayerAccountIDs(kubeClient client.Client) ([]string, error) {
 	if err != nil {
 		// If ConfigMap doesn't exist (e.g., in test environments), return empty list
 		// This allows the operator to function without the payer account blocklist
-		return []string{}, nil
+		return []string{}, nil //nolint:nilerr // intentionally swallowing error: ConfigMap may not exist in test environments
 	}
 
 	payerAccountsString, ok := cm.Data["payer-account-ids"]

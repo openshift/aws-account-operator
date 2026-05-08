@@ -327,7 +327,7 @@ func TestValidateAccountOU(t *testing.T) {
 			r := &AccountValidationReconciler{}
 			r.OUNameIDMap = tt.ouMap
 			err := r.ValidateAccountOU(tt.awsClient, tt.account, testPoolOUID, testBaseOUID)
-			if err != tt.wantErr {
+			if !errors.Is(err, tt.wantErr) {
 				var ave *AccountValidationError
 				if errors.As(err, &ave) {
 					if ave.Err.Error() == tt.wantErr.Error() {
@@ -413,7 +413,8 @@ func TestValidateAccountOrigin(t *testing.T) {
 				t.Errorf("ValidateAccountOrigin() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
 				if tt.wantErr {
-					err, ok := err.(*AccountValidationError)
+					err := &AccountValidationError{}
+					ok := errors.As(err, &err)
 					if !ok {
 						t.Errorf("ValidateAccountOrigin() error, expected AccountValidationError")
 					}
@@ -570,7 +571,8 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 				t.Errorf("ValidateAccountTags() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
 				if tt.wantErr {
-					err, ok := err.(*AccountValidationError)
+					err := &AccountValidationError{}
+					ok := errors.As(err, &err)
 					if !ok {
 						t.Errorf("ValidateAccountTags() error, expected error of type AccountValidationError but was %v", err.Type)
 					}
@@ -738,7 +740,7 @@ func TestValidateAccount_ValidateComplianceTags(t *testing.T) {
 func TestValidateAccount_Reconcile(t *testing.T) {
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding to scheme in account_validation_controller_test.go")
+		fmt.Printf("failed adding to scheme in account_validation_controller_test.go") //nolint:errcheck
 	}
 	ctrl := gomock.NewController(t)
 	newBuilder := func(ctrl *gomock.Controller) awsclient.IBuilder {

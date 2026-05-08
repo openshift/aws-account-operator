@@ -576,7 +576,7 @@ var awsApiMaxRetries int = 10
 
 // NewClient creates our client wrapper object for the actual AWS clients we use.
 // If controllerName is nonempty, metrics are collected timing and counting each AWS request.
-func newClient(controllerName, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
+func newClient(controllerName, awsAccessID, awsAccessSecret, token, region string) (Client, error) { //nolint:unparam // controllerName always same value but kept for metrics labeling
 	// Create HTTP client with timeout
 	httpClient := &http.Client{
 		Timeout: awsApiTimeout,

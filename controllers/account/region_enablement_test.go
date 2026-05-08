@@ -20,7 +20,7 @@ func TestAccountReconciler_HandleOptInRegionRequests(t *testing.T) {
 
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding to scheme in region_enablement_test.go")
+		fmt.Printf("failed adding to scheme in region_enablement_test.go") //nolint:errcheck
 	}
 
 	nullLogger := testutils.NewTestLogger().Logger()

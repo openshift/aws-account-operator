@@ -49,7 +49,7 @@ type AWSFederatedRoleReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.2/pkg/reconcile
-func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.Request) (ctrl.Result, error) {
+func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.Request) (ctrl.Result, error) { //nolint:gocyclo // large reconcile function, complexity is inherent
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	if config.IsFedramp() {
@@ -59,7 +59,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 
 	// Fetch the AWSFederatedRole instance
 	instance := &awsv1alpha1.AWSFederatedRole{}
-	err := r.Get(context.TODO(), request.NamespacedName, instance)
+	err := r.Get(context.TODO(), request.NamespacedName, instance) //nolint:contextcheck
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -74,7 +74,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 	// Ensure the role has a finalizer
 	if !utils.Contains(instance.GetFinalizers(), utils.Finalizer) {
 
-		err := r.addFinalizer(reqLogger, instance)
+		err := r.addFinalizer(reqLogger, instance) //nolint:contextcheck
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -86,13 +86,13 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 		if utils.Contains(instance.GetFinalizers(), utils.Finalizer) {
 
 			reqLogger.Info("Cleaning up FederatedAccountAccess Roles")
-			err = r.finalizeFederateRole(reqLogger, instance)
+			err = r.finalizeFederateRole(reqLogger, instance) //nolint:contextcheck
 			if err != nil {
 				return reconcile.Result{}, err
 			}
 
 			reqLogger.Info("Removing Finalizer")
-			err = r.removeFinalizer(reqLogger, instance, utils.Finalizer)
+			err = r.removeFinalizer(reqLogger, instance, utils.Finalizer) //nolint:contextcheck
 			if err != nil {
 				return reconcile.Result{}, err
 			}
@@ -128,7 +128,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 			"NoAWSCustomPolicyOrAWSManagedPolicies",
 			"AWSCustomPolicy and/or AWSManagedPolicies do not exist",
 			utils.UpdateConditionNever)
-		err = r.Client.Status().Update(context.TODO(), instance)
+		err = r.Client.Status().Update(context.TODO(), instance) //nolint:contextcheck
 		if err != nil {
 			log.Error(err, "Error updating conditions")
 			return reconcile.Result{}, err
@@ -140,7 +140,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 	}
 
 	// Attempts to create the policy to ensure it's a valid policy
-	createOutput, err := awsClient.CreatePolicy(context.TODO(), &iam.CreatePolicyInput{
+	createOutput, err := awsClient.CreatePolicy(context.TODO(), &iam.CreatePolicyInput{ //nolint:contextcheck
 		Description:    &instance.Spec.AWSCustomPolicy.Description,
 		PolicyName:     &instance.Spec.AWSCustomPolicy.Name,
 		PolicyDocument: &jsonPolicy,
@@ -158,7 +158,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 				"InvalidCustomerPolicy",
 				"Custom Policy is malformed",
 				utils.UpdateConditionNever)
-			err = r.Client.Status().Update(context.TODO(), instance)
+			err = r.Client.Status().Update(context.TODO(), instance) //nolint:contextcheck
 			if err != nil {
 				log.Error(err, "Error updating conditions")
 				return reconcile.Result{}, err
@@ -171,7 +171,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 	}
 
 	// Cleanup the created policy since it's only for validation
-	_, err = awsClient.DeletePolicy(context.TODO(), &iam.DeletePolicyInput{PolicyArn: createOutput.Policy.Arn})
+	_, err = awsClient.DeletePolicy(context.TODO(), &iam.DeletePolicyInput{PolicyArn: createOutput.Policy.Arn}) //nolint:contextcheck
 	if err != nil {
 		log.Error(err, "Error deleting custom policy")
 		return reconcile.Result{}, err
@@ -181,7 +181,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 	// Ensures the managed IAM Policies exist
 	log.Info("Validating Managed Policies")
 	// List all policies from AWS
-	managedPolicies, err := getAllPolicies(awsClient)
+	managedPolicies, err := getAllPolicies(awsClient) //nolint:contextcheck
 	if err != nil {
 		utils.LogAwsError(log, "Error listing managed AWS policies", err, err)
 		return reconcile.Result{}, err
@@ -203,7 +203,7 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 				"InvalidManagedPolicy",
 				"Managed policy does not exist",
 				utils.UpdateConditionNever)
-			err = r.Client.Status().Update(context.TODO(), instance)
+			err = r.Client.Status().Update(context.TODO(), instance) //nolint:contextcheck
 			if err != nil {
 				log.Error(err, "Error updating conditions")
 				return reconcile.Result{}, err
@@ -223,13 +223,13 @@ func (r *AWSFederatedRoleReconciler) Reconcile(_ context.Context, request ctrl.R
 		"AllPoliciesValid",
 		"All managed and custom policies are validated",
 		utils.UpdateConditionNever)
-	err = r.Client.Status().Update(context.TODO(), instance)
+	err = r.Client.Status().Update(context.TODO(), instance) //nolint:contextcheck
 	if err != nil {
 		log.Error(err, "Error updating conditions")
 		return reconcile.Result{}, err
 	}
 
-	if err := annotateAccountAccesses(r.Client, instance.Name); err != nil {
+	if err := annotateAccountAccesses(r.Client, instance.Name); err != nil { //nolint:contextcheck
 		return ctrl.Result{}, err
 	}
 
@@ -290,7 +290,7 @@ func getAllPolicies(awsClient awsclient.Client) ([]iamtypes.Policy, error) {
 // Create list of policy names from a Policy slice
 func buildPolicyNameSlice(policies []iamtypes.Policy) []string {
 
-	var policyNames []string
+	policyNames := make([]string, 0, len(policies))
 	for _, policy := range policies {
 		policyNames = append(policyNames, *policy.PolicyName)
 	}

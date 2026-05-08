@@ -3,6 +3,8 @@ package awsfederatedrole
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	apis "github.com/openshift/aws-account-operator/api"
 	"github.com/openshift/aws-account-operator/api/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -10,7 +12,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"testing"
 )
 
 const testRoleName = "test-role"
@@ -36,7 +37,7 @@ func generateAccountAccesses(num int) []runtime.Object {
 func TestAWSFederatedRoleReconciler_annotateAccountAccesses(t *testing.T) {
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding to scheme in awsfederatedrole_controller_test.go")
+		fmt.Printf("failed adding to scheme in awsfederatedrole_controller_test.go") //nolint:errcheck
 	}
 
 	tests := []struct {

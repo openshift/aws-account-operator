@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"go.uber.org/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -88,7 +88,7 @@ func createAccountMock(name string, state string, claimed bool) *awsv1alpha1.Acc
 func TestReconcileAccountPool(t *testing.T) {
 	err := awsaccountapis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding to scheme in accountpoot_controller_test.go")
+		fmt.Printf("failed adding to scheme in accountpoot_controller_test.go") //nolint:errcheck
 	}
 
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
@@ -252,7 +252,7 @@ func TestReconcileAccountPool(t *testing.T) {
 				&ap,
 			)
 			if err != nil {
-				fmt.Printf("Failed returning mock accountPool in accountpool controller tests: %s\n", err)
+				fmt.Printf("Failed returning mock accountPool in accountpool controller tests: %s\n", err) //nolint:errcheck
 			}
 
 			_, err = rap.Reconcile(context.TODO(), reconcile.Request{
@@ -274,12 +274,12 @@ func verifyAccountPool(c client.Client, expected *awsv1alpha1.AccountPool) bool 
 	err := c.Get(context.TODO(), types.NamespacedName{Name: expected.Name, Namespace: expected.Namespace}, &ap)
 
 	if err != nil {
-		fmt.Printf("Error returning fakeclient accountPool: %s\n", err)
+		fmt.Printf("Error returning fakeclient accountPool: %s\n", err) //nolint:errcheck
 		return false
 	}
 
 	if !reflect.DeepEqual(ap.Status, expected.Status) {
-		fmt.Printf("Error comparing accountPool Status objects.\n\tExpected: %+v\n\tGot: %+v", expected.Status, ap.Status)
+		fmt.Printf("Error comparing accountPool Status objects.\n\tExpected: %+v\n\tGot: %+v", expected.Status, ap.Status) //nolint:errcheck
 		return false
 	}
 

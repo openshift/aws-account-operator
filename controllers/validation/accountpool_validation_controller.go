@@ -44,7 +44,7 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 	reqLogger.Info("Fetching accountpool")
 
 	currentAccountPool := &awsv1alpha1.AccountPool{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: request.Name, Namespace: awsv1alpha1.AccountCrNamespace}, currentAccountPool)
+	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: request.Name, Namespace: awsv1alpha1.AccountCrNamespace}, currentAccountPool) //nolint:contextcheck
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -55,7 +55,7 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
-	cm, err := utils.GetOperatorConfigMap(r.Client)
+	cm, err := utils.GetOperatorConfigMap(r.Client) //nolint:contextcheck
 	if err != nil {
 		logs.Error(err, "Could not retrieve the operator configmap")
 		return utils.RequeueAfter(5 * time.Minute)
@@ -73,13 +73,13 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 
 	reqLogger.Info("Checking ConfigMap for ServiceQuotas")
 	// check if accountpool has servicequota defined in configmap
-	reginalServiceQuotas, err := utils.GetServiceQuotasFromAccountPool(reqLogger, currentAccountPool.Name, r.Client)
+	reginalServiceQuotas, err := utils.GetServiceQuotasFromAccountPool(reqLogger, currentAccountPool.Name, r.Client) //nolint:contextcheck
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
 	reqLogger.Info("Updating Account ServiceQuotas")
-	_, err = r.checkAccountServiceQuota(reqLogger, currentAccountPool.Name, reginalServiceQuotas, isEnabled)
+	_, err = r.checkAccountServiceQuota(reqLogger, currentAccountPool.Name, reginalServiceQuotas, isEnabled) //nolint:contextcheck
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -124,7 +124,7 @@ func (r *AccountPoolValidationReconciler) getAccountPoolAccounts(accountPoolName
 }
 
 // Updates Account Spec ServiceQuotas to match what's in the ConfigMap
-func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger logr.Logger, accountPoolName string, parsedRegionalServiceQuotas awsv1alpha1.RegionalServiceQuotas, isEnabled bool) (ctrl.Result, error) {
+func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger logr.Logger, accountPoolName string, parsedRegionalServiceQuotas awsv1alpha1.RegionalServiceQuotas, isEnabled bool) (ctrl.Result, error) { //nolint:unparam // isEnabled always same value but kept for future use
 	accountList, err := r.getAccountPoolAccounts(accountPoolName)
 	if err != nil {
 		reqLogger.Error(err, "Failed to get AccountPool accounts")

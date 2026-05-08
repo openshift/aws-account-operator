@@ -29,15 +29,15 @@ func ListIAMUserTags(reqLogger logr.Logger, client Client, userName string) (*ia
 
 		switch {
 		case errors.As(err, &noSuchEntityErr):
-			fmt.Println("NoSuchEntity", noSuchEntityErr.ErrorMessage())
+			fmt.Println("NoSuchEntity", noSuchEntityErr.ErrorMessage()) //nolint:errcheck
 		case errors.As(err, &serviceFailureErr):
-			fmt.Println("ServiceFailure", serviceFailureErr.ErrorMessage())
+			fmt.Println("ServiceFailure", serviceFailureErr.ErrorMessage()) //nolint:errcheck
 		default:
 			var apiErr smithy.APIError
 			if errors.As(err, &apiErr) {
-				fmt.Println(apiErr.ErrorMessage())
+				fmt.Println(apiErr.ErrorMessage()) //nolint:errcheck
 			} else {
-				fmt.Println(err.Error())
+				fmt.Println(err.Error()) //nolint:errcheck
 			}
 		}
 		return result, err
@@ -74,7 +74,7 @@ func ListIAMUsers(reqLogger logr.Logger, client Client) ([]types.User, error) {
 			utils.LogAwsError(reqLogger, msg, nil, err)
 		} else {
 			utils.LogAwsError(reqLogger, "Unexpected error when listing IAM users", nil, err)
-			fmt.Println(err.Error())
+			fmt.Println(err.Error()) //nolint:errcheck
 		}
 		return iamUserList, err
 	}
@@ -126,9 +126,9 @@ func CheckIAMUserExists(reqLogger logr.Logger, client Client, userName string) (
 					utils.LogAwsError(reqLogger, "checkIAMUserExists: Unexpected AWS Error when checking IAM user exists", nil, err)
 					return false, nil, awsv1alpha1.ErrAccessDenied
 				}
-				time.Sleep(time.Duration(time.Duration(i*5) * time.Second))
+				time.Sleep(time.Duration(i*5) * time.Second)
 			} else {
-				return false, nil, fmt.Errorf("unable to check if user %s exists error: %s", userName, err)
+				return false, nil, fmt.Errorf("unable to check if user %s exists error: %w", userName, err)
 			}
 		} else {
 			break
@@ -185,7 +185,7 @@ func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Ac
 					utils.LogAwsError(reqLogger, "CreateIAMUser: Unexpected AWS Error during creation of IAM user", nil, err)
 					return &iam.CreateUserOutput{}, err
 				}
-				time.Sleep(time.Duration(time.Duration(i*5) * time.Second))
+				time.Sleep(time.Duration(i*5) * time.Second)
 			} else {
 				return &iam.CreateUserOutput{}, err
 			}

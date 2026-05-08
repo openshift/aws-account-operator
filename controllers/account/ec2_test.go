@@ -264,29 +264,29 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 				awsClientBuilder: mockAWSBuilder,
 				shardName:        "test",
 			}, args{
-			reqLogger: testutils.NewTestLogger(),
-			account: &awsv1alpha1.Account{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      TestAccountName,
-					Namespace: TestAccountNamespace,
+				reqLogger: testutils.NewTestLogger(),
+				account: &awsv1alpha1.Account{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      TestAccountName,
+						Namespace: TestAccountNamespace,
+					},
 				},
-			},
-			regions: []awsv1alpha1.AwsRegions{
-				{
-					Name: "us-east-1",
-				}},
-			creds: &sts.AssumeRoleOutput{
-				AssumedRoleUser: &ststypes.AssumedRoleUser{},
-				Credentials: &ststypes.Credentials{
-					AccessKeyId:     aws.String("123456"),
-					Expiration:      &time.Time{},
-					SecretAccessKey: aws.String("123456"),
-					SessionToken:    aws.String("123456"),
+				regions: []awsv1alpha1.AwsRegions{
+					{
+						Name: "us-east-1",
+					}},
+				creds: &sts.AssumeRoleOutput{
+					AssumedRoleUser: &ststypes.AssumedRoleUser{},
+					Credentials: &ststypes.Credentials{
+						AccessKeyId:     aws.String("123456"),
+						Expiration:      &time.Time{},
+						SecretAccessKey: aws.String("123456"),
+						SessionToken:    aws.String("123456"),
+					},
+					PackedPolicySize: new(int32),
 				},
-				PackedPolicySize: new(int32),
-			},
-			amiOwner: "",
-		}},
+				amiOwner: "",
+			}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

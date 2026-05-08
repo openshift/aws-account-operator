@@ -25,7 +25,7 @@ func (r *AccountClaimReconciler) addFinalizer(reqLogger logr.Logger, accountClai
 	return nil
 }
 
-func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, finalizerName string) error {
+func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, finalizerName string) error { //nolint:unparam // finalizerName always same value but kept for clarity
 	reqLogger.Info("Removing Finalizer for the AccountClaim")
 
 	maxRetries := 5

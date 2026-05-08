@@ -465,13 +465,13 @@ func ValidateRemoval(account awsv1alpha1.Account) error {
 	return nil
 }
 
-func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
+func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) { //nolint:gocyclo // large reconcile function, complexity is inherent
 	log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Setup: retrieve account and awsClient
 	var account awsv1alpha1.Account
-	err := r.Client.Get(context.TODO(), request.NamespacedName, &account)
+	err := r.Client.Get(context.TODO(), request.NamespacedName, &account) //nolint:contextcheck
 	if err != nil {
 		log.Info("Account does not exist", "account-request", request.NamespacedName, "error", err)
 		return utils.DoNotRequeue()
@@ -487,7 +487,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		return utils.DoNotRequeue()
 	}
 
-	cm, err := utils.GetOperatorConfigMap(r.Client)
+	cm, err := utils.GetOperatorConfigMap(r.Client) //nolint:contextcheck
 	if err != nil {
 		log.Error(err, "Could not retrieve the operator configmap")
 		return utils.RequeueAfter(5 * time.Minute)
@@ -560,7 +560,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	err = ValidateAccountOrigin(account)
 	if err != nil {
 		// Decide who we will requeue now
-		validationError, ok := err.(*AccountValidationError)
+		validationError := &AccountValidationError{}
+		ok := errors.As(err, &validationError)
 		if ok && validationError.Type == InvalidAccount {
 			return utils.DoNotRequeue()
 		}
@@ -569,17 +570,19 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 
 	err = ValidateAwsAccountId(account)
 	if err != nil {
-		validationError, ok := err.(*AccountValidationError)
+		validationError := &AccountValidationError{}
+		ok := errors.As(err, &validationError)
 		if ok && validationError.Type == MissingAWSAccount {
 			return utils.DoNotRequeue()
 		}
 		return utils.RequeueWithError(err)
 	}
 
-	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"], cm.Data["base"])
+	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"], cm.Data["base"]) //nolint:contextcheck
 	if err != nil {
 		// Decide who we will requeue now
-		validationError, ok := err.(*AccountValidationError)
+		validationError := &AccountValidationError{}
+		ok := errors.As(err, &validationError)
 		if ok && validationError.Type == AccountMoveFailed {
 			return utils.RequeueAfter(moveWaitTime)
 		}
@@ -594,9 +597,10 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 			log.Info("Cluster configuration is missing a shardName value.  Skipping validation for this tag.")
 		} else {
 			// Validate owner tag
-			err = ValidateAccountTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled)
+			err = ValidateAccountTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled) //nolint:contextcheck
 			if err != nil {
-				validationError, ok := err.(*AccountValidationError)
+				validationError := &AccountValidationError{}
+				ok := errors.As(err, &validationError)
 				if ok && (validationError.Type == MissingTag || validationError.Type == IncorrectOwnerTag) {
 					log.Error(validationError, validationError.Err.Error())
 				}
@@ -626,7 +630,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 				}
 			}
 
-			err = ValidateComplianceTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled, appCode, servicePhase, costCenter, complianceTagsEnabled)
+			err = ValidateComplianceTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled, appCode, servicePhase, costCenter, complianceTagsEnabled) //nolint:contextcheck
 			if err != nil {
 				log.Error(err, "Failed to validate compliance tags")
 				return utils.RequeueWithError(err)
@@ -636,9 +640,10 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		optInRegions, ok := cm.Data["opt-in-regions"]
 		// ValidateOptInRegions
 		if ok && isOptInRegionFeatureEnabled {
-			err = r.ValidateOptInRegions(reqLogger, &account, r.awsClientBuilder, optInRegions)
+			err = r.ValidateOptInRegions(reqLogger, &account, r.awsClientBuilder, optInRegions) //nolint:contextcheck
 			if err != nil {
-				validationError, ok := err.(*AccountValidationError)
+				validationError := &AccountValidationError{}
+				ok := errors.As(err, &validationError)
 				if ok && validationError.Type == NotAllOptInRegionsEnabled {
 					return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
 				}
@@ -647,9 +652,10 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 
 		}
 
-		err = r.ValidateRegionalServiceQuotas(reqLogger, &account, r.awsClientBuilder)
+		err = r.ValidateRegionalServiceQuotas(reqLogger, &account, r.awsClientBuilder) //nolint:contextcheck
 		if err != nil {
-			validationError, ok := err.(*AccountValidationError)
+			validationError := &AccountValidationError{}
+			ok := errors.As(err, &validationError)
 			if ok && validationError.Type == NotAllServicequotasApplied {
 				return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
 			}
@@ -660,8 +666,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	return utils.DoNotRequeue()
 }
 func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder, optInRegions string) error {
-	var regionList []string
 	regions := strings.Split(optInRegions, ",")
+	regionList := make([]string, 0, len(regions))
 	for _, region := range regions {
 		regionList = append(regionList, strings.TrimSpace(region))
 	}

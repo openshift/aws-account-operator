@@ -364,7 +364,7 @@ var _ = Describe("Utils", func() {
 	)
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding apis to scheme in utils test")
+		fmt.Printf("failed adding apis to scheme in utils test") //nolint:errcheck
 	}
 	BeforeEach(func() {
 		ctrl = gomock.NewController(GinkgoT())

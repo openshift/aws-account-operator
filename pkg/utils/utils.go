@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/openshift/aws-account-operator/test/fixtures"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/openshift/aws-account-operator/test/fixtures"
 
 	"github.com/aws/smithy-go"
 	"gopkg.in/yaml.v2"
@@ -166,7 +167,7 @@ func GetServiceQuotasFromAccountPool(reqLogger logr.Logger, accountPoolName stri
 
 // MarshalIAMPolicy converts a role CR into a JSON policy that is acceptable to AWS
 func MarshalIAMPolicy(role awsv1alpha1.AWSFederatedRole) (string, error) {
-	statements := []AwsStatement{}
+	statements := make([]AwsStatement, 0, len(role.Spec.AWSCustomPolicy.Statements))
 
 	for _, statement := range role.Spec.AWSCustomPolicy.Statements {
 		statements = append(statements, AwsStatement(statement))

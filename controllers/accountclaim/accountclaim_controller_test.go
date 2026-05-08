@@ -52,7 +52,7 @@ var _ = Describe("AccountClaim", func() {
 
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding apis to scheme in account controller tests")
+		fmt.Printf("failed adding apis to scheme in account controller tests") //nolint:errcheck
 	}
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
 
@@ -355,7 +355,7 @@ var _ = Describe("AccountClaim", func() {
 						"feature.accountclaim_fleet_manager_trusted_arn": "true",
 					},
 				}
-				accounts := []*awsv1alpha1.Account{}
+				accounts := make([]*awsv1alpha1.Account, 0, 1)
 				accounts = append(accounts, &awsv1alpha1.Account{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:              "osd-creds-mgmt-aaabbb",
@@ -540,7 +540,7 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding apis to scheme in account controller tests")
+		fmt.Printf("failed adding apis to scheme in account controller tests") //nolint:errcheck
 	}
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
 
@@ -579,7 +579,7 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 		When("Only Default AccountPool Account Exists", func() {
 
 			BeforeEach(func() {
-				accounts = []*awsv1alpha1.Account{}
+				accounts = make([]*awsv1alpha1.Account, 0, 1)
 				accountClaims = []*awsv1alpha1.AccountClaim{}
 
 				accounts = append(accounts, &awsv1alpha1.Account{
@@ -810,7 +810,7 @@ var _ = Describe("Mutiple AccountPools Claim", func() {
 		When("both account types are available", func() {
 			// Needs default + non-default account
 			BeforeEach(func() {
-				accounts = []*awsv1alpha1.Account{}
+				accounts = make([]*awsv1alpha1.Account, 0, 2)
 				accountClaims = []*awsv1alpha1.AccountClaim{}
 
 				accounts = append(accounts, &awsv1alpha1.Account{

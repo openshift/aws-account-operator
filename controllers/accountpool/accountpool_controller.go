@@ -3,6 +3,7 @@ package accountpool
 import (
 	"context"
 	"fmt"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -47,7 +48,7 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 
 	// Fetch the AccountPool instance
 	currentAccountPool := &awsv1alpha1.AccountPool{}
-	err := r.Get(context.TODO(), types.NamespacedName{Name: request.Name, Namespace: awsv1alpha1.AccountCrNamespace}, currentAccountPool)
+	err := r.Get(context.TODO(), types.NamespacedName{Name: request.Name, Namespace: awsv1alpha1.AccountCrNamespace}, currentAccountPool) //nolint:contextcheck
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -60,7 +61,7 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 	}
 
 	// Calculate unclaimed accounts vs claimed accounts
-	calculatedStatus, err := r.calculateAccountPoolStatus(reqLogger, currentAccountPool.Name)
+	calculatedStatus, err := r.calculateAccountPoolStatus(reqLogger, currentAccountPool.Name) //nolint:contextcheck
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -69,7 +70,7 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 
 	if shouldUpdateAccountPoolStatus(currentAccountPool, calculatedStatus) {
 		currentAccountPool.Status = calculatedStatus
-		err = r.Client.Status().Update(context.TODO(), currentAccountPool)
+		err = r.Client.Status().Update(context.TODO(), currentAccountPool) //nolint:contextcheck
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -96,12 +97,12 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 		return reconcile.Result{}, err
 	}
 
-	if err = r.handleServiceQuotas(reqLogger, newAccount); err != nil {
+	if err = r.handleServiceQuotas(reqLogger, newAccount); err != nil { //nolint:contextcheck
 		return reconcile.Result{}, err
 	}
 
 	reqLogger.Info(fmt.Sprintf("Creating account %s for accountpool. Unclaimed accounts: %d, poolsize%d", newAccount.Name, unclaimedAccountCount, poolSizeCount))
-	err = r.Create(context.TODO(), newAccount)
+	err = r.Create(context.TODO(), newAccount) //nolint:contextcheck
 	if err != nil {
 		return reconcile.Result{}, err
 	}

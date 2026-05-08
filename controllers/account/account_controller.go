@@ -101,12 +101,12 @@ type AccountReconciler struct {
 // and what is in the Account.Spec
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
-func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
+func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) { //nolint:gocyclo // large reconcile function, complexity is inherent
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Fetch the Account instance
 	currentAcctInstance := &awsv1alpha1.Account{}
-	err := r.Get(context.TODO(), request.NamespacedName, currentAcctInstance)
+	err := r.Get(context.TODO(), request.NamespacedName, currentAcctInstance) //nolint:contextcheck
 
 	if err != nil {
 		if k8serr.IsNotFound(err) {
@@ -138,7 +138,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		}
 	}
 
-	configMap, err := utils.GetOperatorConfigMap(r.Client)
+	configMap, err := utils.GetOperatorConfigMap(r.Client) //nolint:contextcheck
 	if err != nil {
 		log.Error(err, "Failed retrieving configmap")
 		return reconcile.Result{}, err
@@ -184,7 +184,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	// Add finalizer to non-sts account cr
 	if !currentAcctInstance.Spec.ManualSTSMode {
-		err := r.addFinalizer(reqLogger, currentAcctInstance)
+		err := r.addFinalizer(reqLogger, currentAcctInstance) //nolint:contextcheck
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -194,7 +194,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		if currentAcctInstance.Spec.ManualSTSMode {
 			// if the account is STS, we don't need to do any additional cleanup aside from
 			// removing the finalizer and exiting.
-			err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
+			err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer) //nolint:contextcheck
 			if err != nil {
 				reqLogger.Error(err, "Failed removing account finalizer")
 			}
@@ -204,10 +204,10 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		var awsClient awsclient.Client
 		if currentAcctInstance.IsBYOC() {
 			roleToAssume := currentAcctInstance.GetAssumeRole()
-			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
+			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "") //nolint:contextcheck
 			if err != nil {
 				reqLogger.Error(err, "failed building BYOC client from assume_role")
-				_, err = r.handleAWSClientError(reqLogger, currentAcctInstance, err)
+				_, err = r.handleAWSClientError(reqLogger, currentAcctInstance, err) //nolint:contextcheck
 				var aerr smithy.APIError
 				if errors.As(err, &aerr) {
 					switch aerr.ErrorCode() {
@@ -216,7 +216,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 					// want to do this for CCS accounts.
 					case "AccessDenied":
 						if currentAcctInstance.IsBYOC() {
-							err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
+							err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer) //nolint:contextcheck
 							if err != nil {
 								reqLogger.Error(err, "failed removing account finalizer")
 								return reconcile.Result{}, err
@@ -229,20 +229,20 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				return reconcile.Result{}, err
 			}
 		} else {
-			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
+			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "") //nolint:contextcheck
 			if err != nil {
 				reqLogger.Error(err, "failed building AWS client from assume_role")
-				return r.handleAWSClientError(reqLogger, currentAcctInstance, err)
+				return r.handleAWSClientError(reqLogger, currentAcctInstance, err) //nolint:contextcheck
 			}
 		}
-		r.finalizeAccount(reqLogger, awsClient, currentAcctInstance)
+		r.finalizeAccount(reqLogger, awsClient, currentAcctInstance) //nolint:contextcheck
 		//return reconcile.Result{}, nil
 
 		// Remove finalizer if account CR is non STS. For CCS accounts, the accountclaim controller will delete the account CR
 		// when the accountClaim CR is deleted as its set as the owner reference.
 		if currentAcctInstance.IsNonSTSPendingDeletionWithFinalizer() {
 			reqLogger.Info("removing account finalizer")
-			err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
+			err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer) //nolint:contextcheck
 			if err != nil {
 				reqLogger.Error(err, "failed removing account finalizer")
 				return reconcile.Result{}, err
@@ -255,7 +255,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	// This function is essential because a Fleet Manager AWS account should not possess any long-lived IAM credentials; instead, it should only require STS IAM access.
 	// However, once a Fleet Manager account claim is deleted, the AWS account no longer has long-lived IAM credentials and cannot be claimed by non-Fleet Manager account claims.
 	if currentAcctInstance.IsReusedAccountMissingIAMUser() {
-		if _, _, err = r.handleIAMUserCreation(reqLogger, currentAcctInstance, awsSetupClient, request.Namespace); err != nil {
+		if _, _, err = r.handleIAMUserCreation(reqLogger, currentAcctInstance, awsSetupClient, request.Namespace); err != nil { //nolint:contextcheck
 			reqLogger.Error(err, "Error during IAM user creation for reused account")
 			return reconcile.Result{}, err
 		}
@@ -270,7 +270,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	// Detect accounts for which we kicked off asynchronous region initialization
 	if currentAcctInstance.IsInitializingRegions() {
-		return r.handleAccountInitializingRegions(reqLogger, currentAcctInstance)
+		return r.handleAccountInitializingRegions(reqLogger, currentAcctInstance) //nolint:contextcheck
 	}
 
 	// If the account is BYOC, needs some different set up
@@ -278,10 +278,10 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		var result reconcile.Result
 		var initErr error
 
-		result, initErr = r.initializeNewCCSAccount(reqLogger, currentAcctInstance)
+		result, initErr = r.initializeNewCCSAccount(reqLogger, currentAcctInstance) //nolint:contextcheck
 		if initErr != nil {
 			// TODO: If we have recoverable results from above, how do we allow them to requeue if state is failed
-			_, stateErr := r.setAccountFailed(
+			_, stateErr := r.setAccountFailed( //nolint:contextcheck
 				reqLogger,
 				currentAcctInstance,
 				awsv1alpha1.AccountCreationFailed,
@@ -296,7 +296,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			return result, initErr
 		}
 		utils.SetAccountStatus(currentAcctInstance, AccountCreating, awsv1alpha1.AccountCreating, AccountCreating)
-		updateErr := r.statusUpdate(currentAcctInstance)
+		updateErr := r.statusUpdate(currentAcctInstance) //nolint:contextcheck
 		if updateErr != nil {
 			// TODO: Validate this is retryable
 			// TODO: Should be re-entrant because account will not have state
@@ -309,18 +309,18 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 		// Test PendingVerification state creating support case and checking for case status
 		if currentAcctInstance.IsPendingVerification() {
-			return r.HandleNonCCSPendingVerification(reqLogger, currentAcctInstance, awsSetupClient)
+			return r.HandleNonCCSPendingVerification(reqLogger, currentAcctInstance, awsSetupClient) //nolint:contextcheck
 		}
 
 		// Update account Status.Claimed to true if the account is ready and the claim link is not empty
 		if currentAcctInstance.IsReadyUnclaimedAndHasClaimLink() {
-			return reconcile.Result{}, ClaimAccount(r, currentAcctInstance)
+			return reconcile.Result{}, ClaimAccount(r, currentAcctInstance) //nolint:contextcheck
 		}
 
 		// see if in creating for longer than default wait time
 		if currentAcctInstance.IsCreating() && utils.CreationConditionOlderThan(*currentAcctInstance, createPendTime) {
 			errMsg := fmt.Sprintf("Creation pending for longer than %d minutes", utils.WaitTime)
-			_, stateErr := r.setAccountFailed(
+			_, stateErr := r.setAccountFailed( //nolint:contextcheck
 				reqLogger,
 				currentAcctInstance,
 				awsv1alpha1.AccountCreationFailed,
@@ -347,13 +347,13 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 					}
 				}
 
-				if err := r.nonCCSAssignAccountID(reqLogger, currentAcctInstance, awsSetupClient, complianceTags); err != nil {
+				if err := r.nonCCSAssignAccountID(reqLogger, currentAcctInstance, awsSetupClient, complianceTags); err != nil { //nolint:contextcheck
 					return reconcile.Result{}, err
 				}
 			} else {
 				// set state creating if the account was already created
 				utils.SetAccountStatus(currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, AccountCreating)
-				err = r.statusUpdate(currentAcctInstance)
+				err = r.statusUpdate(currentAcctInstance) //nolint:contextcheck
 
 				if err != nil {
 					return reconcile.Result{}, err
@@ -364,7 +364,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	// Handles account region enablement for non-BYOC accounts
 	if (currentAcctInstance.ReadyForRegionEnablement() || currentAcctInstance.IsEnablingOptInRegions()) && isOptInRegionFeatureEnabled && optInRegions != "" {
-		return r.handleOptInRegionEnablement(reqLogger, currentAcctInstance, awsSetupClient, optInRegions)
+		return r.handleOptInRegionEnablement(reqLogger, currentAcctInstance, awsSetupClient, optInRegions) //nolint:contextcheck
 	}
 
 	// Get the owner of the Red Hat amis from the configmap
@@ -386,7 +386,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 		// STS mode doesn't need IAM user init, so just get the creds necessary, init regions, and exit
 		if currentAcctInstance.Spec.ManualSTSMode {
-			accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance)
+			accountClaim, acctClaimErr := r.getAccountClaim(currentAcctInstance) //nolint:contextcheck
 			if acctClaimErr != nil {
 				reqLogger.Error(acctClaimErr, "unable to get accountclaim for sts account")
 				utils.SetAccountClaimStatus(
@@ -396,14 +396,14 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 					awsv1alpha1.ClientError,
 					awsv1alpha1.ClaimStatusError,
 				)
-				err := r.Client.Status().Update(context.TODO(), accountClaim)
+				err := r.Client.Status().Update(context.TODO(), accountClaim) //nolint:contextcheck
 				if err != nil {
 					reqLogger.Error(err, "failed to update accountclaim status")
 				}
 				return reconcile.Result{}, acctClaimErr
 			}
 
-			_, creds, err = r.getSTSClient(reqLogger, accountClaim, awsSetupClient)
+			_, creds, err = r.getSTSClient(reqLogger, accountClaim, awsSetupClient) //nolint:contextcheck
 			if err != nil {
 				reqLogger.Error(err, "error getting sts client to initialize regions")
 				return reconcile.Result{}, err
@@ -419,10 +419,10 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 						utils.GenerateShortUID(),
 					),
 				)
-				return reconcile.Result{Requeue: true}, r.Update(context.TODO(), currentAcctInstance)
+				return reconcile.Result{Requeue: true}, r.Update(context.TODO(), currentAcctInstance) //nolint:contextcheck
 			}
 
-			_, newCredentials, err := r.handleIAMUserCreation(reqLogger, currentAcctInstance, awsSetupClient, request.Namespace)
+			_, newCredentials, err := r.handleIAMUserCreation(reqLogger, currentAcctInstance, awsSetupClient, request.Namespace) //nolint:contextcheck
 			if err != nil {
 				reqLogger.Error(err, "Error during IAM user creation")
 				return reconcile.Result{}, err
@@ -431,7 +431,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 		}
 
-		err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner)
+		err = r.initializeRegions(reqLogger, currentAcctInstance, creds, amiOwner) //nolint:contextcheck
 
 		if isAwsOptInError(err) {
 			reqLogger.Info("Aws Account not ready yet, requeuing.")
@@ -447,14 +447,14 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 }
 
 // generateAccountTags reads compliance tag values from the ConfigMap and returns a map of tag key-value pairs
-func (r *AccountReconciler) generateAccountTags(reqLogger logr.Logger, configMap *corev1.ConfigMap) (map[string]string, error) {
+func (r *AccountReconciler) generateAccountTags(reqLogger logr.Logger, configMap *corev1.ConfigMap) (map[string]string, error) { //nolint:unparam // error return is always nil but kept for interface consistency
 	tags := make(map[string]string)
 
 	// Check feature flag
 	enabled, err := strconv.ParseBool(configMap.Data["feature.compliance_tags"])
 	if err != nil {
 		reqLogger.Info("Could not retrieve feature flag 'feature.compliance_tags' - compliance tagging is disabled")
-		return tags, nil
+		return tags, nil //nolint:nilerr // intentionally swallowing error: missing flag means feature is disabled
 	}
 
 	if !enabled {
@@ -487,11 +487,11 @@ func (r *AccountReconciler) generateAccountTags(reqLogger logr.Logger, configMap
 func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string) (reconcile.Result, error) {
 	numberOfAccountsOptingIn, err := CalculateOptingInRegionAccounts(reqLogger, r.Client)
 	if err != nil {
-		return reconcile.Result{}, nil
+		return reconcile.Result{}, nil //nolint:nilerr // intentionally swallowing error: failure to count is non-fatal
 	}
 
 	if currentAcctInstance.Status.OptInRegions == nil {
-		switch utils.DetectDevMode {
+		switch utils.DetectDevMode { //nolint:exhaustive // only handling production case intentionally
 		case utils.DevModeProduction:
 			if numberOfAccountsOptingIn >= MaxAccountRegionEnablement {
 				return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
@@ -521,7 +521,7 @@ func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, c
 	}
 
 	if currentAcctInstance.HasOpenOptInRegionRequests() {
-		switch utils.DetectDevMode {
+		switch utils.DetectDevMode { //nolint:exhaustive // only handling production case intentionally
 		case utils.DevModeProduction:
 			return GetOptInRegionStatus(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
 		}
@@ -556,7 +556,7 @@ func isAwsOptInError(err error) bool {
 	return awsError.ErrorCode() == "OptInRequired"
 }
 
-func (r *AccountReconciler) handleIAMUserCreation(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, namespace string) (reconcile.Result, *sts.AssumeRoleOutput, error) {
+func (r *AccountReconciler) handleIAMUserCreation(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, namespace string) (reconcile.Result, *sts.AssumeRoleOutput, error) { //nolint:unparam // namespace param reserved for future use
 	var awsAssumedRoleClient awsclient.Client
 	awsAssumedRoleClient, creds, err := r.handleCreateAdminAccessRole(reqLogger, currentAcctInstance, awsSetupClient)
 	if err != nil {
@@ -693,7 +693,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 		return reconcile.Result{}, err
 	}
 	if !currentAcctInstance.HasSupportCaseID() {
-		switch utils.DetectDevMode {
+		switch utils.DetectDevMode { //nolint:exhaustive // only handling production case intentionally
 		case utils.DevModeProduction:
 			caseID, err := createCase(reqLogger, currentAcctInstance, awsSetupClient)
 			if err != nil {
@@ -734,7 +734,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 	}
 
 	var supportCaseResolved bool
-	switch utils.DetectDevMode {
+	switch utils.DetectDevMode { //nolint:exhaustive // only handling production case intentionally
 	case utils.DevModeProduction:
 		resolvedScoped, err := checkCaseResolution(reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
 		if err != nil {
@@ -748,7 +748,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 	}
 
 	if currentAcctInstance.HasOpenQuotaIncreaseRequests() {
-		switch utils.DetectDevMode {
+		switch utils.DetectDevMode { //nolint:exhaustive // only handling production case intentionally
 		case utils.DevModeProduction:
 			return GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
 		}
@@ -861,7 +861,7 @@ func (r *AccountReconciler) nonCCSAssignAccountID(reqLogger logr.Logger, current
 	// Build Aws Account
 	var awsAccountID string
 
-	switch utils.DetectDevMode {
+	switch utils.DetectDevMode { //nolint:exhaustive // only handling production case intentionally
 	case utils.DevModeProduction:
 		var err error
 		awsAccountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
@@ -900,12 +900,11 @@ func (r *AccountReconciler) nonCCSAssignAccountID(reqLogger logr.Logger, current
 
 func TagAccount(awsSetupClient awsclient.Client, awsAccountID string, shardName string, complianceTags map[string]string) error {
 	// Start with the owner tag
-	tags := []organizationstypes.Tag{
-		{
-			Key:   aws.String("owner"),
-			Value: aws.String(shardName),
-		},
-	}
+	tags := make([]organizationstypes.Tag, 0, 1+len(complianceTags))
+	tags = append(tags, organizationstypes.Tag{
+		Key:   aws.String("owner"),
+		Value: aws.String(shardName),
+	})
 
 	// Add compliance tags from the map
 	for key, value := range complianceTags {
@@ -1049,21 +1048,18 @@ func (r *AccountReconciler) BuildAccount(reqLogger logr.Logger, awsClient awscli
 	orgOutput, orgErr := CreateAccount(reqLogger, awsClient, account.Name, email)
 	// If it was an api or a limit issue don't modify account and exit if anything else set to failed
 	if orgErr != nil {
-		switch orgErr {
-		case awsv1alpha1.ErrAwsFailedCreateAccount:
+		switch {
+		case errors.Is(orgErr, awsv1alpha1.ErrAwsFailedCreateAccount):
 			utils.SetAccountStatus(account, "Failed to create AWS Account", awsv1alpha1.AccountCreationFailed, AccountFailed)
 			err := r.statusUpdate(account)
 			if err != nil {
 				return "", err
 			}
-
 			reqLogger.Error(awsv1alpha1.ErrAwsFailedCreateAccount, "Failed to create AWS Account")
 			return "", orgErr
-
-		case awsv1alpha1.ErrAwsAccountLimitExceeded:
+		case errors.Is(orgErr, awsv1alpha1.ErrAwsAccountLimitExceeded):
 			log.Error(orgErr, "Failed to create AWS Account limit reached")
 			return "", orgErr
-
 		default:
 			log.Error(orgErr, "Failed to create AWS Account nonfatal error")
 			return "", orgErr
@@ -1133,7 +1129,7 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 
 		if createStatus == organizationstypes.CreateAccountStateFailed {
 			var returnErr error
-			switch status.CreateAccountStatus.FailureReason {
+			switch status.CreateAccountStatus.FailureReason { //nolint:exhaustive // only handling known failure reasons, default handles the rest
 			case organizationstypes.CreateAccountFailureReasonAccountLimitExceeded:
 				returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
 			case organizationstypes.CreateAccountFailureReasonInternalFailure:
@@ -1161,7 +1157,7 @@ func ClaimAccount(r *AccountReconciler, currentAcctInstance *awsv1alpha1.Account
 		currentAcctInstance.Spec.ClaimLinkNamespace)
 	currentAcctInstance.Status.Conditions = utils.SetAccountCondition(
 		currentAcctInstance.Status.Conditions,
-		awsv1alpha1.AccountConditionType(awsv1alpha1.AccountIsClaimed),
+		awsv1alpha1.AccountIsClaimed,
 		// Switch the Condition off
 		corev1.ConditionTrue,
 		AccountInitializingRegions,
@@ -1190,7 +1186,7 @@ func (r *AccountReconciler) statusUpdate(account *awsv1alpha1.Account) error {
 	return err
 }
 
-func (r *AccountReconciler) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype awsv1alpha1.AccountConditionType, reason string, message string, state string) (reconcile.Result, error) {
+func (r *AccountReconciler) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype awsv1alpha1.AccountConditionType, reason string, message string, state string) (reconcile.Result, error) { //nolint:unparam // params always same but kept for interface flexibility
 	reqLogger.Info(message)
 	// Update account status and condition
 	account.Status.Conditions = utils.SetAccountCondition(
@@ -1321,10 +1317,10 @@ func matchSubstring(roleID, role string) (bool, error) {
 }
 
 func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountConditionType) {
-	switch err {
-	case awsv1alpha1.ErrInvalidToken:
+	switch {
+	case errors.Is(err, awsv1alpha1.ErrInvalidToken):
 		return "InvalidClientTokenId", awsv1alpha1.AccountAuthenticationError
-	case awsv1alpha1.ErrAccessDenied:
+	case errors.Is(err, awsv1alpha1.ErrAccessDenied):
 		return "AccessDenied", awsv1alpha1.AccountAuthorizationError
 	default:
 		var aerr smithy.APIError
@@ -1410,7 +1406,7 @@ func parseTagsFromString(tags string) []awsclient.AWSTag {
 }
 
 func castAWSRegionType(regions []ec2types.Region) []awsv1alpha1.AwsRegions {
-	var awsRegions []awsv1alpha1.AwsRegions
+	awsRegions := make([]awsv1alpha1.AwsRegions, 0, len(regions))
 	for _, region := range regions {
 		awsRegions = append(awsRegions, awsv1alpha1.AwsRegions{Name: *region.RegionName})
 	}

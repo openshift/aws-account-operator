@@ -90,7 +90,7 @@ func TestFederatedAccessRolePermissions(t *testing.T) {
 
 // builds the actions list for a statement
 func buildActionList(stmt statement) []string {
-	actionList := []string{}
+	actionList := make([]string, 0, len(stmt.Action))
 	actionList = append(actionList, stmt.Action...)
 	return actionList
 }
@@ -116,7 +116,7 @@ func buildContextList(stmt statement) []iamtypes.ContextEntry {
 
 // builds the list of resources for an action
 func buildResourceList(stmt statement) []string {
-	resourceList := []string{}
+	resourceList := make([]string, 0, len(stmt.Resource))
 	resourceList = append(resourceList, stmt.Resource...)
 	return resourceList
 }
@@ -149,12 +149,11 @@ func testAction(t *testing.T, iamClient *iam.Client, roleARN string, stmt statem
 	}
 }
 
-
 // Unmarshals YAML from File
 func unmarshalFromFile(t *testing.T, cr string, crToTest *crStruct) {
 	file := "../../" + cr
 
-	yamlFile, err := os.ReadFile(file)
+	yamlFile, err := os.ReadFile(file) //nolint:gosec // G304: file path is constructed from test input, acceptable in integration tests
 	if err != nil {
 		t.Fatal("Unable to read from file: "+file, err)
 	}
@@ -167,7 +166,7 @@ func unmarshalFromFile(t *testing.T, cr string, crToTest *crStruct) {
 
 // Fills federatedAccountAccess struct from given cr
 func getFederatedAccountAccessCR(t *testing.T, cr string, accountAccessCR *federatedAccountAccess) {
-	ocGet := exec.Command("oc", "get", "awsfederatedaccountaccess", "-n", "aws-account-operator", "-o", "yaml", cr)
+	ocGet := exec.Command("oc", "get", "awsfederatedaccountaccess", "-n", "aws-account-operator", "-o", "yaml", cr) //nolint:gosec,noctx // G204: arguments are from test configuration, acceptable in integration tests
 	accountAccessYAML, err := ocGet.CombinedOutput()
 	if err != nil {
 		t.Fatal("Error getting AccountAccessYAML from oc get command")
@@ -180,7 +179,7 @@ func getFederatedAccountAccessCR(t *testing.T, cr string, accountAccessCR *feder
 
 // Fills awsUserSecret struct from the secret
 func getSecretCredentials(t *testing.T, secret *awsUserSecret) {
-	ocSecret := exec.Command("oc", "get", "secret", "-n", "aws-account-operator", "-o", "yaml", "osd-creds-mgmt-osd-staging-1-secret")
+	ocSecret := exec.Command("oc", "get", "secret", "-n", "aws-account-operator", "-o", "yaml", "osd-creds-mgmt-osd-staging-1-secret") //nolint:noctx // no context available in integration test helper
 	secretYAML, err := ocSecret.CombinedOutput()
 	if err != nil {
 		t.Fatal("Unable to obtain osdManagedAdmin credentials")
@@ -192,7 +191,7 @@ func getSecretCredentials(t *testing.T, secret *awsUserSecret) {
 }
 
 // Gets AWS Client using passed in credentials struct
-func getAWSIAMClient(t *testing.T, awsCreds awsUserSecret) (*iam.Client, error) {
+func getAWSIAMClient(t *testing.T, awsCreds awsUserSecret) (*iam.Client, error) { //nolint:unparam // t is required for test helper signature consistency
 	accessKeyID, err := base64.StdEncoding.DecodeString(awsCreds.Data.AccessKeyID)
 	if err != nil {
 		return nil, err
