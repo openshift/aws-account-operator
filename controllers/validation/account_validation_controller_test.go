@@ -409,19 +409,19 @@ func TestValidateAccountOrigin(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := ValidateAccountOrigin(tt.args.account); (err != nil) != tt.wantErr {
-				t.Errorf("ValidateAccountOrigin() error = %v, wantErr %v", err, tt.wantErr)
+			if gotErr := ValidateAccountOrigin(tt.args.account); (gotErr != nil) != tt.wantErr {
+				t.Errorf("ValidateAccountOrigin() error = %v, wantErr %v", gotErr, tt.wantErr)
 			} else {
 				if tt.wantErr {
-					err := &AccountValidationError{}
-					ok := errors.As(err, &err)
+					var validationErr *AccountValidationError
+					ok := errors.As(gotErr, &validationErr)
 					if !ok {
 						t.Errorf("ValidateAccountOrigin() error, expected AccountValidationError")
 					}
-					if err.Type != InvalidAccount {
-						t.Errorf("ValidateAccountOrigin() error, expected error of type InvalidAccount but was %v", err.Type)
+					if validationErr.Type != InvalidAccount {
+						t.Errorf("ValidateAccountOrigin() error, expected error of type InvalidAccount but was %v", validationErr.Type)
 					}
-					if err.Err.Error() != tt.expectedErr {
+					if validationErr.Err.Error() != tt.expectedErr {
 						t.Errorf("ValidateAccountOrigin() error, did not get correct error message")
 					}
 				}
@@ -567,22 +567,22 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := ValidateAccountTags(tt.args.client, tt.args.accountId, tt.args.shardName, tt.args.accountTagEnabled); (err != nil) != tt.wantErr {
-				t.Errorf("ValidateAccountTags() error = %v, wantErr %v", err, tt.wantErr)
+			if gotErr := ValidateAccountTags(tt.args.client, tt.args.accountId, tt.args.shardName, tt.args.accountTagEnabled); (gotErr != nil) != tt.wantErr {
+				t.Errorf("ValidateAccountTags() error = %v, wantErr %v", gotErr, tt.wantErr)
 			} else {
 				if tt.wantErr {
-					err := &AccountValidationError{}
-					ok := errors.As(err, &err)
+					var validationErr *AccountValidationError
+					ok := errors.As(gotErr, &validationErr)
 					if !ok {
-						t.Errorf("ValidateAccountTags() error, expected error of type AccountValidationError but was %v", err.Type)
+						t.Errorf("ValidateAccountTags() error, expected error of type AccountValidationError but was %v", validationErr.Type)
 					}
-					if err.Type == MissingTag && err.Err.Error() != "account is not tagged with an owner" {
+					if validationErr.Type == MissingTag && validationErr.Err.Error() != "account is not tagged with an owner" {
 						t.Errorf("ValidateAccountTags() error, did not get correct error message")
 					}
-					if err.Type == IncorrectOwnerTag && err.Err.Error() != "account is not tagged with the correct owner" {
+					if validationErr.Type == IncorrectOwnerTag && validationErr.Err.Error() != "account is not tagged with the correct owner" {
 						t.Errorf("ValidateAccountTags() error, did not get correct error message")
 					}
-					if err.Type == AccountTagFailed && err.Err.Error() != "failed" {
+					if validationErr.Type == AccountTagFailed && validationErr.Err.Error() != "failed" {
 						t.Errorf("ValidateAccountTags() error, did not get correct error message")
 					}
 				}
