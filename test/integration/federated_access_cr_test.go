@@ -166,7 +166,7 @@ func unmarshalFromFile(t *testing.T, cr string, crToTest *crStruct) {
 
 // Fills federatedAccountAccess struct from given cr
 func getFederatedAccountAccessCR(t *testing.T, cr string, accountAccessCR *federatedAccountAccess) {
-	ocGet := exec.Command("oc", "get", "awsfederatedaccountaccess", "-n", "aws-account-operator", "-o", "yaml", cr) //nolint:gosec,noctx // G204: arguments are from test configuration, acceptable in integration tests
+	ocGet := exec.CommandContext(context.Background(), "oc", "get", "awsfederatedaccountaccess", "-n", "aws-account-operator", "-o", "yaml", cr)
 	accountAccessYAML, err := ocGet.CombinedOutput()
 	if err != nil {
 		t.Fatal("Error getting AccountAccessYAML from oc get command")
@@ -179,7 +179,7 @@ func getFederatedAccountAccessCR(t *testing.T, cr string, accountAccessCR *feder
 
 // Fills awsUserSecret struct from the secret
 func getSecretCredentials(t *testing.T, secret *awsUserSecret) {
-	ocSecret := exec.Command("oc", "get", "secret", "-n", "aws-account-operator", "-o", "yaml", "osd-creds-mgmt-osd-staging-1-secret") //nolint:noctx // no context available in integration test helper
+	ocSecret := exec.CommandContext(context.Background(), "oc", "get", "secret", "-n", "aws-account-operator", "-o", "yaml", "osd-creds-mgmt-osd-staging-1-secret")
 	secretYAML, err := ocSecret.CombinedOutput()
 	if err != nil {
 		t.Fatal("Unable to obtain osdManagedAdmin credentials")
