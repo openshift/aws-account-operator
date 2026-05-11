@@ -129,7 +129,7 @@ func TestParentsTillPredicate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			parents = []string{}
-			if err := ParentsTillPredicate(tt.args.awsId, tt.args.client, tt.args.p, tt.args.parents); (err != nil) != tt.wantErr {
+			if err := ParentsTillPredicate(context.TODO(), tt.args.awsId, tt.args.client, tt.args.p, tt.args.parents); (err != nil) != tt.wantErr {
 				t.Errorf("ParentsTillP() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -175,7 +175,7 @@ func TestIsAccountInCorrectOU(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := IsAccountInCorrectOU(tt.args.account, tt.args.client, tt.args.isRootOU)
+			got := IsAccountInCorrectOU(context.TODO(), tt.args.account, tt.args.client, tt.args.isRootOU)
 			if got != tt.expected {
 				t.Errorf("IsAccountInCorrectOU() = %v, expected %v", got, tt.expected)
 			}
@@ -229,7 +229,7 @@ func TestMoveAccount(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := MoveAccount(tt.args.account, tt.args.client, tt.args.targetOU, tt.args.moveAccount); (err != nil) != tt.wantErr {
+			if err := MoveAccount(context.TODO(), tt.args.account, tt.args.client, tt.args.targetOU, tt.args.moveAccount); (err != nil) != tt.wantErr {
 				t.Errorf("MoveAccount() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -326,7 +326,7 @@ func TestValidateAccountOU(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &AccountValidationReconciler{}
 			r.OUNameIDMap = tt.ouMap
-			err := r.ValidateAccountOU(tt.awsClient, tt.account, testPoolOUID, testBaseOUID)
+			err := r.ValidateAccountOU(context.TODO(), tt.awsClient, tt.account, testPoolOUID, testBaseOUID)
 			if !errors.Is(err, tt.wantErr) {
 				var ave *AccountValidationError
 				if errors.As(err, &ave) {
@@ -566,7 +566,7 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := ValidateAccountTags(tt.args.client, tt.args.accountId, tt.args.shardName, tt.args.accountTagEnabled); (err != nil) != tt.wantErr {
+			if err := ValidateAccountTags(context.TODO(), tt.args.client, tt.args.accountId, tt.args.shardName, tt.args.accountTagEnabled); (err != nil) != tt.wantErr {
 				t.Errorf("ValidateAccountTags() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
 				if tt.wantErr {
@@ -728,7 +728,7 @@ func TestValidateAccount_ValidateComplianceTags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := ValidateComplianceTags(tt.args.client, tt.args.accountId, tt.args.shardName, tt.args.accountTagEnabled, tt.args.appCode, tt.args.servicePhase, tt.args.costCenter, tt.args.complianceTagsEnabled); (err != nil) != tt.wantErr {
+			if err := ValidateComplianceTags(context.TODO(), tt.args.client, tt.args.accountId, tt.args.shardName, tt.args.accountTagEnabled, tt.args.appCode, tt.args.servicePhase, tt.args.costCenter, tt.args.complianceTagsEnabled); (err != nil) != tt.wantErr {
 				t.Errorf("ValidateComplianceTags() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

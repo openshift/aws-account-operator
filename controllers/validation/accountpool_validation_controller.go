@@ -44,7 +44,7 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 	reqLogger.Info("Fetching accountpool")
 
 	currentAccountPool := &awsv1alpha1.AccountPool{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: request.Name, Namespace: awsv1alpha1.AccountCrNamespace}, currentAccountPool)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: request.Name, Namespace: awsv1alpha1.AccountCrNamespace}, currentAccountPool)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -55,7 +55,7 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
-	cm, err := utils.GetOperatorConfigMap(r.Client)
+	cm, err := utils.GetOperatorConfigMap(ctx, r.Client)
 	if err != nil {
 		logs.Error(err, "Could not retrieve the operator configmap")
 		return utils.RequeueAfter(5 * time.Minute)
@@ -73,13 +73,13 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 
 	reqLogger.Info("Checking ConfigMap for ServiceQuotas")
 	// check if accountpool has servicequota defined in configmap
-	reginalServiceQuotas, err := utils.GetServiceQuotasFromAccountPool(reqLogger, currentAccountPool.Name, r.Client)
+	reginalServiceQuotas, err := utils.GetServiceQuotasFromAccountPool(ctx, reqLogger, currentAccountPool.Name, r.Client)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
 	reqLogger.Info("Updating Account ServiceQuotas")
-	_, err = r.checkAccountServiceQuota(reqLogger, currentAccountPool.Name, reginalServiceQuotas, isEnabled)
+	err = r.checkAccountServiceQuota(ctx, reqLogger, currentAccountPool.Name, reginalServiceQuotas, isEnabled)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -87,29 +87,29 @@ func (r *AccountPoolValidationReconciler) Reconcile(ctx context.Context, request
 	return utils.DoNotRequeue()
 }
 
-func (r *AccountPoolValidationReconciler) accountSpecUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
-	err := r.Client.Update(context.TODO(), account)
+func (r *AccountPoolValidationReconciler) accountSpecUpdate(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	err := r.Client.Update(ctx, account)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Account spec update for %s failed", account.Name))
 	}
 	return err
 }
 
-func (r *AccountPoolValidationReconciler) accountStatusUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
-	err := r.Client.Status().Update(context.TODO(), account)
+func (r *AccountPoolValidationReconciler) accountStatusUpdate(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	err := r.Client.Status().Update(ctx, account)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Account status update for %s failed", account.Name))
 	}
 	return err
 }
 
-func (r *AccountPoolValidationReconciler) getAccountPoolAccounts(accountPoolName string) ([]awsv1alpha1.Account, error) {
+func (r *AccountPoolValidationReconciler) getAccountPoolAccounts(ctx context.Context, accountPoolName string) ([]awsv1alpha1.Account, error) {
 	//Get the number of actual unclaimed AWS accounts in the pool
 	accountList := &awsv1alpha1.AccountList{}
 	listOpts := []client.ListOption{
 		client.InNamespace(awsv1alpha1.AccountCrNamespace),
 	}
-	if err := r.Client.List(context.TODO(), accountList, listOpts...); err != nil {
+	if err := r.Client.List(ctx, accountList, listOpts...); err != nil {
 		return nil, err
 	}
 	var accounts []awsv1alpha1.Account
@@ -124,11 +124,11 @@ func (r *AccountPoolValidationReconciler) getAccountPoolAccounts(accountPoolName
 }
 
 // Updates Account Spec ServiceQuotas to match what's in the ConfigMap
-func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger logr.Logger, accountPoolName string, parsedRegionalServiceQuotas awsv1alpha1.RegionalServiceQuotas, isEnabled bool) (ctrl.Result, error) {
-	accountList, err := r.getAccountPoolAccounts(accountPoolName)
+func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(ctx context.Context, reqLogger logr.Logger, accountPoolName string, parsedRegionalServiceQuotas awsv1alpha1.RegionalServiceQuotas, isEnabled bool) error {
+	accountList, err := r.getAccountPoolAccounts(ctx, accountPoolName)
 	if err != nil {
 		reqLogger.Error(err, "Failed to get AccountPool accounts")
-		return reconcile.Result{}, err
+		return err
 	}
 	var updatedAccountSpecs []awsv1alpha1.Account
 
@@ -143,10 +143,10 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 			accountCopy.Spec.RegionalServiceQuotas = parsedRegionalServiceQuotas
 
 			reqLogger.Info(fmt.Sprintf("Attempting to update the account Spec for: %v", accountCopy.Name))
-			err = r.accountSpecUpdate(reqLogger, &accountCopy)
+			err = r.accountSpecUpdate(ctx, reqLogger, &accountCopy)
 			if err != nil {
 				logs.Error(err, "failed to update account spec", "account", accountCopy.Name)
-				return reconcile.Result{}, err
+				return err
 			}
 			reqLogger.Info(fmt.Sprintf("Successfully updated %v Spec", accountCopy.Name))
 			updatedAccountSpecs = append(updatedAccountSpecs, accountCopy)
@@ -159,10 +159,10 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 	}
 
 	time.Sleep(defaultSleepDelay) // the delay ensures the most recent accountCR version is used
-	updatedAccountList, err := r.getAccountPoolAccounts(accountPoolName)
+	updatedAccountList, err := r.getAccountPoolAccounts(ctx, accountPoolName)
 	if err != nil {
 		reqLogger.Error(err, "Failed to get AccountPool updated accounts")
-		return reconcile.Result{}, err
+		return err
 	}
 
 	updatedAccountMap := make(map[string]bool)
@@ -180,16 +180,16 @@ func (r *AccountPoolValidationReconciler) checkAccountServiceQuota(reqLogger log
 		if exists := updatedAccountMap[updatedAccountCopy.Name]; exists {
 			updatedAccountCopy.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
 			reqLogger.Info(fmt.Sprintf("Attempting to update the account status for: %v", updatedAccountCopy.Name))
-			err = r.accountStatusUpdate(reqLogger, &updatedAccountCopy)
+			err = r.accountStatusUpdate(ctx, reqLogger, &updatedAccountCopy)
 			if err != nil {
 				logs.Error(err, "failed to update account status", "account", updatedAccountCopy.Name)
-				return reconcile.Result{}, err
+				return err
 			}
 			reqLogger.Info(fmt.Sprintf("Successfully updated %v Status", updatedAccountCopy.Name))
 		}
 	}
 
-	return reconcile.Result{}, nil
+	return nil
 }
 
 func (r *AccountPoolValidationReconciler) SetupWithManager(mgr ctrl.Manager) error {

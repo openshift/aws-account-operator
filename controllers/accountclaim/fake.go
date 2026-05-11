@@ -13,10 +13,10 @@ import (
 
 // Fake process creates a fake secret in the fake account claim namespace and also handles cleaning up of these secrets and account claims once the crd is deleted.
 // This process has been added to facilitate testing in hive per https://issues.redhat.com/browse/OSD-7173
-func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (bool, error) {
+func (r *AccountClaimReconciler) processFake(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (bool, error) {
 	// Add finalizer to the CR in case it's not present (e.g. old accounts)
 	if !controllerutils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
-		err := r.addFinalizer(reqLogger, accountClaim)
+		err := r.addFinalizer(ctx, reqLogger, accountClaim)
 		if err != nil {
 			return true, err
 		}
@@ -27,17 +27,17 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 	if accountClaim.DeletionTimestamp != nil {
 		// Delete fake secret if it exists
 		// Create secret for OCM to consume
-		if r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+		if r.checkIAMSecretExists(ctx, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 
 			// Need to check if the secret exists AND that it matches what we're expecting
 			secret := corev1.Secret{}
 			secretObjectKey := client.ObjectKey{Name: accountClaim.Spec.AwsCredentialSecret.Name, Namespace: accountClaim.Spec.AwsCredentialSecret.Namespace}
-			err := r.Get(context.TODO(), secretObjectKey, &secret)
+			err := r.Get(ctx, secretObjectKey, &secret)
 			if err != nil { //nolint:gosimple // Ignores false-positive S1008 gosimple notice
 				return true, err
 			}
 
-			err = r.Delete(context.TODO(), &secret)
+			err = r.Delete(ctx, &secret)
 			if err != nil {
 				reqLogger.Error(err, "failed to fake secret during fake cleanup")
 				return true, err
@@ -45,7 +45,7 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 		}
 
 		// Remove finalizer to unlock deletion of the accountClaim
-		err := r.removeFinalizer(reqLogger, accountClaim)
+		err := r.removeFinalizer(ctx, reqLogger, accountClaim)
 		if err != nil {
 			return true, err
 		}
@@ -53,8 +53,8 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 	}
 
 	// Create Fake Secret if it doesnt exist
-	if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
-		err := r.Create(context.TODO(), newSecretforCR(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace, []byte("fakeAccessKey"), []byte("FakeSecretAccesskey")))
+	if !r.checkIAMSecretExists(ctx, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+		err := r.Create(ctx, newSecretforCR(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace, []byte("fakeAccessKey"), []byte("FakeSecretAccesskey")))
 		if err != nil {
 			reqLogger.Error(err, "Unable to create secret for OCM")
 			return true, err
@@ -74,7 +74,7 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 			accountClaim.Spec.BYOCAWSAccountID != "")
 		accountClaim.Status.State = awsv1alpha1.ClaimStatusReady
 		reqLogger.Info(fmt.Sprintf("Fake Account %s condition status updated", accountClaim.Name))
-		err := r.statusUpdate(reqLogger, accountClaim)
+		err := r.statusUpdate(ctx, reqLogger, accountClaim)
 		if err != nil {
 			return true, err
 		}

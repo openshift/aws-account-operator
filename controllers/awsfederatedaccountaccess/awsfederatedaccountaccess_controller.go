@@ -64,72 +64,51 @@ type AWSFederatedAccountAccessReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.2/pkg/reconcile
-func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, request ctrl.Request) (ctrl.Result, error) {
+func (r *AWSFederatedAccountAccessReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Fetch the AWSFederatedAccountAccess instance
 	currentFAA := &awsv1alpha1.AWSFederatedAccountAccess{}
-	err := r.Get(context.TODO(), request.NamespacedName, currentFAA)
+	err := r.Get(ctx, request.NamespacedName, currentFAA)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-			// Return and don't requeue
 			return reconcile.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
 	requestedRole := &awsv1alpha1.AWSFederatedRole{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: currentFAA.Spec.AWSFederatedRole.Name, Namespace: currentFAA.Spec.AWSFederatedRole.Namespace}, requestedRole)
+	err = r.Get(ctx, types.NamespacedName{Name: currentFAA.Spec.AWSFederatedRole.Name, Namespace: currentFAA.Spec.AWSFederatedRole.Namespace}, requestedRole)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			SetStatuswithCondition(currentFAA, "Requested role does not exist", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
 			reqLogger.Error(ErrFederatedAccessRoleNotFound, fmt.Sprintf("Requested role %s not found", currentFAA.Spec.AWSFederatedRole.Name))
 
-			err := r.Client.Status().Update(context.TODO(), currentFAA)
+			err := r.Client.Status().Update(ctx, currentFAA)
 			if err != nil {
 				reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
 				return reconcile.Result{}, err
 			}
-
 			return reconcile.Result{}, nil
-
 		}
-		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
-	// Add finalizer to the CR in case it's not present (e.g. old accounts)
+	// Add finalizer to the CR in case it's not present
 	if !controllerutils.Contains(currentFAA.GetFinalizers(), controllerutils.Finalizer) {
-
-		err := r.addFinalizer(reqLogger, currentFAA)
+		err := r.addFinalizer(ctx, reqLogger, currentFAA)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{}, nil
 	}
 
+	// Handle deletion
 	if currentFAA.DeletionTimestamp != nil {
-
-		if controllerutils.Contains(currentFAA.GetFinalizers(), controllerutils.Finalizer) {
-
-			reqLogger.Info("Cleaning up FederatedAccountAccess Roles")
-			err = r.cleanFederatedRoles(reqLogger, currentFAA, requestedRole)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
-			reqLogger.Info("Removing Finalizer")
-			err = r.removeFinalizer(reqLogger, currentFAA, controllerutils.Finalizer)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-		}
+		return r.handleDeletion(ctx, reqLogger, currentFAA, requestedRole)
 	}
 
-	// Get aws client
+	// Get AWS client
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: currentFAA.Spec.AWSCustomerCredentialSecret.Name,
 		NameSpace:  currentFAA.Spec.AWSCustomerCredentialSecret.Namespace,
@@ -140,24 +119,12 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 		return reconcile.Result{}, err
 	}
 
+	// Ensure federated role name label and sync IAM policy if state is not empty
 	if currentFAA.Status.State != "" {
-		// Make sure the awsFederatedRoleName label is present
-		if !hasLabel(currentFAA, awsv1alpha1.FederatedRoleNameLabel) {
-			reqLogger.Info(fmt.Sprintf("Adding %s label with value %s to AccountAccess %s", awsv1alpha1.FederatedRoleNameLabel, requestedRole.Name, currentFAA.Name))
-
-			newLabel := map[string]string{awsv1alpha1.FederatedRoleNameLabel: requestedRole.Name}
-
-			// Join the new UID label with any current labels
-			currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
-
-			err = r.Update(context.TODO(), currentFAA)
-			if err != nil {
-				reqLogger.Error(err, fmt.Sprintf("Failed to update label %s for %s/%s", awsv1alpha1.FederatedRoleNameLabel, currentFAA.Namespace, currentFAA.Name))
-				return reconcile.Result{}, err
-			}
+		if err = r.ensureFederatedRoleNameLabel(ctx, reqLogger, currentFAA, requestedRole); err != nil {
+			return reconcile.Result{}, err
 		}
-
-		if err = r.syncIAMPolicy(currentFAA, requestedRole, awsClient, reqLogger); err != nil {
+		if err = r.syncIAMPolicy(ctx, currentFAA, requestedRole, awsClient, reqLogger); err != nil {
 			reqLogger.Error(err, fmt.Sprintf("Failed to validate IAM policy for account access %s/%s", currentFAA.Namespace, currentFAA.Name))
 			currentFAA.Status.State = awsv1alpha1.AWSFederatedAccountStateFailed
 			SetStatuswithCondition(currentFAA, "Failed to update policy", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
@@ -170,126 +137,154 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 		return reconcile.Result{}, nil
 	}
 
-	// Check if the FAA has the uid label
-	if !hasLabel(currentFAA, awsv1alpha1.UIDLabel) {
-		// Generate a new UID
-		uid := controllerutils.GenerateShortUID()
-
-		reqLogger.Info(fmt.Sprintf("Adding UID %s to AccountAccess %s", uid, currentFAA.Name))
-		newLabel := map[string]string{awsv1alpha1.UIDLabel: uid}
-
-		// Join the new UID label with any current labels
-		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
-
-		// Update the CR with new labels
-		err = r.Update(context.TODO(), currentFAA)
-		if err != nil {
-			reqLogger.Error(err, fmt.Sprintf("Failed to update label %s for %s/%s", awsv1alpha1.UIDLabel, currentFAA.Namespace, currentFAA.Name))
-			return reconcile.Result{}, err
-		}
-
+	// Ensure UID label
+	if err = r.ensureUIDLabel(ctx, reqLogger, currentFAA); err != nil {
+		return reconcile.Result{}, err
 	}
 
 	uidLabel, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
 	if !ok {
+		return reconcile.Result{}, errors.New("UID label missing after ensure")
+	}
+
+	// Ensure account ID label
+	accountID, err := r.ensureAccountIDLabel(ctx, reqLogger, currentFAA, awsClient)
+	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	// Get account number of cluster account
-	gciOut, err := awsClient.GetCallerIdentity(context.TODO(), &sts.GetCallerIdentityInput{})
+	// Setup IAM role and policies
+	return r.setupIAMRoleAndPolicies(ctx, reqLogger, currentFAA, requestedRole, awsClient, accountID, uidLabel)
+}
+
+func (r *AWSFederatedAccountAccessReconciler) handleDeletion(ctx context.Context, reqLogger logr.Logger, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, requestedRole *awsv1alpha1.AWSFederatedRole) (reconcile.Result, error) {
+	if controllerutils.Contains(currentFAA.GetFinalizers(), controllerutils.Finalizer) {
+		reqLogger.Info("Cleaning up FederatedAccountAccess Roles")
+		err := r.cleanFederatedRoles(ctx, reqLogger, currentFAA, requestedRole)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		reqLogger.Info("Removing Finalizer")
+		err = r.removeFinalizer(ctx, reqLogger, currentFAA, controllerutils.Finalizer)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+	return reconcile.Result{}, nil
+}
+
+func (r *AWSFederatedAccountAccessReconciler) ensureFederatedRoleNameLabel(ctx context.Context, reqLogger logr.Logger, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, requestedRole *awsv1alpha1.AWSFederatedRole) error {
+	if !hasLabel(currentFAA, awsv1alpha1.FederatedRoleNameLabel) {
+		reqLogger.Info(fmt.Sprintf("Adding %s label with value %s to AccountAccess %s", awsv1alpha1.FederatedRoleNameLabel, requestedRole.Name, currentFAA.Name))
+		newLabel := map[string]string{awsv1alpha1.FederatedRoleNameLabel: requestedRole.Name}
+		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
+		err := r.Update(ctx, currentFAA)
+		if err != nil {
+			reqLogger.Error(err, fmt.Sprintf("Failed to update label %s for %s/%s", awsv1alpha1.FederatedRoleNameLabel, currentFAA.Namespace, currentFAA.Name))
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *AWSFederatedAccountAccessReconciler) ensureUIDLabel(ctx context.Context, reqLogger logr.Logger, currentFAA *awsv1alpha1.AWSFederatedAccountAccess) error {
+	if !hasLabel(currentFAA, awsv1alpha1.UIDLabel) {
+		uid := controllerutils.GenerateShortUID()
+		reqLogger.Info(fmt.Sprintf("Adding UID %s to AccountAccess %s", uid, currentFAA.Name))
+		newLabel := map[string]string{awsv1alpha1.UIDLabel: uid}
+		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
+		err := r.Update(ctx, currentFAA)
+		if err != nil {
+			reqLogger.Error(err, fmt.Sprintf("Failed to update label %s for %s/%s", awsv1alpha1.UIDLabel, currentFAA.Namespace, currentFAA.Name))
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *AWSFederatedAccountAccessReconciler) ensureAccountIDLabel(ctx context.Context, reqLogger logr.Logger, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, awsClient awsclient.Client) (string, error) {
+	gciOut, err := awsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if err != nil {
 		SetStatuswithCondition(currentFAA, "Failed to get account ID information", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
 		controllerutils.LogAwsError(log, fmt.Sprintf("Failed to get account ID information for '%s'", currentFAA.Name), err, err)
-		err := r.Client.Status().Update(context.TODO(), currentFAA)
-		if err != nil {
-			reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
-			return reconcile.Result{}, err
+		statusErr := r.Client.Status().Update(ctx, currentFAA)
+		if statusErr != nil {
+			reqLogger.Error(statusErr, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
+			return "", statusErr
 		}
-
-		return reconcile.Result{}, err
+		return "", err
 	}
 
-	accountID := *gciOut.Account // Add requested aws managed policies to the role
+	accountID := *gciOut.Account
 
 	if !hasLabel(currentFAA, awsv1alpha1.AccountIDLabel) {
-
 		reqLogger.Info(fmt.Sprintf("Adding awsAccountID %s to AccountAccess %s", accountID, currentFAA.Name))
 		newLabel := map[string]string{awsv1alpha1.AccountIDLabel: accountID}
-
-		// Join the new UID label with any current labels
 		currentFAA.Labels = controllerutils.JoinLabelMaps(currentFAA.Labels, newLabel)
-
-		// Update the CR with new labels
-		err = r.Update(context.TODO(), currentFAA)
+		err = r.Update(ctx, currentFAA)
 		if err != nil {
 			reqLogger.Error(err, fmt.Sprintf("Label update for %s failed", currentFAA.Name))
-			return reconcile.Result{}, err
+			return "", err
 		}
 	}
 
-	// Here create the custom policy in the cluster account
-	err = r.createOrUpdateIAMPolicy(awsClient, *requestedRole, *currentFAA)
+	return accountID, nil
+}
+
+func (r *AWSFederatedAccountAccessReconciler) setupIAMRoleAndPolicies(ctx context.Context, reqLogger logr.Logger, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, requestedRole *awsv1alpha1.AWSFederatedRole, awsClient awsclient.Client, accountID string, uidLabel string) (reconcile.Result, error) {
+	// Create the custom policy in the cluster account
+	err := r.createOrUpdateIAMPolicy(ctx, awsClient, *requestedRole, *currentFAA)
 	if err != nil {
-		// if we were unable to create the policy fail this CR.
 		SetStatuswithCondition(currentFAA, "Failed to create custom policy", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
 		reqLogger.Error(err, fmt.Sprintf("Unable to create policy requested by '%s'", currentFAA.Name))
-
-		err := r.Client.Status().Update(context.TODO(), currentFAA)
-		if err != nil {
-			reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
-			return reconcile.Result{}, err
+		statusErr := r.Client.Status().Update(ctx, currentFAA)
+		if statusErr != nil {
+			reqLogger.Error(statusErr, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
+			return reconcile.Result{}, statusErr
 		}
-
 		return reconcile.Result{}, nil
 	}
 
 	// Create role and apply custom policies and awsmanagedpolicies
-	role, err := r.createOrUpdateIAMRole(awsClient, *requestedRole, *currentFAA)
-
+	role, err := r.createOrUpdateIAMRole(ctx, awsClient, *requestedRole, *currentFAA)
 	if err != nil {
 		SetStatuswithCondition(currentFAA, "Failed to create role", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
 		reqLogger.Error(ErrFederatedAccessRoleFailedCreate, fmt.Sprintf("Unable to create role requested by '%s'", currentFAA.Name), "AWS ERROR: ", err)
-
-		err := r.Client.Status().Update(context.TODO(), currentFAA)
-		if err != nil {
-			reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
-			return reconcile.Result{}, err
+		statusErr := r.Client.Status().Update(ctx, currentFAA)
+		if statusErr != nil {
+			reqLogger.Error(statusErr, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
+			return reconcile.Result{}, statusErr
 		}
-
 		return reconcile.Result{}, nil
 	}
 
 	currentFAA.Status.ConsoleURL = fmt.Sprintf("https://signin.aws.amazon.com/switchrole?account=%s&roleName=%s", accountID, *role.RoleName)
 
-	awsManagedPolicyNames := []string{}
-	// Add all aws managed policy names to an array
-	awsManagedPolicyNames = append(awsManagedPolicyNames, requestedRole.Spec.AWSManagedPolicies...)
-	// Get policy arns for managed policies
+	// Prepare policy ARNs
+	awsManagedPolicyNames := append([]string{}, requestedRole.Spec.AWSManagedPolicies...)
 	policyArns := createPolicyArns(accountID, awsManagedPolicyNames, true)
-	// Get custom policy arns
 	customPolicy := []string{requestedRole.Spec.AWSCustomPolicy.Name + "-" + uidLabel}
 	customerPolArns := createPolicyArns(accountID, customPolicy, false)
 	policyArns = append(policyArns, customerPolArns[0])
 
 	// Attach the requested policy to the newly created role
-	err = r.attachIAMPolices(awsClient, currentFAA.Spec.AWSFederatedRole.Name+"-"+uidLabel, policyArns)
+	err = r.attachIAMPolices(ctx, awsClient, currentFAA.Spec.AWSFederatedRole.Name+"-"+uidLabel, policyArns)
 	if err != nil {
-		//TODO() role should be deleted here so that we leave nothing behind.
-
 		SetStatuswithCondition(currentFAA, "Failed to attach policies to role", awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
 		reqLogger.Error(err, fmt.Sprintf("Failed to attach policies to role requested by '%s'", currentFAA.Name))
-		err := r.Client.Status().Update(context.TODO(), currentFAA)
-		if err != nil {
-			reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
-			return reconcile.Result{}, err
+		statusErr := r.Client.Status().Update(ctx, currentFAA)
+		if statusErr != nil {
+			reqLogger.Error(statusErr, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
+			return reconcile.Result{}, statusErr
 		}
-
 		return reconcile.Result{}, nil
 	}
-	// Mark AWSFederatedAccountAccess CR as Ready.
+
+	// Mark AWSFederatedAccountAccess CR as Ready
 	SetStatuswithCondition(currentFAA, "Account Access Ready", awsv1alpha1.AWSFederatedAccountReady, awsv1alpha1.AWSFederatedAccountStateReady)
 	reqLogger.Info(fmt.Sprintf("Successfully applied %s", currentFAA.Name))
-	err = r.Client.Status().Update(context.TODO(), currentFAA)
+	err = r.Client.Status().Update(ctx, currentFAA)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
 		return reconcile.Result{}, err
@@ -298,12 +293,12 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 	return reconcile.Result{}, nil
 }
 
-func detachRolePolicy(awsClient awsclient.Client, federatedRole *awsv1alpha1.AWSFederatedRole, awsAccountID string, uid string) error {
+func detachRolePolicy(ctx context.Context, awsClient awsclient.Client, federatedRole *awsv1alpha1.AWSFederatedRole, awsAccountID string, uid string) error {
 	roleName := federatedRole.Name + "-" + uid
 	policyName := federatedRole.Spec.AWSCustomPolicy.Name + "-" + uid
 	policyArn := fmt.Sprintf("arn:aws:iam::%s:policy/%s", awsAccountID, policyName)
 
-	if _, err := awsClient.DetachRolePolicy(context.TODO(), &iam.DetachRolePolicyInput{
+	if _, err := awsClient.DetachRolePolicy(ctx, &iam.DetachRolePolicyInput{
 		PolicyArn: &policyArn,
 		RoleName:  &roleName,
 	}); err != nil {
@@ -316,7 +311,7 @@ func detachRolePolicy(awsClient awsclient.Client, federatedRole *awsv1alpha1.AWS
 	return nil
 }
 
-func (r *AWSFederatedAccountAccessReconciler) syncIAMPolicy(currentFAA *awsv1alpha1.AWSFederatedAccountAccess, requestedRole *awsv1alpha1.AWSFederatedRole, awsClient awsclient.Client, reqLogger logr.Logger) error {
+func (r *AWSFederatedAccountAccessReconciler) syncIAMPolicy(ctx context.Context, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, requestedRole *awsv1alpha1.AWSFederatedRole, awsClient awsclient.Client, reqLogger logr.Logger) error {
 	// validate that the policy in AWS matches the CR
 	uid, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
 	if !ok {
@@ -326,7 +321,7 @@ func (r *AWSFederatedAccountAccessReconciler) syncIAMPolicy(currentFAA *awsv1alp
 	}
 	roleName := fmt.Sprintf("%s-%s", requestedRole.Name, uid)
 	policyName := fmt.Sprintf("%s-%s", requestedRole.Spec.AWSCustomPolicy.Name, uid)
-	awsRolePolicies, err := awsClient.ListAttachedRolePolicies(context.TODO(), &iam.ListAttachedRolePoliciesInput{RoleName: &roleName})
+	awsRolePolicies, err := awsClient.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{RoleName: &roleName})
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Failed to list policies for role %s from AWS", roleName))
 		return err
@@ -334,13 +329,13 @@ func (r *AWSFederatedAccountAccessReconciler) syncIAMPolicy(currentFAA *awsv1alp
 
 	for _, awsAttachedPolicy := range awsRolePolicies.AttachedPolicies {
 		if *awsAttachedPolicy.PolicyName == policyName {
-			awsPolicy, err := awsClient.GetPolicy(context.TODO(), &iam.GetPolicyInput{PolicyArn: awsAttachedPolicy.PolicyArn})
+			awsPolicy, err := awsClient.GetPolicy(ctx, &iam.GetPolicyInput{PolicyArn: awsAttachedPolicy.PolicyArn})
 			if err != nil {
 				reqLogger.Error(err, fmt.Sprintf("Failed to get policy %s for role %s from AWS", *awsAttachedPolicy.PolicyName, roleName))
 				return err
 			}
 
-			awsPolicyVersion, err := awsClient.GetPolicyVersion(context.TODO(), &iam.GetPolicyVersionInput{
+			awsPolicyVersion, err := awsClient.GetPolicyVersion(ctx, &iam.GetPolicyVersionInput{
 				PolicyArn: awsAttachedPolicy.PolicyArn,
 				VersionId: awsPolicy.Policy.DefaultVersionId,
 			})
@@ -364,17 +359,17 @@ func (r *AWSFederatedAccountAccessReconciler) syncIAMPolicy(currentFAA *awsv1alp
 				return nil
 			}
 
-			err = detachRolePolicy(awsClient, requestedRole, currentFAA.Labels[awsv1alpha1.AccountIDLabel], uid)
+			err = detachRolePolicy(ctx, awsClient, requestedRole, currentFAA.Labels[awsv1alpha1.AccountIDLabel], uid)
 			if err != nil {
 				reqLogger.Error(err, fmt.Sprintf("Failed to detach policy %s from role %s", requestedRole.Spec.AWSCustomPolicy.Name, requestedRole.Name))
 				return err
 			}
-			err = r.createOrUpdateIAMPolicy(awsClient, *requestedRole, *currentFAA)
+			err = r.createOrUpdateIAMPolicy(ctx, awsClient, *requestedRole, *currentFAA)
 			if err != nil {
 				reqLogger.Error(err, fmt.Sprintf("Failed to apply IAM policy for AWS federated account access CR %s/%s", requestedRole.Namespace, roleName))
 				return err
 			}
-			err = r.attachIAMPolices(awsClient, roleName, createPolicyArns(currentFAA.Labels[awsv1alpha1.AccountIDLabel], []string{requestedRole.Spec.AWSCustomPolicy.Name + "-" + uid}, false))
+			err = r.attachIAMPolices(ctx, awsClient, roleName, createPolicyArns(currentFAA.Labels[awsv1alpha1.AccountIDLabel], []string{requestedRole.Spec.AWSCustomPolicy.Name + "-" + uid}, false))
 			if err != nil {
 				reqLogger.Error(err, fmt.Sprintf("Failed to attach IAM policy for AWS federated account access CR %s/%s", requestedRole.Namespace, roleName))
 				return err
@@ -385,7 +380,7 @@ func (r *AWSFederatedAccountAccessReconciler) syncIAMPolicy(currentFAA *awsv1alp
 }
 
 // createIAMPolicy creates the IAM policies in AWSFederatedRole inside our cluster account
-func (r *AWSFederatedAccountAccessReconciler) createIAMPolicy(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) (*iamtypes.Policy, error) {
+func (r *AWSFederatedAccountAccessReconciler) createIAMPolicy(ctx context.Context, awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) (*iamtypes.Policy, error) {
 	// Same struct from the afr.Spec.AWSCustomPolicy.Statements , but with json tags as capitals due to requirements for the policydoc
 
 	statements := []controllerutils.AwsStatement{}
@@ -416,7 +411,7 @@ func (r *AWSFederatedAccountAccessReconciler) createIAMPolicy(awsClient awsclien
 		return nil, errors.New("failed to get UID label")
 	}
 
-	output, err := awsClient.CreatePolicy(context.TODO(), &iam.CreatePolicyInput{
+	output, err := awsClient.CreatePolicy(ctx, &iam.CreatePolicyInput{
 		PolicyName:     aws.String(policyName),
 		Description:    aws.String(afr.Spec.AWSCustomPolicy.Description),
 		PolicyDocument: aws.String(string(jsonPolicyDoc)),
@@ -428,7 +423,7 @@ func (r *AWSFederatedAccountAccessReconciler) createIAMPolicy(awsClient awsclien
 	return output.Policy, nil
 }
 
-func (r *AWSFederatedAccountAccessReconciler) createIAMRole(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) (*iamtypes.Role, error) {
+func (r *AWSFederatedAccountAccessReconciler) createIAMRole(ctx context.Context, awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) (*iamtypes.Role, error) {
 	type awsStatement struct {
 		Effect    string                 `json:"Effect"`
 		Action    []string               `json:"Action"`
@@ -465,7 +460,7 @@ func (r *AWSFederatedAccountAccessReconciler) createIAMRole(awsClient awsclient.
 		return nil, errors.New("failed to get UID label")
 	}
 
-	createRoleOutput, err := awsClient.CreateRole(context.TODO(), &iam.CreateRoleInput{
+	createRoleOutput, err := awsClient.CreateRole(ctx, &iam.CreateRoleInput{
 		RoleName:                 aws.String(roleName),
 		Description:              aws.String(afr.Spec.RoleDescription),
 		AssumeRolePolicyDocument: aws.String(string(jsonAssumeRolePolicyDoc)),
@@ -477,30 +472,30 @@ func (r *AWSFederatedAccountAccessReconciler) createIAMRole(awsClient awsclient.
 	return createRoleOutput.Role, nil
 }
 
-func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMPolicy(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) error {
+func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMPolicy(ctx context.Context, awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) error {
 
 	uidLabel, ok := afaa.Labels["uid"]
 	if !ok {
 		return errors.New("unable to get UID label")
 	}
 
-	gciOut, err := awsClient.GetCallerIdentity(context.TODO(), &sts.GetCallerIdentityInput{})
+	gciOut, err := awsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if err != nil {
 		return err
 	}
 
 	customPolArns := createPolicyArns(*gciOut.Account, []string{afr.Spec.AWSCustomPolicy.Name + "-" + uidLabel}, false)
 
-	_, err = r.createIAMPolicy(awsClient, afr, afaa)
+	_, err = r.createIAMPolicy(ctx, awsClient, afr, afaa)
 	if err != nil {
 		var entityExists *iamtypes.EntityAlreadyExistsException
 		if errors.As(err, &entityExists) {
 			policyName := afr.Spec.AWSCustomPolicy.Name + "-" + uidLabel
-			err = checkAndDeletePolicy(awsClient, uidLabel, afr.Spec.AWSCustomPolicy.Name, &policyName, &customPolArns[0])
+			err = checkAndDeletePolicy(ctx, awsClient, uidLabel, afr.Spec.AWSCustomPolicy.Name, &policyName, &customPolArns[0])
 			if err != nil {
 				return err
 			}
-			_, err = r.createIAMPolicy(awsClient, afr, afaa)
+			_, err = r.createIAMPolicy(ctx, awsClient, afr, afaa)
 			if err != nil {
 				return err
 			}
@@ -510,7 +505,7 @@ func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMPolicy(awsClient 
 	return nil
 }
 
-func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMRole(awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) (*iamtypes.Role, error) {
+func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMRole(ctx context.Context, awsClient awsclient.Client, afr awsv1alpha1.AWSFederatedRole, afaa awsv1alpha1.AWSFederatedAccountAccess) (*iamtypes.Role, error) {
 
 	uidLabel, ok := afaa.Labels["uid"]
 	if !ok {
@@ -519,17 +514,17 @@ func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMRole(awsClient aw
 
 	roleName := afaa.Spec.AWSFederatedRole.Name + "-" + uidLabel
 
-	role, err := r.createIAMRole(awsClient, afr, afaa)
+	role, err := r.createIAMRole(ctx, awsClient, afr, afaa)
 	if err != nil {
 		var entityExists *iamtypes.EntityAlreadyExistsException
 		if errors.As(err, &entityExists) {
-			_, err := awsClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{RoleName: aws.String(roleName)})
+			_, err := awsClient.DeleteRole(ctx, &iam.DeleteRoleInput{RoleName: aws.String(roleName)})
 
 			if err != nil {
 				return nil, err
 			}
 
-			role, err := r.createIAMRole(awsClient, afr, afaa)
+			role, err := r.createIAMRole(ctx, awsClient, afr, afaa)
 
 			if err != nil {
 				return nil, err
@@ -544,9 +539,9 @@ func (r *AWSFederatedAccountAccessReconciler) createOrUpdateIAMRole(awsClient aw
 	return role, nil
 }
 
-func (r *AWSFederatedAccountAccessReconciler) attachIAMPolices(awsClient awsclient.Client, roleName string, policyArns []string) error {
+func (r *AWSFederatedAccountAccessReconciler) attachIAMPolices(ctx context.Context, awsClient awsclient.Client, roleName string, policyArns []string) error {
 	for _, pol := range policyArns {
-		_, err := awsClient.AttachRolePolicy(context.TODO(), &iam.AttachRolePolicyInput{
+		_, err := awsClient.AttachRolePolicy(ctx, &iam.AttachRolePolicyInput{
 			PolicyArn: aws.String(pol),
 			RoleName:  aws.String(roleName),
 		})
@@ -586,12 +581,12 @@ func SetStatuswithCondition(afaa *awsv1alpha1.AWSFederatedAccountAccess, message
 	afaa.Status.State = state
 }
 
-func (r *AWSFederatedAccountAccessReconciler) addFinalizer(reqLogger logr.Logger, awsFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess) error {
+func (r *AWSFederatedAccountAccessReconciler) addFinalizer(ctx context.Context, reqLogger logr.Logger, awsFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess) error {
 	reqLogger.Info("Adding Finalizer for the AccountClaim")
 	awsFederatedAccountAccess.SetFinalizers(append(awsFederatedAccountAccess.GetFinalizers(), controllerutils.Finalizer))
 
 	// Update CR
-	err := r.Update(context.TODO(), awsFederatedAccountAccess)
+	err := r.Update(ctx, awsFederatedAccountAccess)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update AccountClaim with finalizer")
 		return err
@@ -599,12 +594,12 @@ func (r *AWSFederatedAccountAccessReconciler) addFinalizer(reqLogger logr.Logger
 	return nil
 }
 
-func (r *AWSFederatedAccountAccessReconciler) removeFinalizer(reqLogger logr.Logger, AWSFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess, finalizerName string) error {
+func (r *AWSFederatedAccountAccessReconciler) removeFinalizer(ctx context.Context, reqLogger logr.Logger, AWSFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess, finalizerName string) error {
 	reqLogger.Info("Removing Finalizer for the AWSFederatedAccountAccess")
 	AWSFederatedAccountAccess.SetFinalizers(controllerutils.Remove(AWSFederatedAccountAccess.GetFinalizers(), finalizerName))
 
 	// Update CR
-	err := r.Update(context.TODO(), AWSFederatedAccountAccess)
+	err := r.Update(ctx, AWSFederatedAccountAccess)
 	if err != nil {
 		reqLogger.Error(err, "Failed to remove AWSFederatedAccountAccess finalizer")
 		return err
@@ -612,7 +607,7 @@ func (r *AWSFederatedAccountAccessReconciler) removeFinalizer(reqLogger logr.Log
 	return nil
 }
 
-func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr.Logger, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, federatedRoleCR *awsv1alpha1.AWSFederatedRole) error {
+func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(ctx context.Context, reqLogger logr.Logger, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, federatedRoleCR *awsv1alpha1.AWSFederatedRole) error {
 
 	// Get the UID
 	uidLabel, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
@@ -650,7 +645,7 @@ func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr
 		return err
 	}
 
-	assumeRoleOutput, err := rootAwsClient.AssumeRole(context.TODO(), &sts.AssumeRoleInput{
+	assumeRoleOutput, err := rootAwsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
 		RoleArn:         aws.String(fmt.Sprintf("arn:aws:iam::%s:role/OrganizationAccountAccessRole", accountIDLabel)),
 		RoleSessionName: aws.String("FederatedRoleCleanup"),
 	})
@@ -658,7 +653,7 @@ func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr
 		reqLogger.Info("Unable to assume role OrganizationAccountAccessRole, trying BYOCAdminAccess")
 
 		// Attempt to assume the BYOCAdminAccess role if OrganizationAccountAccess didn't work
-		assumeRoleOutput, err = rootAwsClient.AssumeRole(context.TODO(), &sts.AssumeRoleInput{
+		assumeRoleOutput, err = rootAwsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
 			RoleArn:         aws.String(fmt.Sprintf("arn:aws:iam::%s:role/BYOCAdminAccess-%s", accountIDLabel, uidLabel)),
 			RoleSessionName: aws.String("FederatedRoleCleanup"),
 		})
@@ -685,12 +680,12 @@ func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr
 	// Paginate through attached policies and attempt to remove them
 	reqLogger.Info("Detaching Policies")
 	for {
-		attachedPolicyOutput, err := awsClient.ListAttachedRolePolicies(context.TODO(), &iam.ListAttachedRolePoliciesInput{RoleName: aws.String(roleName), Marker: nextMarker})
+		attachedPolicyOutput, err := awsClient.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{RoleName: aws.String(roleName), Marker: nextMarker})
 		if err != nil {
 			var noSuchEntity *iamtypes.NoSuchEntityException
 			if errors.As(err, &noSuchEntity) {
 				// Delete any custom policies made
-				err = r.deleteNonAttachedCustomPolicy(reqLogger, awsClient, currentFAA, federatedRoleCR)
+				err = r.deleteNonAttachedCustomPolicy(ctx, reqLogger, awsClient, currentFAA, federatedRoleCR)
 				if err != nil {
 					return err
 				}
@@ -709,7 +704,7 @@ func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr
 			return err
 		}
 		for _, attachedPolicy := range attachedPolicyOutput.AttachedPolicies {
-			_, err = awsClient.DetachRolePolicy(context.TODO(), &iam.DetachRolePolicyInput{RoleName: aws.String(roleName), PolicyArn: attachedPolicy.PolicyArn})
+			_, err = awsClient.DetachRolePolicy(ctx, &iam.DetachRolePolicyInput{RoleName: aws.String(roleName), PolicyArn: attachedPolicy.PolicyArn})
 			if err != nil {
 				var aerr smithy.APIError
 				if errors.As(err, &aerr) {
@@ -724,7 +719,7 @@ func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr
 				return err
 			}
 
-			err = checkAndDeletePolicy(awsClient, uidLabel, federatedRoleCR.Spec.AWSCustomPolicy.Name, attachedPolicy.PolicyName, attachedPolicy.PolicyArn)
+			err = checkAndDeletePolicy(ctx, awsClient, uidLabel, federatedRoleCR.Spec.AWSCustomPolicy.Name, attachedPolicy.PolicyName, attachedPolicy.PolicyArn)
 			if err != nil {
 				return err
 			}
@@ -739,7 +734,7 @@ func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr
 
 	// Delete the role
 	reqLogger.Info("Deleting Role")
-	_, err = awsClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{RoleName: aws.String(roleName)})
+	_, err = awsClient.DeleteRole(ctx, &iam.DeleteRoleInput{RoleName: aws.String(roleName)})
 	if err != nil {
 		var aerr smithy.APIError
 		if errors.As(err, &aerr) {
@@ -753,7 +748,7 @@ func (r *AWSFederatedAccountAccessReconciler) cleanFederatedRoles(reqLogger logr
 	return nil
 }
 
-func (r *AWSFederatedAccountAccessReconciler) deleteNonAttachedCustomPolicy(reqLogger logr.Logger, awsClient awsclient.Client, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, federatedRoleCR *awsv1alpha1.AWSFederatedRole) error {
+func (r *AWSFederatedAccountAccessReconciler) deleteNonAttachedCustomPolicy(ctx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, currentFAA *awsv1alpha1.AWSFederatedAccountAccess, federatedRoleCR *awsv1alpha1.AWSFederatedRole) error {
 
 	// Get the UID
 	uidLabel, ok := currentFAA.Labels[awsv1alpha1.UIDLabel]
@@ -764,7 +759,7 @@ func (r *AWSFederatedAccountAccessReconciler) deleteNonAttachedCustomPolicy(reqL
 	var policyMarker *string
 	// Paginate through custom policies
 	for {
-		policyListOutput, err := awsClient.ListPolicies(context.TODO(), &iam.ListPoliciesInput{Scope: iamtypes.PolicyScopeTypeLocal, Marker: policyMarker})
+		policyListOutput, err := awsClient.ListPolicies(ctx, &iam.ListPoliciesInput{Scope: iamtypes.PolicyScopeTypeLocal, Marker: policyMarker})
 		if err != nil {
 			var aerr smithy.APIError
 			if errors.As(err, &aerr) {
@@ -775,7 +770,7 @@ func (r *AWSFederatedAccountAccessReconciler) deleteNonAttachedCustomPolicy(reqL
 		}
 
 		for _, policy := range policyListOutput.Policies {
-			err = checkAndDeletePolicy(awsClient, uidLabel, federatedRoleCR.Spec.AWSCustomPolicy.Name, policy.PolicyName, policy.Arn)
+			err = checkAndDeletePolicy(ctx, awsClient, uidLabel, federatedRoleCR.Spec.AWSCustomPolicy.Name, policy.PolicyName, policy.Arn)
 			if err != nil {
 				return err
 			}
@@ -800,24 +795,24 @@ func hasLabel(awsFederatedAccountAccess *awsv1alpha1.AWSFederatedAccountAccess, 
 	return false
 }
 
-func checkAndDeletePolicy(awsClient awsclient.Client, uidLabel string, crPolicyName string, policyName *string, policyArn *string) error {
+func checkAndDeletePolicy(ctx context.Context, awsClient awsclient.Client, uidLabel string, crPolicyName string, policyName *string, policyArn *string) error {
 	awsCustomPolicyname := getPolicyNameWithUID(crPolicyName, uidLabel)
 
 	if *policyName == awsCustomPolicyname {
-		policyVersions, err := awsClient.ListPolicyVersions(context.TODO(), &iam.ListPolicyVersionsInput{PolicyArn: policyArn})
+		policyVersions, err := awsClient.ListPolicyVersions(ctx, &iam.ListPolicyVersionsInput{PolicyArn: policyArn})
 		if err != nil {
 			return err
 		}
 
 		for _, policyVersion := range policyVersions.Versions {
 			if !policyVersion.IsDefaultVersion {
-				if _, err = awsClient.DeletePolicyVersion(context.TODO(), &iam.DeletePolicyVersionInput{VersionId: policyVersion.VersionId, PolicyArn: policyArn}); err != nil {
+				if _, err = awsClient.DeletePolicyVersion(ctx, &iam.DeletePolicyVersionInput{VersionId: policyVersion.VersionId, PolicyArn: policyArn}); err != nil {
 					return err
 				}
 			}
 		}
 
-		_, err = awsClient.DeletePolicy(context.TODO(), &iam.DeletePolicyInput{PolicyArn: policyArn})
+		_, err = awsClient.DeletePolicy(ctx, &iam.DeletePolicyInput{PolicyArn: policyArn})
 		if err != nil {
 			var aerr smithy.APIError
 			if errors.As(err, &aerr) {

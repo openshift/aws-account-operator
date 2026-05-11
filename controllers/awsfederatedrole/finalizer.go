@@ -13,12 +13,12 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/utils"
 )
 
-func (r *AWSFederatedRoleReconciler) addFinalizer(reqLogger logr.Logger, awsFederatedRole *awsv1alpha1.AWSFederatedRole) error {
+func (r *AWSFederatedRoleReconciler) addFinalizer(ctx context.Context, reqLogger logr.Logger, awsFederatedRole *awsv1alpha1.AWSFederatedRole) error {
 	reqLogger.Info("Adding Finalizer for the AccountClaim")
 	awsFederatedRole.SetFinalizers(append(awsFederatedRole.GetFinalizers(), utils.Finalizer))
 
 	// Update CR
-	err := r.Update(context.TODO(), awsFederatedRole)
+	err := r.Update(ctx, awsFederatedRole)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update AccountClaim with finalizer")
 		return err
@@ -26,12 +26,12 @@ func (r *AWSFederatedRoleReconciler) addFinalizer(reqLogger logr.Logger, awsFede
 	return nil
 }
 
-func (r *AWSFederatedRoleReconciler) removeFinalizer(reqLogger logr.Logger, awsFederatedRole *awsv1alpha1.AWSFederatedRole, finalizerName string) error {
+func (r *AWSFederatedRoleReconciler) removeFinalizer(ctx context.Context, reqLogger logr.Logger, awsFederatedRole *awsv1alpha1.AWSFederatedRole, finalizerName string) error {
 	reqLogger.Info("Removing Finalizer for the AWSFederatedRole")
 	awsFederatedRole.SetFinalizers(utils.Remove(awsFederatedRole.GetFinalizers(), finalizerName))
 
 	// Update CR
-	err := r.Update(context.TODO(), awsFederatedRole)
+	err := r.Update(ctx, awsFederatedRole)
 	if err != nil {
 		reqLogger.Error(err, "Failed to remove AWSFederatedAccountAccess finalizer")
 		return err
@@ -39,20 +39,20 @@ func (r *AWSFederatedRoleReconciler) removeFinalizer(reqLogger logr.Logger, awsF
 	return nil
 }
 
-func (r *AWSFederatedRoleReconciler) finalizeFederateRole(reqLogger logr.Logger, awsFederatedRole *awsv1alpha1.AWSFederatedRole) error {
+func (r *AWSFederatedRoleReconciler) finalizeFederateRole(ctx context.Context, reqLogger logr.Logger, awsFederatedRole *awsv1alpha1.AWSFederatedRole) error {
 
 	// Get all FederatedAccountAccesses
 	awsFederatedAccountAccessList := &awsv1alpha1.AWSFederatedAccountAccessList{}
 
 	listOpts := []client.ListOption{}
-	if err := r.List(context.TODO(), awsFederatedAccountAccessList, listOpts...); err != nil {
+	if err := r.List(ctx, awsFederatedAccountAccessList, listOpts...); err != nil {
 		reqLogger.Error(err, "unable to list AWS Federated Account Accesses")
 		return err
 	}
 
 	for i := range awsFederatedAccountAccessList.Items {
 		if isFederatedRoleReferenced(&awsFederatedAccountAccessList.Items[i], awsFederatedRole) {
-			deleteAccessErr := r.Delete(context.TODO(), &awsFederatedAccountAccessList.Items[i])
+			deleteAccessErr := r.Delete(ctx, &awsFederatedAccountAccessList.Items[i])
 			if deleteAccessErr != nil {
 				reqLogger.Error(deleteAccessErr, fmt.Sprintf("unable to delete AWS Federated Account Accesses %s\n", awsFederatedAccountAccessList.Items[i].Name))
 				return deleteAccessErr

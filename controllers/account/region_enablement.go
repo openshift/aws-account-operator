@@ -20,10 +20,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client, optInRegion string, optInRegionRequest *awsv1alpha1.OptInRegionStatus, currentAcctInstance *awsv1alpha1.Account) error {
+func HandleOptInRegionRequests(ctx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, optInRegion string, optInRegionRequest *awsv1alpha1.OptInRegionStatus, currentAcctInstance *awsv1alpha1.Account) error {
 	reqLogger.Info("Handling Opt-In Region Requests")
 
-	regionOptInRequired, err := RegionNeedsOptIn(reqLogger, awsClient, optInRegion)
+	regionOptInRequired, err := RegionNeedsOptIn(ctx, reqLogger, awsClient, optInRegion)
 	if err != nil {
 		reqLogger.Error(err, "failed retrieving region Opt-In status from AWS")
 		if strings.Contains(err.Error(), "AccessDeniedException") {
@@ -39,7 +39,7 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 		)
 
 		// Checks to see if region enablement was already requested
-		requestStatus, err := checkOptInRegionStatus(awsClient, optInRegion)
+		requestStatus, err := checkOptInRegionStatus(ctx, awsClient, optInRegion)
 		if err != nil {
 			reqLogger.Error(err, "failed to get Opt-In status ")
 		}
@@ -59,7 +59,7 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 			)
 			optInRegionRequest.Status = awsv1alpha1.OptInRequestEnabling
 		case awsv1alpha1.OptInRequestTodo:
-			submitted, err := enableOptInRegions(awsClient, optInRegion)
+			submitted, err := enableOptInRegions(ctx, awsClient, optInRegion)
 			if err != nil {
 				reqLogger.Error(err, "failed to opt-in region", "RegionCode", optInRegion)
 			}
@@ -92,7 +92,7 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 	return nil
 }
 
-func GetOptInRegionStatus(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) (reconcile.Result, error) {
+func GetOptInRegionStatus(ctx context.Context, reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) (reconcile.Result, error) {
 	// First we get all enablment request we need to get a status update on:
 	// - Enablment requests that are not yet open on the AWS side
 	// - Enablment requests that are open but not yet completed
@@ -112,28 +112,28 @@ func GetOptInRegionStatus(reqLogger logr.Logger, awsClientBuilder awsclient.IBui
 		}
 	}
 	reqLogger.Info("Handling region request", "current-in-flight-count", currentInFlightCount)
-	err := updateOptInRegionRequests(reqLogger, awsClientBuilder, awsSetupClient, currentAcctInstance, client, inFlightOptInRequests)
+	err := updateOptInRegionRequests(ctx, reqLogger, awsClientBuilder, awsSetupClient, currentAcctInstance, client, inFlightOptInRequests)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	err = client.Status().Update(context.TODO(), currentAcctInstance)
+	err = client.Status().Update(ctx, currentAcctInstance)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 	return reconcile.Result{RequeueAfter: 60 * time.Second, Requeue: true}, err
 }
 
-func updateOptInRegionRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, optInRequests awsv1alpha1.OptInRegions) error {
+func updateOptInRegionRequests(ctx context.Context, reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, optInRequests awsv1alpha1.OptInRegions) error {
 	for region, regionRequest := range optInRequests {
 		regionLogger := reqLogger.WithValues("Region", region)
 		roleToAssume := currentAcctInstance.GetAssumeRole()
-		awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, "")
+		awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(ctx, reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, "")
 		if err != nil {
 			reqLogger.Error(err, "Could not impersonate AWS account", "aws-account", currentAcctInstance.Spec.AwsAccountID)
 			return err
 		}
 		reqLogger.Info(fmt.Sprintf("Handling Opt-In region request for %s", region))
-		err = HandleOptInRegionRequests(regionLogger, awsAssumedRoleClient, region, regionRequest, currentAcctInstance)
+		err = HandleOptInRegionRequests(ctx, regionLogger, awsAssumedRoleClient, region, regionRequest, currentAcctInstance)
 		if err != nil {
 			return err
 		}
@@ -142,7 +142,7 @@ func updateOptInRegionRequests(reqLogger logr.Logger, awsClientBuilder awsclient
 	return nil
 }
 
-func enableOptInRegions(client awsclient.Client, regionCode string) (bool, error) {
+func enableOptInRegions(ctx context.Context, client awsclient.Client, regionCode string) (bool, error) {
 	var result *account.EnableRegionOutput
 	var alreadySubmitted bool
 
@@ -152,7 +152,7 @@ func enableOptInRegions(client awsclient.Client, regionCode string) (bool, error
 	retry.DefaultAttempts = uint(5)
 	err := retry.Do(
 		func() (err error) {
-			result, err = client.EnableRegion(context.TODO(), &account.EnableRegionInput{
+			result, err = client.EnableRegion(ctx, &account.EnableRegionInput{
 				RegionName: aws.String(regionCode),
 			})
 			if err != nil {
@@ -215,7 +215,7 @@ func enableOptInRegions(client awsclient.Client, regionCode string) (bool, error
 	return true, nil
 }
 
-func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode string) (bool, error) {
+func RegionNeedsOptIn(ctx context.Context, reqLogger logr.Logger, client awsclient.Client, regionCode string) (bool, error) {
 	var result *account.GetRegionOptStatusOutput
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
@@ -224,7 +224,7 @@ func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode
 	retry.DefaultAttempts = uint(5)
 	err := retry.Do(
 		func() (err error) {
-			result, err = client.GetRegionOptStatus(context.TODO(), &account.GetRegionOptStatusInput{
+			result, err = client.GetRegionOptStatus(ctx, &account.GetRegionOptStatusInput{
 				RegionName: aws.String(regionCode),
 			})
 			return err
@@ -273,7 +273,7 @@ func RegionNeedsOptIn(reqLogger logr.Logger, client awsclient.Client, regionCode
 	return false, err
 }
 
-func checkOptInRegionStatus(awsClient awsclient.Client, regionCode string) (awsv1alpha1.OptInRequestStatus, error) {
+func checkOptInRegionStatus(ctx context.Context, awsClient awsclient.Client, regionCode string) (awsv1alpha1.OptInRequestStatus, error) {
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
 	// This also defaults to an exponential backoff, so we only need to try ~5 times, default is 10
 	retry.DefaultDelay = 3 * time.Second
@@ -285,7 +285,7 @@ func checkOptInRegionStatus(awsClient awsclient.Client, regionCode string) (awsv
 
 		err := retry.Do(
 			func() (err error) {
-				result, err = awsClient.GetRegionOptStatus(context.TODO(), &account.GetRegionOptStatusInput{
+				result, err = awsClient.GetRegionOptStatus(ctx, &account.GetRegionOptStatusInput{
 					RegionName: aws.String(regionCode),
 				})
 				return err
@@ -350,7 +350,7 @@ func SetOptRegionStatus(reqLogger logr.Logger, optInRegions []string, currentAcc
 	return nil
 }
 
-func CalculateOptingInRegionAccounts(reqLogger logr.Logger, c client.Client) (int, error) {
+func CalculateOptingInRegionAccounts(ctx context.Context, reqLogger logr.Logger, c client.Client) (int, error) {
 	// Retrieve a list of accounts with region enablement in progress for supported Opt-In regions
 	accountList := &awsv1alpha1.AccountList{}
 	listOpts := []client.ListOption{
@@ -358,7 +358,7 @@ func CalculateOptingInRegionAccounts(reqLogger logr.Logger, c client.Client) (in
 	}
 	numberOfAccountsOptingIn := 0
 
-	if err := c.List(context.TODO(), accountList, listOpts...); err != nil {
+	if err := c.List(ctx, accountList, listOpts...); err != nil {
 		log.Error(err, "Failed to list accounts")
 		if k8serr.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.

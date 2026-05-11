@@ -32,7 +32,7 @@ func matchSubstring(roleID, role string) (bool, error) {
 }
 
 // getSTSCredentials returns STS credentials for the specified account ARN
-func GetSTSCredentials(
+func GetSTSCredentials(ctx context.Context,
 	reqLogger logr.Logger,
 	client awsclient.Client,
 	roleArn string,
@@ -55,7 +55,7 @@ func GetSTSCredentials(
 	var err error
 	for i := 0; i < 100; i++ {
 		time.Sleep(defaultSleepDelay)
-		assumeRoleOutput, err = client.AssumeRole(context.TODO(), &assumeRoleInput)
+		assumeRoleOutput, err = client.AssumeRole(ctx, &assumeRoleInput)
 		if err == nil {
 			break
 		}
@@ -82,7 +82,7 @@ func GetSTSCredentials(
 	return assumeRoleOutput, err
 }
 
-func AssumeRoleAndCreateClient(
+func AssumeRoleAndCreateClient(ctx context.Context,
 	reqLogger logr.Logger,
 	awsClientBuilder awsclient.IBuilder,
 	currentAcctInstance *awsv1alpha1.Account,
@@ -91,10 +91,10 @@ func AssumeRoleAndCreateClient(
 	region string,
 	roleToAssume string,
 	ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
-	return HandleRoleAssumption(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, ccsRoleID)
+	return HandleRoleAssumption(ctx, reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, ccsRoleID)
 }
 
-func HandleRoleAssumption(
+func HandleRoleAssumption(ctx context.Context,
 	reqLogger logr.Logger,
 	awsClientBuilder awsclient.IBuilder,
 	currentAcctInstance *awsv1alpha1.Account,
@@ -118,7 +118,7 @@ func HandleRoleAssumption(
 	for i := 0; i < 10; i++ {
 
 		// Get STS credentials so that we can create an aws client with
-		creds, credsErr = GetSTSCredentials(reqLogger, awsSetupClient, roleArn, "", roleSessionName)
+		creds, credsErr = GetSTSCredentials(ctx, reqLogger, awsSetupClient, roleArn, "", roleSessionName)
 		if credsErr != nil {
 			return nil, nil, credsErr
 		}

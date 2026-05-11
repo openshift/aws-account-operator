@@ -15,6 +15,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strconv"
@@ -89,9 +90,9 @@ func GetIAMArn(awsAccountID, awsResourceType, awsResourceID string) (arn string)
 	return
 }
 
-func GetDefaultAccountPoolName(reqLogger logr.Logger, kubeClient client.Client) (string, error) {
+func GetDefaultAccountPoolName(ctx context.Context, reqLogger logr.Logger, kubeClient client.Client) (string, error) {
 
-	cm, err := utils.GetOperatorConfigMap(kubeClient)
+	cm, err := utils.GetOperatorConfigMap(ctx, kubeClient)
 	if err != nil {
 		reqLogger.Error(err, "failed retrieving configmap")
 		return "", err
@@ -123,8 +124,8 @@ func GetDefaultAccountPoolName(reqLogger logr.Logger, kubeClient client.Client) 
 // GetPayerAccountIDs returns the list of payer account IDs from the ConfigMap
 // These are root/payer accounts in AWS Organizations that should never have
 // cleanup operations performed on them
-func GetPayerAccountIDs(kubeClient client.Client) ([]string, error) {
-	cm, err := utils.GetOperatorConfigMap(kubeClient)
+func GetPayerAccountIDs(ctx context.Context, kubeClient client.Client) ([]string, error) {
+	cm, err := utils.GetOperatorConfigMap(ctx, kubeClient)
 	if err != nil {
 		// If ConfigMap doesn't exist (e.g., in test environments), return empty list
 		// This allows the operator to function without the payer account blocklist
@@ -151,8 +152,8 @@ func GetPayerAccountIDs(kubeClient client.Client) ([]string, error) {
 
 // IsPayerAccount checks if the given AWS account ID is a payer/root account
 // that should be protected from all operations
-func IsPayerAccount(accountID string, kubeClient client.Client) (bool, error) {
-	payerAccounts, err := GetPayerAccountIDs(kubeClient)
+func IsPayerAccount(ctx context.Context, accountID string, kubeClient client.Client) (bool, error) {
+	payerAccounts, err := GetPayerAccountIDs(ctx, kubeClient)
 	if err != nil {
 		return false, err
 	}

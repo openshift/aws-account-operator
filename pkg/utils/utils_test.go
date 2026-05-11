@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -408,33 +409,33 @@ var _ = Describe("Utils", func() {
   default: true
 `
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			quotas, err := GetServiceQuotasFromAccountPool(context.TODO(), nullLogger, "nonexisting", client)
 			Expect(err).To(BeNil())
 			Expect(quotas).To(BeEmpty())
 		})
 		It("Should return an Error when the aao configmap isn't found", func() {
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects().Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			quotas, err := GetServiceQuotasFromAccountPool(context.TODO(), nullLogger, "nonexisting", client)
 			Expect(err).ToNot(BeNil())
 			Expect(quotas).To(BeEmpty())
 		})
 		It("Should return an Error when there is no accountpool key in the configmap", func() {
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			quotas, err := GetServiceQuotasFromAccountPool(context.TODO(), nullLogger, "nonexisting", client)
 			Expect(err).ToNot(BeNil())
 			Expect(quotas).To(BeEmpty())
 		})
 		It("Should return an Error when the accoutpool data is malformed", func() {
 			configMap.Data["accountpool"] = `invalid: true`
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			quotas, err := GetServiceQuotasFromAccountPool(context.TODO(), nullLogger, "nonexisting", client)
 			Expect(err).ToNot(BeNil())
 			Expect(quotas).To(BeEmpty())
 		})
 		It("Should return an Error when the accoutpool data is malformed", func() {
 			configMap.Data["accountpool"] = `invalid: true`
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "nonexisting", client)
+			quotas, err := GetServiceQuotasFromAccountPool(context.TODO(), nullLogger, "nonexisting", client)
 			Expect(err).ToNot(BeNil())
 			Expect(quotas).To(BeEmpty())
 		})
@@ -449,7 +450,7 @@ fm-accountpool:
       L-69A177A2: '255'
 `
 			client := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{configMap}...).Build()
-			quotas, err := GetServiceQuotasFromAccountPool(nullLogger, "fm-accountpool", client)
+			quotas, err := GetServiceQuotasFromAccountPool(context.TODO(), nullLogger, "fm-accountpool", client)
 			Expect(err).To(BeNil())
 			Expect(quotas).ToNot(BeEmpty())
 			Expect(quotas).To(HaveKey("default"))

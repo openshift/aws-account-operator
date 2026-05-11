@@ -85,7 +85,7 @@ func ListIAMUsers(reqLogger logr.Logger, client Client) ([]types.User, error) {
 
 // CheckIAMUserExists checks if a given IAM user exists within an account
 // Takes a logger, an AWS client for the target account, and a target IAM username
-func CheckIAMUserExists(reqLogger logr.Logger, client Client, userName string) (bool, *iam.GetUserOutput, error) {
+func CheckIAMUserExists(ctx context.Context, reqLogger logr.Logger, client Client, userName string) (bool, *iam.GetUserOutput, error) {
 	// Retry when getting IAM user information
 	// Sometimes we see a delay before credentials are ready to be user resulting in the AWS API returning 404's
 	var iamGetUserOutput *iam.GetUserOutput
@@ -93,7 +93,7 @@ func CheckIAMUserExists(reqLogger logr.Logger, client Client, userName string) (
 
 	for i := 0; i < 10; i++ {
 		// check if username exists for this account
-		iamGetUserOutput, err = client.GetUser(context.TODO(), &iam.GetUserInput{
+		iamGetUserOutput, err = client.GetUser(ctx, &iam.GetUserInput{
 			UserName: aws.String(userName),
 		})
 
@@ -140,13 +140,13 @@ func CheckIAMUserExists(reqLogger logr.Logger, client Client, userName string) (
 }
 
 // CreateIAMUser creates a new IAM user in the target AWS account
-func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Account, userName string, managedTags []AWSTag, customTags []AWSTag) (*iam.CreateUserOutput, error) {
+func CreateIAMUser(ctx context.Context, reqLogger logr.Logger, client Client, account *awsv1alpha1.Account, userName string, managedTags []AWSTag, customTags []AWSTag) (*iam.CreateUserOutput, error) {
 	var createUserOutput = &iam.CreateUserOutput{}
 	var err error
 
 	for i := 0; i < 10; i++ {
 
-		createUserOutput, err = client.CreateUser(context.TODO(), &iam.CreateUserInput{
+		createUserOutput, err = client.CreateUser(ctx, &iam.CreateUserInput{
 			UserName: aws.String(userName),
 			Tags:     AWSTags.BuildTags(account, managedTags, customTags).GetIAMTags(),
 		})
@@ -198,14 +198,14 @@ func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Ac
 }
 
 // ListIAMRoles returns a types.Role list of roles in the AWS account
-func ListIAMRoles(reqLogger logr.Logger, client Client) ([]types.Role, error) {
+func ListIAMRoles(ctx context.Context, reqLogger logr.Logger, client Client) ([]types.Role, error) {
 
 	// List of IAM roles to return
 	iamRoleList := []types.Role{}
 	var marker *string
 
 	for {
-		output, err := client.ListRoles(context.TODO(), &iam.ListRolesInput{Marker: marker})
+		output, err := client.ListRoles(ctx, &iam.ListRolesInput{Marker: marker})
 		if err != nil {
 			return nil, err
 		}

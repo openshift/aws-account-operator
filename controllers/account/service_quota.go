@@ -22,7 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Client, quotaCode awsv1alpha1.SupportedServiceQuotas, serviceQuotaStatus *awsv1alpha1.ServiceQuotaStatus) error {
+func HandleServiceQuotaRequests(ctx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, quotaCode awsv1alpha1.SupportedServiceQuotas, serviceQuotaStatus *awsv1alpha1.ServiceQuotaStatus) error {
 
 	reqLogger.Info("Handling ServiceQuota Requests")
 	serviceCode, found := getServiceCode(quotaCode)
@@ -31,7 +31,7 @@ func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Clien
 		return fixtures.NotFound
 	}
 
-	quotaIncreaseRequired, err := serviceQuotaNeedsIncrease(reqLogger, awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
+	quotaIncreaseRequired, err := serviceQuotaNeedsIncrease(ctx, reqLogger, awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
 	if err != nil {
 		reqLogger.Error(err, "failed retrieving current vCPU quota from AWS")
 		if strings.Contains(err.Error(), "NoSuchResourceException") {
@@ -49,7 +49,7 @@ func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Clien
 		)
 
 		// Check to see have we already requested this increase
-		requestStatus, err := checkQuotaRequestStatus(awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
+		requestStatus, err := checkQuotaRequestStatus(ctx, awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
 		if err != nil {
 			reqLogger.Error(err, "failed to get quota change history")
 			return err
@@ -78,7 +78,7 @@ func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Clien
 			serviceQuotaStatus.Status = awsv1alpha1.ServiceRequestDenied
 			return nil
 		case awsv1alpha1.ServiceRequestTodo:
-			submitted, err := setServiceQuota(awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
+			submitted, err := setServiceQuota(ctx, awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
 			if err != nil {
 				reqLogger.Error(err, "failed requesting quota increase", "QuotaCode", string(quotaCode))
 			}
@@ -117,11 +117,11 @@ func getServiceCode(quotaCode awsv1alpha1.SupportedServiceQuotas) (string, bool)
 }
 
 // getDesiredServiceQuotaValue retrieves the desired quota information from the operator configmap and converts it to a float64
-func (r *AccountReconciler) getDesiredServiceQuotaValue(reqLogger logr.Logger, quota string) (float64, error) {
+func (r *AccountReconciler) getDesiredServiceQuotaValue(ctx context.Context, reqLogger logr.Logger, quota string) (float64, error) {
 	var err error
 	var vCPUQuota float64
 
-	configMap, err := controllerutils.GetOperatorConfigMap(r.Client)
+	configMap, err := controllerutils.GetOperatorConfigMap(ctx, r.Client)
 	v, ok := configMap.Data[fmt.Sprintf("quota.%s", quota)]
 	if !ok {
 		err = awsv1alpha1.ErrInvalidConfigMap
@@ -140,7 +140,7 @@ func (r *AccountReconciler) getDesiredServiceQuotaValue(reqLogger logr.Logger, q
 	return vCPUQuota, nil
 }
 
-func serviceQuotaNeedsIncrease(reqLogger logr.Logger, client awsclient.Client, quotaCode string, serviceCode string, desiredQuota float64) (bool, error) {
+func serviceQuotaNeedsIncrease(ctx context.Context, reqLogger logr.Logger, client awsclient.Client, quotaCode string, serviceCode string, desiredQuota float64) (bool, error) {
 	var result *servicequotas.GetServiceQuotaOutput
 
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
@@ -151,7 +151,7 @@ func serviceQuotaNeedsIncrease(reqLogger logr.Logger, client awsclient.Client, q
 		func() (err error) {
 			// Get the current existing quota setting
 			result, err = client.GetServiceQuota(
-				context.TODO(),
+				ctx,
 				&servicequotas.GetServiceQuotaInput{
 					QuotaCode:   aws.String(quotaCode),
 					ServiceCode: aws.String(serviceCode),
@@ -204,7 +204,7 @@ func serviceQuotaNeedsIncrease(reqLogger logr.Logger, client awsclient.Client, q
 	return false, err
 }
 
-func setServiceQuota(client awsclient.Client, quotaCode string, serviceCode string, desiredQuota float64) (bool, error) {
+func setServiceQuota(ctx context.Context, client awsclient.Client, quotaCode string, serviceCode string, desiredQuota float64) (bool, error) {
 	// Request a service quota increase for vCPU quota
 	var result *servicequotas.RequestServiceQuotaIncreaseOutput
 	var alreadySubmitted bool
@@ -216,7 +216,7 @@ func setServiceQuota(client awsclient.Client, quotaCode string, serviceCode stri
 	err := retry.Do(
 		func() (err error) {
 			result, err = client.RequestServiceQuotaIncrease(
-				context.TODO(),
+				ctx,
 				&servicequotas.RequestServiceQuotaIncreaseInput{
 					DesiredValue: aws.Float64(desiredQuota),
 					ServiceCode:  aws.String(serviceCode), // TODO change to param
@@ -292,7 +292,7 @@ func setServiceQuota(client awsclient.Client, quotaCode string, serviceCode stri
 	return true, nil
 }
 
-func checkQuotaRequestStatus(awsClient awsclient.Client, quotaCode string, serviceCode string, expectedQuota float64) (awsv1alpha1.ServiceRequestStatus, error) {
+func checkQuotaRequestStatus(ctx context.Context, awsClient awsclient.Client, quotaCode string, serviceCode string, expectedQuota float64) (awsv1alpha1.ServiceRequestStatus, error) {
 
 	var nextToken *string
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
@@ -309,7 +309,7 @@ func checkQuotaRequestStatus(awsClient awsclient.Client, quotaCode string, servi
 			func() (err error) {
 				// Get a (possibly paginated) list of quota change requests by quota
 				result, err = awsClient.ListRequestedServiceQuotaChangeHistoryByQuota(
-					context.TODO(),
+					ctx,
 					&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaInput{
 						NextToken:   nextToken,
 						ServiceCode: aws.String(serviceCode),
@@ -395,7 +395,7 @@ func changeRequestMatches(change servicequotastypes.RequestedServiceQuotaChange,
 	return true
 }
 
-func GetServiceQuotaRequest(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) (reconcile.Result, error) {
+func GetServiceQuotaRequest(ctx context.Context, reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) (reconcile.Result, error) {
 	// First we get all request we need to get a status update on:
 	// - Requests that are not yet open on the AWS side
 	// - Requests that are open but not yet completed
@@ -422,22 +422,22 @@ func GetServiceQuotaRequest(reqLogger logr.Logger, awsClientBuilder awsclient.IB
 		}
 	}
 	reqLogger.Info("Handling quotarequets", "current-in-flight-count", currentInFlightCount)
-	err := UpdateServiceQuotaRequests(reqLogger, awsClientBuilder, awsSetupClient, currentAcctInstance, client, inFlightQuotaRequests, currentInFlightCount)
+	err := UpdateServiceQuotaRequests(ctx, reqLogger, awsClientBuilder, awsSetupClient, currentAcctInstance, client, inFlightQuotaRequests, currentInFlightCount)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	err = client.Status().Update(context.TODO(), currentAcctInstance)
+	err = client.Status().Update(ctx, currentAcctInstance)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 	return reconcile.Result{RequeueAfter: 30 * time.Second, Requeue: true}, err
 }
 
-func UpdateServiceQuotaRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, serviceQuotaRequests awsv1alpha1.RegionalServiceQuotas, count int) error {
+func UpdateServiceQuotaRequests(ctx context.Context, reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, serviceQuotaRequests awsv1alpha1.RegionalServiceQuotas, count int) error {
 	for region, quotaRequest := range serviceQuotaRequests {
 		regionLogger := reqLogger.WithValues("Region", region)
 		roleToAssume := currentAcctInstance.GetAssumeRole()
-		awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, "")
+		awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(ctx, reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, "")
 		if err != nil {
 			reqLogger.Error(err, "Could not impersonate AWS account", "aws-account", currentAcctInstance.Spec.AwsAccountID)
 			return err
@@ -446,7 +446,7 @@ func UpdateServiceQuotaRequests(reqLogger logr.Logger, awsClientBuilder awsclien
 		// for each open quota in this region check to see if we need to request an increase.
 		for quotaCode, openQuotaRef := range quotaRequest {
 			reqLogger.Info(fmt.Sprintf("Handling quota request for quotaCode: %s", quotaCode))
-			err = HandleServiceQuotaRequests(regionLogger, awsAssumedRoleClient, quotaCode, openQuotaRef)
+			err = HandleServiceQuotaRequests(ctx, regionLogger, awsAssumedRoleClient, quotaCode, openQuotaRef)
 			if err != nil {
 				return err // TODO: For review, do we want to be handling the error like this?
 			}

@@ -10,14 +10,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func (r *AccountReconciler) addFinalizer(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+func (r *AccountReconciler) addFinalizer(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account) error {
 
 	if !controllerutils.Contains(account.GetFinalizers(), awsv1alpha1.AccountFinalizer) {
 		reqLogger.Info("Adding Finalizer for the Account")
 		account.SetFinalizers(append(account.GetFinalizers(), awsv1alpha1.AccountFinalizer))
 
 		// Update CR
-		err := r.Update(context.TODO(), account)
+		err := r.Update(ctx, account)
 		if err != nil {
 			reqLogger.Error(err, "Failed to update Account with finalizer")
 			return err
@@ -27,14 +27,14 @@ func (r *AccountReconciler) addFinalizer(reqLogger logr.Logger, account *awsv1al
 }
 
 // Function to remove finalizer
-func (r *AccountReconciler) removeFinalizer(account *awsv1alpha1.Account, finalizerName string) error {
+func (r *AccountReconciler) removeFinalizer(ctx context.Context, account *awsv1alpha1.Account, finalizerName string) error {
 	log.Info("Attempting to remove finalizer from Account", "account", account.Name, "finalizer", finalizerName)
 
 	maxRetries := 5
 	for attempt := range maxRetries {
 		if attempt > 0 {
 			log.Info("Retrying finalizer removal due to conflict", "account", account.Name, "attempt", attempt+1, "maxRetries", maxRetries)
-			err := r.Get(context.TODO(), types.NamespacedName{
+			err := r.Get(ctx, types.NamespacedName{
 				Namespace: account.Namespace,
 				Name:      account.Name,
 			}, account)
@@ -49,7 +49,7 @@ func (r *AccountReconciler) removeFinalizer(account *awsv1alpha1.Account, finali
 
 		account.SetFinalizers(controllerutils.Remove(account.GetFinalizers(), finalizerName))
 
-		err := r.Update(context.TODO(), account)
+		err := r.Update(ctx, account)
 		if err != nil {
 			if k8serr.IsNotFound(err) {
 				return nil

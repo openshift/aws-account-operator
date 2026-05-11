@@ -48,7 +48,7 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 
 	// Fetch the AccountPool instance
 	currentAccountPool := &awsv1alpha1.AccountPool{}
-	err := r.Get(context.TODO(), types.NamespacedName{Name: request.Name, Namespace: awsv1alpha1.AccountCrNamespace}, currentAccountPool)
+	err := r.Get(ctx, types.NamespacedName{Name: request.Name, Namespace: awsv1alpha1.AccountCrNamespace}, currentAccountPool)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
@@ -61,7 +61,7 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 	}
 
 	// Calculate unclaimed accounts vs claimed accounts
-	calculatedStatus, err := r.calculateAccountPoolStatus(reqLogger, currentAccountPool.Name)
+	calculatedStatus, err := r.calculateAccountPoolStatus(ctx, reqLogger, currentAccountPool.Name)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -70,7 +70,7 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 
 	if shouldUpdateAccountPoolStatus(currentAccountPool, calculatedStatus) {
 		currentAccountPool.Status = calculatedStatus
-		err = r.Client.Status().Update(context.TODO(), currentAccountPool)
+		err = r.Client.Status().Update(ctx, currentAccountPool)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -97,12 +97,12 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 		return reconcile.Result{}, err
 	}
 
-	if err = r.handleServiceQuotas(reqLogger, newAccount); err != nil {
+	if err = r.handleServiceQuotas(ctx, reqLogger, newAccount); err != nil {
 		return reconcile.Result{}, err
 	}
 
 	reqLogger.Info(fmt.Sprintf("Creating account %s for accountpool. Unclaimed accounts: %d, poolsize%d", newAccount.Name, unclaimedAccountCount, poolSizeCount))
-	err = r.Create(context.TODO(), newAccount)
+	err = r.Create(ctx, newAccount)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -110,8 +110,8 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 	return reconcile.Result{}, nil
 }
 
-func (r *AccountPoolReconciler) handleServiceQuotas(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
-	parsedRegionalServiceQuotas, err := utils.GetServiceQuotasFromAccountPool(reqLogger, account.Spec.AccountPool, r.Client)
+func (r *AccountPoolReconciler) handleServiceQuotas(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	parsedRegionalServiceQuotas, err := utils.GetServiceQuotasFromAccountPool(ctx, reqLogger, account.Spec.AccountPool, r.Client)
 	if err != nil {
 		return err
 	}
@@ -124,7 +124,7 @@ func (r *AccountPoolReconciler) handleServiceQuotas(reqLogger logr.Logger, accou
 }
 
 // Calculates the unclaimedAccountCount and Claimed Account Counts
-func (r *AccountPoolReconciler) calculateAccountPoolStatus(reqLogger logr.Logger, poolName string) (awsv1alpha1.AccountPoolStatus, error) {
+func (r *AccountPoolReconciler) calculateAccountPoolStatus(ctx context.Context, reqLogger logr.Logger, poolName string) (awsv1alpha1.AccountPoolStatus, error) {
 	unclaimedAccountCount := 0
 	claimedAccountCount := 0
 	availableAccounts := 0
@@ -136,7 +136,7 @@ func (r *AccountPoolReconciler) calculateAccountPoolStatus(reqLogger logr.Logger
 	listOpts := []client.ListOption{
 		client.InNamespace(awsv1alpha1.AccountCrNamespace),
 	}
-	if err := r.List(context.TODO(), accountList, listOpts...); err != nil {
+	if err := r.List(ctx, accountList, listOpts...); err != nil {
 		return awsv1alpha1.AccountPoolStatus{}, err
 	}
 
@@ -149,7 +149,7 @@ func (r *AccountPoolReconciler) calculateAccountPoolStatus(reqLogger logr.Logger
 		// Special intermediary case until all account crs have had their account.Spec.AccountPool set appropriately.
 		// If account.Spec.AccountPool is empty, we count it as if it's from the default accountpool.
 		if account.Spec.AccountPool == "" {
-			defaultPoolName, err := config.GetDefaultAccountPoolName(reqLogger, r.Client)
+			defaultPoolName, err := config.GetDefaultAccountPoolName(ctx, reqLogger, r.Client)
 
 			if err != nil {
 				reqLogger.Error(err, "error getting default accountpool name")

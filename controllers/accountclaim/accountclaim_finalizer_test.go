@@ -122,14 +122,14 @@ var _ = Describe("AccountClaim", func() {
 
 				It("should not add finalizer as account claim doesn't exist", func() {
 
-					err := r.addFinalizer(nullLogger, accountClaim)
+					err := r.addFinalizer(context.TODO(), nullLogger, accountClaim)
 					Expect(err).To(HaveOccurred())
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, true)
 				})
 
 				It("should not remove finalizer as account claim doesn't exist", func() {
 
-					err := r.removeFinalizer(nullLogger, accountClaim)
+					err := r.removeFinalizer(context.TODO(), nullLogger, accountClaim)
 					Expect(err).NotTo(HaveOccurred())
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, true)
 				})
@@ -142,7 +142,7 @@ var _ = Describe("AccountClaim", func() {
 					r.Client = fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
 
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
-					err := r.addFinalizer(nullLogger, accountClaim)
+					err := r.addFinalizer(context.TODO(), nullLogger, accountClaim)
 					Expect(err).NotTo(HaveOccurred())
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 1, false)
 				})
@@ -155,7 +155,7 @@ var _ = Describe("AccountClaim", func() {
 					r.Client = fake.NewClientBuilder().WithRuntimeObjects(objs...).Build()
 
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 1, false)
-					err := r.removeFinalizer(nullLogger, accountClaim)
+					err := r.removeFinalizer(context.TODO(), nullLogger, accountClaim)
 					Expect(err).ToNot(HaveOccurred())
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 				})
@@ -186,7 +186,7 @@ var _ = Describe("AccountClaim", func() {
 
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					helperValidateSecretFinalizer(&r.Client, namespacedName, 0, false)
-					err := r.addBYOCSecretFinalizer(accountClaim)
+					err := r.addBYOCSecretFinalizer(context.TODO(), accountClaim)
 					Expect(err).ToNot(HaveOccurred())
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					helperValidateSecretFinalizer(&r.Client, namespacedName, 1, false)
@@ -206,7 +206,7 @@ var _ = Describe("AccountClaim", func() {
 
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					helperValidateSecretFinalizer(&r.Client, namespacedName, 1, false)
-					err := r.removeBYOCSecretFinalizer(accountClaim)
+					err := r.removeBYOCSecretFinalizer(context.TODO(), accountClaim)
 					Expect(err).ToNot(HaveOccurred())
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					helperValidateSecretFinalizer(&r.Client, namespacedName, 0, false)
@@ -221,7 +221,7 @@ var _ = Describe("AccountClaim", func() {
 
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					helperValidateSecretFinalizer(&r.Client, namespacedName, 0, true)
-					err := r.addBYOCSecretFinalizer(accountClaim)
+					err := r.addBYOCSecretFinalizer(context.TODO(), accountClaim)
 					Expect(err).To(HaveOccurred())
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					helperValidateSecretFinalizer(&r.Client, namespacedName, 0, true)
@@ -234,7 +234,7 @@ var _ = Describe("AccountClaim", func() {
 
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					helperValidateSecretFinalizer(&r.Client, namespacedName, 0, true)
-					err := r.removeBYOCSecretFinalizer(accountClaim)
+					err := r.removeBYOCSecretFinalizer(context.TODO(), accountClaim)
 					Expect(err).ToNot(HaveOccurred())
 					helperValidateAccClaimFinalizer(&r.Client, namespacedName, 0, false)
 					helperValidateSecretFinalizer(&r.Client, namespacedName, 0, true)

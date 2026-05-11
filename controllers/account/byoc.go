@@ -16,7 +16,6 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/config"
@@ -36,18 +35,18 @@ func newBYOCAccount(currentAcctInstance *awsv1alpha1.Account) bool {
 }
 
 // Checks whether or not the current account instance is claimed, and does so if not
-func claimBYOCAccount(r *AccountReconciler, reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) error {
+func claimBYOCAccount(ctx context.Context, r *AccountReconciler, reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account) error {
 	if !currentAcctInstance.IsClaimed() {
 		reqLogger.Info("Marking BYOC account claimed")
-		err := ClaimAccount(r, currentAcctInstance)
+		err := ClaimAccount(ctx, r, currentAcctInstance)
 		return err
 	}
 
 	return nil
 }
 
-func (r *AccountReconciler) initializeNewCCSAccount(reqLogger logr.Logger, account *awsv1alpha1.Account) (reconcile.Result, error) {
-	accountClaim, acctClaimErr := r.getAccountClaim(account)
+func (r *AccountReconciler) initializeNewCCSAccount(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	accountClaim, acctClaimErr := r.getAccountClaim(ctx, account)
 	if acctClaimErr != nil {
 		// TODO: Unrecoverable
 		// TODO: set helpful error message
@@ -59,35 +58,35 @@ func (r *AccountReconciler) initializeNewCCSAccount(reqLogger logr.Logger, accou
 				awsv1alpha1.ClientError,
 				awsv1alpha1.ClaimStatusError,
 			)
-			err := r.Client.Status().Update(context.TODO(), accountClaim)
+			err := r.Client.Status().Update(ctx, accountClaim)
 			if err != nil {
 				reqLogger.Error(err, "failed to update accountclaim status")
 			}
 		} else {
 			reqLogger.Error(acctClaimErr, "accountclaim is nil")
 		}
-		return reconcile.Result{}, acctClaimErr
+		return acctClaimErr
 	}
 
-	claimErr := claimBYOCAccount(r, reqLogger, account)
+	claimErr := claimBYOCAccount(ctx, r, reqLogger, account)
 	if claimErr != nil {
 		reqLogger.Error(claimErr, "Could not claim BYOC Account")
-		claimStatusErr := r.setAccountClaimError(reqLogger, account, claimErr.Error())
+		claimStatusErr := r.setAccountClaimError(ctx, reqLogger, account, claimErr.Error())
 		if claimStatusErr != nil {
 			reqLogger.Error(claimStatusErr, "failed setting accountClaim error state")
 		}
 		// TODO: Recoverable?
-		return reconcile.Result{}, claimErr
+		return claimErr
 	}
 
-	return reconcile.Result{}, nil
+	return nil
 }
 
-func (r *AccountReconciler) GetSREAccessARN(reqLogger logr.Logger, arnName string) (string, error) {
+func (r *AccountReconciler) GetSREAccessARN(ctx context.Context, reqLogger logr.Logger, arnName string) (string, error) {
 	// Get SRE Access ARN from configmap
 	configMap := &corev1.ConfigMap{}
 	err := r.Get(
-		context.TODO(),
+		ctx,
 		types.NamespacedName{
 			Namespace: awsv1alpha1.AccountCrNamespace,
 			Name:      awsv1alpha1.DefaultConfigMap,
@@ -109,7 +108,7 @@ func (r *AccountReconciler) GetSREAccessARN(reqLogger logr.Logger, arnName strin
 }
 
 // CreateRole creates the role with the correct assume policy for BYOC for a given roleName
-func CreateRole(reqLogger logr.Logger, byocRole string, accessArnList []string, byocAWSClient awsclient.Client, tags []iamtypes.Tag) (string, error) {
+func CreateRole(ctx context.Context, reqLogger logr.Logger, byocRole string, accessArnList []string, byocAWSClient awsclient.Client, tags []iamtypes.Tag) (string, error) {
 	assumeRolePolicyDoc := struct {
 		Version   string
 		Statement []awsStatement
@@ -131,7 +130,7 @@ func CreateRole(reqLogger logr.Logger, byocRole string, accessArnList []string, 
 	}
 
 	reqLogger.Info(fmt.Sprintf("Creating role: %s", byocRole))
-	createRoleOutput, err := byocAWSClient.CreateRole(context.TODO(), &iam.CreateRoleInput{
+	createRoleOutput, err := byocAWSClient.CreateRole(ctx, &iam.CreateRoleInput{
 		Tags:                     tags,
 		RoleName:                 aws.String(byocRole),
 		Description:              aws.String("AdminAccess for BYOC"),
@@ -146,9 +145,9 @@ func CreateRole(reqLogger logr.Logger, byocRole string, accessArnList []string, 
 }
 
 // GetExistingRole checks to see if a given role exists in the AWS account already.  If it does not, we return an empty response and nil for an error.  If it does, we return the existing role.  Otherwise, we return any error we get.
-func GetExistingRole(reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.Client) (*iam.GetRoleOutput, error) {
+func GetExistingRole(ctx context.Context, reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.Client) (*iam.GetRoleOutput, error) {
 	// Check if Role already exists
-	existingRole, err := byocAWSClient.GetRole(context.TODO(), &iam.GetRoleInput{
+	existingRole, err := byocAWSClient.GetRole(ctx, &iam.GetRoleInput{
 		RoleName: aws.String(byocRole),
 	})
 
@@ -184,11 +183,11 @@ func GetExistingRole(reqLogger logr.Logger, byocRole string, byocAWSClient awscl
 }
 
 // GetAttachedPolicies gets a list of policies attached to a role
-func GetAttachedPolicies(reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.Client) (*iam.ListAttachedRolePoliciesOutput, error) {
+func GetAttachedPolicies(ctx context.Context, reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.Client) (*iam.ListAttachedRolePoliciesOutput, error) {
 	listRoleInput := &iam.ListAttachedRolePoliciesInput{
 		RoleName: aws.String(byocRole),
 	}
-	policyList, err := byocAWSClient.ListAttachedRolePolicies(context.TODO(), listRoleInput)
+	policyList, err := byocAWSClient.ListAttachedRolePolicies(ctx, listRoleInput)
 	if err != nil {
 		var apiErr smithy.APIError
 		if errors.As(err, &apiErr) {
@@ -205,10 +204,10 @@ func GetAttachedPolicies(reqLogger logr.Logger, byocRole string, byocAWSClient a
 }
 
 // DetachPolicyFromRole detaches a given AttachedPolicy from a role
-func DetachPolicyFromRole(reqLogger logr.Logger, policy *iamtypes.AttachedPolicy, byocRole string, byocAWSClient awsclient.Client) error {
+func DetachPolicyFromRole(ctx context.Context, reqLogger logr.Logger, policy *iamtypes.AttachedPolicy, byocRole string, byocAWSClient awsclient.Client) error {
 	reqLogger.Info(fmt.Sprintf("Detaching Policy %s from role %s", *policy.PolicyName, byocRole))
 	// Must detach the RolePolicy before it can be deleted
-	_, err := byocAWSClient.DetachRolePolicy(context.TODO(), &iam.DetachRolePolicyInput{
+	_, err := byocAWSClient.DetachRolePolicy(ctx, &iam.DetachRolePolicyInput{
 		RoleName:  aws.String(byocRole),
 		PolicyArn: aws.String(*policy.PolicyArn),
 	})
@@ -246,10 +245,10 @@ func DeleteRole(reqLogger logr.Logger, byocRole string, byocAWSClient awsclient.
 	return err
 }
 
-func (r *AccountReconciler) getSTSClient(log logr.Logger, accountClaim *awsv1alpha1.AccountClaim, operatorAWSClient awsclient.Client) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+func (r *AccountReconciler) getSTSClient(ctx context.Context, log logr.Logger, accountClaim *awsv1alpha1.AccountClaim, operatorAWSClient awsclient.Client) (awsclient.Client, *sts.AssumeRoleOutput, error) {
 	// Get SRE Access ARN from configmap
 	cm := &corev1.ConfigMap{}
-	cmErr := r.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
+	cmErr := r.Get(ctx, types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, cm)
 	if cmErr != nil {
 		log.Error(cmErr, "There was an error getting the ConfigMap to get the STS Jump Role")
 		return nil, nil, cmErr
@@ -263,7 +262,7 @@ func (r *AccountReconciler) getSTSClient(log logr.Logger, accountClaim *awsv1alp
 
 	awsRegion := config.GetDefaultRegion()
 
-	jumpRoleCreds, err := stsclient.GetSTSCredentials(log, operatorAWSClient, stsAccessARN, "", "awsAccountOperator")
+	jumpRoleCreds, err := stsclient.GetSTSCredentials(ctx, log, operatorAWSClient, stsAccessARN, "", "awsAccountOperator")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -278,7 +277,7 @@ func (r *AccountReconciler) getSTSClient(log logr.Logger, accountClaim *awsv1alp
 		return nil, nil, err
 	}
 
-	customerAccountCreds, err := stsclient.GetSTSCredentials(log, jumpRoleClient,
+	customerAccountCreds, err := stsclient.GetSTSCredentials(ctx, log, jumpRoleClient,
 		accountClaim.Spec.STSRoleARN, accountClaim.Spec.STSExternalID, "RH-Account-Initialization")
 	if err != nil {
 		return nil, nil, err

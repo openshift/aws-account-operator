@@ -57,18 +57,18 @@ var (
 // CreateSecret creates a secret for placing IAM Credentials
 // Takes a logger, the desired name of the secret, the Account CR
 // that will own the secret, and pointer to an empty secret object to fill
-func (r *AccountReconciler) CreateSecret(reqLogger logr.Logger, account *awsv1alpha1.Account, secret *corev1.Secret) error {
+func (r *AccountReconciler) CreateSecret(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, secret *corev1.Secret) error {
 
 	// Set controller as owner of secret
 	if err := controllerutil.SetControllerReference(account, secret, r.Scheme); err != nil {
 		return err
 	}
 
-	createErr := r.Create(context.TODO(), secret)
+	createErr := r.Create(ctx, secret)
 	if createErr != nil {
 		failedToCreateUserSecretMsg := fmt.Sprintf("Failed to create secret %s", secret.Name)
 		utils.SetAccountStatus(account, failedToCreateUserSecretMsg, awsv1alpha1.AccountFailed, "Failed")
-		err := r.Client.Status().Update(context.TODO(), account)
+		err := r.Client.Status().Update(ctx, account)
 		if err != nil {
 			return err
 		}
@@ -106,7 +106,7 @@ func retryIfAwsServiceFailureOrInvalidToken(err error) bool {
 	return false
 }
 
-func listAccessKeys(client awsclient.Client, iamUser *iamtypes.User) (*iam.ListAccessKeysOutput, error) {
+func listAccessKeys(ctx context.Context, client awsclient.Client, iamUser *iamtypes.User) (*iam.ListAccessKeysOutput, error) {
 	var result *iam.ListAccessKeysOutput
 	var err error
 
@@ -116,7 +116,7 @@ func listAccessKeys(client awsclient.Client, iamUser *iamtypes.User) (*iam.ListA
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {
-			result, err = client.ListAccessKeys(context.TODO(), &iam.ListAccessKeysInput{UserName: iamUser.UserName})
+			result, err = client.ListAccessKeys(ctx, &iam.ListAccessKeysInput{UserName: iamUser.UserName})
 			return err
 		},
 
@@ -127,7 +127,7 @@ func listAccessKeys(client awsclient.Client, iamUser *iamtypes.User) (*iam.ListA
 	return result, err
 }
 
-func deleteAccessKey(client awsclient.Client, accessKeyID *string, username *string) (*iam.DeleteAccessKeyOutput, error) {
+func deleteAccessKey(ctx context.Context, client awsclient.Client, accessKeyID *string, username *string) (*iam.DeleteAccessKeyOutput, error) {
 	var result *iam.DeleteAccessKeyOutput
 	var err error
 
@@ -137,7 +137,7 @@ func deleteAccessKey(client awsclient.Client, accessKeyID *string, username *str
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {
-			result, err = client.DeleteAccessKey(context.TODO(), &iam.DeleteAccessKeyInput{
+			result, err = client.DeleteAccessKey(ctx, &iam.DeleteAccessKeyInput{
 				AccessKeyId: accessKeyID,
 				UserName:    username,
 			})
@@ -153,15 +153,15 @@ func deleteAccessKey(client awsclient.Client, accessKeyID *string, username *str
 
 // deleteAllAccessKeys deletes all access key pairs for a given user
 // Takes a logger, an AWS client, and the target IAM user's username
-func deleteAllAccessKeys(client awsclient.Client, iamUser *iamtypes.User) error {
-	accessKeyList, err := listAccessKeys(client, iamUser)
+func deleteAllAccessKeys(ctx context.Context, client awsclient.Client, iamUser *iamtypes.User) error {
+	accessKeyList, err := listAccessKeys(ctx, client, iamUser)
 	if err != nil {
 		return err
 	}
 
 	// Range through all AccessKeys for IAM user and delete them
 	for index := range accessKeyList.AccessKeyMetadata {
-		_, err = deleteAccessKey(client, accessKeyList.AccessKeyMetadata[index].AccessKeyId, iamUser.UserName)
+		_, err = deleteAccessKey(ctx, client, accessKeyList.AccessKeyMetadata[index].AccessKeyId, iamUser.UserName)
 		if err != nil {
 			return err
 		}
@@ -172,14 +172,14 @@ func deleteAllAccessKeys(client awsclient.Client, iamUser *iamtypes.User) error 
 
 // CreateIAMUser creates a new IAM user in the target AWS account
 // Takes a logger, an AWS client for the target account, and the desired IAM username
-func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.CreateUserOutput, error) {
+func CreateIAMUser(ctx context.Context, reqLogger logr.Logger, client awsclient.Client, userName string) (*iam.CreateUserOutput, error) {
 	var createUserOutput *iam.CreateUserOutput
 	var err error
 
 	attempt := 1
 	for i := 0; i < 10; i++ {
 
-		createUserOutput, err = client.CreateUser(context.TODO(), &iam.CreateUserInput{
+		createUserOutput, err = client.CreateUser(ctx, &iam.CreateUserInput{
 			UserName: aws.String(userName),
 		})
 
@@ -232,12 +232,12 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 
 // AttachAdminUserPolicy attaches the AdministratorAccess policy to a target user
 // Takes a logger, an AWS client for the target account, and the target IAM user's username
-func AttachAdminUserPolicy(client awsclient.Client, iamUser *iamtypes.User) (*iam.AttachUserPolicyOutput, error) {
+func AttachAdminUserPolicy(ctx context.Context, client awsclient.Client, iamUser *iamtypes.User) (*iam.AttachUserPolicyOutput, error) {
 	attachPolicyOutput := &iam.AttachUserPolicyOutput{}
 	var err error
 	for i := 0; i < 100; i++ {
 		time.Sleep(defaultSleepDelay)
-		attachPolicyOutput, err = client.AttachUserPolicy(context.TODO(), &iam.AttachUserPolicyInput{
+		attachPolicyOutput, err = client.AttachUserPolicy(ctx, &iam.AttachUserPolicyInput{
 			UserName:  iamUser.UserName,
 			PolicyArn: aws.String(config.GetIAMArn("aws", config.AwsResourceTypePolicy, config.AwsResourceIDAdministratorAccessRole)),
 		})
@@ -252,10 +252,10 @@ func AttachAdminUserPolicy(client awsclient.Client, iamUser *iamtypes.User) (*ia
 	return attachPolicyOutput, nil
 }
 
-func attachAndEnsureRolePolicies(reqLogger logr.Logger, client awsclient.Client, roleName string, policyArn string) error {
+func attachAndEnsureRolePolicies(ctx context.Context, reqLogger logr.Logger, client awsclient.Client, roleName string, policyArn string) error {
 	reqLogger.Info(fmt.Sprintf("Attaching policy %s to role %s", policyArn, roleName))
 	// Attach the specified policy to the Role
-	_, attachErr := client.AttachRolePolicy(context.TODO(), &iam.AttachRolePolicyInput{
+	_, attachErr := client.AttachRolePolicy(ctx, &iam.AttachRolePolicyInput{
 		RoleName:  aws.String(roleName),
 		PolicyArn: aws.String(policyArn),
 	})
@@ -267,7 +267,7 @@ func attachAndEnsureRolePolicies(reqLogger logr.Logger, client awsclient.Client,
 	reqLogger.Info(fmt.Sprintf("Checking if policy %s has been attached", policyArn))
 
 	// Attaching the policy suffers from an eventual consistency problem
-	policyList, err := GetAttachedPolicies(reqLogger, roleName, client)
+	policyList, err := GetAttachedPolicies(ctx, reqLogger, roleName, client)
 	if err != nil {
 		return err
 	}
@@ -286,7 +286,7 @@ func attachAndEnsureRolePolicies(reqLogger logr.Logger, client awsclient.Client,
 }
 
 // CreateUserAccessKey creates a new IAM Access Key in AWS and returns aws.CreateAccessKeyOutput struct containing access key and secret
-func CreateUserAccessKey(client awsclient.Client, iamUser *iamtypes.User) (*iam.CreateAccessKeyOutput, error) {
+func CreateUserAccessKey(ctx context.Context, client awsclient.Client, iamUser *iamtypes.User) (*iam.CreateAccessKeyOutput, error) {
 	var result *iam.CreateAccessKeyOutput
 	var err error
 
@@ -298,7 +298,7 @@ func CreateUserAccessKey(client awsclient.Client, iamUser *iamtypes.User) (*iam.
 		func() (err error) {
 			// Create new access key for user
 			result, err = client.CreateAccessKey(
-				context.TODO(),
+				ctx,
 				&iam.CreateAccessKeyInput{
 					UserName: iamUser.UserName,
 				},
@@ -319,26 +319,26 @@ func CreateUserAccessKey(client awsclient.Client, iamUser *iamtypes.User) (*iam.
 
 // BuildIAMUser creates and initializes all resources needed for a new IAM user
 // Takes a logger, an AWS client, an Account CR, the desired IAM username and a namespace to create resources in
-func (r *AccountReconciler) BuildIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUserName string, nameSpace string) (*string, error) {
+func (r *AccountReconciler) BuildIAMUser(ctx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUserName string, nameSpace string) (*string, error) {
 	var iamUserSecretName string
 	var createdIAMUser *iamtypes.User
 
 	// Check if IAM User exists for this account
-	iamUserExists, iamUserExistsOutput, err := awsclient.CheckIAMUserExists(reqLogger, awsClient, iamUserName)
+	iamUserExists, iamUserExistsOutput, err := awsclient.CheckIAMUserExists(ctx, reqLogger, awsClient, iamUserName)
 	if err != nil {
 		return nil, err
 	}
 
 	// Get list of managed tags.
-	managedTags := r.getManagedTags(reqLogger)
-	customTags := r.getCustomTags(reqLogger, account)
+	managedTags := r.getManagedTags(ctx, reqLogger)
+	customTags := r.getCustomTags(ctx, reqLogger, account)
 
 	// Create IAM user in AWS if it doesn't exist
 	if iamUserExists {
 		// If user exists extract iam.User pointer
 		createdIAMUser = iamUserExistsOutput.User
 	} else {
-		CreateUserOutput, err := awsclient.CreateIAMUser(reqLogger, awsClient, account, iamUserName, managedTags, customTags)
+		CreateUserOutput, err := awsclient.CreateIAMUser(ctx, reqLogger, awsClient, account, iamUserName, managedTags, customTags)
 		// Err is handled within the function and returns a error message
 		if err != nil {
 			return nil, err
@@ -353,7 +353,7 @@ func (r *AccountReconciler) BuildIAMUser(reqLogger logr.Logger, awsClient awscli
 	reqLogger.Info(fmt.Sprintf("Attaching Admin Policy to IAM user %s", aws.ToString(createdIAMUser.UserName)))
 
 	// Setting IAM user policy
-	_, err = AttachAdminUserPolicy(awsClient, createdIAMUser)
+	_, err = AttachAdminUserPolicy(ctx, awsClient, createdIAMUser)
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to attach admin policy to IAM user %s", aws.ToString(createdIAMUser.UserName))
 		reqLogger.Error(err, errMsg)
@@ -365,21 +365,21 @@ func (r *AccountReconciler) BuildIAMUser(reqLogger logr.Logger, awsClient awscli
 	// Create a NamespacedName for the secret
 	secretNamespacedName := types.NamespacedName{Name: iamUserSecretName, Namespace: nameSpace}
 
-	secretExists, err := r.DoesSecretExist(secretNamespacedName)
+	secretExists, err := r.DoesSecretExist(ctx, secretNamespacedName)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Unable check if secret: %s exists", secretNamespacedName.String()))
 		return nil, err
 	}
 
 	if !secretExists {
-		iamAccessKeyOutput, err := r.RotateIAMAccessKeys(reqLogger, awsClient, account, createdIAMUser)
+		iamAccessKeyOutput, err := r.RotateIAMAccessKeys(ctx, reqLogger, awsClient, account, createdIAMUser)
 		if err != nil {
 			errMsg := fmt.Sprintf("Unable to rotate access keys for IAM user: %s", aws.ToString(createdIAMUser.UserName))
 			reqLogger.Error(err, errMsg)
 			return nil, err
 		}
 
-		err = r.createIAMUserSecret(reqLogger, account, secretNamespacedName, iamAccessKeyOutput)
+		err = r.createIAMUserSecret(ctx, reqLogger, account, secretNamespacedName, iamAccessKeyOutput)
 		if err != nil {
 			errMsg := fmt.Sprintf("Unable to create secret: %s", secretNamespacedName.Name)
 			reqLogger.Error(err, errMsg)
@@ -391,30 +391,30 @@ func (r *AccountReconciler) BuildIAMUser(reqLogger logr.Logger, awsClient awscli
 	return &iamUserSecretName, nil
 }
 
-func CleanUpIAM(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
+func CleanUpIAM(ctx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
 
 	// We delete user policies, access keys and finally the IAM user themselves.
-	if err := DeleteIAMUsers(reqLogger, awsClient, accountCR); err != nil {
+	if err := DeleteIAMUsers(ctx, reqLogger, awsClient, accountCR); err != nil {
 		return fmt.Errorf("failed deleting IAM users: %w", err)
 	}
 
 	// If user deletion is successful we can then clean role policies and roles.
-	if err := cleanIAMRoles(reqLogger, awsClient, accountCR); err != nil {
+	if err := cleanIAMRoles(ctx, reqLogger, awsClient, accountCR); err != nil {
 		return fmt.Errorf("failed cleaning IAM roles: %w", err)
 	}
 
 	return nil
 }
 
-func deleteIAMUser(awsClient awsclient.Client, user *iamtypes.User) error {
+func deleteIAMUser(ctx context.Context, awsClient awsclient.Client, user *iamtypes.User) error {
 	var err error
 	// Detach User Policies
-	if err = detachUserPolicies(awsClient, user); err != nil {
+	if err = detachUserPolicies(ctx, awsClient, user); err != nil {
 		return fmt.Errorf("failed to detach user policies: %w", err)
 	}
 
 	// Detach User Access Keys
-	if err = deleteAllAccessKeys(awsClient, user); err != nil {
+	if err = deleteAllAccessKeys(ctx, awsClient, user); err != nil {
 		return fmt.Errorf("failed to delete all access keys: %w", err)
 	}
 
@@ -424,7 +424,7 @@ func deleteIAMUser(awsClient awsclient.Client, user *iamtypes.User) error {
 	retry.DefaultAttempts = uint(5)
 	err = retry.Do(
 		func() (err error) {
-			_, err = awsClient.DeleteUser(context.TODO(), &iam.DeleteUserInput{UserName: user.UserName})
+			_, err = awsClient.DeleteUser(ctx, &iam.DeleteUserInput{UserName: user.UserName})
 			return err
 		},
 
@@ -443,7 +443,7 @@ var (
 	listIAMUsers = awsclient.ListIAMUsers
 )
 
-func DeleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
+func DeleteIAMUsers(ctx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
 	reqLogger.Info("Cleaning up IAM users")
 
 	users, err := listIAMUsers(reqLogger, awsClient)
@@ -454,7 +454,7 @@ func DeleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR
 	for _, user := range users {
 		clusterNameTag := false
 		clusterNamespaceTag := false
-		getUser, err := awsClient.GetUser(context.TODO(), &iam.GetUserInput{UserName: user.UserName})
+		getUser, err := awsClient.GetUser(ctx, &iam.GetUserInput{UserName: user.UserName})
 		if err != nil {
 			return fmt.Errorf("failed to get aws user: %w", err)
 		}
@@ -467,7 +467,7 @@ func DeleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR
 			}
 		}
 		if clusterNameTag && clusterNamespaceTag {
-			err = deleteIAMUser(awsClient, getUser.User)
+			err = deleteIAMUser(ctx, awsClient, getUser.User)
 			if err != nil {
 				return err
 			}
@@ -478,13 +478,13 @@ func DeleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR
 	return nil
 }
 
-func cleanIAMRole(reqLogger logr.Logger, awsClient awsclient.Client, role *iamtypes.Role) error {
+func cleanIAMRole(ctx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, role *iamtypes.Role) error {
 	// remove attached policies from the role before deletion
-	if err := detachRolePolicies(awsClient, *role.RoleName); err != nil {
+	if err := detachRolePolicies(ctx, awsClient, *role.RoleName); err != nil {
 		return fmt.Errorf("failed to detach role policies: %w", err)
 	}
 
-	_, err := awsClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{RoleName: role.RoleName})
+	_, err := awsClient.DeleteRole(ctx, &iam.DeleteRoleInput{RoleName: role.RoleName})
 	reqLogger.Info(fmt.Sprintf("Deleting IAM role: %s", *role.RoleName))
 	if err != nil {
 		return fmt.Errorf(fmt.Sprintf("unable to delete IAM role %s", *role.RoleName), err)
@@ -493,9 +493,9 @@ func cleanIAMRole(reqLogger logr.Logger, awsClient awsclient.Client, role *iamty
 	return nil
 }
 
-func cleanIAMRoles(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
+func cleanIAMRoles(ctx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, accountCR *awsv1alpha1.Account) error {
 	reqLogger.Info("Cleaning up IAM roles")
-	roles, err := awsclient.ListIAMRoles(reqLogger, awsClient)
+	roles, err := awsclient.ListIAMRoles(ctx, reqLogger, awsClient)
 	if err != nil {
 		return err
 	}
@@ -503,7 +503,7 @@ func cleanIAMRoles(reqLogger logr.Logger, awsClient awsclient.Client, accountCR 
 	for _, role := range roles {
 		clusterNameTag := false
 		clusterNamespaceTag := false
-		getRole, err := awsClient.GetRole(context.TODO(), &iam.GetRoleInput{RoleName: role.RoleName})
+		getRole, err := awsClient.GetRole(ctx, &iam.GetRoleInput{RoleName: role.RoleName})
 		if err != nil {
 			return err
 		}
@@ -518,7 +518,7 @@ func cleanIAMRoles(reqLogger logr.Logger, awsClient awsclient.Client, accountCR 
 		}
 
 		if clusterNameTag && clusterNamespaceTag {
-			err = cleanIAMRole(reqLogger, awsClient, getRole.Role)
+			err = cleanIAMRole(ctx, reqLogger, awsClient, getRole.Role)
 			if err != nil {
 				return err
 			}
@@ -531,14 +531,14 @@ func cleanIAMRoles(reqLogger logr.Logger, awsClient awsclient.Client, accountCR 
 }
 
 // Detach User Policies
-func detachUserPolicies(awsClient awsclient.Client, user *iamtypes.User) error {
-	attachedUserPolicies, err := awsClient.ListAttachedUserPolicies(context.TODO(), &iam.ListAttachedUserPoliciesInput{UserName: user.UserName})
+func detachUserPolicies(ctx context.Context, awsClient awsclient.Client, user *iamtypes.User) error {
+	attachedUserPolicies, err := awsClient.ListAttachedUserPolicies(ctx, &iam.ListAttachedUserPoliciesInput{UserName: user.UserName})
 	if err != nil {
 		return fmt.Errorf(fmt.Sprintf("unable to list IAM user policies from user %s", *user.UserName), err)
 	}
 
 	for _, attachedPolicy := range attachedUserPolicies.AttachedPolicies {
-		_, err := awsClient.DetachUserPolicy(context.TODO(), &iam.DetachUserPolicyInput{UserName: user.UserName, PolicyArn: attachedPolicy.PolicyArn})
+		_, err := awsClient.DetachUserPolicy(ctx, &iam.DetachUserPolicyInput{UserName: user.UserName, PolicyArn: attachedPolicy.PolicyArn})
 		if err != nil {
 			return fmt.Errorf(fmt.Sprintf("unable to detach IAM user policy from user %s", *user.UserName), err)
 		}
@@ -548,14 +548,14 @@ func detachUserPolicies(awsClient awsclient.Client, user *iamtypes.User) error {
 }
 
 // Detaches all policies from the role
-func detachRolePolicies(awsClient awsclient.Client, roleName string) error {
-	attachedRolePolicies, err := awsClient.ListAttachedRolePolicies(context.TODO(), &iam.ListAttachedRolePoliciesInput{RoleName: &roleName})
+func detachRolePolicies(ctx context.Context, awsClient awsclient.Client, roleName string) error {
+	attachedRolePolicies, err := awsClient.ListAttachedRolePolicies(ctx, &iam.ListAttachedRolePoliciesInput{RoleName: &roleName})
 	if err != nil {
 		return fmt.Errorf(fmt.Sprintf("unable to list IAM role policies from role %s", roleName), err)
 	}
 
 	for _, attachedPolicy := range attachedRolePolicies.AttachedPolicies {
-		_, err := awsClient.DetachRolePolicy(context.TODO(), &iam.DetachRolePolicyInput{
+		_, err := awsClient.DetachRolePolicy(ctx, &iam.DetachRolePolicyInput{
 			PolicyArn: attachedPolicy.PolicyArn,
 			RoleName:  &roleName,
 		})
@@ -568,16 +568,16 @@ func detachRolePolicies(awsClient awsclient.Client, roleName string) error {
 }
 
 // RotateIAMAccessKeys will delete all AWS access keys assigned to the user and recreate them
-func (r *AccountReconciler) RotateIAMAccessKeys(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUser *iamtypes.User) (*iam.CreateAccessKeyOutput, error) {
+func (r *AccountReconciler) RotateIAMAccessKeys(ctx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUser *iamtypes.User) (*iam.CreateAccessKeyOutput, error) {
 
 	// Delete all current access keys
-	err := deleteAllAccessKeys(awsClient, iamUser)
+	err := deleteAllAccessKeys(ctx, awsClient, iamUser)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Failed to delete IAM access keys for %s", aws.ToString(iamUser.UserName)))
 		return nil, err
 	}
 	// Create new access key
-	accessKeyOutput, err := CreateUserAccessKey(awsClient, iamUser)
+	accessKeyOutput, err := CreateUserAccessKey(ctx, awsClient, iamUser)
 	if err != nil {
 		reqLogger.Error(err, "failed to create IAM access key", "IAMUser", iamUser.UserName)
 		return nil, err
@@ -587,7 +587,7 @@ func (r *AccountReconciler) RotateIAMAccessKeys(reqLogger logr.Logger, awsClient
 }
 
 // createIAMUserSecret creates a K8s secret from iam.createAccessKeyOuput and sets the owner reference to the controller
-func (r *AccountReconciler) createIAMUserSecret(reqLogger logr.Logger, account *awsv1alpha1.Account, secretName types.NamespacedName, createAccessKeyOutput *iam.CreateAccessKeyOutput) error {
+func (r *AccountReconciler) createIAMUserSecret(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, secretName types.NamespacedName, createAccessKeyOutput *iam.CreateAccessKeyOutput) error {
 
 	// Fill in the secret data
 	userSecretData := map[string][]byte{
@@ -605,14 +605,14 @@ func (r *AccountReconciler) createIAMUserSecret(reqLogger logr.Logger, account *
 	}
 
 	// Return nil or err if we're unable to create the k8s secret
-	return r.CreateSecret(reqLogger, account, iamUserSecret)
+	return r.CreateSecret(ctx, reqLogger, account, iamUserSecret)
 }
 
 // DoesSecretExist checks to see if a given secret exists
-func (r *AccountReconciler) DoesSecretExist(namespacedName types.NamespacedName) (bool, error) {
+func (r *AccountReconciler) DoesSecretExist(ctx context.Context, namespacedName types.NamespacedName) (bool, error) {
 
 	secret := &corev1.Secret{}
-	err := r.Get(context.TODO(), namespacedName, secret)
+	err := r.Get(ctx, namespacedName, secret)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
 			return false, nil
@@ -629,17 +629,17 @@ func createIAMUserSecretName(account string) string {
 	return strings.ToLower(fmt.Sprintf("%s-%s", account, suffix))
 }
 
-func (r *AccountReconciler) createManagedOpenShiftSupportRole(reqLogger logr.Logger, setupClient awsclient.Client, client awsclient.Client, policyArn string, instanceID string, tags []iamtypes.Tag) (roleID string, err error) {
+func (r *AccountReconciler) createManagedOpenShiftSupportRole(ctx context.Context, reqLogger logr.Logger, setupClient awsclient.Client, client awsclient.Client, policyArn string, instanceID string, tags []iamtypes.Tag) (roleID string, err error) {
 	reqLogger.Info("Creating ManagedOpenShiftSupportRole")
 
-	getCallerIdentityOutput, err := setupClient.GetCallerIdentity(context.TODO(), &sts.GetCallerIdentityInput{})
+	getCallerIdentityOutput, err := setupClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 	if err != nil {
 		reqLogger.Error(err, "Failed to get caller identity")
 		return roleID, err
 	}
 
 	principalARN := aws.ToString(getCallerIdentityOutput.Arn)
-	SREAccessARN, err := r.GetSREAccessARN(reqLogger, awsv1alpha1.SupportJumpRole)
+	SREAccessARN, err := r.GetSREAccessARN(ctx, reqLogger, awsv1alpha1.SupportJumpRole)
 	if err != nil {
 		reqLogger.Error(err, "Unable to find STS JUMP ROLE in configmap")
 		return roleID, err
@@ -649,7 +649,7 @@ func (r *AccountReconciler) createManagedOpenShiftSupportRole(reqLogger logr.Log
 
 	managedSupRoleWithID := fmt.Sprintf("%s-%s", awsv1alpha1.ManagedOpenShiftSupportRole, instanceID)
 
-	existingRole, err := GetExistingRole(reqLogger, managedSupRoleWithID, client)
+	existingRole, err := GetExistingRole(ctx, reqLogger, managedSupRoleWithID, client)
 	if err != nil {
 		return roleID, err
 	}
@@ -661,7 +661,7 @@ func (r *AccountReconciler) createManagedOpenShiftSupportRole(reqLogger logr.Log
 		reqLogger.Info("Verifying role policies are correct")
 		roleID = aws.ToString(existingRole.Role.RoleId)
 		// existingRole is not empty
-		policyList, err := GetAttachedPolicies(reqLogger, managedSupRoleWithID, client)
+		policyList, err := GetAttachedPolicies(ctx, reqLogger, managedSupRoleWithID, client)
 		if err != nil {
 			return roleID, err
 		}
@@ -669,7 +669,7 @@ func (r *AccountReconciler) createManagedOpenShiftSupportRole(reqLogger logr.Log
 		for _, policy := range policyList.AttachedPolicies {
 			if policy.PolicyArn != &policyArn {
 				reqLogger.Info("Found undesired policy, attempting removal")
-				err := DetachPolicyFromRole(reqLogger, &policy, managedSupRoleWithID, client)
+				err := DetachPolicyFromRole(ctx, reqLogger, &policy, managedSupRoleWithID, client)
 				if err != nil {
 					return roleID, err
 				}
@@ -687,13 +687,13 @@ func (r *AccountReconciler) createManagedOpenShiftSupportRole(reqLogger logr.Log
 	// Role doesn't exist, create new role and attach desired Policy.
 	if roleID == "" {
 		// Create the base role
-		roleID, err = CreateRole(reqLogger, managedSupRoleWithID, accessArnList, client, tags)
+		roleID, err = CreateRole(ctx, reqLogger, managedSupRoleWithID, accessArnList, client, tags)
 		if err != nil {
 			return roleID, err
 		}
 	}
 	reqLogger.Info(fmt.Sprintf("New RoleID created: %s", roleID))
-	err = attachAndEnsureRolePolicies(reqLogger, client, managedSupRoleWithID, policyArn)
+	err = attachAndEnsureRolePolicies(ctx, reqLogger, client, managedSupRoleWithID, policyArn)
 
 	return roleID, err
 }

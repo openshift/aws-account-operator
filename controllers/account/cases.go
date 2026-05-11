@@ -27,7 +27,7 @@ const (
 	intervalBetweenChecksMinutes  = 10
 )
 
-func createCase(reqLogger logr.Logger, account *v1alpha1.Account, client awsclient.Client) (string, error) {
+func createCase(ctx context.Context, reqLogger logr.Logger, account *v1alpha1.Account, client awsclient.Client) (string, error) {
 	accountID := account.Spec.AwsAccountID
 
 	// Initialize basic communication body and case subject
@@ -55,7 +55,7 @@ Thanks.
 
 	reqLogger.Info("Creating the case", "CaseInput", createCaseInput)
 
-	caseResult, caseErr := client.CreateCase(context.TODO(), &createCaseInput)
+	caseResult, caseErr := client.CreateCase(ctx, &createCaseInput)
 	if caseErr != nil {
 		var returnErr error
 
@@ -81,7 +81,7 @@ Thanks.
 	return *caseResult.CaseId, nil
 }
 
-func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.Client) (bool, error) {
+func checkCaseResolution(ctx context.Context, reqLogger logr.Logger, caseID string, client awsclient.Client) (bool, error) {
 	// Look for the case using the unique ID provided
 	describeCasesInput := support.DescribeCasesInput{
 		CaseIdList: []string{
@@ -89,7 +89,7 @@ func checkCaseResolution(reqLogger logr.Logger, caseID string, client awsclient.
 		},
 	}
 
-	caseResult, caseErr := client.DescribeCases(context.TODO(), &describeCasesInput)
+	caseResult, caseErr := client.DescribeCases(ctx, &describeCasesInput)
 	if caseErr != nil {
 
 		var returnErr error

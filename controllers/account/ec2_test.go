@@ -1,6 +1,7 @@
 package account
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -182,7 +183,7 @@ func TestCreateEC2Instance(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockAWSClient.EXPECT().RunInstances(gomock.Any(), tt.args.instanceInput).MinTimes(1).MaxTimes(1).Return(tt.args.instanceOutput, tt.args.instanceOutputError)
-			got, err := CreateEC2Instance(tt.args.reqLogger, tt.args.account, tt.args.client, tt.args.instanceInfo, tt.args.managedTags, tt.args.customerTags, tt.args.customerKmsKeyId)
+			got, err := CreateEC2Instance(context.TODO(), tt.args.reqLogger, tt.args.account, tt.args.client, tt.args.instanceInfo, tt.args.managedTags, tt.args.customerTags, tt.args.customerKmsKeyId)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("CreateEC2Instance() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -296,7 +297,7 @@ func TestReconcileAccount_InitializeSupportedRegions(t *testing.T) {
 				awsClientBuilder: tt.fields.awsClientBuilder,
 				shardName:        tt.fields.shardName,
 			}
-			r.InitializeSupportedRegions(tt.args.reqLogger.Logger(), tt.args.account, tt.args.regions, tt.args.creds, tt.args.amiOwner)
+			r.InitializeSupportedRegions(context.TODO(), tt.args.reqLogger.Logger(), tt.args.account, tt.args.regions, tt.args.creds, tt.args.amiOwner)
 			assert.Contains(t, tt.args.reqLogger.Messages(), "Could not retrieve account claim for account.")
 		})
 	}
@@ -351,7 +352,7 @@ func TestRetrieveFreeInstanceType(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := RetrieveAvailableMicroInstanceType(tt.args.logger, tt.args.awsClient)
+			got, err := RetrieveAvailableMicroInstanceType(context.TODO(), tt.args.logger, tt.args.awsClient)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("RetrieveFreeInstanceType() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -466,7 +467,7 @@ func TestRetrieveAmi(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := RetrieveAmi(tt.args.awsClient, tt.args.amiOwner)
+			got, err := RetrieveAmi(context.TODO(), tt.args.awsClient, tt.args.amiOwner)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("RetrieveAmi() error = %v, wantErr %v", err, tt.wantErr)
 				return

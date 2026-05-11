@@ -29,11 +29,11 @@ var _ = Describe("AWS Resource Tag Builder", func() {
 				},
 			}
 
-			client, err := newClient("", "sss", "TESTSTETST", "eu-central-1", "eu-central-1")
+			client := newClient("", "sss", "TESTSTETST", "eu-central-1", "eu-central-1")
 			done := make(chan error)
 			// call describeRegions asynchronously
 			go func() {
-				_, err = client.DescribeRegions(context.TODO(), &ec2.DescribeRegionsInput{})
+				_, err := client.DescribeRegions(context.TODO(), &ec2.DescribeRegionsInput{})
 				done <- err
 				close(done)
 			}()

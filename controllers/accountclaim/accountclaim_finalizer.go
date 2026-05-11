@@ -12,12 +12,12 @@ import (
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
 )
 
-func (r *AccountClaimReconciler) addFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+func (r *AccountClaimReconciler) addFinalizer(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 	reqLogger.Info("Adding Finalizer for the AccountClaim")
 	accountClaim.SetFinalizers(append(accountClaim.GetFinalizers(), accountClaimFinalizer))
 
 	// Update CR
-	err := r.Update(context.TODO(), accountClaim)
+	err := r.Update(ctx, accountClaim)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update AccountClaim with finalizer")
 		return err
@@ -25,7 +25,7 @@ func (r *AccountClaimReconciler) addFinalizer(reqLogger logr.Logger, accountClai
 	return nil
 }
 
-func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+func (r *AccountClaimReconciler) removeFinalizer(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 	reqLogger.Info("Removing Finalizer for the AccountClaim")
 
 	finalizerName := accountClaimFinalizer
@@ -33,7 +33,7 @@ func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountC
 	for attempt := range maxRetries {
 		if attempt > 0 {
 			reqLogger.Info("Retrying finalizer removal due to conflict", "attempt", attempt+1, "maxRetries", maxRetries)
-			err := r.Get(context.TODO(), types.NamespacedName{
+			err := r.Get(ctx, types.NamespacedName{
 				Namespace: accountClaim.Namespace,
 				Name:      accountClaim.Name,
 			}, accountClaim)
@@ -48,7 +48,7 @@ func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountC
 
 		accountClaim.SetFinalizers(utils.Remove(accountClaim.GetFinalizers(), finalizerName))
 
-		err := r.Update(context.TODO(), accountClaim)
+		err := r.Update(ctx, accountClaim)
 		if err != nil {
 			if k8serr.IsNotFound(err) {
 				return nil
@@ -69,10 +69,10 @@ func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountC
 	return err
 }
 
-func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha1.AccountClaim) error {
+func (r *AccountClaimReconciler) addBYOCSecretFinalizer(ctx context.Context, accountClaim *awsv1alpha1.AccountClaim) error {
 
 	byocSecret := &corev1.Secret{}
-	err := r.Get(context.TODO(),
+	err := r.Get(ctx,
 		types.NamespacedName{
 			Name:      accountClaim.Spec.BYOCSecretRef.Name,
 			Namespace: accountClaim.Spec.BYOCSecretRef.Namespace},
@@ -83,7 +83,7 @@ func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha
 
 	if !utils.Contains(byocSecret.GetFinalizers(), byocSecretFinalizer) {
 		utils.AddFinalizer(byocSecret, byocSecretFinalizer)
-		err = r.Update(context.TODO(), byocSecret)
+		err = r.Update(ctx, byocSecret)
 		if err != nil {
 			return err
 		}
@@ -92,10 +92,10 @@ func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha
 	return nil
 }
 
-func (r *AccountClaimReconciler) removeBYOCSecretFinalizer(accountClaim *awsv1alpha1.AccountClaim) error {
+func (r *AccountClaimReconciler) removeBYOCSecretFinalizer(ctx context.Context, accountClaim *awsv1alpha1.AccountClaim) error {
 
 	byocSecret := &corev1.Secret{}
-	err := r.Get(context.TODO(),
+	err := r.Get(ctx,
 		types.NamespacedName{
 			Name:      accountClaim.Spec.BYOCSecretRef.Name,
 			Namespace: accountClaim.Spec.BYOCSecretRef.Namespace},
@@ -109,7 +109,7 @@ func (r *AccountClaimReconciler) removeBYOCSecretFinalizer(accountClaim *awsv1al
 	}
 
 	byocSecret.Finalizers = utils.Remove(byocSecret.Finalizers, byocSecretFinalizer)
-	err = r.Update(context.TODO(), byocSecret)
+	err = r.Update(ctx, byocSecret)
 	if err != nil {
 		return err
 	}

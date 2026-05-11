@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -29,7 +30,7 @@ func InitControllerMaxReconciles(kubeClient client.Client) []error {
 		"awsfederatedrole",
 	}
 	controllerErrors := []error{}
-	cm, err := GetOperatorConfigMap(kubeClient)
+	cm, err := GetOperatorConfigMap(context.Background(), kubeClient)
 	if err != nil {
 		controllerErrors = append(controllerErrors, err)
 		return controllerErrors

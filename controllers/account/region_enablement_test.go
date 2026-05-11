@@ -1,6 +1,7 @@
 package account
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -80,7 +81,7 @@ func TestAccountReconciler_HandleOptInRegionRequests(t *testing.T) {
 				nil,
 			)
 
-			if err := HandleOptInRegionRequests(test.reqLogger, mockAWSClient, "af-south-1", test.optInRegion, test.currentAcctInstance); (err != nil) != test.wantErr {
+			if err := HandleOptInRegionRequests(context.TODO(), test.reqLogger, mockAWSClient, "af-south-1", test.optInRegion, test.currentAcctInstance); (err != nil) != test.wantErr {
 				t.Errorf("AccountReconciler.HandleOptInRegionRequests() error = %v, wantErr %v", err, test.wantErr)
 			}
 		})

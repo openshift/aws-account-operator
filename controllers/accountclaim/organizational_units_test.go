@@ -1,6 +1,7 @@
 package accountclaim
 
 import (
+	"context"
 	"testing"
 
 	"github.com/openshift/aws-account-operator/pkg/testutils"
@@ -67,7 +68,7 @@ var _ = Describe("Organizational Unit", func() {
 				Scheme: scheme.Scheme,
 				Client: fake.NewClientBuilder().WithRuntimeObjects(localObjects...).Build(),
 			}
-			err := MoveAccountToOU(&r, nullLogger, mockAWSClient, &accountClaim, &account)
+			err := MoveAccountToOU(context.TODO(), &r, nullLogger, mockAWSClient, &accountClaim, &account)
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -87,7 +88,7 @@ var _ = Describe("Organizational Unit", func() {
 				Client: fake.NewClientBuilder().WithRuntimeObjects(localObjects...).Build(),
 			}
 
-			err := MoveAccountToOU(&r, nullLogger, mockAWSClient, &accountClaim, &account)
+			err := MoveAccountToOU(context.TODO(), &r, nullLogger, mockAWSClient, &accountClaim, &account)
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(awsv1alpha1.ErrInvalidConfigMap))
 		})
@@ -114,7 +115,7 @@ var _ = Describe("Organizational Unit", func() {
 					ID: "",
 				},
 			}
-			err := MoveAccountToOU(&r, nullLogger, mockAWSClient, &accountClaim, &account)
+			err := MoveAccountToOU(context.TODO(), &r, nullLogger, mockAWSClient, &accountClaim, &account)
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(awsv1alpha1.ErrUnexpectedValue))
 		})
@@ -165,7 +166,7 @@ var _ = Describe("Organizational Unit", func() {
 				nil,
 			)
 
-			err := MoveAccountToOU(&r, nullLogger, mockAWSClient, &accountClaim, &account)
+			err := MoveAccountToOU(context.TODO(), &r, nullLogger, mockAWSClient, &accountClaim, &account)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(accountClaim.Spec.AccountOU).To(Equal(myID))
 		})
@@ -203,7 +204,7 @@ var _ = Describe("Organizational Unit", func() {
 			)
 			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(nil, nil)
 
-			err := MoveAccountToOU(&r, nullLogger, mockAWSClient, &accountClaim, &account)
+			err := MoveAccountToOU(context.TODO(), &r, nullLogger, mockAWSClient, &accountClaim, &account)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(accountClaim.Spec.AccountOU).To(Equal(myID))
 		})
@@ -225,13 +226,13 @@ var _ = Describe("Organizational Unit", func() {
 				},
 				nil,
 			)
-			output, err := CreateOrFindOU(nullLogger, mockAWSClient, ouName, baseID)
+			output, err := CreateOrFindOU(context.TODO(), nullLogger, mockAWSClient, ouName, baseID)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(output).To(Equal(myID))
 		})
 
 		It("Should fail when provided with invalid input", func() {
-			output, err := CreateOrFindOU(nullLogger, mockAWSClient, "", "")
+			output, err := CreateOrFindOU(context.TODO(), nullLogger, mockAWSClient, "", "")
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(BeEquivalentTo(awsv1alpha1.ErrUnexpectedValue))
 			Expect(output).To(BeEmpty())
@@ -257,7 +258,7 @@ var _ = Describe("Organizational Unit", func() {
 				},
 				nil,
 			)
-			output, err := CreateOrFindOU(nullLogger, mockAWSClient, ouName, baseID)
+			output, err := CreateOrFindOU(context.TODO(), nullLogger, mockAWSClient, ouName, baseID)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(output).To(Equal(myID))
 		})
@@ -272,7 +273,7 @@ var _ = Describe("Organizational Unit", func() {
 				},
 				expectedErr,
 			)
-			output, err := CreateOrFindOU(nullLogger, mockAWSClient, ouName, baseID)
+			output, err := CreateOrFindOU(context.TODO(), nullLogger, mockAWSClient, ouName, baseID)
 			Expect(err).To(HaveOccurred())
 			Expect(output).To(BeEmpty())
 			Expect(err).To(BeEquivalentTo(expectedErr))
@@ -286,7 +287,7 @@ var _ = Describe("Organizational Unit", func() {
 				DestinationParentId: &ouID,
 				SourceParentId:      &parentID,
 			}).Return(nil, nil)
-			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
+			err := MoveAccount(context.TODO(), nullLogger, mockAWSClient, &account, ouID, parentID)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -303,7 +304,7 @@ var _ = Describe("Organizational Unit", func() {
 				},
 				nil,
 			)
-			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
+			err := MoveAccount(context.TODO(), nullLogger, mockAWSClient, &account, ouID, parentID)
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(Equal(awsv1alpha1.ErrAccAlreadyInOU))
 		})
@@ -320,7 +321,7 @@ var _ = Describe("Organizational Unit", func() {
 				},
 				nil,
 			)
-			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
+			err := MoveAccount(context.TODO(), nullLogger, mockAWSClient, &account, ouID, parentID)
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(Equal(awsv1alpha1.ErrChildNotFound))
 		})
@@ -328,7 +329,7 @@ var _ = Describe("Organizational Unit", func() {
 		It("Should error when encountering a race condition when attempting to move account", func() {
 			expectedErr := &organizationstypes.ConcurrentModificationException{Message: aws.String("Some AWS Error")}
 			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
-			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
+			err := MoveAccount(context.TODO(), nullLogger, mockAWSClient, &account, ouID, parentID)
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(Equal(awsv1alpha1.ErrAccMoveRaceCondition))
 		})
@@ -336,7 +337,7 @@ var _ = Describe("Organizational Unit", func() {
 		It("Should return error directly when an unexpected error has occurred", func() {
 			expectedErr := &smithy.GenericAPIError{Code: "OtherErr", Message: "Some AWS Error"}
 			mockAWSClient.EXPECT().MoveAccount(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
-			err := MoveAccount(nullLogger, mockAWSClient, &account, ouID, parentID)
+			err := MoveAccount(context.TODO(), nullLogger, mockAWSClient, &account, ouID, parentID)
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(Equal(expectedErr))
 		})
@@ -374,7 +375,7 @@ func TestFindOUIDFromName(t *testing.T) {
 		ouName               string
 		expectedOUID         string
 		expectedErr          error
-		findOUIDFromNameFunc func(logr.Logger, awsclient.Client, string, string) (string, error)
+		findOUIDFromNameFunc func(context.Context, logr.Logger, awsclient.Client, string, string) (string, error)
 	}{
 		{
 			name: "Existing OU ID",
@@ -411,7 +412,7 @@ func TestFindOUIDFromName(t *testing.T) {
 			}).Return(test.listOUForParentOut, test.listOUForParentErr)
 			reqLogger := log.WithValues()
 			// Test
-			ouID, err := test.findOUIDFromNameFunc(reqLogger, mocks, test.parentID, test.ouName)
+			ouID, err := test.findOUIDFromNameFunc(context.TODO(), reqLogger, mocks, test.parentID, test.ouName)
 			assert.EqualValues(t, test.expectedOUID, ouID)
 			assert.EqualValues(t, test.expectedErr, err)
 		})

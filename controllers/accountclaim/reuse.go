@@ -32,10 +32,10 @@ const (
 	AccountFailed = "Failed"
 )
 
-func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+func (r *AccountClaimReconciler) finalizeAccountClaim(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 
 	// Get account claimed by deleted accountclaim
-	reusedAccount, err := r.getClaimedAccount(accountClaim.Spec.AccountLink)
+	reusedAccount, err := r.getClaimedAccount(ctx, accountClaim.Spec.AccountLink)
 	if err != nil {
 		// This check ensures that if a BYOC Account CR gets deleted, the rest of the BYOC finalizer logic can still run
 		if !accountClaim.Spec.BYOC {
@@ -43,7 +43,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 			return err
 		}
 		// Cleanup BYOC secret
-		secretErr := r.removeBYOCSecretFinalizer(accountClaim)
+		secretErr := r.removeBYOCSecretFinalizer(ctx, accountClaim)
 		if secretErr != nil {
 			reqLogger.Error(err, "Failed to remove BYOC iamsecret finalizer")
 			return secretErr
@@ -56,7 +56,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 
 	// If the reused account is STS, then we don't have to clean up
 	if reusedAccount.Spec.ManualSTSMode {
-		err := r.Delete(context.TODO(), reusedAccount)
+		err := r.Delete(ctx, reusedAccount)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete STS account from accountclaim cleanup")
 			return err
@@ -99,7 +99,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 
 		// This can not be the default region us-east-1 when cleaning up S3 buckets that live in other regions (if the cluster is not in us-east-1):
 		// e.g. https://github.com/parallelworks/interactive_session/pull/65
-		awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, reusedAccount, r.Client, awsSetupClient, clusterAwsRegion, awsv1alpha1.AccountOperatorIAMRole, "")
+		awsClient, _, err = stsclient.HandleRoleAssumption(ctx, reqLogger, r.awsClientBuilder, reusedAccount, r.Client, awsSetupClient, clusterAwsRegion, awsv1alpha1.AccountOperatorIAMRole, "")
 		if err != nil {
 			connErr := fmt.Sprintf("Unable to create aws client for region %s", clusterAwsRegion)
 			reqLogger.Error(err, connErr)
@@ -108,14 +108,14 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 	}
 
 	if reusedAccount.IsBYOC() {
-		err := r.Delete(context.TODO(), reusedAccount)
+		err := r.Delete(ctx, reusedAccount)
 		if err != nil {
 			reqLogger.Error(err, "Failed to delete BYOC account from accountclaim cleanup")
 			return err
 		}
 
 		// Cleanup BYOC secret
-		err = r.removeBYOCSecretFinalizer(accountClaim)
+		err = r.removeBYOCSecretFinalizer(ctx, accountClaim)
 		if err != nil {
 			reqLogger.Error(err, "Failed to remove BYOC secret finalizer")
 			return err
@@ -126,7 +126,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 
 	// CRITICAL SAFETY CHECK: Prevent cleanup on payer/root accounts
 	// This protects against accidentally deleting critical infrastructure in payer accounts
-	isPayer, err := config.IsPayerAccount(reusedAccount.Spec.AwsAccountID, r.Client)
+	isPayer, err := config.IsPayerAccount(ctx, reusedAccount.Spec.AwsAccountID, r.Client)
 	if err != nil {
 		reqLogger.Error(err, "Failed to check if account is a payer account",
 			"accountID", reusedAccount.Spec.AwsAccountID)
@@ -151,7 +151,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 	}
 	localmetrics.Collector.SetAccountReusedCleanupDuration(time.Since(before).Seconds())
 
-	err = r.resetAccountSpecStatus(reqLogger, reusedAccount, accountClaim, awsv1alpha1.AccountReused, "Ready")
+	err = r.resetAccountSpecStatus(ctx, reqLogger, reusedAccount, accountClaim, awsv1alpha1.AccountReused, "Ready")
 	if err != nil {
 		reqLogger.Error(err, "Failed to reset account entity")
 		return err
@@ -161,7 +161,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 	return nil
 }
 
-func (r *AccountClaimReconciler) resetAccountSpecStatus(reqLogger logr.Logger, reusedAccount *awsv1alpha1.Account, deletedAccountClaim *awsv1alpha1.AccountClaim, accountState awsv1alpha1.AccountConditionType, conditionStatus string) error {
+func (r *AccountClaimReconciler) resetAccountSpecStatus(ctx context.Context, reqLogger logr.Logger, reusedAccount *awsv1alpha1.Account, deletedAccountClaim *awsv1alpha1.AccountClaim, accountState awsv1alpha1.AccountConditionType, conditionStatus string) error {
 
 	// Reset claimlink and carry over legal entity from deleted claim
 	reusedAccount.Spec.ClaimLink = ""
@@ -174,7 +174,7 @@ func (r *AccountClaimReconciler) resetAccountSpecStatus(reqLogger logr.Logger, r
 		reusedAccount.Spec.LegalEntity.Name = deletedAccountClaim.Spec.LegalEntity.Name
 	}
 
-	err := r.accountSpecUpdate(reqLogger, reusedAccount)
+	err := r.accountSpecUpdate(ctx, reqLogger, reusedAccount)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update account spec for reuse")
 		return err
@@ -191,7 +191,7 @@ func (r *AccountClaimReconciler) resetAccountSpecStatus(reqLogger logr.Logger, r
 	reusedAccount.Status.Reused = true
 	conditionMsg := fmt.Sprintf("Account Reuse - %s", conditionStatus)
 	utils.SetAccountStatus(reusedAccount, conditionMsg, accountState, conditionStatus)
-	err = r.accountStatusUpdate(reqLogger, reusedAccount)
+	err = r.accountStatusUpdate(ctx, reqLogger, reusedAccount)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update account status for reuse")
 		return err
@@ -509,8 +509,8 @@ func DeleteBucketContent(awsClient awsclient.Client, bucketName string) error {
 	return nil
 }
 
-func (r *AccountClaimReconciler) accountStatusUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
-	err := r.Client.Status().Update(context.TODO(), account)
+func (r *AccountClaimReconciler) accountStatusUpdate(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	err := r.Client.Status().Update(ctx, account)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", account.Name))
 	}

@@ -174,98 +174,162 @@ func NewAccountClaimReconciler(client client.Client, scheme *runtime.Scheme, aws
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	// Watch AccountClaim
+
 	accountClaim := &awsv1alpha1.AccountClaim{}
-	err := r.Get(context.TODO(), request.NamespacedName, accountClaim)
+	err := r.Get(ctx, request.NamespacedName, accountClaim)
 	if err != nil {
 		if k8serr.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-			// Return and don't requeue
 			return reconcile.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
-	// Fake Account Claim Process for Hive Testing ..
-	// Fake account claims are account claims which have the label `managed.openshift.com/fake: true`
-	// These fake claims are used for testing within hive
+	// Handle fake account claims for testing
 	if accountClaim.Annotations[fakeAnnotation] == "true" {
-		requeue, err := r.processFake(reqLogger, accountClaim)
+		requeue, err := r.processFake(ctx, reqLogger, accountClaim)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{Requeue: requeue}, nil
 	}
 
-	// Add finalizer to the CR in case it's not present (e.g. old accounts)
+	// Add finalizer if not present
 	if !controllerutils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
-		err := r.addFinalizer(reqLogger, accountClaim)
+		err := r.addFinalizer(ctx, reqLogger, accountClaim)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-
 		return reconcile.Result{}, nil
 	}
 
-	// CRITICAL SAFETY CHECK: Block operations on payer/root accounts
+	// Payer account safety check
+	if err := r.checkPayerAccount(ctx, reqLogger, accountClaim); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Handle deletion
+	if accountClaim.DeletionTimestamp != nil {
+		return r.handleDeletion(ctx, reqLogger, accountClaim)
+	}
+
+	// Update metrics and handle BYOC
+	if result, handled, err := r.handleMetricsAndBYOC(ctx, reqLogger, accountClaim); handled {
+		return result, err
+	}
+
+	// Return if claim satisfied
+	if claimIsSatisfied(accountClaim) {
+		reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.Name))
+		return reconcile.Result{}, nil
+	}
+
+	// Initialize claim state
+	if accountClaim.Status.State == "" {
+		return r.initializeClaimState(ctx, reqLogger, accountClaim)
+	}
+
+	// Get or select account
+	unclaimedAccount, err := r.getOrSelectAccount(ctx, reqLogger, accountClaim)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Link account and claim
+	if done, err := r.linkAccountAndClaim(ctx, reqLogger, accountClaim, unclaimedAccount); done {
+		return reconcile.Result{}, err
+	}
+
+	// Set support role ARN
+	if !accountClaim.Spec.ManualSTSMode {
+		err = r.setSupportRoleARNManagedOpenshift(ctx, reqLogger, accountClaim, unclaimedAccount)
+		reqLogger.V(1).Info("successfully set the support role ARN", "accountclaim", accountClaim.Name)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
+	// Move account to OU
+	if err := r.ensureAccountInOU(ctx, reqLogger, accountClaim, unclaimedAccount); err != nil {
+		if errors.Is(err, awsv1alpha1.ErrAccMoveRaceCondition) {
+			return reconcile.Result{Requeue: true}, nil
+		}
+		return reconcile.Result{}, err
+	}
+
+	// Handle fleet manager or standard IAM setup
+	if err := r.setupIAMAccess(ctx, reqLogger, accountClaim, unclaimedAccount); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Final status update
+	if accountClaim.Status.State != awsv1alpha1.ClaimStatusReady && accountClaim.Spec.AccountLink != "" {
+		setAccountClaimStatus(reqLogger, unclaimedAccount, accountClaim)
+		reqLogger.V(1).Info("successfully updated accountclaim status to Ready", "accountclaim", accountClaim.Name)
+		return reconcile.Result{}, r.statusUpdate(ctx, reqLogger, accountClaim)
+	}
+
+	return reconcile.Result{}, nil
+}
+
+func (r *AccountClaimReconciler) checkPayerAccount(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 	if accountClaim.Spec.BYOCAWSAccountID != "" {
-		isPayer, err := config.IsPayerAccount(accountClaim.Spec.BYOCAWSAccountID, r.Client)
+		isPayer, err := config.IsPayerAccount(ctx, accountClaim.Spec.BYOCAWSAccountID, r.Client)
 		if err != nil {
 			reqLogger.Error(err, "Failed to check if BYOC account is a payer account")
-			return reconcile.Result{}, err
+			return err
 		}
 		if isPayer {
 			reqLogger.Info(fmt.Sprintf("Warning: protected payer account %s - skipping all operations on payer/root account", accountClaim.Spec.BYOCAWSAccountID),
 				"accountID", accountClaim.Spec.BYOCAWSAccountID,
 				"accountClaim", accountClaim.Name,
 				"action", "blocked")
-			return reconcile.Result{}, nil
+			return fmt.Errorf("payer account blocked")
 		}
 	}
+	return nil
+}
 
-	if accountClaim.DeletionTimestamp != nil {
-		if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" {
-			if r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
-				err = r.deleteIAMSecret(reqLogger, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace)
-				if err != nil {
-					return reconcile.Result{}, err
-				}
-				reqLogger.V(1).Info("successfully deleted IAM secret", "accountclaim", accountClaim.Name)
+func (r *AccountClaimReconciler) handleDeletion(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (reconcile.Result, error) {
+	if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" {
+		if r.checkIAMSecretExists(ctx, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+			err := r.deleteIAMSecret(ctx, reqLogger, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace)
+			if err != nil {
+				return reconcile.Result{}, err
 			}
-			currentAcctInstance, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink)
-			if accountErr != nil {
-				reqLogger.Error(accountErr, "Unable to get claimed account")
-			}
-			reqLogger.V(1).Info("successfully got claimed account", "accountclaim", accountClaim.Name)
-			if currentAcctInstance != nil && !currentAcctInstance.IsBYOC() {
-				awsRegion := config.GetDefaultRegion()
-
-				awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-					SecretName: controllerutils.AwsSecretName,
-					NameSpace:  awsv1alpha1.AccountCrNamespace,
-					AwsRegion:  awsRegion,
-				})
-				if err != nil {
-					reqLogger.Error(err, "failed building operator AWS client")
-					return reconcile.Result{}, err
-				}
-				awsClient, _, err := stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
-				if err != nil {
-					reqLogger.Error(err, "failed building AWS client from assume_role")
-					return reconcile.Result{}, err
-				}
-				err = r.CleanUpIAMRoleAndPolicies(reqLogger, awsClient, stsRoleName)
-				if err != nil {
-					return reconcile.Result{}, err
-				}
-				reqLogger.V(1).Info("successfully cleaned up IAM role and policies", "accountclaim", accountClaim.Name)
-			}
+			reqLogger.V(1).Info("successfully deleted IAM secret", "accountclaim", accountClaim.Name)
 		}
-		return reconcile.Result{}, r.handleAccountClaimDeletion(reqLogger, accountClaim)
+		currentAcctInstance, accountErr := r.getClaimedAccount(ctx, accountClaim.Spec.AccountLink)
+		if accountErr != nil {
+			reqLogger.Error(accountErr, "Unable to get claimed account")
+		}
+		reqLogger.V(1).Info("successfully got claimed account", "accountclaim", accountClaim.Name)
+		if currentAcctInstance != nil && !currentAcctInstance.IsBYOC() {
+			awsRegion := config.GetDefaultRegion()
+			awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+				SecretName: controllerutils.AwsSecretName,
+				NameSpace:  awsv1alpha1.AccountCrNamespace,
+				AwsRegion:  awsRegion,
+			})
+			if err != nil {
+				reqLogger.Error(err, "failed building operator AWS client")
+				return reconcile.Result{}, err
+			}
+			awsClient, _, err := stsclient.HandleRoleAssumption(ctx, reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
+			if err != nil {
+				reqLogger.Error(err, "failed building AWS client from assume_role")
+				return reconcile.Result{}, err
+			}
+			err = r.CleanUpIAMRoleAndPolicies(ctx, reqLogger, awsClient, stsRoleName)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+			reqLogger.V(1).Info("successfully cleaned up IAM role and policies", "accountclaim", accountClaim.Name)
+		}
 	}
+	return reconcile.Result{}, r.handleAccountClaimDeletion(ctx, reqLogger, accountClaim)
+}
 
+func (r *AccountClaimReconciler) handleMetricsAndBYOC(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (reconcile.Result, bool, error) {
 	isCCS := accountClaim.Spec.BYOCAWSAccountID != ""
 
 	if accountClaim.Status.State == awsv1alpha1.ClaimStatusPending {
@@ -275,109 +339,100 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	}
 
 	if accountClaim.Spec.BYOC {
-		return r.handleBYOCAccountClaim(reqLogger, accountClaim)
+		result, err := r.handleBYOCAccountClaim(ctx, reqLogger, accountClaim)
+		return result, true, err
 	}
 
-	// Return if this claim has been satisfied
-	if claimIsSatisfied(accountClaim) {
-		reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.Name))
-		return reconcile.Result{}, nil
-	}
+	return reconcile.Result{}, false, nil
+}
 
-	if accountClaim.Status.State == "" {
-		message := "Attempting to claim account"
-		reqLogger.Info(message)
-		accountClaim.Status.State = awsv1alpha1.ClaimStatusPending
+func (r *AccountClaimReconciler) initializeClaimState(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (reconcile.Result, error) {
+	isCCS := accountClaim.Spec.BYOCAWSAccountID != ""
+	message := "Attempting to claim account"
+	reqLogger.Info(message)
+	accountClaim.Status.State = awsv1alpha1.ClaimStatusPending
 
-		accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
-			accountClaim.Status.Conditions,
-			awsv1alpha1.AccountUnclaimed,
-			corev1.ConditionTrue,
-			AccountClaimed,
-			message,
-			controllerutils.UpdateConditionNever,
-			isCCS,
-		)
+	accountClaim.Status.Conditions = controllerutils.SetAccountClaimCondition(
+		accountClaim.Status.Conditions,
+		awsv1alpha1.AccountUnclaimed,
+		corev1.ConditionTrue,
+		AccountClaimed,
+		message,
+		controllerutils.UpdateConditionNever,
+		isCCS,
+	)
 
-		// Update the Spec on AccountClaim
-		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
-	}
+	return reconcile.Result{}, r.statusUpdate(ctx, reqLogger, accountClaim)
+}
 
+func (r *AccountClaimReconciler) getOrSelectAccount(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
 	var unclaimedAccount *awsv1alpha1.Account
+	var err error
 
-	// Get an unclaimed account from the pool
 	if accountClaim.Spec.AccountLink == "" {
-		unclaimedAccount, err = r.getUnclaimedAccount(reqLogger, accountClaim)
+		unclaimedAccount, err = r.getUnclaimedAccount(ctx, reqLogger, accountClaim)
 		if err != nil {
 			reqLogger.Error(err, "Unable to select an unclaimed account from the pool")
-			return reconcile.Result{}, err
+			return nil, err
 		}
 		reqLogger.V(1).Info("successfully got unclaimed account", "accountclaim", accountClaim.Name)
 	} else {
-		unclaimedAccount, err = r.getClaimedAccount(accountClaim.Spec.AccountLink)
+		unclaimedAccount, err = r.getClaimedAccount(ctx, accountClaim.Spec.AccountLink)
 		if err != nil {
-			return reconcile.Result{}, err
+			return nil, err
 		}
 		reqLogger.V(1).Info("successfully got claimed account", "accountclaim", accountClaim.Name)
 	}
 
-	// Set Account.Spec.ClaimLink
-	// This will trigger the reconcile loop for the account which will mark the account as claimed in its status
+	return unclaimedAccount, nil
+}
+
+func (r *AccountClaimReconciler) linkAccountAndClaim(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) (bool, error) {
 	if unclaimedAccount.Spec.ClaimLink == "" {
 		updateClaimedAccountFields(reqLogger, unclaimedAccount, accountClaim)
-		err := r.accountSpecUpdate(reqLogger, unclaimedAccount)
+		err := r.accountSpecUpdate(ctx, reqLogger, unclaimedAccount)
 		if err != nil {
-			return reconcile.Result{}, err
+			return true, err
 		}
 		reqLogger.V(1).Info("successfully updated claimLink", "accountclaim", accountClaim.Name)
 	}
 
-	// Set awsAccountClaim.Spec.AccountLink
 	if accountClaim.Spec.AccountLink == "" {
 		setAccountLinkOnAccountClaim(reqLogger, unclaimedAccount, accountClaim)
 		reqLogger.V(1).Info("successfully set AccountLink", "accountclaim", accountClaim.Name)
-		return reconcile.Result{}, r.specUpdate(reqLogger, accountClaim)
+		return true, r.specUpdate(ctx, reqLogger, accountClaim)
 	}
 
-	if !accountClaim.Spec.ManualSTSMode {
-		err = r.setSupportRoleARNManagedOpenshift(reqLogger, accountClaim, unclaimedAccount)
-		reqLogger.V(1).Info("successfully set the support role ARN", "accountclaim", accountClaim.Name)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-	}
+	return false, nil
+}
 
-	// Set awsAccountClaim.Spec.AwsAccountOU
+func (r *AccountClaimReconciler) ensureAccountInOU(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {
 	if accountClaim.Spec.AccountOU == "" || accountClaim.Spec.AccountOU == "ROOT" {
-		// Determine if in fedramp env
 		awsRegion := config.GetDefaultRegion()
-
-		// aws client
 		awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 			SecretName: controllerutils.AwsSecretName,
 			NameSpace:  awsv1alpha1.AccountCrNamespace,
 			AwsRegion:  awsRegion,
 		})
 		if err != nil {
-			unexpectedErrorMsg := "OU: Failed to build aws client"
-			reqLogger.Info(unexpectedErrorMsg)
-			return reconcile.Result{}, err
+			reqLogger.Info("OU: Failed to build aws client")
+			return err
 		}
 
-		err = MoveAccountToOU(r, reqLogger, awsClient, accountClaim, unclaimedAccount)
+		err = MoveAccountToOU(ctx, r, reqLogger, awsClient, accountClaim, unclaimedAccount)
 		if err != nil {
-			if errors.Is(err, awsv1alpha1.ErrAccMoveRaceCondition) {
-				// Due to a race condition, we need to requeue the reconcile to ensure that the account was correctly moved into the correct OU
-				return reconcile.Result{Requeue: true}, nil
-			}
-			return reconcile.Result{}, err
+			return err
 		}
 		reqLogger.V(1).Info("successfully moved account to OU", "accountclaimName", accountClaim.Name, "account", unclaimedAccount.Name)
 	}
-	cm, err := controllerutils.GetOperatorConfigMap(r.Client)
+	return nil
+}
+
+func (r *AccountClaimReconciler) setupIAMAccess(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {
+	cm, err := controllerutils.GetOperatorConfigMap(ctx, r.Client)
 	if err != nil {
 		log.Error(err, "Could not retrieve the operator configmap")
-		return controllerutils.RequeueAfter(5 * time.Minute)
+		return err
 	}
 
 	enabled, err := strconv.ParseBool(cm.Data["feature.accountclaim_fleet_manager_trusted_arn"])
@@ -388,119 +443,116 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	}
 	log.Info("Is fleet manager accountclaim enabled?", "enabled", fleetManagerClaimEnabled)
 
-	// This will trigger role and secret creation which will enable AccountCLaims to be able to gain access via an AWS STS tokens
 	if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" && (accountClaim.Spec.AccountPool != "" && accountClaim.Spec.AccountPool != "default") {
-		if fleetManagerClaimEnabled {
-			awsRegion := config.GetDefaultRegion()
+		return r.setupFleetManagerIAM(ctx, reqLogger, accountClaim, unclaimedAccount)
+	}
 
-			awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-				SecretName: controllerutils.AwsSecretName,
-				NameSpace:  awsv1alpha1.AccountCrNamespace,
-				AwsRegion:  awsRegion,
-			})
-			if err != nil {
-				reqLogger.Error(err, "failed building operator AWS client")
-				return reconcile.Result{}, err
-			}
-			awsClient, _, err := stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, unclaimedAccount, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
-			if err != nil {
-				reqLogger.Error(err, "failed building AWS client from assume_role")
-				return reconcile.Result{}, err
-			}
+	return r.setupStandardIAM(ctx, reqLogger, accountClaim, unclaimedAccount)
+}
 
-			err = r.CleanUpIAMRoleAndPolicies(reqLogger, awsClient, stsRoleName)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
+func (r *AccountClaimReconciler) setupFleetManagerIAM(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {
+	if !fleetManagerClaimEnabled {
+		log.Info("Would attempt to create IAM Role with permission here, but fleet manager accountclaim is disabled.")
+		return nil
+	}
 
-			roleARN, err := r.createIAMRoleWithPermissions(reqLogger, awsClient, stsRoleName, accountClaim.Spec.FleetManagerConfig.TrustedARN)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
+	awsRegion := config.GetDefaultRegion()
+	awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+		SecretName: controllerutils.AwsSecretName,
+		NameSpace:  awsv1alpha1.AccountCrNamespace,
+		AwsRegion:  awsRegion,
+	})
+	if err != nil {
+		reqLogger.Error(err, "failed building operator AWS client")
+		return err
+	}
 
-			// Implement IAM user deletion logic
-			if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil {
-				return reconcile.Result{}, fmt.Errorf("failed deleting IAM users: %w", err)
-			}
+	awsClient, _, err := stsclient.HandleRoleAssumption(ctx, reqLogger, r.awsClientBuilder, unclaimedAccount, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
+	if err != nil {
+		reqLogger.Error(err, "failed building AWS client from assume_role")
+		return err
+	}
 
-			// Deletes account IAM user Secret
-			if r.checkIAMSecretExists(unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.Namespace) {
-				err := r.deleteIAMSecret(reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.Namespace)
-				if err != nil {
-					return reconcile.Result{}, err
-				}
-			}
-			// Remove IAM user Secret from Account Spec
-			unclaimedAccount.Spec.IAMUserSecret = ""
-			err = r.accountSpecUpdate(reqLogger, unclaimedAccount)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
+	err = r.CleanUpIAMRoleAndPolicies(ctx, reqLogger, awsClient, stsRoleName)
+	if err != nil {
+		return err
+	}
 
-			// Creates IAM role secret
-			if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
-				if err := r.createIAMRoleSecret(reqLogger, accountClaim, roleARN); err != nil {
-					return reconcile.Result{}, err
-				}
-			} else {
-				err = r.deleteIAMSecret(reqLogger, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace)
-				if err != nil {
-					return reconcile.Result{}, err
-				}
-				err = r.createIAMRoleSecret(reqLogger, accountClaim, roleARN)
-				if err != nil {
-					return reconcile.Result{}, err
-				}
-			}
-			reqLogger.V(1).Info("successfully created role and secret for fleet manager accountclaim", "accountclaim", accountClaim.Name)
-		} else {
-			log.Info("Would attempt to create IAM Role with permission here, but fleet manager accountclaim is disabled.")
+	roleARN, err := r.createIAMRoleWithPermissions(ctx, reqLogger, awsClient, stsRoleName, accountClaim.Spec.FleetManagerConfig.TrustedARN)
+	if err != nil {
+		return err
+	}
+
+	if err := account.DeleteIAMUsers(ctx, reqLogger, awsClient, unclaimedAccount); err != nil {
+		return fmt.Errorf("failed deleting IAM users: %w", err)
+	}
+
+	if r.checkIAMSecretExists(ctx, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.Namespace) {
+		err := r.deleteIAMSecret(ctx, reqLogger, unclaimedAccount.Spec.IAMUserSecret, unclaimedAccount.Namespace)
+		if err != nil {
+			return err
+		}
+	}
+
+	unclaimedAccount.Spec.IAMUserSecret = ""
+	err = r.accountSpecUpdate(ctx, reqLogger, unclaimedAccount)
+	if err != nil {
+		return err
+	}
+
+	if !r.checkIAMSecretExists(ctx, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+		if err := r.createIAMRoleSecret(ctx, reqLogger, accountClaim, roleARN); err != nil {
+			return err
 		}
 	} else {
-
-		// Create secret for OCM to consume
-		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
-			err = r.createIAMSecret(reqLogger, accountClaim, unclaimedAccount)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-			reqLogger.V(1).Info("successfully created IAM secret", "accountclaim", accountClaim.Name)
+		err = r.deleteIAMSecret(ctx, reqLogger, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace)
+		if err != nil {
+			return err
+		}
+		err = r.createIAMRoleSecret(ctx, reqLogger, accountClaim, roleARN)
+		if err != nil {
+			return err
 		}
 	}
 
-	if accountClaim.Status.State != awsv1alpha1.ClaimStatusReady && accountClaim.Spec.AccountLink != "" {
-		// Set AccountClaim.Status.Conditions and AccountClaim.Status.State to Ready
-		setAccountClaimStatus(reqLogger, unclaimedAccount, accountClaim)
-		reqLogger.V(1).Info("successfully updated accountclaim status to Ready", "accountclaim", accountClaim.Name)
-		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
-	}
+	reqLogger.V(1).Info("successfully created role and secret for fleet manager accountclaim", "accountclaim", accountClaim.Name)
+	return nil
+}
 
-	return reconcile.Result{}, nil
+func (r *AccountClaimReconciler) setupStandardIAM(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {
+	if !r.checkIAMSecretExists(ctx, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+		err := r.createIAMSecret(ctx, reqLogger, accountClaim, unclaimedAccount)
+		if err != nil {
+			return err
+		}
+		reqLogger.V(1).Info("successfully created IAM secret", "accountclaim", accountClaim.Name)
+	}
+	return nil
 }
 
 // CleanUpIAMRoleAndPolicies  is responsible for cleaning up existing IAM roles and their associated policies.
-func (r *AccountClaimReconciler) CleanUpIAMRoleAndPolicies(reqLogger logr.Logger, awsClient awsclient.Client, roleName string) error {
+func (r *AccountClaimReconciler) CleanUpIAMRoleAndPolicies(ctx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, roleName string) error {
 	// Retrieve the existing IAM role by its name.
-	_, err := awsClient.GetRole(context.TODO(), &iam.GetRoleInput{
+	_, err := awsClient.GetRole(ctx, &iam.GetRoleInput{
 		RoleName: aws.String(roleName),
 	})
 	if err != nil {
 		return err
 	}
 
-	respPolicy, err := awsClient.ListRolePolicies(context.TODO(), &iam.ListRolePoliciesInput{
+	respPolicy, err := awsClient.ListRolePolicies(ctx, &iam.ListRolePoliciesInput{
 		RoleName: aws.String(roleName),
 	})
 
 	if err != nil {
-		_, err = awsClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{
+		_, err = awsClient.DeleteRole(ctx, &iam.DeleteRoleInput{
 			RoleName: aws.String(roleName),
 		})
 		return err
 	}
 
 	for _, policyName := range respPolicy.PolicyNames {
-		_, err = awsClient.DeleteRolePolicy(context.TODO(), &iam.DeleteRolePolicyInput{
+		_, err = awsClient.DeleteRolePolicy(ctx, &iam.DeleteRolePolicyInput{
 			RoleName:   aws.String(roleName),
 			PolicyName: &policyName,
 		})
@@ -510,7 +562,7 @@ func (r *AccountClaimReconciler) CleanUpIAMRoleAndPolicies(reqLogger logr.Logger
 			return err
 		}
 	}
-	_, err = awsClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{
+	_, err = awsClient.DeleteRole(ctx, &iam.DeleteRoleInput{
 		RoleName: aws.String(roleName),
 	})
 	if err != nil {
@@ -521,17 +573,17 @@ func (r *AccountClaimReconciler) CleanUpIAMRoleAndPolicies(reqLogger logr.Logger
 	return nil
 }
 
-func (r *AccountClaimReconciler) deleteIAMSecret(reqLogger logr.Logger, secretName string, namespace string) error {
+func (r *AccountClaimReconciler) deleteIAMSecret(ctx context.Context, reqLogger logr.Logger, secretName string, namespace string) error {
 	accountIAMUserSecret := &corev1.Secret{}
 	objectKey := client.ObjectKey{Namespace: namespace, Name: secretName}
 
-	err := r.Get(context.TODO(), objectKey, accountIAMUserSecret)
+	err := r.Get(ctx, objectKey, accountIAMUserSecret)
 	if err != nil {
 		reqLogger.Error(err, "Unable to find secret")
 		return err
 	}
 
-	err = r.Delete(context.TODO(), accountIAMUserSecret)
+	err = r.Delete(ctx, accountIAMUserSecret)
 	if err != nil {
 		reqLogger.Error(err, "Unable to delete IAM secret")
 		return err
@@ -559,7 +611,7 @@ func newStsSecretforCR(secretName string, secretNameSpace string, arn []byte) *c
 }
 
 // CreateOrUpdateSecret creates a secret in AWS Secrets Manager or updates it if it already exists.
-func (r *AccountClaimReconciler) createIAMRoleSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, roleARN string) error {
+func (r *AccountClaimReconciler) createIAMRoleSecret(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, roleARN string) error {
 	var OCMSecretNamespace string
 	var OCMSecretName string
 
@@ -579,7 +631,7 @@ func (r *AccountClaimReconciler) createIAMRoleSecret(reqLogger logr.Logger, acco
 
 	OCMSecret := newStsSecretforCR(OCMSecretName, OCMSecretNamespace, []byte(roleARN))
 
-	err := r.Create(context.TODO(), OCMSecret)
+	err := r.Create(ctx, OCMSecret)
 	if err != nil {
 		reqLogger.Error(err, "Unable to create secret for OCM")
 		return err
@@ -587,7 +639,7 @@ func (r *AccountClaimReconciler) createIAMRoleSecret(reqLogger logr.Logger, acco
 	reqLogger.Info(fmt.Sprintf("Secret %s created for claim %s", OCMSecret.Name, accountClaim.Name))
 
 	accountClaim.Spec.AwsCredentialSecret.Name = OCMSecretName
-	err = r.Update(context.TODO(), accountClaim)
+	err = r.Update(ctx, accountClaim)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("AccountClaim spec update for %s failed", accountClaim.Name))
 	}
@@ -595,7 +647,7 @@ func (r *AccountClaimReconciler) createIAMRoleSecret(reqLogger logr.Logger, acco
 }
 
 // CreateIAMRoleWithPermissions creates an IAM role with the specified permissions' policy.
-func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Logger, awsClient awsclient.Client, roleName string, trustedARN string) (string, error) {
+func (r *AccountClaimReconciler) createIAMRoleWithPermissions(ctx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, roleName string, trustedARN string) (string, error) {
 	type awsStatement struct {
 		Effect    string                 `json:"Effect"`
 		Action    []string               `json:"Action"`
@@ -623,7 +675,7 @@ func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Log
 	}
 
 	reqLogger.Info(fmt.Sprintf("Creating role: %s", roleName))
-	createRoleOutput, err := awsClient.CreateRole(context.TODO(), &iam.CreateRoleInput{
+	createRoleOutput, err := awsClient.CreateRole(ctx, &iam.CreateRoleInput{
 		RoleName:                 aws.String(roleName),
 		Description:              aws.String("Managed by AAO"),
 		AssumeRolePolicyDocument: aws.String(string(jsonAssumeRolePolicyDoc)),
@@ -642,7 +694,7 @@ func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Log
 	}
 
 	// Attach the permissions policy to the role
-	_, err = awsClient.PutRolePolicy(context.TODO(), &iam.PutRolePolicyInput{
+	_, err = awsClient.PutRolePolicy(ctx, &iam.PutRolePolicyInput{
 		PolicyName:     aws.String(stsPolicyName),
 		RoleName:       aws.String(roleName),
 		PolicyDocument: aws.String(policyDocument),
@@ -650,7 +702,7 @@ func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Log
 
 	if err != nil {
 		// If there was an error, clean up by deleting the role
-		_, roleDeleteErr := awsClient.DeleteRole(context.TODO(), &iam.DeleteRoleInput{
+		_, roleDeleteErr := awsClient.DeleteRole(ctx, &iam.DeleteRoleInput{
 			RoleName: aws.String(roleName),
 		})
 		if roleDeleteErr != nil {
@@ -661,16 +713,16 @@ func (r *AccountClaimReconciler) createIAMRoleWithPermissions(reqLogger logr.Log
 
 	return *createRoleOutput.Role.Arn, nil
 }
-func (r *AccountClaimReconciler) setSupportRoleARNManagedOpenshift(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
+func (r *AccountClaimReconciler) setSupportRoleARNManagedOpenshift(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
 	if accountClaim.Spec.STSRoleARN == "" {
 		instanceID := account.Labels[awsv1alpha1.IAMUserIDLabel]
 		accountClaim.Spec.SupportRoleARN = config.GetIAMArn(account.Spec.AwsAccountID, config.AwsResourceTypeRole, fmt.Sprintf("ManagedOpenShift-Support-%s", instanceID))
-		return r.specUpdate(reqLogger, accountClaim)
+		return r.specUpdate(ctx, reqLogger, accountClaim)
 	}
 	return nil
 }
 
-func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+func (r *AccountClaimReconciler) handleAccountClaimDeletion(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 
 	if !controllerutils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
 		return nil
@@ -686,7 +738,7 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logge
 	// Only do AWS cleanup and account reset if accountLink is not empty
 	// We will not attempt AWS cleanup if the account is BYOC since we're not going to reuse these accounts
 	if accountClaim.Spec.AccountLink != "" {
-		err := r.finalizeAccountClaim(reqLogger, accountClaim)
+		err := r.finalizeAccountClaim(ctx, reqLogger, accountClaim)
 		if err != nil {
 			// If the finalize/cleanup process fails for an account we don't want to return
 			// we will flag the account with the Failed Reuse condition, and with state = Failed
@@ -698,13 +750,13 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logge
 			}
 
 			// Get account claimed by deleted accountclaim
-			failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink)
+			failedReusedAccount, accountErr := r.getClaimedAccount(ctx, accountClaim.Spec.AccountLink)
 			if accountErr != nil {
 				reqLogger.Error(accountErr, "Failed to get claimed account")
 				return fmt.Errorf("failed to get claimed account: %w", err)
 			}
 			// Update account status and add "Reuse Failed" condition
-			accountErr = r.resetAccountSpecStatus(reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed")
+			accountErr = r.resetAccountSpecStatus(ctx, reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed")
 			if accountErr != nil {
 				reqLogger.Error(accountErr, "Failed updating account status for failed reuse")
 				return fmt.Errorf("failed updating account status for failed reuse: %w", err)
@@ -715,10 +767,10 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logge
 	}
 
 	// Remove finalizer to unlock deletion of the accountClaim
-	return r.removeFinalizer(reqLogger, accountClaim)
+	return r.removeFinalizer(ctx, reqLogger, accountClaim)
 }
 
-func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (reconcile.Result, error) {
+func (r *AccountClaimReconciler) handleBYOCAccountClaim(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (reconcile.Result, error) {
 	if !accountClaim.Spec.BYOC {
 		return reconcile.Result{}, nil
 	}
@@ -727,7 +779,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 	if !accountClaim.Spec.ManualSTSMode {
 		// Ensure BYOC secret has finalizer
 		reqLogger.Info("Ensuring byoc secret has finalizer", "accountclaim", accountClaim.Name)
-		err := r.addBYOCSecretFinalizer(accountClaim)
+		err := r.addBYOCSecretFinalizer(ctx, accountClaim)
 		if err != nil {
 			reqLogger.Error(err, "Unable to add finalizer to byoc secret")
 		}
@@ -747,7 +799,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 				awsv1alpha1.InvalidAccountClaim,
 				awsv1alpha1.ClaimStatusError,
 			)
-			err := r.Client.Status().Update(context.TODO(), accountClaim)
+			err := r.Client.Status().Update(ctx, accountClaim)
 			if err != nil {
 				reqLogger.Error(err, "Failed to Update AccountClaim Status")
 			}
@@ -758,7 +810,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 		reqLogger.V(1).Info("successfully validated account linked to accountclaim ", "accountclaim", accountClaim.Name)
 
 		// Create a new account with BYOC flag
-		err := r.createAccountForBYOCClaim(accountClaim)
+		err := r.createAccountForBYOCClaim(ctx, accountClaim)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -770,7 +822,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 
 	// Get the account and check if its Ready
 	byocAccount := &awsv1alpha1.Account{}
-	err := r.Get(context.TODO(), types.NamespacedName{Name: accountClaim.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, byocAccount)
+	err := r.Get(ctx, types.NamespacedName{Name: accountClaim.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, byocAccount)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -789,7 +841,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 				accountClaim.Spec.BYOCAWSAccountID != "",
 			)
 			// Update the status on AccountClaim
-			return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
+			return reconcile.Result{}, r.statusUpdate(ctx, reqLogger, accountClaim)
 		}
 		waitMsg := fmt.Sprintf("%s is not Ready yet, requeuing in %d seconds", byocAccount.Name, waitPeriod)
 		reqLogger.Info(waitMsg, "Account Status", byocAccount.Status.State)
@@ -810,19 +862,19 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 		)
 		reqLogger.V(1).Info(fmt.Sprintf("%s is Ready", byocAccount.Name), "accountclaim", accountClaim.Name, "Account Status", byocAccount.Status.State)
 		// Update the status on AccountClaim
-		return reconcile.Result{}, r.statusUpdate(reqLogger, accountClaim)
+		return reconcile.Result{}, r.statusUpdate(ctx, reqLogger, accountClaim)
 	}
 
 	if !accountClaim.Spec.ManualSTSMode {
-		err = r.setSupportRoleARNManagedOpenshift(reqLogger, accountClaim, byocAccount)
+		err = r.setSupportRoleARNManagedOpenshift(ctx, reqLogger, accountClaim, byocAccount)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 		reqLogger.V(1).Info("successfully set support role ARN", "accountclaim", accountClaim.Name)
 
 		// Create secret for OCM to consume
-		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
-			err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)
+		if !r.checkIAMSecretExists(ctx, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+			err = r.createIAMSecret(ctx, reqLogger, accountClaim, byocAccount)
 			if err != nil {
 				return reconcile.Result{}, err
 			}
@@ -834,34 +886,34 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 
 }
 
-func (r *AccountClaimReconciler) createAccountForBYOCClaim(accountClaim *awsv1alpha1.AccountClaim) error {
+func (r *AccountClaimReconciler) createAccountForBYOCClaim(ctx context.Context, accountClaim *awsv1alpha1.AccountClaim) error {
 	// Create a new account with BYOC flag
 	newAccount := account.GenerateAccountCR(awsv1alpha1.AccountCrNamespace)
 	populateBYOCSpec(newAccount, accountClaim)
 	controllerutils.AddFinalizer(newAccount, accountClaimFinalizer)
 
 	// Create the new account
-	err := r.Create(context.TODO(), newAccount)
+	err := r.Create(ctx, newAccount)
 	if err != nil {
 		return err
 	}
 
 	// Set the accountLink of the AccountClaim to the new account if create is successful
 	accountClaim.Spec.AccountLink = newAccount.Name
-	err = r.Update(context.TODO(), accountClaim)
+	err = r.Update(ctx, accountClaim)
 	return err
 }
 
-func (r *AccountClaimReconciler) getClaimedAccount(accountLink string) (*awsv1alpha1.Account, error) {
+func (r *AccountClaimReconciler) getClaimedAccount(ctx context.Context, accountLink string) (*awsv1alpha1.Account, error) {
 	account := &awsv1alpha1.Account{}
-	err := r.Get(context.TODO(), types.NamespacedName{Name: accountLink, Namespace: awsv1alpha1.AccountCrNamespace}, account)
+	err := r.Get(ctx, types.NamespacedName{Name: accountLink, Namespace: awsv1alpha1.AccountCrNamespace}, account)
 	if err != nil {
 		return nil, err
 	}
 	return account, nil
 }
 
-func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
+func (r *AccountClaimReconciler) getUnclaimedAccount(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (*awsv1alpha1.Account, error) {
 
 	accountList := &awsv1alpha1.AccountList{}
 
@@ -869,12 +921,12 @@ func (r *AccountClaimReconciler) getUnclaimedAccount(reqLogger logr.Logger, acco
 		client.InNamespace(awsv1alpha1.AccountCrNamespace),
 	}
 
-	if err := r.List(context.TODO(), accountList, listOpts...); err != nil {
+	if err := r.List(ctx, accountList, listOpts...); err != nil {
 		reqLogger.Error(err, "Unable to get accountList")
 		return nil, err
 	}
 
-	defaultAccountPoolName, err := config.GetDefaultAccountPoolName(reqLogger, r.Client)
+	defaultAccountPoolName, err := config.GetDefaultAccountPoolName(ctx, reqLogger, r.Client)
 	if err != nil {
 		reqLogger.Error(err, "Failed getting default AccountPool name")
 		return nil, err
@@ -986,12 +1038,12 @@ func CanAccountBeClaimedByAccountClaim(account *awsv1alpha1.Account, accountclai
 	return account.Spec.LegalEntity.ID == accountclaim.Spec.LegalEntity.ID
 }
 
-func (r *AccountClaimReconciler) createIAMSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {
+func (r *AccountClaimReconciler) createIAMSecret(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {
 	// Get secret created by Account controller and copy it to the name/namespace combo that OCM is expecting
 	accountIAMUserSecret := &corev1.Secret{}
 	objectKey := client.ObjectKey{Namespace: unclaimedAccount.Namespace, Name: unclaimedAccount.Spec.IAMUserSecret}
 
-	err := r.Get(context.TODO(), objectKey, accountIAMUserSecret)
+	err := r.Get(ctx, objectKey, accountIAMUserSecret)
 	if err != nil {
 		reqLogger.Error(err, "Unable to find AWS account STS secret")
 		return err
@@ -1008,7 +1060,7 @@ func (r *AccountClaimReconciler) createIAMSecret(reqLogger logr.Logger, accountC
 
 	OCMSecret := newSecretforCR(OCMSecretName, OCMSecretNamespace, awsAccessKeyID, awsSecretAccessKey)
 
-	err = r.Create(context.TODO(), OCMSecret)
+	err = r.Create(ctx, OCMSecret)
 	if err != nil {
 		reqLogger.Error(err, "Unable to create secret for OCM")
 		return err
@@ -1018,35 +1070,35 @@ func (r *AccountClaimReconciler) createIAMSecret(reqLogger logr.Logger, accountC
 	return nil
 }
 
-func (r *AccountClaimReconciler) checkIAMSecretExists(name string, namespace string) bool {
+func (r *AccountClaimReconciler) checkIAMSecretExists(ctx context.Context, name string, namespace string) bool {
 	// Need to check if the secret exists AND that it matches what we're expecting
 	secret := corev1.Secret{}
 	secretObjectKey := client.ObjectKey{Name: name, Namespace: namespace}
-	if err := r.Get(context.TODO(), secretObjectKey, &secret); err != nil {
+	if err := r.Get(ctx, secretObjectKey, &secret); err != nil {
 		// The secret does not exist
 		return false
 	}
 	return true
 }
 
-func (r *AccountClaimReconciler) statusUpdate(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
-	err := r.Client.Status().Update(context.TODO(), accountClaim)
+func (r *AccountClaimReconciler) statusUpdate(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+	err := r.Client.Status().Update(ctx, accountClaim)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", accountClaim.Name))
 	}
 	return err
 }
 
-func (r *AccountClaimReconciler) specUpdate(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
-	err := r.Update(context.TODO(), accountClaim)
+func (r *AccountClaimReconciler) specUpdate(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+	err := r.Update(ctx, accountClaim)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Spec update for %s failed", accountClaim.Name))
 	}
 	return err
 }
 
-func (r *AccountClaimReconciler) accountSpecUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
-	err := r.Update(context.TODO(), account)
+func (r *AccountClaimReconciler) accountSpecUpdate(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	err := r.Update(ctx, account)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Account spec update for %s failed", account.Name))
 	}

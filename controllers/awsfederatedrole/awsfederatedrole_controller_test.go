@@ -60,7 +60,7 @@ func TestAWSFederatedRoleReconciler_annotateAccountAccesses(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeKubeClient := setupKubeClientMock(tt.localObjects)
-			if err := annotateAccountAccesses(fakeKubeClient, testRoleName); err != nil {
+			if err := annotateAccountAccesses(context.TODO(), fakeKubeClient, testRoleName); err != nil {
 				t.Errorf("annotateAccountAccesses() error = %v, wantErr %v", err, false)
 			}
 

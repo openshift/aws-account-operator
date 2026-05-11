@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"testing"
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
@@ -210,7 +211,7 @@ func TestGetPayerAccountIDs(t *testing.T) {
 			}
 
 			// Call function
-			accountIDs, err := GetPayerAccountIDs(kubeClient)
+			accountIDs, err := GetPayerAccountIDs(context.TODO(), kubeClient)
 
 			// Check error
 			if tt.expectError && err == nil {
@@ -385,7 +386,7 @@ func TestIsPayerAccount(t *testing.T) {
 			}
 
 			// Call function
-			isPayer, err := IsPayerAccount(tt.accountID, kubeClient)
+			isPayer, err := IsPayerAccount(context.TODO(), tt.accountID, kubeClient)
 
 			// Check error
 			if tt.expectError && err == nil {

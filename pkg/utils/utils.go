@@ -114,10 +114,10 @@ type AwsPolicy struct {
 }
 
 // GetServiceQuotasFromAccountPool retrieves and processes the account pool's service quotas from ConfigMap
-func GetServiceQuotasFromAccountPool(reqLogger logr.Logger, accountPoolName string, client client.Client) (awsv1alpha1.RegionalServiceQuotas, error) {
+func GetServiceQuotasFromAccountPool(ctx context.Context, reqLogger logr.Logger, accountPoolName string, client client.Client) (awsv1alpha1.RegionalServiceQuotas, error) {
 	reqLogger.Info("Loading Service Quotas")
 
-	cm, err := GetOperatorConfigMap(client)
+	cm, err := GetOperatorConfigMap(ctx, client)
 	if err != nil {
 		reqLogger.Error(err, "failed retrieving configmap")
 		return nil, err
@@ -275,10 +275,10 @@ func AccountCRHasIAMUserIDLabel(accountCR *awsv1alpha1.Account) bool {
 }
 
 // GetOperatorConfigMap retrieves the default configMap data for the AWS Account Operator from Kubernetes
-func GetOperatorConfigMap(kubeClient client.Client) (*corev1.ConfigMap, error) {
+func GetOperatorConfigMap(ctx context.Context, kubeClient client.Client) (*corev1.ConfigMap, error) {
 	configMap := &corev1.ConfigMap{}
 	err := kubeClient.Get(
-		context.TODO(),
+		ctx,
 		types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace,
 			Name: awsv1alpha1.DefaultConfigMap}, configMap)
 	return configMap, err

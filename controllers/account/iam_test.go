@@ -1,6 +1,7 @@
 package account
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -59,10 +60,10 @@ func TestIAMCreateSecret(t *testing.T) {
 
 	nullLogger := testutils.NewTestLogger().Logger()
 	account := newTestAccountBuilder().acct
-	err = r.CreateSecret(nullLogger, &account, secret)
+	err = r.CreateSecret(context.TODO(), nullLogger, &account, secret)
 	assert.Nil(t, err)
 
-	err = r.CreateSecret(nullLogger, &account, secret)
+	err = r.CreateSecret(context.TODO(), nullLogger, &account, secret)
 	assert.Error(t, err, "")
 }
 
@@ -131,7 +132,7 @@ func TestListAccessKeys(t *testing.T) {
 		nil, // no error
 	)
 
-	returnValue, err := listAccessKeys(mockAWSClient, &user)
+	returnValue, err := listAccessKeys(context.TODO(), mockAWSClient, &user)
 	assert.Nil(t, err)
 	assert.Len(t, returnValue.AccessKeyMetadata, 1)
 	assert.Equal(t, returnValue.AccessKeyMetadata[0].AccessKeyId, expectedAccessKeyID)
@@ -142,7 +143,7 @@ func TestListAccessKeys(t *testing.T) {
 	// Should retry 5 times
 	mockAWSClient.EXPECT().ListAccessKeys(gomock.Any(), gomock.Any()).Return(nil, returnErr).Times(5)
 
-	returnValue, err = listAccessKeys(mockAWSClient, &user)
+	returnValue, err = listAccessKeys(context.TODO(), mockAWSClient, &user)
 	assert.Nil(t, returnValue)
 	assert.Error(t, err, returnErr)
 }
@@ -160,7 +161,7 @@ func TestDeleteAccessKey(t *testing.T) {
 	accessKeyID := "accessKeyID"
 	username := "username"
 
-	deleteAccessKeyOutput, err := deleteAccessKey(mockAWSClient, &accessKeyID, &username)
+	deleteAccessKeyOutput, err := deleteAccessKey(context.TODO(), mockAWSClient, &accessKeyID, &username)
 	assert.Equal(t, deleteAccessKeyOutput, &iam.DeleteAccessKeyOutput{})
 	assert.Nil(t, err)
 
@@ -170,7 +171,7 @@ func TestDeleteAccessKey(t *testing.T) {
 	// Should retry 5 times
 	mockAWSClient.EXPECT().DeleteAccessKey(gomock.Any(), gomock.Any()).Return(&iam.DeleteAccessKeyOutput{}, returnErr).Times(5)
 
-	deleteAccessKeyOutput, err = deleteAccessKey(mockAWSClient, &accessKeyID, &username)
+	deleteAccessKeyOutput, err = deleteAccessKey(context.TODO(), mockAWSClient, &accessKeyID, &username)
 	assert.Equal(t, deleteAccessKeyOutput, &iam.DeleteAccessKeyOutput{})
 	assert.Error(t, err, returnErr)
 }
@@ -204,7 +205,7 @@ func TestDeleteAllAccessKeys(t *testing.T) {
 		nil, // no error
 	)
 
-	err := deleteAllAccessKeys(mockAWSClient, &user)
+	err := deleteAllAccessKeys(context.TODO(), mockAWSClient, &user)
 	assert.Nil(t, err)
 }
 
@@ -305,7 +306,7 @@ func TestCreateIAMUser(t *testing.T) {
 				// after mocks is defined
 				defer mocks.mockCtrl.Finish()
 
-				createUserOutput, err := CreateIAMUser(nullLogger, mocks.mockAWSClient, usernameStr)
+				createUserOutput, err := CreateIAMUser(context.TODO(), nullLogger, mocks.mockAWSClient, usernameStr)
 				assert.Equal(t, test.expectedCreateUserOutput, createUserOutput)
 				assert.Equal(t, test.expectedErr, err)
 			},
@@ -326,7 +327,7 @@ func TestAttachAdminUserPolicy(t *testing.T) {
 		nil, // no error
 	)
 
-	attachAdminUserPolicy, err := AttachAdminUserPolicy(mockAWSClient, &user)
+	attachAdminUserPolicy, err := AttachAdminUserPolicy(context.TODO(), mockAWSClient, &user)
 	assert.Equal(t, attachAdminUserPolicy, &iam.AttachUserPolicyOutput{})
 	assert.Nil(t, err)
 
@@ -337,7 +338,7 @@ func TestAttachAdminUserPolicy(t *testing.T) {
 		expectedError, // no error
 	).Times(100)
 
-	attachAdminUserPolicy, err = AttachAdminUserPolicy(mockAWSClient, &user)
+	attachAdminUserPolicy, err = AttachAdminUserPolicy(context.TODO(), mockAWSClient, &user)
 	assert.Equal(t, attachAdminUserPolicy, &iam.AttachUserPolicyOutput{})
 	assert.Equal(t, err, expectedError)
 }
@@ -369,7 +370,7 @@ func TestAttachAndEnsureRolePolicies(t *testing.T) {
 		nil,
 	)
 
-	err := attachAndEnsureRolePolicies(nullLogger, mockAWSClient, managedSupRoleWithID, policyArn)
+	err := attachAndEnsureRolePolicies(context.TODO(), nullLogger, mockAWSClient, managedSupRoleWithID, policyArn)
 	assert.Nil(t, err)
 }
 
@@ -397,7 +398,7 @@ func TestCreateUserAccessKey(t *testing.T) {
 		nil, // no error
 	)
 
-	returnValue, err := CreateUserAccessKey(mockAWSClient, &user)
+	returnValue, err := CreateUserAccessKey(context.TODO(), mockAWSClient, &user)
 	assert.Equal(t, returnValue.AccessKey.AccessKeyId, expectedAccessKeyID)
 	assert.Nil(t, err)
 
@@ -407,7 +408,7 @@ func TestCreateUserAccessKey(t *testing.T) {
 	// Should retry 5 times
 	mockAWSClient.EXPECT().CreateAccessKey(gomock.Any(), gomock.Any()).Return(&iam.CreateAccessKeyOutput{}, returnErr).Times(5)
 
-	returnValue, err = CreateUserAccessKey(mockAWSClient, &user)
+	returnValue, err = CreateUserAccessKey(context.TODO(), mockAWSClient, &user)
 	assert.Equal(t, returnValue, &iam.CreateAccessKeyOutput{})
 	assert.Error(t, err, returnErr)
 }
@@ -453,7 +454,7 @@ func TestBuildIAMUser(t *testing.T) {
 	nullLogger := testutils.NewTestLogger().Logger()
 	account := newTestAccountBuilder().acct
 	account.Name = username
-	iamUserSecretName, err := r.BuildIAMUser(nullLogger, mockAWSClient, &account, username, namespace)
+	iamUserSecretName, err := r.BuildIAMUser(context.TODO(), nullLogger, mockAWSClient, &account, username, namespace)
 	assert.Equal(t, *iamUserSecretName, expectedSecretName)
 	assert.Nil(t, err)
 }
@@ -479,7 +480,7 @@ func TestDeleteIAMUser(t *testing.T) {
 
 	user := iamtypes.User{UserName: aws.String("MyUserName")}
 
-	err := deleteIAMUser(mockAWSClient, &user)
+	err := deleteIAMUser(context.TODO(), mockAWSClient, &user)
 	assert.Nil(t, err)
 }
 
@@ -531,7 +532,7 @@ func TestDeleteIAMUsers(t *testing.T) {
 		return []iamtypes.User{{UserName: username}}, nil
 	}
 
-	err = DeleteIAMUsers(nullLogger, mockAWSClient, &account)
+	err = DeleteIAMUsers(context.TODO(), nullLogger, mockAWSClient, &account)
 	listIAMUsers = old
 	assert.Nil(t, err)
 }
@@ -621,7 +622,7 @@ func TestCleanIAMRoles(t *testing.T) {
 
 	nullLogger := testutils.NewTestLogger().Logger()
 
-	err := cleanIAMRoles(nullLogger, mockAWSClient, &account)
+	err := cleanIAMRoles(context.TODO(), nullLogger, mockAWSClient, &account)
 	assert.Nil(t, err)
 }
 
@@ -685,7 +686,7 @@ func TestRotateIAMAccessKeys(t *testing.T) {
 		nil,
 	)
 
-	output, err := r.RotateIAMAccessKeys(nullLogger, mockAWSClient, &account, &iamUser)
+	output, err := r.RotateIAMAccessKeys(context.TODO(), nullLogger, mockAWSClient, &account, &iamUser)
 	assert.Equal(t, output, expectedAccessKeyOutput)
 	assert.Nil(t, err)
 }
@@ -725,7 +726,7 @@ func TestDetachUserPolicies(t *testing.T) {
 		nil, nil,
 	)
 
-	err := detachUserPolicies(mockAWSClient, iamUser)
+	err := detachUserPolicies(context.TODO(), mockAWSClient, iamUser)
 	assert.Nil(t, err)
 }
 
@@ -762,7 +763,7 @@ func TestDetachRolePolicies(t *testing.T) {
 		},
 	).Return(nil, nil)
 
-	err := detachRolePolicies(mockAWSClient, *expectedRoleName)
+	err := detachRolePolicies(context.TODO(), mockAWSClient, *expectedRoleName)
 	assert.Nil(t, err)
 }
 
@@ -797,7 +798,7 @@ func TestCreateIAMUserSecret(t *testing.T) {
 		Name:      TestAccountName,
 	}
 
-	err = r.createIAMUserSecret(nullLogger, &acct, namespacedName, &createAccessKeyOutput)
+	err = r.createIAMUserSecret(context.TODO(), nullLogger, &acct, namespacedName, &createAccessKeyOutput)
 	assert.Nil(t, err)
 }
 
@@ -825,14 +826,14 @@ func TestDoesSecretExist(t *testing.T) {
 	}
 
 	// Secret Found
-	value, err := r.DoesSecretExist(namespace)
+	value, err := r.DoesSecretExist(context.TODO(), namespace)
 	assert.True(t, value)
 	assert.Nil(t, err)
 
 	// Secret not Found
 	namespace.Name = "invalid"
 	namespace.Namespace = "invalid"
-	value, err = r.DoesSecretExist(namespace)
+	value, err = r.DoesSecretExist(context.TODO(), namespace)
 	assert.False(t, value)
 	assert.Nil(t, err)
 }

@@ -1,6 +1,7 @@
 package totalaccountwatcher
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -252,7 +253,7 @@ func TestTotalAwsAccounts(t *testing.T) {
 
 			// Act
 			TotalAccountWatcher = newTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
-			total, err := TotalAccountWatcher.getTotalAwsAccounts()
+			total, err := TotalAccountWatcher.getTotalAwsAccounts(context.TODO())
 
 			// Assert
 			if test.errorExpected {
@@ -318,7 +319,7 @@ func TestAccountLimitsReached(t *testing.T) {
 				nullLogger := testutils.NewTestLogger().Logger()
 				taw := newTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
 
-				result, _ := taw.accountLimitReached(nullLogger, test.testCount)
+				result, _ := taw.accountLimitReached(context.TODO(), nullLogger, test.testCount)
 
 				if result != test.expected {
 					t.Error(
@@ -563,7 +564,7 @@ func TestTotalAccountsUpdate(t *testing.T) {
 
 				TotalAccountWatcher = newTotalAccountWatcher(mocks.fakeKubeClient, mocks.mockAWSClient, 10)
 				TotalAccountWatcher.awsClient = mocks.mockAWSClient
-				err := TotalAccountWatcher.UpdateTotalAccounts(nullLogger)
+				err := TotalAccountWatcher.UpdateTotalAccounts(context.TODO(), nullLogger)
 
 				if test.expectErr && err == nil {
 					t.Error(

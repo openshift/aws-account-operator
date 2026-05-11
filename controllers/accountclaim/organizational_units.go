@@ -17,17 +17,17 @@ import (
 )
 
 // MoveAccountToOU takes care of all the logic surrounding moving an account into an OU
-func MoveAccountToOU(r *AccountClaimReconciler, reqLogger logr.Logger, awsClient awsclient.Client, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
+func MoveAccountToOU(ctx context.Context, r *AccountClaimReconciler, reqLogger logr.Logger, awsClient awsclient.Client, accountClaim *awsv1alpha1.AccountClaim, account *awsv1alpha1.Account) error {
 
 	// Search for ConfigMap that holds OU mapping
 	instance := &corev1.ConfigMap{}
-	err := r.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, instance)
+	err := r.Get(ctx, types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, instance)
 	if err != nil {
 		// If we failed to retrieve the ConfigMap, simply leave the account in Root
 		unexpectedErrorMsg := "OU: Failed to find OU mapping ConfigMap, leaving account in root"
 		reqLogger.Info(unexpectedErrorMsg)
 		accountClaim.Spec.AccountOU = "ROOT"
-		return r.specUpdate(reqLogger, accountClaim)
+		return r.specUpdate(ctx, reqLogger, accountClaim)
 	}
 
 	// Get OU ID for root and base
@@ -45,7 +45,7 @@ func MoveAccountToOU(r *AccountClaimReconciler, reqLogger logr.Logger, awsClient
 		return err
 	}
 
-	ouID, err := CreateOrFindOU(reqLogger, awsClient, ouName, baseID)
+	ouID, err := CreateOrFindOU(ctx, reqLogger, awsClient, ouName, baseID)
 	if err != nil {
 		return err
 	}
@@ -55,7 +55,7 @@ func MoveAccountToOU(r *AccountClaimReconciler, reqLogger logr.Logger, awsClient
 		return err
 	}
 
-	err = MoveAccount(reqLogger, awsClient, account, ouID, rootID)
+	err = MoveAccount(ctx, reqLogger, awsClient, account, ouID, rootID)
 	if err != nil {
 		// If error was cause by the account already being inside the OU, simply update the accountclaim cr and returns
 		if errors.Is(err, awsv1alpha1.ErrAccAlreadyInOU) {
@@ -64,7 +64,7 @@ func MoveAccountToOU(r *AccountClaimReconciler, reqLogger logr.Logger, awsClient
 			reqLogger.Info(accountMovedMsg)
 			// Update accountclaim spec
 			accountClaim.Spec.AccountOU = ouID
-			return r.specUpdate(reqLogger, accountClaim)
+			return r.specUpdate(ctx, reqLogger, accountClaim)
 		}
 		return err
 	}
@@ -75,11 +75,11 @@ func MoveAccountToOU(r *AccountClaimReconciler, reqLogger logr.Logger, awsClient
 
 	// Update unclaimedAccount.Spec.AwsAccountOU
 	accountClaim.Spec.AccountOU = ouID
-	return r.specUpdate(reqLogger, accountClaim)
+	return r.specUpdate(ctx, reqLogger, accountClaim)
 }
 
 // CreateOrFindOU will create or find an existing OU and return its ID
-func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, ouName string, baseID string) (string, error) {
+func CreateOrFindOU(ctx context.Context, reqLogger logr.Logger, client awsclient.Client, ouName string, baseID string) (string, error) {
 	// Create/Find account OU
 	createCreateOrganizationalUnitInput := organizations.CreateOrganizationalUnitInput{
 		Name:     &ouName,
@@ -91,14 +91,14 @@ func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, ouName strin
 		return "", err
 	}
 
-	ouOutput, ouErr := client.CreateOrganizationalUnit(context.TODO(), &createCreateOrganizationalUnitInput)
+	ouOutput, ouErr := client.CreateOrganizationalUnit(ctx, &createCreateOrganizationalUnitInput)
 	if ouErr != nil {
 		// Check for specific Organizations exception types
 		var duplicateOUErr *organizationstypes.DuplicateOrganizationalUnitException
 		if errors.As(ouErr, &duplicateOUErr) {
 			duplicateOUMsg := fmt.Sprintf("OU: %s Already exists", ouName)
 			reqLogger.Info(duplicateOUMsg)
-			return findouIDFromName(reqLogger, client, baseID, ouName)
+			return findouIDFromName(ctx, reqLogger, client, baseID, ouName)
 		}
 
 		// Check for generic error codes
@@ -107,7 +107,7 @@ func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, ouName strin
 			if aerr.ErrorCode() == "DuplicateOrganizationalUnitException" {
 				duplicateOUMsg := fmt.Sprintf("OU: %s Already exists", ouName)
 				reqLogger.Info(duplicateOUMsg)
-				return findouIDFromName(reqLogger, client, baseID, ouName)
+				return findouIDFromName(ctx, reqLogger, client, baseID, ouName)
 			}
 			// Log unexpected error
 			unexpectedErrorMsg := fmt.Sprintf("OU: Unexpected AWS Error when attempting to create AWS OU: %s", aerr.ErrorCode())
@@ -119,14 +119,14 @@ func CreateOrFindOU(reqLogger logr.Logger, client awsclient.Client, ouName strin
 }
 
 // MoveAccount will take an account and move it into the specified OU
-func MoveAccount(reqLogger logr.Logger, client awsclient.Client, account *awsv1alpha1.Account, ouID string, parentID string) error {
+func MoveAccount(ctx context.Context, reqLogger logr.Logger, client awsclient.Client, account *awsv1alpha1.Account, ouID string, parentID string) error {
 	// Move account
 	moveAccountInput := organizations.MoveAccountInput{
 		AccountId:           &account.Spec.AwsAccountID,
 		DestinationParentId: &ouID,
 		SourceParentId:      &parentID,
 	}
-	_, err := client.MoveAccount(context.TODO(), &moveAccountInput)
+	_, err := client.MoveAccount(ctx, &moveAccountInput)
 	if err != nil {
 		// Check for specific Organizations exception types
 		var accountNotFoundErr *organizationstypes.AccountNotFoundException
@@ -138,7 +138,7 @@ func MoveAccount(reqLogger logr.Logger, client awsclient.Client, account *awsv1a
 			accountNotFound := fmt.Sprintf("Account %s was not found in root, checking if the account already in the correct OU", account.Spec.LegalEntity.Name)
 			reqLogger.Info(accountNotFound)
 			childType := "ACCOUNT"
-			found, accErr := findChildInOU(reqLogger, client, ouID, childType, account.Spec.AwsAccountID)
+			found, accErr := findChildInOU(ctx, reqLogger, client, ouID, childType, account.Spec.AwsAccountID)
 			if accErr != nil {
 				return accErr
 			}
@@ -163,7 +163,7 @@ func MoveAccount(reqLogger logr.Logger, client awsclient.Client, account *awsv1a
 	return nil
 }
 
-func findChildInOU(reqLogger logr.Logger, client awsclient.Client, parentid string, childType string, childID string) (bool, error) {
+func findChildInOU(ctx context.Context, reqLogger logr.Logger, client awsclient.Client, parentid string, childType string, childID string) (bool, error) {
 	// Loop through all children in the parent
 	check := ""
 	listChildrenInput := organizations.ListChildrenInput{
@@ -176,7 +176,7 @@ func findChildInOU(reqLogger logr.Logger, client awsclient.Client, parentid stri
 	}
 	for check == "" {
 		// Loop until we find the location of the child
-		listOut, err := client.ListChildren(context.TODO(), &listChildrenInput)
+		listOut, err := client.ListChildren(ctx, &listChildrenInput)
 		if err != nil {
 			// Log unexpected error
 			var aerr smithy.APIError
@@ -201,7 +201,7 @@ func findChildInOU(reqLogger logr.Logger, client awsclient.Client, parentid stri
 	return false, awsv1alpha1.ErrChildNotFound
 }
 
-func findouIDFromName(reqLogger logr.Logger, client awsclient.Client, parentid string, ouName string) (string, error) {
+func findouIDFromName(ctx context.Context, reqLogger logr.Logger, client awsclient.Client, parentid string, ouName string) (string, error) {
 	// Loop through all OUs in the parent until we find the ID of the OU with the given name
 	ouID := ""
 	listOrgUnitsForParentID := organizations.ListOrganizationalUnitsForParentInput{
@@ -209,7 +209,7 @@ func findouIDFromName(reqLogger logr.Logger, client awsclient.Client, parentid s
 	}
 	for ouID == "" {
 		// Get a list with a fraction of the OUs in this parent starting from NextToken
-		listOut, err := client.ListOrganizationalUnitsForParent(context.TODO(), &listOrgUnitsForParentID)
+		listOut, err := client.ListOrganizationalUnitsForParent(ctx, &listOrgUnitsForParentID)
 		if err != nil {
 			// Log unexpected error
 			var aerr smithy.APIError

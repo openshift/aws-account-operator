@@ -576,7 +576,7 @@ var awsApiMaxRetries int = 10
 
 // NewClient creates our client wrapper object for the actual AWS clients we use.
 // If controllerName is nonempty, metrics are collected timing and counting each AWS request.
-func newClient(controllerName, awsAccessID, awsAccessSecret, token, region string) (Client, error) {
+func newClient(controllerName, awsAccessID, awsAccessSecret, token, region string) Client {
 	// Create HTTP client with timeout
 	httpClient := &http.Client{
 		Timeout: awsApiTimeout,
@@ -636,7 +636,8 @@ func newClient(controllerName, awsAccessID, awsAccessSecret, token, region strin
 		stsClient:           sts.NewFromConfig(awsConfig),
 		supportClient:       support.NewFromConfig(awsConfig),
 		serviceQuotasClient: servicequotas.NewFromConfig(awsConfig),
-	}, nil
+	}
+
 }
 
 // IBuilder implementations know how to produce a Client.
@@ -691,10 +692,7 @@ func (rp *Builder) GetClient(controllerName string, kubeClient kubeclientpkg.Cli
 			sessionToken = input.AwsToken
 		}
 
-		awsClient, err := newClient(controllerName, string(accessKeyID), string(secretAccessKey), sessionToken, input.AwsRegion)
-		if err != nil {
-			return nil, err
-		}
+		awsClient := newClient(controllerName, string(accessKeyID), string(secretAccessKey), sessionToken, input.AwsRegion)
 		return awsClient, nil
 	}
 
@@ -702,9 +700,6 @@ func (rp *Builder) GetClient(controllerName string, kubeClient kubeclientpkg.Cli
 		return nil, fmt.Errorf("getAWSClient: NoAwsCredentials or Secret %v", input)
 	}
 
-	awsClient, err := newClient(controllerName, input.AwsCredsSecretIDKey, input.AwsCredsSecretAccessKey, input.AwsToken, input.AwsRegion)
-	if err != nil {
-		return nil, err
-	}
+	awsClient := newClient(controllerName, input.AwsCredsSecretIDKey, input.AwsCredsSecretAccessKey, input.AwsToken, input.AwsRegion)
 	return awsClient, nil
 }

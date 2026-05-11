@@ -815,7 +815,7 @@ func TestTagAccount(t *testing.T) {
 
 	r := &AccountReconciler{shardName: "hivename"}
 	complianceTags := make(map[string]string)
-	err := TagAccount(mockAWSClient, accountID, r.shardName, complianceTags)
+	err := TagAccount(context.TODO(), mockAWSClient, accountID, r.shardName, complianceTags)
 	if err != nil {
 		t.Errorf("failed to tag account")
 	}
@@ -1245,7 +1245,7 @@ func TestFinalizeAccount(t *testing.T) {
 				Scheme: scheme.Scheme,
 			}
 
-			r.finalizeAccount(nullLogger, mockAWSClient, &test.acct.acct)
+			r.finalizeAccount(context.TODO(), nullLogger, mockAWSClient, &test.acct.acct)
 		})
 	}
 }
@@ -1283,7 +1283,7 @@ func TestFinalizeAccount_LabelledBYOCAccount(t *testing.T) {
 		Client: mocks.fakeKubeClient,
 		Scheme: scheme.Scheme,
 	}
-	r.finalizeAccount(nullLogger, mockAWSClient, &account)
+	r.finalizeAccount(context.TODO(), nullLogger, mockAWSClient, &account)
 }
 
 var _ = Describe("Account Controller", func() {
@@ -1347,7 +1347,7 @@ var _ = Describe("Account Controller", func() {
 		It("AWS returns ErrCodeConstraintViolationException from CreateAccount", func() {
 			// ErrCodeConstraintViolationException is mapped to awsv1alpha1.ErrAwsAccountLimitExceeded in CreateAccount
 			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, &organizationstypes.ConstraintViolationException{Message: aws.String("Error String")})
-			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			createAccountOutput, err := CreateAccount(context.TODO(), nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsAccountLimitExceeded).To(Equal(err))
@@ -1357,7 +1357,7 @@ var _ = Describe("Account Controller", func() {
 		It("AWS returns ErrCodeServiceException from CreateAccount", func() {
 			// ErrCodeServiceException is mapped to awsv1alpha1.ErrAwsInternalFailure in CreateAccount
 			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, &organizationstypes.ServiceException{Message: aws.String("Error String")})
-			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			createAccountOutput, err := CreateAccount(context.TODO(), nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsInternalFailure).To(Equal(err))
@@ -1367,7 +1367,7 @@ var _ = Describe("Account Controller", func() {
 		It("AWS returns ErrCodeTooManyRequestsException from CreateAccount", func() {
 			// ErrCodeTooManyRequestsException is mapped to awsv1alpha1.ErrAwsTooManyRequests in CreateAccount
 			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, &organizationstypes.TooManyRequestsException{Message: aws.String("Error String")})
-			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			createAccountOutput, err := CreateAccount(context.TODO(), nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsTooManyRequests).To(Equal(err))
@@ -1377,7 +1377,7 @@ var _ = Describe("Account Controller", func() {
 		It("AWS returns error from CreateAccount", func() {
 			// Unhandled AWS exceptions get mapped awsv1alpha1.ErrAwsFailedCreateAccount in CreateAccount
 			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, &organizationstypes.DuplicateAccountException{Message: aws.String("Error String")})
-			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			createAccountOutput, err := CreateAccount(context.TODO(), nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsFailedCreateAccount).To(Equal(err))
@@ -1387,7 +1387,7 @@ var _ = Describe("Account Controller", func() {
 		It("AWS returns ErrCodeConcurrentModificationException from CreateAccount", func() {
 			// ErrCodeConcurrentModificationException is mapped to awsv1alpha1.ErrAwsConcurrentModification in CreateAccount
 			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, &organizationstypes.ConcurrentModificationException{Message: aws.String("Error String")})
-			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			createAccountOutput, err := CreateAccount(context.TODO(), nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(awsv1alpha1.ErrAwsConcurrentModification).To(Equal(err))
@@ -1406,7 +1406,7 @@ var _ = Describe("Account Controller", func() {
 
 			expectedErr := &organizationstypes.ServiceException{Message: aws.String("Error String")}
 			mockAWSClient.EXPECT().DescribeCreateAccountStatus(gomock.Any(), gomock.Any()).Return(nil, expectedErr) //errors.New("MyError")) //)
-			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			createAccountOutput, err := CreateAccount(context.TODO(), nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
 			Expect(expectedErr).To(Equal(err))
@@ -1428,7 +1428,7 @@ var _ = Describe("Account Controller", func() {
 				},
 			}
 			mockAWSClient.EXPECT().DescribeCreateAccountStatus(gomock.Any(), gomock.Any()).Return(describeCreateAccountStatusOutput, nil)
-			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			createAccountOutput, err := CreateAccount(context.TODO(), nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(HaveOccurred())
 
 			Expect(createAccountOutput).To(Equal(&organizations.DescribeCreateAccountStatusOutput{}))
@@ -1449,7 +1449,7 @@ var _ = Describe("Account Controller", func() {
 				},
 			}
 			mockAWSClient.EXPECT().DescribeCreateAccountStatus(gomock.Any(), gomock.Any()).Return(describeCreateAccountStatusOutput, nil)
-			createAccountOutput, err := CreateAccount(nullLogger, mockAWSClient, accountName, accountEmail)
+			createAccountOutput, err := CreateAccount(context.TODO(), nullLogger, mockAWSClient, accountName, accountEmail)
 			Expect(err).To(Succeed())
 			Expect(createAccountOutput).To(Equal(describeCreateAccountStatusOutput))
 			Expect(err).Should(BeNil())
@@ -1489,7 +1489,7 @@ var _ = Describe("Account Controller", func() {
 			account.Name = accountName
 			for name, tc := range knownErrors {
 				mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, tc.err)
-				acctId, actualErr := r.BuildAccount(nullLogger, mockAWSClient, account)
+				acctId, actualErr := r.BuildAccount(context.TODO(), nullLogger, mockAWSClient, account)
 				Expect(actualErr).To(HaveOccurred(), "Test case: "+name)
 				Expect(acctId).To(BeEmpty(), "Test case: "+name)
 				Expect(actualErr).To(MatchError(tc.expectedErr), "Test case: "+name)
@@ -1503,7 +1503,7 @@ var _ = Describe("Account Controller", func() {
 			account.Name = accountName
 			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account}...).Build()
 			mockAWSClient.EXPECT().CreateAccount(gomock.Any(), gomock.Any()).Return(nil, &organizationstypes.AccessDeniedException{Message: aws.String("Error String")})
-			acctId, actualErr := r.BuildAccount(nullLogger, mockAWSClient, account)
+			acctId, actualErr := r.BuildAccount(context.TODO(), nullLogger, mockAWSClient, account)
 			Expect(actualErr).To(HaveOccurred())
 			Expect(acctId).To(BeEmpty())
 			Expect(actualErr).To(MatchError(awsv1alpha1.ErrAwsFailedCreateAccount))
@@ -2021,7 +2021,7 @@ var _ = Describe("Account Controller", func() {
 		When("Called with a CCS account", func() {
 			account = &newTestAccountBuilder().BYOC(true).WithState(awsv1alpha1.AccountPendingVerification).acct
 			It("does nothing", func() {
-				_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+				_, err := r.HandleNonCCSPendingVerification(context.TODO(), nullLogger, account, mockAWSClient)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(Equal("account is BYOC - should not be handled in NonCCS method"))
 			})
@@ -2046,7 +2046,7 @@ var _ = Describe("Account Controller", func() {
 					}, nil)
 					mockAWSClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any(), gomock.Any()).Times(0)
 					Eventually(func() []string {
-						_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+						_, err := r.HandleNonCCSPendingVerification(context.TODO(), nullLogger, account, mockAWSClient)
 						Expect(err).NotTo(HaveOccurred())
 						return []string{account.Status.State, account.Status.SupportCaseID}
 					}).Should(Equal([]string{AccountReady, "123456"}))
@@ -2071,7 +2071,7 @@ var _ = Describe("Account Controller", func() {
 				})
 				It("Enables supported Opt in regions", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRoleAndCreateClient = func(
+					AssumeRoleAndCreateClient = func(ctx context.Context,
 						reqLogger logr.Logger,
 						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
@@ -2102,12 +2102,12 @@ var _ = Describe("Account Controller", func() {
 						&awsaccount.EnableRegionOutput{},
 						nil,
 					)
-					_, err := r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions)
+					_, err := r.handleOptInRegionEnablement(context.TODO(), nullLogger, account, mockAWSClient, optInRegions)
 					Expect(err).To(Not(HaveOccurred()))
 				})
 				It("Handles unsupported opt-in region", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRoleAndCreateClient = func(
+					AssumeRoleAndCreateClient = func(ctx context.Context,
 						reqLogger logr.Logger,
 						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
@@ -2123,7 +2123,7 @@ var _ = Describe("Account Controller", func() {
 						&awsaccount.GetRegionOptStatusOutput{},
 						nil)
 
-					_, err = r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions)
+					_, err = r.handleOptInRegionEnablement(context.TODO(), nullLogger, account, mockAWSClient, optInRegions)
 					Expect(err).ToNot(HaveOccurred())
 				})
 			})
@@ -2140,7 +2140,7 @@ var _ = Describe("Account Controller", func() {
 				})
 				It("copies the service quotas from spec to status", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRoleAndCreateClient = func(
+					AssumeRoleAndCreateClient = func(ctx context.Context,
 						reqLogger logr.Logger,
 						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
@@ -2159,7 +2159,7 @@ var _ = Describe("Account Controller", func() {
 							},
 						},
 					}, nil)
-					err := SetCurrentAccountServiceQuotas(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client)
+					err := SetCurrentAccountServiceQuotas(context.TODO(), nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(1))
 					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))
@@ -2174,7 +2174,7 @@ var _ = Describe("Account Controller", func() {
 					}).WithState(awsv1alpha1.AccountPendingVerification).acct
 
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRoleAndCreateClient = func(
+					AssumeRoleAndCreateClient = func(ctx context.Context,
 						reqLogger logr.Logger,
 						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
@@ -2196,12 +2196,12 @@ var _ = Describe("Account Controller", func() {
 							},
 						},
 					}, nil)
-					_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err := r.HandleNonCCSPendingVerification(context.TODO(), nullLogger, account, mockAWSClient)
 					Expect(err).To(HaveOccurred())
 				})
 				It("does not create a servicequota case if the quota is already higher", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRoleAndCreateClient = func(
+					AssumeRoleAndCreateClient = func(ctx context.Context,
 						reqLogger logr.Logger,
 						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
@@ -2239,14 +2239,14 @@ var _ = Describe("Account Controller", func() {
 					}, nil)
 					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any(), gomock.Any()).Times(0)
 					Eventually(func() []string {
-						_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+						_, err := r.HandleNonCCSPendingVerification(context.TODO(), nullLogger, account, mockAWSClient)
 						Expect(err).NotTo(HaveOccurred())
 						return []string{account.Status.State, account.Status.SupportCaseID}
 					}, 60*time.Second).Should(Equal([]string{AccountReady, "123456"}))
 				})
 				It("creates a servicequota case for each defined quota", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRoleAndCreateClient = func(
+					AssumeRoleAndCreateClient = func(ctx context.Context,
 						reqLogger logr.Logger,
 						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
@@ -2307,7 +2307,7 @@ var _ = Describe("Account Controller", func() {
 						},
 					}, nil)
 					Eventually(func() []string {
-						_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+						_, err = r.HandleNonCCSPendingVerification(context.TODO(), nullLogger, account, mockAWSClient)
 						Expect(err).NotTo(HaveOccurred())
 						return []string{account.Status.State, account.Status.SupportCaseID}
 					}).Should(Equal([]string{AccountReady, "123456"}))
@@ -2320,7 +2320,7 @@ var _ = Describe("Account Controller", func() {
 				})
 				It("moves a servicequota to in-progress if the case is open but not resolved", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRoleAndCreateClient = func(
+					AssumeRoleAndCreateClient = func(ctx context.Context,
 						reqLogger logr.Logger,
 						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
@@ -2365,7 +2365,7 @@ var _ = Describe("Account Controller", func() {
 						},
 					}, nil)
 					Eventually(func() []string {
-						_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+						_, err = r.HandleNonCCSPendingVerification(context.TODO(), nullLogger, account, mockAWSClient)
 						Expect(err).NotTo(HaveOccurred())
 						status := account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances]
 						fmt.Printf("%+v\n", status.Status)
@@ -2382,7 +2382,7 @@ var _ = Describe("Account Controller", func() {
 				})
 				It("updates the correct region if multiple ones get updated", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRoleAndCreateClient = func(
+					AssumeRoleAndCreateClient = func(ctx context.Context,
 						reqLogger logr.Logger,
 						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
@@ -2407,7 +2407,7 @@ var _ = Describe("Account Controller", func() {
 							},
 						},
 					}, nil)
-					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err = r.HandleNonCCSPendingVerification(context.TODO(), nullLogger, account, mockAWSClient)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(2))
 					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))
@@ -2435,7 +2435,7 @@ var _ = Describe("Account Controller", func() {
 							CaseId: aws.String("234567"),
 						},
 					}, nil).Times(2)
-					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err = r.HandleNonCCSPendingVerification(context.TODO(), nullLogger, account, mockAWSClient)
 					Expect(account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestInProgress))
 					Expect(account.Status.RegionalServiceQuotas["us-east-2"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestInProgress))
 					Expect(account.Status.State).To(Equal(AccountPendingVerification))
@@ -2454,15 +2454,15 @@ var _ = Describe("Account Controller", func() {
 							Value:     aws.Float64(100),
 						},
 					}, nil).Times(2)
-					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err = r.HandleNonCCSPendingVerification(context.TODO(), nullLogger, account, mockAWSClient)
 					Expect(account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestCompleted))
 					Expect(account.Status.RegionalServiceQuotas["us-east-2"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestCompleted))
-					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err = r.HandleNonCCSPendingVerification(context.TODO(), nullLogger, account, mockAWSClient)
 					Expect(account.Status.State).To(Equal(AccountReady))
 				})
 				It("fails the account if a request is denied", func() {
 					subClient := mock.NewMockClient(ctrl)
-					AssumeRoleAndCreateClient = func(
+					AssumeRoleAndCreateClient = func(ctx context.Context,
 						reqLogger logr.Logger,
 						awsClientBuilder awsclient.IBuilder,
 						currentAcctInstance *awsv1alpha1.Account,
@@ -2484,7 +2484,7 @@ var _ = Describe("Account Controller", func() {
 							},
 						},
 					}, nil)
-					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err = r.HandleNonCCSPendingVerification(context.TODO(), nullLogger, account, mockAWSClient)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(1))
 					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))
@@ -2513,7 +2513,7 @@ var _ = Describe("Account Controller", func() {
 							Value:     aws.Float64(0),
 						},
 					}, nil).Times(1)
-					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err = r.HandleNonCCSPendingVerification(context.TODO(), nullLogger, account, mockAWSClient)
 					Expect(account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestDenied))
 					Expect(account.Status.State).To(Equal(AccountFailed))
 				})

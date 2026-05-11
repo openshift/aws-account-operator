@@ -37,7 +37,7 @@ const T2INSTANCETYPE = "t2.micro"
 // NOTE: GovCloud regions skip initialization entirely as they are always BYOVPC.
 // NOTE: This function does not have any returns. In particular, error conditions from the
 // goroutines are logged, but do not result in a failure up the stack.
-func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, account *awsv1alpha1.Account, regions []awsv1alpha1.AwsRegions, creds *sts.AssumeRoleOutput, amiOwner string) {
+func (r *AccountReconciler) InitializeSupportedRegions(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, regions []awsv1alpha1.AwsRegions, creds *sts.AssumeRoleOutput, amiOwner string) {
 	// Create some channels to listen and error on when creating EC2 instances in all supported regions
 	ec2Notifications, ec2Errors := make(chan string), make(chan regionInitializationError)
 
@@ -48,11 +48,11 @@ func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, ac
 	// We should not bomb out just because we can't retrieve the vCPU value
 	// and we'll just continue with a "0"
 	// Errors are logged already in getDesiredVCPUValue
-	vCPUQuota, _ := r.getDesiredServiceQuotaValue(reqLogger, "vcpu")
+	vCPUQuota, _ := r.getDesiredServiceQuotaValue(ctx, reqLogger, "vcpu")
 	reqLogger.Info("retrieved desired vCPU quota value from configMap", "quota.vcpu", vCPUQuota)
 
 	var kmsKeyId string
-	accountClaim, accountClaimError := r.getAccountClaim(account)
+	accountClaim, accountClaimError := r.getAccountClaim(ctx, account)
 	if accountClaimError != nil {
 		reqLogger.Info("Could not retrieve account claim for account.", "account", account.Name)
 		kmsKeyId = ""
@@ -60,14 +60,14 @@ func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, ac
 		kmsKeyId = accountClaim.Spec.KmsKeyId
 		reqLogger.Info("Retrieved KMS key to use", "KmsKeyID", kmsKeyId)
 	}
-	managedTags := r.getManagedTags(reqLogger)
-	customerTags := r.getCustomTags(reqLogger, account)
+	managedTags := r.getManagedTags(ctx, reqLogger)
+	customerTags := r.getCustomTags(ctx, reqLogger, account)
 
 	// Create go routines to initialize regions in parallel
 	for _, region := range regions {
 		go func() {
 			// Errors are returned on the ec2Errors channel
-			_ = r.InitializeRegion(reqLogger, account, region.Name, amiOwner, vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags, kmsKeyId)
+			_ = r.InitializeRegion(ctx, reqLogger, account, region.Name, amiOwner, vCPUQuota, ec2Notifications, ec2Errors, creds, managedTags, customerTags, kmsKeyId)
 		}()
 	}
 
@@ -101,6 +101,7 @@ func (r *AccountReconciler) InitializeSupportedRegions(reqLogger logr.Logger, ac
 // InitializeRegion initializes AWS regions for non-GovCloud environments by creating and terminating a test EC2 instance
 // For GovCloud (FedRAMP), initialization is skipped entirely as regions are always BYOVPC
 func (r *AccountReconciler) InitializeRegion(
+	ctx context.Context,
 	reqLogger logr.Logger,
 	account *awsv1alpha1.Account,
 	region string,
@@ -140,7 +141,7 @@ func (r *AccountReconciler) InitializeRegion(
 	reqLogger.Info("initializing region", "region", region)
 
 	// Attempt to clean the region from any hanging resources
-	cleaned, err := cleanRegion(awsClient, reqLogger, account.Name, region)
+	cleaned, err := cleanRegion(ctx, awsClient, reqLogger, account.Name, region)
 	if err != nil {
 		cleanErr := fmt.Sprintf("Error while attempting to clean region: %v", err.Error())
 		ec2Errors <- regionInitializationError{ErrorMsg: cleanErr, Region: region}
@@ -154,14 +155,14 @@ func (r *AccountReconciler) InitializeRegion(
 	}
 
 	// Attempt to gather data needed to launch the init EC2 instance
-	instanceType, err := RetrieveAvailableMicroInstanceType(reqLogger, awsClient)
+	instanceType, err := RetrieveAvailableMicroInstanceType(ctx, reqLogger, awsClient)
 	if err != nil {
 		determineTypesErr := fmt.Sprintf("Unable to determine available instance types in region: %s", region)
 		controllerutils.LogAwsError(reqLogger, determineTypesErr, nil, err)
 		ec2Errors <- regionInitializationError{ErrorMsg: determineTypesErr, Region: region}
 		return err
 	}
-	ami, err := RetrieveAmi(awsClient, amiOwner)
+	ami, err := RetrieveAmi(ctx, awsClient, amiOwner)
 	if err != nil {
 		retrieveAmiErr := fmt.Sprintf("Unable to find suitable AMI in region: %s", region)
 		controllerutils.LogAwsError(reqLogger, retrieveAmiErr, nil, err)
@@ -177,7 +178,7 @@ func (r *AccountReconciler) InitializeRegion(
 	if vCPUQuota != 0 {
 		// ServiceQuotaStatus is not used for this code to track the status of this specific request.
 		// That's why we pass an unused reference.
-		err := HandleServiceQuotaRequests(reqLogger, awsClient, awsv1alpha1.RunningStandardInstances, &awsv1alpha1.ServiceQuotaStatus{
+		err := HandleServiceQuotaRequests(ctx, reqLogger, awsClient, awsv1alpha1.RunningStandardInstances, &awsv1alpha1.ServiceQuotaStatus{
 			Value: int(vCPUQuota),
 		})
 		if err != nil {
@@ -185,7 +186,7 @@ func (r *AccountReconciler) InitializeRegion(
 		}
 	}
 
-	err = r.BuildAndDestroyEC2Instances(reqLogger, account, awsClient, instanceInfo, managedTags, customerTags, kmsKeyId)
+	err = r.BuildAndDestroyEC2Instances(ctx, reqLogger, account, awsClient, instanceInfo, managedTags, customerTags, kmsKeyId)
 	if err != nil {
 		createErr := fmt.Sprintf("Unable to create instance in region: %s", region)
 		controllerutils.LogAwsError(reqLogger, createErr, nil, err)
@@ -202,6 +203,7 @@ func (r *AccountReconciler) InitializeRegion(
 
 // BuildAndDestroyEC2Instances runs an ec2 instance and terminates it
 func (r *AccountReconciler) BuildAndDestroyEC2Instances(
+	ctx context.Context,
 	reqLogger logr.Logger,
 	account *awsv1alpha1.Account,
 	awsClient awsclient.Client,
@@ -209,13 +211,13 @@ func (r *AccountReconciler) BuildAndDestroyEC2Instances(
 	managedTags []awsclient.AWSTag,
 	customerTags []awsclient.AWSTag,
 	kmsKeyId string) error {
-	instanceID, err := CreateEC2Instance(reqLogger, account, awsClient, instanceInfo, managedTags, customerTags, kmsKeyId)
+	instanceID, err := CreateEC2Instance(ctx, reqLogger, account, awsClient, instanceInfo, managedTags, customerTags, kmsKeyId)
 	if err != nil {
 		// Terminate instance id if it exists
 		if instanceID != "" {
 			// Log instance id of instance that will be terminated
 			reqLogger.Error(err, fmt.Sprintf("Early termination of instance with ID: %s", instanceID))
-			termErr := TerminateEC2Instance(reqLogger, awsClient, instanceID)
+			termErr := TerminateEC2Instance(ctx, reqLogger, awsClient, instanceID)
 			if termErr != nil {
 				controllerutils.LogAwsError(reqLogger, "AWS error while attempting to terminate instance", nil, termErr)
 			}
@@ -236,7 +238,7 @@ func (r *AccountReconciler) BuildAndDestroyEC2Instances(
 		totalWait -= currentWait
 		time.Sleep(time.Duration(currentWait) * time.Second)
 		var code int
-		code, DescError = DescribeEC2Instances(reqLogger, awsClient, instanceID)
+		code, DescError = DescribeEC2Instances(ctx, reqLogger, awsClient, instanceID)
 		if code == 16 { // 16 represents a successful region initialization
 			reqLogger.Info(fmt.Sprintf("EC2 Instance: %s Running", instanceID))
 			break
@@ -263,7 +265,7 @@ func (r *AccountReconciler) BuildAndDestroyEC2Instances(
 	// Terminate Instance
 	reqLogger.Info(fmt.Sprintf("Terminating EC2 Instance: %s", instanceID))
 
-	err = TerminateEC2Instance(reqLogger, awsClient, instanceID)
+	err = TerminateEC2Instance(ctx, reqLogger, awsClient, instanceID)
 	if err != nil {
 		return err
 	}
@@ -274,7 +276,7 @@ func (r *AccountReconciler) BuildAndDestroyEC2Instances(
 }
 
 // CreateEC2Instance creates ec2 instance and returns its instance ID
-func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, client awsclient.Client, instanceInfo awsv1alpha1.AmiSpec, managedTags []awsclient.AWSTag, customerTags []awsclient.AWSTag, customerKmsKeyId string) (string, error) {
+func CreateEC2Instance(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, client awsclient.Client, instanceInfo awsv1alpha1.AmiSpec, managedTags []awsclient.AWSTag, customerTags []awsclient.AWSTag, customerKmsKeyId string) (string, error) {
 
 	// Retain instance id
 	var timeoutInstanceID string
@@ -324,7 +326,7 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 			},
 		}
 
-		runResult, runErr := client.RunInstances(context.TODO(), input)
+		runResult, runErr := client.RunInstances(ctx, input)
 
 		// Return on unexpected errors:
 		if runErr != nil {
@@ -355,7 +357,7 @@ func CreateEC2Instance(reqLogger logr.Logger, account *awsv1alpha1.Account, clie
 }
 
 // DescribeEC2Instances returns the InstanceState code
-func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instanceID string) (int, error) {
+func DescribeEC2Instances(ctx context.Context, reqLogger logr.Logger, client awsclient.Client, instanceID string) (int, error) {
 	// States and codes
 	// 0 : pending
 	// 16 : running
@@ -365,7 +367,7 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instan
 	// 80 : stopped
 	// 401 : failed
 
-	result, err := client.DescribeInstanceStatus(context.TODO(), &ec2.DescribeInstanceStatusInput{
+	result, err := client.DescribeInstanceStatus(ctx, &ec2.DescribeInstanceStatusInput{
 		InstanceIds: []string{instanceID},
 	})
 
@@ -391,8 +393,8 @@ func DescribeEC2Instances(reqLogger logr.Logger, client awsclient.Client, instan
 }
 
 // TerminateEC2Instance terminates the ec2 instance from the instanceID provided
-func TerminateEC2Instance(reqLogger logr.Logger, client awsclient.Client, instanceID string) error {
-	_, err := client.TerminateInstances(context.TODO(), &ec2.TerminateInstancesInput{
+func TerminateEC2Instance(ctx context.Context, reqLogger logr.Logger, client awsclient.Client, instanceID string) error {
+	_, err := client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
 		InstanceIds: []string{instanceID},
 	})
 	if err != nil {
@@ -404,10 +406,10 @@ func TerminateEC2Instance(reqLogger logr.Logger, client awsclient.Client, instan
 }
 
 // cleanRegion will remove all hanging account creation t2.micro instances running in the current region
-func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string, region string) (bool, error) {
+func cleanRegion(ctx context.Context, client awsclient.Client, logger logr.Logger, accountName string, region string) (bool, error) {
 	var cleaned bool
 	// Make a dry run to certify we have required authentication
-	_, err := client.DescribeInstances(context.TODO(), &ec2.DescribeInstancesInput{
+	_, err := client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
 		DryRun: aws.Bool(true),
 	})
 
@@ -421,12 +423,12 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 	}
 
 	// Get the instance type that will be used for this region and filter by that one.
-	instanceType, err := RetrieveAvailableMicroInstanceType(logger, client)
+	instanceType, err := RetrieveAvailableMicroInstanceType(ctx, logger, client)
 	if err != nil {
 		return cleaned, err
 	}
 	// Get a list of all running t2.micro instances
-	output, err := client.DescribeInstances(context.TODO(), &ec2.DescribeInstancesInput{
+	output, err := client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
 		MaxResults: aws.Int32(100),
 		Filters: []ec2types.Filter{
 			{
@@ -476,7 +478,7 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 	for _, reservation := range output.Reservations {
 		for _, instance := range reservation.Instances {
 			logger.Info("Terminating hanging instance", "instance", instance.InstanceId, "account", accountName)
-			err = TerminateEC2Instance(logger, client, *instance.InstanceId)
+			err = TerminateEC2Instance(ctx, logger, client, *instance.InstanceId)
 			if err != nil {
 				logger.Error(err, "Error while attempting to terminate instance", "instance", *instance.InstanceId)
 				return false, err
@@ -488,11 +490,11 @@ func cleanRegion(client awsclient.Client, logger logr.Logger, accountName string
 }
 
 // RetrieveAvailableMicroInstanceType finds the EC2 free tier instance type for a given region
-func RetrieveAvailableMicroInstanceType(logger logr.Logger, awsClient awsclient.Client) (string, error) {
+func RetrieveAvailableMicroInstanceType(ctx context.Context, logger logr.Logger, awsClient awsclient.Client) (string, error) {
 	// FIXME: For unknown reasons attempting to use the free-tier-eligible
 	// filter from go returns *nothing*, but works fine from the CLI.
 	// HTTP-requests looks the same using both options.
-	availableTypes, err := awsClient.DescribeInstanceTypes(context.TODO(), &ec2.DescribeInstanceTypesInput{
+	availableTypes, err := awsClient.DescribeInstanceTypes(ctx, &ec2.DescribeInstanceTypesInput{
 		InstanceTypes: []ec2types.InstanceType{ec2types.InstanceType(T3INSTANCETYPE)},
 	})
 	if err != nil {
@@ -501,7 +503,7 @@ func RetrieveAvailableMicroInstanceType(logger logr.Logger, awsClient awsclient.
 			switch aerr.ErrorCode() {
 			case "InvalidInstanceType":
 				logger.Info("Did not find t3.micro - falling back to t2.micro")
-				availableTypes, err := awsClient.DescribeInstanceTypes(context.TODO(), &ec2.DescribeInstanceTypesInput{
+				availableTypes, err := awsClient.DescribeInstanceTypes(ctx, &ec2.DescribeInstanceTypesInput{
 					InstanceTypes: []ec2types.InstanceType{ec2types.InstanceType(T2INSTANCETYPE)},
 				})
 				if err != nil {
@@ -517,7 +519,7 @@ func RetrieveAvailableMicroInstanceType(logger logr.Logger, awsClient awsclient.
 	return string(availableTypes.InstanceTypes[0].InstanceType), nil
 }
 
-func RetrieveAmi(awsClient awsclient.Client, amiOwner string) (string, error) {
+func RetrieveAmi(ctx context.Context, awsClient awsclient.Client, amiOwner string) (string, error) {
 	var imageId string
 	input := ec2.DescribeImagesInput{
 		ExecutableUsers: []string{EXECUTABLEBY},
@@ -531,7 +533,7 @@ func RetrieveAmi(awsClient awsclient.Client, amiOwner string) (string, error) {
 			},
 		},
 	}
-	availableAmis, err := awsClient.DescribeImages(context.TODO(), &input)
+	availableAmis, err := awsClient.DescribeImages(ctx, &input)
 	if err != nil {
 		return "", err
 	}

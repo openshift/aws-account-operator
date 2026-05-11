@@ -1,6 +1,7 @@
 package account
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -81,7 +82,7 @@ func TestAccountReconciler_HandleServiceQuotaRequests(t *testing.T) {
 				nil,
 			)
 
-			if err := HandleServiceQuotaRequests(test.reqLogger, mockAWSClient, test.quotaCode, &test.quotaValue); (err != nil) != test.wantErr {
+			if err := HandleServiceQuotaRequests(context.TODO(), test.reqLogger, mockAWSClient, test.quotaCode, &test.quotaValue); (err != nil) != test.wantErr {
 				t.Errorf("AccountReconciler.HandleServiceQuotaRequests() error = %v, wantErr %v", err, test.wantErr)
 			}
 		})

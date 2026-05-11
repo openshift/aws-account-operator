@@ -1,6 +1,7 @@
 package awsfederatedaccountaccess
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -137,7 +138,7 @@ func TestCheckAndDeletePolicy(t *testing.T) {
 				mockAWSClient.EXPECT().DeletePolicyVersion(gomock.Any(), gomock.Any()).Return(nil, test.err)
 			}
 
-			err := checkAndDeletePolicy(mockAWSClient, uidLabel, crPolicyName, &policyName, policyArn)
+			err := checkAndDeletePolicy(context.TODO(), mockAWSClient, uidLabel, crPolicyName, &policyName, policyArn)
 			if test.err != nil {
 				assert.Equal(t, test.err, err)
 			} else {
@@ -233,7 +234,7 @@ func TestCreateIAMPolicy(t *testing.T) {
 					Labels: test.uidLabel,
 				}}
 
-			createPolicyOutput, err := r.createIAMPolicy(mockAWSClient, afr, afaa)
+			createPolicyOutput, err := r.createIAMPolicy(context.TODO(), mockAWSClient, afr, afaa)
 			assert.Equal(t, err, test.expectedErr)
 			assert.Equal(t, createPolicyOutput, test.createIAMPolicyOutput)
 		})
@@ -301,7 +302,7 @@ func TestCreateIAMRole(t *testing.T) {
 				},
 			}
 
-			createRoleOutput, err := r.createIAMRole(mockAWSClient, afr, afaa)
+			createRoleOutput, err := r.createIAMRole(context.TODO(), mockAWSClient, afr, afaa)
 			assert.Equal(t, err, test.expectedErr)
 			assert.Equal(t, createRoleOutput, test.createIAMRoleOutput)
 		})
@@ -374,7 +375,7 @@ func TestCreateOrUpdateIAMPolicy(t *testing.T) {
 
 	r := AWSFederatedAccountAccessReconciler{}
 
-	err = r.createOrUpdateIAMPolicy(mockAWSClient, afr, afaa)
+	err = r.createOrUpdateIAMPolicy(context.TODO(), mockAWSClient, afr, afaa)
 	assert.Nil(t, err)
 }
 
@@ -455,7 +456,7 @@ func TestCreateOrUpdateIAMRole(t *testing.T) {
 
 	r := AWSFederatedAccountAccessReconciler{}
 
-	outputRole, err := r.createOrUpdateIAMRole(mockAWSClient, afr, afaa)
+	outputRole, err := r.createOrUpdateIAMRole(context.TODO(), mockAWSClient, afr, afaa)
 	assert.Equal(t, outputRole, createRoleOutput.Role)
 	assert.Nil(t, err)
 }
@@ -480,7 +481,7 @@ func TestAttachIAMPolicies(t *testing.T) {
 
 	r := AWSFederatedAccountAccessReconciler{}
 
-	err := r.attachIAMPolices(mockAWSClient, roleName, policyArns)
+	err := r.attachIAMPolices(context.TODO(), mockAWSClient, roleName, policyArns)
 	assert.Nil(t, err)
 }
 

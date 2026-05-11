@@ -1,6 +1,7 @@
 package sts
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -38,7 +39,7 @@ func TestGetSTSCredentials(t *testing.T) {
 		nil, // no error
 	)
 
-	creds, err := GetSTSCredentials(
+	creds, err := GetSTSCredentials(context.TODO(),
 		nullLogger,
 		mockAWSClient,
 		"",
@@ -66,7 +67,7 @@ func TestGetSTSCredentials(t *testing.T) {
 		expectedErr,
 	).Times(100)
 
-	creds, err = GetSTSCredentials(
+	creds, err = GetSTSCredentials(context.TODO(),
 		nullLogger,
 		mockAWSClient,
 		"",

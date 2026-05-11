@@ -13,6 +13,7 @@ import (
 	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -83,8 +84,8 @@ func NewAccountValidationReconciler(client client.Client, scheme *runtime.Scheme
 	}
 }
 
-func (r *AccountValidationReconciler) statusUpdate(account *awsv1alpha1.Account) error {
-	err := r.Client.Status().Update(context.TODO(), account)
+func (r *AccountValidationReconciler) statusUpdate(ctx context.Context, account *awsv1alpha1.Account) error {
+	err := r.Client.Status().Update(ctx, account)
 	return err
 }
 
@@ -93,11 +94,11 @@ func (ave *AccountValidationError) Error() string {
 }
 
 // Retrieve all parents of the given awsId until the predicate returns true.
-func ParentsTillPredicate(awsId string, client awsclient.Client, p func(s string) bool, parents *[]string) error {
+func ParentsTillPredicate(ctx context.Context, awsId string, client awsclient.Client, p func(s string) bool, parents *[]string) error {
 	listParentsInput := organizations.ListParentsInput{
 		ChildId: aws.String(awsId),
 	}
-	listParentsOutput, err := client.ListParents(context.TODO(), &listParentsInput)
+	listParentsOutput, err := client.ListParents(ctx, &listParentsInput)
 	if err != nil {
 		return err
 	}
@@ -113,18 +114,18 @@ func ParentsTillPredicate(awsId string, client awsclient.Client, p func(s string
 		if p(id) {
 			return nil
 		}
-		return ParentsTillPredicate(id, client, p, parents)
+		return ParentsTillPredicate(ctx, id, client, p, parents)
 	}
 }
 
 // Verify if the account is already in the root OU
 // The predicate indicates if the parent considered the desired root was found.
-func IsAccountInCorrectOU(account awsv1alpha1.Account, client awsclient.Client, isPoolOU func(s string) bool) bool {
+func IsAccountInCorrectOU(ctx context.Context, account awsv1alpha1.Account, client awsclient.Client, isPoolOU func(s string) bool) bool {
 	if account.Spec.AwsAccountID == "" {
 		return false
 	}
 	parentList := []string{}
-	err := ParentsTillPredicate(account.Spec.AwsAccountID, client, isPoolOU, &parentList)
+	err := ParentsTillPredicate(ctx, account.Spec.AwsAccountID, client, isPoolOU, &parentList)
 	if err != nil {
 		return false
 	}
@@ -134,11 +135,11 @@ func IsAccountInCorrectOU(account awsv1alpha1.Account, client awsclient.Client, 
 	return false
 }
 
-func MoveAccount(awsAccountId string, client awsclient.Client, targetOU string, moveAccount bool) error {
+func MoveAccount(ctx context.Context, awsAccountId string, client awsclient.Client, targetOU string, moveAccount bool) error {
 	listParentsInput := organizations.ListParentsInput{
 		ChildId: aws.String(awsAccountId),
 	}
-	listParentsOutput, err := client.ListParents(context.TODO(), &listParentsInput)
+	listParentsOutput, err := client.ListParents(ctx, &listParentsInput)
 	if err != nil {
 		log.Error(err, "Can not find parent for AWS account", "aws-account", awsAccountId)
 		return err
@@ -151,7 +152,7 @@ func MoveAccount(awsAccountId string, client awsclient.Client, targetOU string, 
 			DestinationParentId: aws.String(targetOU),
 			SourceParentId:      oldOu,
 		}
-		_, err = client.MoveAccount(context.TODO(), &moveAccountInput)
+		_, err = client.MoveAccount(ctx, &moveAccountInput)
 		if err != nil {
 			log.Error(err, "Could not move aws account to new ou", "aws-account", awsAccountId, "ou", targetOU)
 			return err
@@ -162,23 +163,23 @@ func MoveAccount(awsAccountId string, client awsclient.Client, targetOU string, 
 	return nil
 }
 
-func untagAccountOwner(client awsclient.Client, accountId string) error {
+func untagAccountOwner(ctx context.Context, client awsclient.Client, accountId string) error {
 	inputTags := &organizations.UntagResourceInput{
 		ResourceId: aws.String(accountId),
 		TagKeys:    []string{"owner"},
 	}
 
-	_, err := client.UntagResource(context.TODO(), inputTags)
+	_, err := client.UntagResource(ctx, inputTags)
 	return err
 }
 
 // ValidateAccountTags validates the owner tag on an AWS account
-func ValidateAccountTags(client awsclient.Client, accountId *string, shardName string, accountTagEnabled bool) error {
+func ValidateAccountTags(ctx context.Context, client awsclient.Client, accountId *string, shardName string, accountTagEnabled bool) error {
 	listTagsForResourceInput := &organizations.ListTagsForResourceInput{
 		ResourceId: accountId,
 	}
 
-	resp, err := client.ListTagsForResource(context.TODO(), listTagsForResourceInput)
+	resp, err := client.ListTagsForResource(ctx, listTagsForResourceInput)
 	if err != nil {
 		return err
 	}
@@ -187,7 +188,7 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 		if ownerKey == aws.ToString(tag.Key) {
 			if shardName != aws.ToString(tag.Value) {
 				if accountTagEnabled {
-					err := untagAccountOwner(client, aws.ToString(accountId))
+					err := untagAccountOwner(ctx, client, aws.ToString(accountId))
 					if err != nil {
 						log.Error(err, "Unable to remove incorrect owner tag from aws account.", "AWSAccountId", accountId)
 						return &AccountValidationError{
@@ -197,7 +198,7 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 					}
 
 					complianceTags := make(map[string]string)
-					err = account.TagAccount(client, aws.ToString(accountId), shardName, complianceTags)
+					err = account.TagAccount(ctx, client, aws.ToString(accountId), shardName, complianceTags)
 					if err != nil {
 						log.Error(err, "Unable to tag aws account.", "AWSAccountID", accountId)
 						return &AccountValidationError{
@@ -219,7 +220,7 @@ func ValidateAccountTags(client awsclient.Client, accountId *string, shardName s
 
 	if accountTagEnabled {
 		complianceTags := make(map[string]string)
-		err := account.TagAccount(client, *accountId, shardName, complianceTags)
+		err := account.TagAccount(ctx, client, *accountId, shardName, complianceTags)
 		if err != nil {
 			log.Error(err, "Unable to tag aws account.", "AWSAccountID", accountId)
 			return &AccountValidationError{
@@ -260,7 +261,7 @@ func areComplianceTagsInSync(existingTags map[string]string, appCode, servicePha
 }
 
 // ValidateComplianceTags validates compliance tags (app-code, service-phase, cost-center) on an AWS account
-func ValidateComplianceTags(client awsclient.Client, accountId *string, shardName string, accountTagEnabled bool, appCode, servicePhase, costCenter string, complianceTagsEnabled bool) error {
+func ValidateComplianceTags(ctx context.Context, client awsclient.Client, accountId *string, shardName string, accountTagEnabled bool, appCode, servicePhase, costCenter string, complianceTagsEnabled bool) error {
 	// Only validate if feature is enabled
 	if !complianceTagsEnabled {
 		return nil
@@ -270,7 +271,7 @@ func ValidateComplianceTags(client awsclient.Client, accountId *string, shardNam
 	listTagsForResourceInput := &organizations.ListTagsForResourceInput{
 		ResourceId: accountId,
 	}
-	resp, err := client.ListTagsForResource(context.TODO(), listTagsForResourceInput)
+	resp, err := client.ListTagsForResource(ctx, listTagsForResourceInput)
 	if err != nil {
 		return err
 	}
@@ -304,7 +305,7 @@ func ValidateComplianceTags(client awsclient.Client, accountId *string, shardNam
 			complianceTags["cost-center"] = costCenter
 		}
 	}
-	err = account.TagAccount(client, *accountId, shardName, complianceTags)
+	err = account.TagAccount(ctx, client, *accountId, shardName, complianceTags)
 	if err != nil {
 		log.Error(err, "Unable to update compliance tags on aws account.", "AWSAccountID", accountId)
 		return &AccountValidationError{
@@ -345,7 +346,7 @@ func ValidateAwsAccountId(account awsv1alpha1.Account) error {
 	return nil
 }
 
-func (r *AccountValidationReconciler) ValidateAccountOU(awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string, baseOU string) error {
+func (r *AccountValidationReconciler) ValidateAccountOU(ctx context.Context, awsClient awsclient.Client, account awsv1alpha1.Account, poolOU string, baseOU string) error {
 	// Default OU should be the aao-managed-accounts OU.
 	correctOU := poolOU
 
@@ -353,7 +354,7 @@ func (r *AccountValidationReconciler) ValidateAccountOU(awsClient awsclient.Clie
 
 	// If the legal entity is not empty, it should go into the legalEntity's OU
 	if account.Spec.LegalEntity.ID != "" {
-		claimedOU, err := r.GetOUIDFromName(awsClient, baseOU, account.Spec.LegalEntity.ID)
+		claimedOU, err := r.GetOUIDFromName(ctx, awsClient, baseOU, account.Spec.LegalEntity.ID)
 		if err != nil {
 			if errors.Is(err, awsv1alpha1.ErrNonexistentOU) {
 				log.Info("OU doesn't exist. Will need to create it.", "OU Name", account.Spec.LegalEntity.ID)
@@ -372,7 +373,7 @@ func (r *AccountValidationReconciler) ValidateAccountOU(awsClient awsclient.Clie
 
 	if ouNeedsCreating {
 		if accountMoveEnabled {
-			createdOU, err := accountclaim.CreateOrFindOU(log, awsClient, account.Spec.LegalEntity.ID, baseOU)
+			createdOU, err := accountclaim.CreateOrFindOU(ctx, log, awsClient, account.Spec.LegalEntity.ID, baseOU)
 			if err != nil {
 				return err
 			}
@@ -390,14 +391,14 @@ func (r *AccountValidationReconciler) ValidateAccountOU(awsClient awsclient.Clie
 		}
 	}
 
-	inCorrectOU := IsAccountInCorrectOU(account, awsClient, func(s string) bool {
+	inCorrectOU := IsAccountInCorrectOU(ctx, account, awsClient, func(s string) bool {
 		return s == correctOU
 	})
 	if inCorrectOU {
 		log.Info("Account is already in the correct OU.")
 	} else {
 		log.Info("Account is not in the correct OU - it will be moved.")
-		err := MoveAccount(account.Spec.AwsAccountID, awsClient, correctOU, accountMoveEnabled)
+		err := MoveAccount(ctx, account.Spec.AwsAccountID, awsClient, correctOU, accountMoveEnabled)
 		if err != nil {
 			log.Error(err, "Could not move account")
 			return &AccountValidationError{
@@ -409,7 +410,7 @@ func (r *AccountValidationReconciler) ValidateAccountOU(awsClient awsclient.Clie
 	return nil
 }
 
-func (r *AccountValidationReconciler) GetOUIDFromName(client awsclient.Client, parentid string, ouName string) (string, error) {
+func (r *AccountValidationReconciler) GetOUIDFromName(ctx context.Context, client awsclient.Client, parentid string, ouName string) (string, error) {
 	// Check in-memory storage first
 	if ouID, ok := r.OUNameIDMap[ouName]; ok {
 		return ouID, nil
@@ -422,7 +423,7 @@ func (r *AccountValidationReconciler) GetOUIDFromName(client awsclient.Client, p
 	}
 	for ouID == "" {
 		// Get a list with a fraction of the OUs in this parent starting from NextToken
-		listOut, err := client.ListOrganizationalUnitsForParent(context.TODO(), &listOrgUnitsForParentID)
+		listOut, err := client.ListOrganizationalUnitsForParent(ctx, &listOrgUnitsForParentID)
 		if err != nil {
 			var aerr smithy.APIError
 			if errors.As(err, &aerr) {
@@ -466,12 +467,11 @@ func ValidateRemoval(account awsv1alpha1.Account) error {
 }
 
 func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
-	log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
-	// Setup: retrieve account and awsClient
+	// Setup: retrieve account
 	var account awsv1alpha1.Account
-	err := r.Client.Get(context.TODO(), request.NamespacedName, &account)
+	err := r.Client.Get(ctx, request.NamespacedName, &account)
 	if err != nil {
 		log.Info("Account does not exist", "account-request", request.NamespacedName, "error", err)
 		return utils.DoNotRequeue()
@@ -487,24 +487,54 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		return utils.DoNotRequeue()
 	}
 
-	cm, err := utils.GetOperatorConfigMap(r.Client)
+	cm, err := utils.GetOperatorConfigMap(ctx, r.Client)
 	if err != nil {
 		log.Error(err, "Could not retrieve the operator configmap")
 		return utils.RequeueAfter(5 * time.Minute)
 	}
 
-	isOptInRegionFeatureEnabled, err := utils.GetFeatureFlagValue(cm, "feature.opt_in_regions")
+	// Load feature flags
+	featureFlags := r.loadFeatureFlags(reqLogger, cm)
+
+	awsClient, err := r.getAWSClient()
+	if err != nil {
+		log.Error(err, "Could not retrieve AWS client.")
+	}
+
+	// Run validation checks
+	result, err := r.runValidationChecks(ctx, reqLogger, &account, awsClient, cm, featureFlags)
+	if err != nil || result.Requeue || result.RequeueAfter > 0 {
+		return result, err
+	}
+
+	return utils.DoNotRequeue()
+}
+
+type featureFlags struct {
+	optInRegions    bool
+	accountMove     bool
+	accountTag      bool
+	complianceTags  bool
+	accountDeletion bool
+}
+
+func (r *AccountValidationReconciler) loadFeatureFlags(reqLogger logr.Logger, cm *corev1.ConfigMap) featureFlags {
+	flags := featureFlags{}
+
+	var err error
+	flags.optInRegions, err = utils.GetFeatureFlagValue(cm, "feature.opt_in_regions")
 	if err != nil {
 		reqLogger.Info("Could not retrieve feature flag 'feature.opt_in_regions' - region Opt-In is disabled")
-		isOptInRegionFeatureEnabled = false
+		flags.optInRegions = false
 	}
-	reqLogger.Info("Is feature.opt_in_regions enabled?", "enabled", isOptInRegionFeatureEnabled)
+	reqLogger.Info("Is feature.opt_in_regions enabled?", "enabled", flags.optInRegions)
 
 	enabled, err := strconv.ParseBool(cm.Data["feature.validation_move_account"])
 	if err != nil {
 		log.Info("Could not retrieve feature flag 'feature.validation_move_account' - account moving is disabled")
 	} else {
 		accountMoveEnabled = enabled
+		flags.accountMove = enabled
 	}
 	log.Info("Is moving accounts enabled?", "enabled", accountMoveEnabled)
 
@@ -513,6 +543,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		log.Info("Could not retrieve feature flag 'feature.validation_tag_account' - account tagging is disabled")
 	} else {
 		accountTagEnabled = enabled
+		flags.accountTag = enabled
 	}
 	log.Info("Is tagging accounts enabled?", "enabled", accountTagEnabled)
 
@@ -521,6 +552,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		log.Info("Could not retrieve feature flag 'feature.compliance_tags' - compliance tagging is disabled")
 	} else {
 		complianceTagsEnabled = enabled
+		flags.complianceTags = enabled
 	}
 	log.Info("Is compliance tagging enabled?", "enabled", complianceTagsEnabled)
 
@@ -529,26 +561,28 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		log.Info("Could not retrieve feature flag 'feature.validation_delete_account' - account deletion is disabled")
 	} else {
 		accountDeletionEnabled = enabled
+		flags.accountDeletion = enabled
 	}
 	log.Info("Is deleting accounts enabled?", "enabled", accountDeletionEnabled)
 
+	return flags
+}
+
+func (r *AccountValidationReconciler) getAWSClient() (awsclient.Client, error) {
 	awsClientInput := awsclient.NewAwsClientInput{
 		AwsRegion:  config.GetDefaultRegion(),
 		SecretName: utils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
 	}
-	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsClientInput)
-	if err != nil {
-		log.Error(err, "Could not retrieve AWS client.")
-	}
+	return r.awsClientBuilder.GetClient(controllerName, r.Client, awsClientInput)
+}
 
-	// Here the actual checks start:
-
-	if err := ValidateRemoval(account); err == nil {
-		if accountDeletionEnabled {
+func (r *AccountValidationReconciler) runValidationChecks(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, cm *corev1.ConfigMap, flags featureFlags) (ctrl.Result, error) {
+	// Check if account should be cleaned up
+	if err := ValidateRemoval(*account); err == nil {
+		if flags.accountDeletion {
 			log.Info("Cleaning up account that is failed & has no AWS account", "account", account)
-			err := r.Client.Delete(ctx, &account)
-			if err != nil {
+			if err := r.Client.Delete(ctx, account); err != nil {
 				log.Error(err, "failed to delete account", "account", account.Name)
 				return utils.RequeueWithError(err)
 			}
@@ -557,9 +591,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		}
 	}
 
-	err = ValidateAccountOrigin(account)
-	if err != nil {
-		// Decide who we will requeue now
+	// Validate account origin
+	if err := ValidateAccountOrigin(*account); err != nil {
 		var validationError *AccountValidationError
 		if errors.As(err, &validationError) && validationError.Type == InvalidAccount {
 			return utils.DoNotRequeue()
@@ -567,8 +600,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		return utils.RequeueWithError(err)
 	}
 
-	err = ValidateAwsAccountId(account)
-	if err != nil {
+	// Validate AWS account ID
+	if err := ValidateAwsAccountId(*account); err != nil {
 		var validationError *AccountValidationError
 		if errors.As(err, &validationError) && validationError.Type == MissingAWSAccount {
 			return utils.DoNotRequeue()
@@ -576,9 +609,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		return utils.RequeueWithError(err)
 	}
 
-	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"], cm.Data["base"])
-	if err != nil {
-		// Decide who we will requeue now
+	// Validate account OU
+	if err := r.ValidateAccountOU(ctx, awsClient, *account, cm.Data["root"], cm.Data["base"]); err != nil {
 		var validationError *AccountValidationError
 		if errors.As(err, &validationError) && validationError.Type == AccountMoveFailed {
 			return utils.RequeueAfter(moveWaitTime)
@@ -586,87 +618,96 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		return utils.RequeueWithError(err)
 	}
 
+	// Validate tags and regions
+	return r.validateTagsAndRegions(ctx, reqLogger, account, awsClient, cm, flags)
+}
+
+func (r *AccountValidationReconciler) validateTagsAndRegions(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, awsClient awsclient.Client, cm *corev1.ConfigMap, flags featureFlags) (ctrl.Result, error) {
 	shardName, ok := cm.Data["shard-name"]
 	if !ok {
 		log.Info("Could not retrieve configuration map value 'shard-name' - account tagging is disabled")
-	} else {
-		if shardName == "" {
-			log.Info("Cluster configuration is missing a shardName value.  Skipping validation for this tag.")
-		} else {
-			// Validate owner tag
-			err = ValidateAccountTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled)
-			if err != nil {
-				var validationError *AccountValidationError
-				if errors.As(err, &validationError) && (validationError.Type == MissingTag || validationError.Type == IncorrectOwnerTag) {
-					log.Error(validationError, validationError.Err.Error())
-				}
-				return utils.RequeueWithError(err)
-			}
+		return utils.DoNotRequeue()
+	}
+
+	if shardName == "" {
+		log.Info("Cluster configuration is missing a shardName value.  Skipping validation for this tag.")
+		return utils.DoNotRequeue()
+	}
+
+	// Validate owner tag
+	if err := ValidateAccountTags(ctx, awsClient, aws.String(account.Spec.AwsAccountID), shardName, flags.accountTag); err != nil {
+		var validationError *AccountValidationError
+		if errors.As(err, &validationError) && (validationError.Type == MissingTag || validationError.Type == IncorrectOwnerTag) {
+			log.Error(validationError, validationError.Err.Error())
 		}
+		return utils.RequeueWithError(err)
+	}
 
-		// check if account belongs to accountpool
-		if !account.IsBYOC() {
-			// Validate compliance tags
-			var appCode, servicePhase, costCenter string
-
-			// Read ConfigMap values if complianceTagsEnabled
-			if complianceTagsEnabled {
-				var ok bool
-				appCode, ok = cm.Data["app-code"]
-				if !ok {
-					log.Info("Could not retrieve configuration map value 'app-code' - compliance tag will be skipped")
-				}
-				servicePhase, ok = cm.Data["service-phase"]
-				if !ok {
-					log.Info("Could not retrieve configuration map value 'service-phase' - compliance tag will be skipped")
-				}
-				costCenter, ok = cm.Data["cost-center"]
-				if !ok {
-					log.Info("Could not retrieve configuration map value 'cost-center' - compliance tag will be skipped")
-				}
-			}
-
-			err = ValidateComplianceTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled, appCode, servicePhase, costCenter, complianceTagsEnabled)
-			if err != nil {
-				log.Error(err, "Failed to validate compliance tags")
-				return utils.RequeueWithError(err)
-			}
+	// Validate compliance tags for non-BYOC accounts
+	if !account.IsBYOC() {
+		if err := r.validateComplianceTags(ctx, awsClient, account, cm, shardName, flags); err != nil {
+			return utils.RequeueWithError(err)
 		}
+	}
 
-		optInRegions, ok := cm.Data["opt-in-regions"]
-		// ValidateOptInRegions
-		if ok && isOptInRegionFeatureEnabled {
-			err = r.ValidateOptInRegions(reqLogger, &account, r.awsClientBuilder, optInRegions)
-			if err != nil {
-				var validationError *AccountValidationError
-				if errors.As(err, &validationError) && validationError.Type == NotAllOptInRegionsEnabled {
-					return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
-				}
-				return utils.RequeueWithError(err)
-			}
-
-		}
-
-		err = r.ValidateRegionalServiceQuotas(reqLogger, &account, r.awsClientBuilder)
-		if err != nil {
+	// Validate opt-in regions
+	optInRegions, ok := cm.Data["opt-in-regions"]
+	if ok && flags.optInRegions {
+		if err := r.ValidateOptInRegions(ctx, reqLogger, account, r.awsClientBuilder, optInRegions); err != nil {
 			var validationError *AccountValidationError
-			if errors.As(err, &validationError) && validationError.Type == NotAllServicequotasApplied {
+			if errors.As(err, &validationError) && validationError.Type == NotAllOptInRegionsEnabled {
 				return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
 			}
 			return utils.RequeueWithError(err)
 		}
-
 	}
+
+	// Validate regional service quotas
+	if err := r.ValidateRegionalServiceQuotas(ctx, reqLogger, account, r.awsClientBuilder); err != nil {
+		var validationError *AccountValidationError
+		if errors.As(err, &validationError) && validationError.Type == NotAllServicequotasApplied {
+			return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
+		}
+		return utils.RequeueWithError(err)
+	}
+
 	return utils.DoNotRequeue()
 }
-func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder, optInRegions string) error {
+
+func (r *AccountValidationReconciler) validateComplianceTags(ctx context.Context, awsClient awsclient.Client, account *awsv1alpha1.Account, cm *corev1.ConfigMap, shardName string, flags featureFlags) error {
+	var appCode, servicePhase, costCenter string
+
+	if flags.complianceTags {
+		var ok bool
+		appCode, ok = cm.Data["app-code"]
+		if !ok {
+			log.Info("Could not retrieve configuration map value 'app-code' - compliance tag will be skipped")
+		}
+		servicePhase, ok = cm.Data["service-phase"]
+		if !ok {
+			log.Info("Could not retrieve configuration map value 'service-phase' - compliance tag will be skipped")
+		}
+		costCenter, ok = cm.Data["cost-center"]
+		if !ok {
+			log.Info("Could not retrieve configuration map value 'cost-center' - compliance tag will be skipped")
+		}
+	}
+
+	err := ValidateComplianceTags(ctx, awsClient, aws.String(account.Spec.AwsAccountID), shardName, flags.accountTag, appCode, servicePhase, costCenter, flags.complianceTags)
+	if err != nil {
+		log.Error(err, "Failed to validate compliance tags")
+		return err
+	}
+	return nil
+}
+func (r *AccountValidationReconciler) ValidateOptInRegions(ctx context.Context, reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder, optInRegions string) error {
 	regions := strings.Split(optInRegions, ",")
 	regionList := make([]string, 0, len(regions))
 	for _, region := range regions {
 		regionList = append(regionList, strings.TrimSpace(region))
 	}
 
-	numberOfAccountsOptingIn, err := account.CalculateOptingInRegionAccounts(reqLogger, r.Client)
+	numberOfAccountsOptingIn, err := account.CalculateOptingInRegionAccounts(ctx, reqLogger, r.Client)
 	if err != nil {
 		return &AccountValidationError{
 			Type: NotAllOptInRegionsEnabled,
@@ -694,7 +735,7 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 			currentAcctInstance.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
 
 		}
-		err = r.statusUpdate(currentAcctInstance)
+		err = r.statusUpdate(ctx, currentAcctInstance)
 		if err != nil {
 			return &AccountValidationError{
 				Type: OptInRegionStatus,
@@ -718,7 +759,7 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 	}
 
 	if currentAcctInstance.HasOpenOptInRegionRequests() && utils.DetectDevMode == utils.DevModeProduction {
-		_, err := account.GetOptInRegionStatus(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
+		_, err := account.GetOptInRegionStatus(ctx, reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
 		if err != nil {
 			return &AccountValidationError{
 				Type: NotAllOptInRegionsEnabled,
@@ -734,7 +775,7 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 
 }
 
-func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder) error {
+func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(ctx context.Context, reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder) error {
 	awsRegion := config.GetDefaultRegion()
 	awsSetupClient, err := awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
@@ -755,7 +796,7 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 	}
 
 	if awsAccount.Status.RegionalServiceQuotas == nil {
-		err = account.SetCurrentAccountServiceQuotas(reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client)
+		err = account.SetCurrentAccountServiceQuotas(ctx, reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client)
 		if err != nil {
 			reqLogger.Error(err, "failed to set account service quotas")
 			return &AccountValidationError{
@@ -763,7 +804,7 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 				Err:  errors.New("failed to set account service quotas"),
 			}
 		}
-		err = r.statusUpdate(awsAccount)
+		err = r.statusUpdate(ctx, awsAccount)
 		if err != nil {
 			return &AccountValidationError{
 				Type: QuotaStatus,
@@ -777,7 +818,7 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 		}
 	} else {
 		if awsAccount.HasOpenQuotaIncreaseRequests() && utils.DetectDevMode == utils.DevModeProduction {
-			_, err = account.GetServiceQuotaRequest(reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client)
+			_, err = account.GetServiceQuotaRequest(ctx, reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client)
 			if err != nil {
 				return &AccountValidationError{
 					Type: NotAllServicequotasApplied,

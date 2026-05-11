@@ -45,7 +45,7 @@ type AccountWatcher struct {
 }
 
 // initialize creates a global instance of the TotalAccountWatcher
-func initialize(client client.Client, watchInterval time.Duration) *AccountWatcher {
+func initialize(ctx context.Context, client client.Client, watchInterval time.Duration) *AccountWatcher {
 	log.Info("Initializing the totalAccountWatcher")
 
 	awsRegion := config.GetDefaultRegion()
@@ -54,6 +54,7 @@ func initialize(client client.Client, watchInterval time.Duration) *AccountWatch
 	// IBuilder in their struct and uses it to GetClient() dynamically as needed. This one grabs a
 	// single client one time and stores it in a global.
 	builder := &awsclient.Builder{}
+	//nolint:contextcheck // GetClient interface does not accept context
 	awsClient, err := builder.GetClient("", client, awsclient.NewAwsClientInput{
 		SecretName: controllerutils.AwsSecretName,
 		NameSpace:  awsv1alpha1.AccountCrNamespace,
@@ -66,7 +67,7 @@ func initialize(client client.Client, watchInterval time.Duration) *AccountWatch
 	}
 
 	TotalAccountWatcher = newTotalAccountWatcher(client, awsClient, watchInterval)
-	err = TotalAccountWatcher.UpdateTotalAccounts(log)
+	err = TotalAccountWatcher.UpdateTotalAccounts(ctx, log)
 	if err != nil {
 		log.Error(err, "failed updating total accounts count")
 	}
@@ -90,17 +91,17 @@ func newTotalAccountWatcher(
 
 // TotalAccountWatcher will trigger AwsLimitUpdate every `scanInternal` and only stop if the operator is killed or a
 // message is sent on the stopCh
-func (s *AccountWatcher) Start(log logr.Logger, stopCh context.Context, client client.Client, watchInterval time.Duration) {
+func (s *AccountWatcher) Start(log logr.Logger, ctx context.Context, client client.Client, watchInterval time.Duration) {
 	log.Info("Starting the totalAccountWatcher")
-	s = initialize(client, watchInterval)
+	s = initialize(ctx, client, watchInterval)
 	for {
 		select {
 		case <-time.After(s.watchInterval):
-			err := s.UpdateTotalAccounts(log)
+			err := s.UpdateTotalAccounts(ctx, log)
 			if err != nil {
 				log.Error(err, "totalAccountWatcher not started, awsLimit won't be updated")
 			}
-		case <-stopCh.Done():
+		case <-ctx.Done():
 			log.Info("Stopping the totalAccountWatcher")
 			//nolint:staticcheck // SA4011: false positive on nil check
 			break
@@ -109,9 +110,9 @@ func (s *AccountWatcher) Start(log logr.Logger, stopCh context.Context, client c
 }
 
 // UpdateTotalAccounts will update the TotalAccountWatcher's total field
-func (s *AccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
+func (s *AccountWatcher) UpdateTotalAccounts(ctx context.Context, log logr.Logger) error {
 
-	accountTotal, err := s.getTotalAwsAccounts()
+	accountTotal, err := s.getTotalAwsAccounts(ctx)
 	if err != nil {
 		log.Error(err, "Failed to get account list with error code")
 		// Stop account creation while we can't talk to AWS
@@ -128,7 +129,7 @@ func (s *AccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 	// AccountsCanBeCreated is a bool that returns the opposite of accountLimitReached.
 	// If the account limit is reached, we do NOT want to create accounts.  However, if the
 	// account limit has NOT been reached, then account creation can happen.
-	limitReached, err := s.accountLimitReached(log, accountTotal)
+	limitReached, err := s.accountLimitReached(ctx, log, accountTotal)
 	if err != nil {
 		s.accountsCanBeCreated = false
 		return err
@@ -138,13 +139,13 @@ func (s *AccountWatcher) UpdateTotalAccounts(log logr.Logger) error {
 }
 
 // TotalAwsAccounts returns the total number of aws accounts in the aws org
-func (s *AccountWatcher) getTotalAwsAccounts() (int, error) {
+func (s *AccountWatcher) getTotalAwsAccounts(ctx context.Context) (int, error) {
 	var nextToken *string
 
 	accountTotal := 0
 	// Ensure we paginate through the created account list
 	for {
-		awsAccountList, err := s.awsClient.ListAccounts(context.TODO(), &organizations.ListAccountsInput{NextToken: nextToken})
+		awsAccountList, err := s.awsClient.ListAccounts(ctx, &organizations.ListAccountsInput{NextToken: nextToken})
 		if err != nil {
 			errMsg := "Error getting a list of accounts"
 			var aerr smithy.APIError
@@ -171,7 +172,7 @@ func (s *AccountWatcher) getTotalAwsAccounts() (int, error) {
 	nextToken = nil
 	for {
 		// Request a list of "in progress" account creations
-		awsAccountCreatingList, err := s.awsClient.ListCreateAccountStatus(context.TODO(), &organizations.ListCreateAccountStatusInput{
+		awsAccountCreatingList, err := s.awsClient.ListCreateAccountStatus(ctx, &organizations.ListCreateAccountStatusInput{
 			NextToken: nextToken,
 			States:    []organizationstypes.CreateAccountState{organizationstypes.CreateAccountStateInProgress},
 		})
@@ -212,8 +213,8 @@ func (s *AccountWatcher) GetLimit() int {
 }
 
 // accountLimitReached returns True if our account limit is reached or False if the account limit is not reached and we can create accounts.
-func (s *AccountWatcher) accountLimitReached(log logr.Logger, currentAccounts int) (bool, error) {
-	limit, err := s.getAwsAccountLimit()
+func (s *AccountWatcher) accountLimitReached(ctx context.Context, log logr.Logger, currentAccounts int) (bool, error) {
+	limit, err := s.getAwsAccountLimit(ctx)
 	if err != nil {
 		log.Error(err, "There was an error getting the limits.  Using the default value.")
 		return true, err
@@ -222,9 +223,9 @@ func (s *AccountWatcher) accountLimitReached(log logr.Logger, currentAccounts in
 }
 
 // getAwsAccountLimit gets the limit from the ConfigMap or on error returns a default value.
-func (s *AccountWatcher) getAwsAccountLimit() (int, error) {
+func (s *AccountWatcher) getAwsAccountLimit(ctx context.Context) (int, error) {
 	configMap := &corev1.ConfigMap{}
-	err := s.client.Get(context.TODO(), types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, configMap)
+	err := s.client.Get(ctx, types.NamespacedName{Namespace: awsv1alpha1.AccountCrNamespace, Name: awsv1alpha1.DefaultConfigMap}, configMap)
 	if err != nil {
 		return -1, err
 	}
