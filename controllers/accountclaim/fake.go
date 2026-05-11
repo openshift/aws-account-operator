@@ -33,7 +33,7 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 			secret := corev1.Secret{}
 			secretObjectKey := client.ObjectKey{Name: accountClaim.Spec.AwsCredentialSecret.Name, Namespace: accountClaim.Spec.AwsCredentialSecret.Namespace}
 			err := r.Get(context.TODO(), secretObjectKey, &secret)
-			if err != nil { //nolint; gosimple // Ignores false-positive S1008 gosimple notice
+			if err != nil { //nolint:gosimple // Ignores false-positive S1008 gosimple notice
 				return true, err
 			}
 

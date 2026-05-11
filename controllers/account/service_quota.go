@@ -358,7 +358,6 @@ func checkQuotaRequestStatus(reqLogger logr.Logger, awsClient awsclient.Client, 
 		// Check all the returned requests to see if one matches the quota increase we'd request
 		// If so, it's already been submitted
 		for _, change := range result.RequestedQuotas {
-			//nolint:exhaustive // Only handling specific request statuses
 			if changeRequestMatches(change, quotaCode, serviceCode, expectedQuota) {
 				switch change.Status { //nolint:exhaustive
 				case servicequotastypes.RequestStatusPending, servicequotastypes.RequestStatusCaseOpened:
