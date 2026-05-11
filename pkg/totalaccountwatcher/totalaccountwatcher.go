@@ -103,8 +103,7 @@ func (s *AccountWatcher) Start(log logr.Logger, ctx context.Context, client clie
 			}
 		case <-ctx.Done():
 			log.Info("Stopping the totalAccountWatcher")
-			//nolint:staticcheck // SA4011: false positive on nil check
-			break
+			return
 		}
 	}
 }

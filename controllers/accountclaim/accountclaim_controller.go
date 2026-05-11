@@ -301,8 +301,9 @@ func (r *AccountClaimReconciler) handleDeletion(ctx context.Context, reqLogger l
 		currentAcctInstance, accountErr := r.getClaimedAccount(ctx, accountClaim.Spec.AccountLink)
 		if accountErr != nil {
 			reqLogger.Error(accountErr, "Unable to get claimed account")
+		} else if currentAcctInstance != nil {
+			reqLogger.V(1).Info("successfully got claimed account", "accountclaim", accountClaim.Name)
 		}
-		reqLogger.V(1).Info("successfully got claimed account", "accountclaim", accountClaim.Name)
 		if currentAcctInstance != nil && !currentAcctInstance.IsBYOC() {
 			awsRegion := config.GetDefaultRegion()
 			awsSetupClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{

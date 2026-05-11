@@ -216,7 +216,7 @@ func (r *AccountReconciler) checkPayerAccount(ctx context.Context, reqLogger log
 				"accountID", account.Spec.AwsAccountID,
 				"accountCR", account.Name,
 				"action", "blocked")
-			return fmt.Errorf("payer account blocked")
+			return nil
 		}
 	}
 	return nil
@@ -229,10 +229,7 @@ func (r *AccountReconciler) loadConfiguration(ctx context.Context, reqLogger log
 		return nil, nil, nil, false, "", err
 	}
 
-	complianceTags, err := r.generateAccountTags(reqLogger, configMap)
-	if err != nil {
-		return nil, nil, nil, false, "", err
-	}
+	complianceTags := r.generateAccountTags(reqLogger, configMap)
 	reqLogger.Info("Compliance tags loaded", "count", len(complianceTags))
 
 	isOptInRegionFeatureEnabled, err := utils.GetFeatureFlagValue(configMap, "feature.opt_in_regions")
@@ -405,16 +402,18 @@ func (r *AccountReconciler) handleAccountInitialization(ctx context.Context, req
 		accountClaim, acctClaimErr := r.getAccountClaim(ctx, account)
 		if acctClaimErr != nil {
 			reqLogger.Error(acctClaimErr, "unable to get accountclaim for sts account")
-			utils.SetAccountClaimStatus(
-				accountClaim,
-				"Failed to get AccountClaim for CSS account",
-				"FailedRetrievingAccountClaim",
-				awsv1alpha1.ClientError,
-				awsv1alpha1.ClaimStatusError,
-			)
-			err := r.Client.Status().Update(ctx, accountClaim)
-			if err != nil {
-				reqLogger.Error(err, "failed to update accountclaim status")
+			if accountClaim != nil {
+				utils.SetAccountClaimStatus(
+					accountClaim,
+					"Failed to get AccountClaim for CSS account",
+					"FailedRetrievingAccountClaim",
+					awsv1alpha1.ClientError,
+					awsv1alpha1.ClaimStatusError,
+				)
+				err := r.Client.Status().Update(ctx, accountClaim)
+				if err != nil {
+					reqLogger.Error(err, "failed to update accountclaim status")
+				}
 			}
 			return reconcile.Result{}, acctClaimErr
 		}
@@ -457,19 +456,19 @@ func (r *AccountReconciler) handleAccountInitialization(ctx context.Context, req
 }
 
 // generateAccountTags reads compliance tag values from the ConfigMap and returns a map of tag key-value pairs
-func (r *AccountReconciler) generateAccountTags(reqLogger logr.Logger, configMap *corev1.ConfigMap) (map[string]string, error) {
+func (r *AccountReconciler) generateAccountTags(reqLogger logr.Logger, configMap *corev1.ConfigMap) map[string]string {
 	tags := make(map[string]string)
 
 	// Check feature flag
 	enabled, err := strconv.ParseBool(configMap.Data["feature.compliance_tags"])
 	if err != nil {
 		reqLogger.Info("Could not retrieve feature flag 'feature.compliance_tags' - compliance tagging is disabled")
-		return tags, err
+		enabled = false
 	}
 
 	if !enabled {
 		reqLogger.Info("Compliance tagging is disabled")
-		return tags, nil
+		return tags
 	}
 
 	// Read tag values and add to map only if non-empty
@@ -491,7 +490,7 @@ func (r *AccountReconciler) generateAccountTags(reqLogger logr.Logger, configMap
 		reqLogger.Info("Could not retrieve configuration map value 'cost-center' - compliance tag will be skipped")
 	}
 
-	return tags, nil
+	return tags
 }
 
 func (r *AccountReconciler) handleOptInRegionEnablement(ctx context.Context, reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string) (reconcile.Result, error) {
@@ -700,7 +699,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(ctx context.Context,
 	}
 	if !currentAcctInstance.HasSupportCaseID() {
 		switch utils.DetectDevMode {
-		case utils.DevModeProduction, utils.DevModeLocal, utils.DevModeCluster:
+		case utils.DevModeProduction:
 			caseID, err := createCase(ctx, reqLogger, currentAcctInstance, awsSetupClient)
 			if err != nil {
 				return reconcile.Result{}, err
@@ -734,29 +733,31 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(ctx context.Context,
 
 			// This will requeue verification for between 30 and 60 (30+30) seconds, depending on the account
 			return reconcile.Result{RequeueAfter: time.Duration(intervalAfterCaseCreationSecs+randomInterval) * time.Second}, nil
-		default:
+		case utils.DevModeLocal, utils.DevModeCluster:
 			log.Info("Running in development mode, Skipping Support Case Creation.")
 		}
 	}
 
 	var supportCaseResolved bool
 	switch utils.DetectDevMode {
-	case utils.DevModeProduction, utils.DevModeLocal, utils.DevModeCluster:
+	case utils.DevModeProduction:
 		resolvedScoped, err := checkCaseResolution(ctx, reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
 		if err != nil {
 			reqLogger.Error(err, "Error checking for Case Resolution")
 			return reconcile.Result{}, err
 		}
 		supportCaseResolved = resolvedScoped
-	default:
+	case utils.DevModeLocal, utils.DevModeCluster:
 		log.Info("Running in development mode, Skipping case resolution check")
 		supportCaseResolved = true
 	}
 
 	if currentAcctInstance.HasOpenQuotaIncreaseRequests() {
 		switch utils.DetectDevMode {
-		case utils.DevModeProduction, utils.DevModeLocal, utils.DevModeCluster:
+		case utils.DevModeProduction:
 			return GetServiceQuotaRequest(ctx, reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
+		case utils.DevModeLocal, utils.DevModeCluster:
+			// Skip service quota requests in development mode
 		}
 	}
 
@@ -973,7 +974,8 @@ func (r *AccountReconciler) initializeRegions(ctx context.Context, reqLogger log
 
 	// For accounts created by the accountpool we want to ensure we initiate all regions
 	if !currentAcctInstance.IsBYOC() {
-		go r.asyncRegionInit(ctx, reqLogger, currentAcctInstance, creds, amiOwner, castAWSRegionType(regionsEnabledInAccount.Regions))
+		//nolint:contextcheck // Background goroutine must not use reconcile context which gets canceled when Reconcile returns
+		go r.asyncRegionInit(context.Background(), reqLogger, currentAcctInstance, creds, amiOwner, castAWSRegionType(regionsEnabledInAccount.Regions))
 		return nil
 	}
 
@@ -1007,7 +1009,8 @@ func (r *AccountReconciler) initializeRegions(ctx context.Context, reqLogger log
 	// This initializes supported regions, and updates Account state when that's done. There is
 	// no error checking at this level.
 	// Only initiate the one requested region
-	go r.asyncRegionInit(ctx, reqLogger, currentAcctInstance, creds, amiOwner, accountClaim.Spec.Aws.Regions)
+	//nolint:contextcheck // Background goroutine must not use reconcile context which gets canceled when Reconcile returns
+	go r.asyncRegionInit(context.Background(), reqLogger, currentAcctInstance, creds, amiOwner, accountClaim.Spec.Aws.Regions)
 
 	return nil
 }
@@ -1217,6 +1220,7 @@ func (r *AccountReconciler) setAccountFailed(ctx context.Context, reqLogger logr
 	err = r.statusUpdate(ctx, account)
 	if err != nil {
 		reqLogger.Error(err, "failed to update account status")
+		return err
 	}
 
 	return nil

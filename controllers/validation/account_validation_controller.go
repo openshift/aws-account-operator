@@ -499,6 +499,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	awsClient, err := r.getAWSClient()
 	if err != nil {
 		log.Error(err, "Could not retrieve AWS client.")
+		return reconcile.Result{}, err
 	}
 
 	// Run validation checks
