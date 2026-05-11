@@ -55,6 +55,7 @@ func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Clien
 			return err
 		}
 
+		//nolint:exhaustive // Unknown status is handled by default case as error
 		switch requestStatus {
 		case awsv1alpha1.ServiceRequestCompleted:
 			reqLogger.Info(
@@ -357,8 +358,9 @@ func checkQuotaRequestStatus(reqLogger logr.Logger, awsClient awsclient.Client, 
 		// Check all the returned requests to see if one matches the quota increase we'd request
 		// If so, it's already been submitted
 		for _, change := range result.RequestedQuotas {
+				//nolint:exhaustive // Only handling specific request statuses
 			if changeRequestMatches(change, quotaCode, serviceCode, expectedQuota) {
-				switch change.Status {
+				switch change.Status { //nolint:exhaustive
 				case servicequotastypes.RequestStatusPending, servicequotastypes.RequestStatusCaseOpened:
 					return awsv1alpha1.ServiceRequestInProgress, nil
 				case servicequotastypes.RequestStatusApproved, servicequotastypes.RequestStatusCaseClosed:

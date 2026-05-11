@@ -492,7 +492,7 @@ func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, c
 
 	if currentAcctInstance.Status.OptInRegions == nil {
 		switch utils.DetectDevMode {
-		case utils.DevModeProduction:
+		case utils.DevModeProduction, utils.DevModeLocal, utils.DevModeCluster:
 			if numberOfAccountsOptingIn >= MaxAccountRegionEnablement {
 				return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
 			}
@@ -522,7 +522,7 @@ func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, c
 
 	if currentAcctInstance.HasOpenOptInRegionRequests() {
 		switch utils.DetectDevMode {
-		case utils.DevModeProduction:
+		case utils.DevModeProduction, utils.DevModeLocal, utils.DevModeCluster:
 			return GetOptInRegionStatus(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
 		}
 	}
@@ -694,7 +694,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 	}
 	if !currentAcctInstance.HasSupportCaseID() {
 		switch utils.DetectDevMode {
-		case utils.DevModeProduction:
+		case utils.DevModeProduction, utils.DevModeLocal, utils.DevModeCluster:
 			caseID, err := createCase(reqLogger, currentAcctInstance, awsSetupClient)
 			if err != nil {
 				return reconcile.Result{}, err
@@ -735,7 +735,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 
 	var supportCaseResolved bool
 	switch utils.DetectDevMode {
-	case utils.DevModeProduction:
+	case utils.DevModeProduction, utils.DevModeLocal, utils.DevModeCluster:
 		resolvedScoped, err := checkCaseResolution(reqLogger, currentAcctInstance.Status.SupportCaseID, awsSetupClient)
 		if err != nil {
 			reqLogger.Error(err, "Error checking for Case Resolution")
@@ -749,7 +749,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 
 	if currentAcctInstance.HasOpenQuotaIncreaseRequests() {
 		switch utils.DetectDevMode {
-		case utils.DevModeProduction:
+		case utils.DevModeProduction, utils.DevModeLocal, utils.DevModeCluster:
 			return GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
 		}
 	}
@@ -862,7 +862,7 @@ func (r *AccountReconciler) nonCCSAssignAccountID(reqLogger logr.Logger, current
 	var awsAccountID string
 
 	switch utils.DetectDevMode {
-	case utils.DevModeProduction:
+	case utils.DevModeProduction, utils.DevModeLocal, utils.DevModeCluster:
 		var err error
 		awsAccountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
 		if err != nil {
@@ -1130,7 +1130,8 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 
 		if createStatus == organizationstypes.CreateAccountStateFailed {
 			var returnErr error
-			switch status.CreateAccountStatus.FailureReason {
+		//nolint:exhaustive // Only handling specific failure reasons, all others map to generic failure
+			switch status.CreateAccountStatus.FailureReason { //nolint:exhaustive
 			case organizationstypes.CreateAccountFailureReasonAccountLimitExceeded:
 				returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
 			case organizationstypes.CreateAccountFailureReasonInternalFailure:

@@ -44,6 +44,7 @@ func HandleOptInRegionRequests(reqLogger logr.Logger, awsClient awsclient.Client
 			reqLogger.Error(err, "failed to get Opt-In status ")
 		}
 
+		//nolint:exhaustive // Unknown status is handled by default case as error
 		switch requestStatus {
 		case awsv1alpha1.OptInRequestEnabled:
 			reqLogger.Info(
