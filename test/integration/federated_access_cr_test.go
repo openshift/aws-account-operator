@@ -153,7 +153,7 @@ func testAction(t *testing.T, iamClient *iam.Client, roleARN string, stmt statem
 func unmarshalFromFile(t *testing.T, cr string, crToTest *crStruct) {
 	file := "../../" + cr
 
-	yamlFile, err := os.ReadFile(file)
+	yamlFile, err := os.ReadFile(file) //nolint:gosec
 	if err != nil {
 		t.Fatal("Unable to read from file: "+file, err)
 	}
@@ -166,7 +166,7 @@ func unmarshalFromFile(t *testing.T, cr string, crToTest *crStruct) {
 
 // Fills federatedAccountAccess struct from given cr
 func getFederatedAccountAccessCR(t *testing.T, cr string, accountAccessCR *federatedAccountAccess) {
-	ocGet := exec.Command("oc", "get", "awsfederatedaccountaccess", "-n", "aws-account-operator", "-o", "yaml", cr)
+	ocGet := exec.CommandContext(context.Background(), "oc", "get", "awsfederatedaccountaccess", "-n", "aws-account-operator", "-o", "yaml", cr)
 	accountAccessYAML, err := ocGet.CombinedOutput()
 	if err != nil {
 		t.Fatal("Error getting AccountAccessYAML from oc get command")
@@ -179,7 +179,7 @@ func getFederatedAccountAccessCR(t *testing.T, cr string, accountAccessCR *feder
 
 // Fills awsUserSecret struct from the secret
 func getSecretCredentials(t *testing.T, secret *awsUserSecret) {
-	ocSecret := exec.Command("oc", "get", "secret", "-n", "aws-account-operator", "-o", "yaml", "osd-creds-mgmt-osd-staging-1-secret")
+	ocSecret := exec.CommandContext(context.Background(), "oc", "get", "secret", "-n", "aws-account-operator", "-o", "yaml", "osd-creds-mgmt-osd-staging-1-secret")
 	secretYAML, err := ocSecret.CombinedOutput()
 	if err != nil {
 		t.Fatal("Unable to obtain osdManagedAdmin credentials")

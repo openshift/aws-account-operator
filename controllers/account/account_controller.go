@@ -1130,7 +1130,7 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 
 		if createStatus == organizationstypes.CreateAccountStateFailed {
 			var returnErr error
-		//nolint:exhaustive // Only handling specific failure reasons, all others map to generic failure
+			//nolint:exhaustive // Only handling specific failure reasons, all others map to generic failure
 			switch status.CreateAccountStatus.FailureReason { //nolint:exhaustive
 			case organizationstypes.CreateAccountFailureReasonAccountLimitExceeded:
 				returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
