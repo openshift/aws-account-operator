@@ -170,8 +170,12 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	// Handle BYOC vs non-BYOC account creation
-	if err := r.handleAccountCreation(ctx, reqLogger, currentAcctInstance, awsSetupClient, complianceTags); err != nil {
+	result, err := r.handleAccountCreation(ctx, reqLogger, currentAcctInstance, awsSetupClient, complianceTags)
+	if err != nil {
 		return reconcile.Result{}, err
+	}
+	if result.Requeue || result.RequeueAfter > 0 {
+		return result, nil
 	}
 
 	// Handle region enablement
@@ -310,14 +314,14 @@ func (r *AccountReconciler) handleAccountDeletion(ctx context.Context, reqLogger
 	return reconcile.Result{}, nil
 }
 
-func (r *AccountReconciler) handleAccountCreation(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, awsSetupClient awsclient.Client, complianceTags map[string]string) error {
+func (r *AccountReconciler) handleAccountCreation(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, awsSetupClient awsclient.Client, complianceTags map[string]string) (reconcile.Result, error) {
 	if newBYOCAccount(account) {
 		return r.handleBYOCCreation(ctx, reqLogger, account)
 	}
 	return r.handleNonBYOCCreation(ctx, reqLogger, account, awsSetupClient, complianceTags)
 }
 
-func (r *AccountReconciler) handleBYOCCreation(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+func (r *AccountReconciler) handleBYOCCreation(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account) (reconcile.Result, error) {
 	initErr := r.initializeNewCCSAccount(ctx, reqLogger, account)
 	if initErr != nil {
 		stateErr := r.setAccountFailed(
@@ -331,26 +335,25 @@ func (r *AccountReconciler) handleBYOCCreation(ctx context.Context, reqLogger lo
 			reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
 		}
 		reqLogger.Error(initErr, "failed initializing new CCS account")
-		return initErr
+		return reconcile.Result{}, initErr
 	}
 
 	utils.SetAccountStatus(account, AccountCreating, awsv1alpha1.AccountCreating, AccountCreating)
 	updateErr := r.statusUpdate(ctx, account)
 	if updateErr != nil {
 		reqLogger.Info("failed updating account state, retrying", "desired state", AccountCreating)
-		return updateErr
+		return reconcile.Result{}, updateErr
 	}
-	return nil
+	return reconcile.Result{}, nil
 }
 
-func (r *AccountReconciler) handleNonBYOCCreation(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, awsSetupClient awsclient.Client, complianceTags map[string]string) error {
+func (r *AccountReconciler) handleNonBYOCCreation(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, awsSetupClient awsclient.Client, complianceTags map[string]string) (reconcile.Result, error) {
 	if account.IsPendingVerification() {
-		_, err := r.HandleNonCCSPendingVerification(ctx, reqLogger, account, awsSetupClient)
-		return err
+		return r.HandleNonCCSPendingVerification(ctx, reqLogger, account, awsSetupClient)
 	}
 
 	if account.IsReadyUnclaimedAndHasClaimLink() {
-		return ClaimAccount(ctx, r, account)
+		return reconcile.Result{}, ClaimAccount(ctx, r, account)
 	}
 
 	if account.IsCreating() && utils.CreationConditionOlderThan(*account, createPendTime) {
@@ -364,9 +367,9 @@ func (r *AccountReconciler) handleNonBYOCCreation(ctx context.Context, reqLogger
 		)
 		if stateErr != nil {
 			reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
-			return stateErr
+			return reconcile.Result{}, stateErr
 		}
-		return errors.New(errMsg)
+		return reconcile.Result{}, errors.New(errMsg)
 	}
 
 	if account.IsUnclaimedAndHasNoState() {
@@ -374,22 +377,22 @@ func (r *AccountReconciler) handleNonBYOCCreation(ctx context.Context, reqLogger
 			if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
 				if !config.IsFedramp() {
 					reqLogger.Info("AWS Account limit reached. This does not always indicate a problem, it's a limit we enforce in the configmap to prevent runaway account creation")
-					return fmt.Errorf("account limit reached")
+					return reconcile.Result{}, fmt.Errorf("account limit reached")
 				}
 			}
 
 			if err := r.nonCCSAssignAccountID(ctx, reqLogger, account, awsSetupClient, complianceTags); err != nil {
-				return err
+				return reconcile.Result{}, err
 			}
 		} else {
 			utils.SetAccountStatus(account, "AWS account already created", awsv1alpha1.AccountCreating, AccountCreating)
 			err := r.statusUpdate(ctx, account)
 			if err != nil {
-				return err
+				return reconcile.Result{}, err
 			}
 		}
 	}
-	return nil
+	return reconcile.Result{}, nil
 }
 
 func (r *AccountReconciler) handleAccountInitialization(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, awsSetupClient awsclient.Client, amiOwner string, namespace string) (reconcile.Result, error) {
