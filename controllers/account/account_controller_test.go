@@ -1511,7 +1511,7 @@ var _ = Describe("Account Controller", func() {
 		It("Should recreate the IAM user and secret for a non-CCS account that is ready for reuse but missing the IAM user and secret.", func() {
 			tmpcli, err := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
 			Expect(err).ToNot(HaveOccurred())
-			mockAWSClient = tmpcli.(*mock.MockClient)
+			mockAWSClient = tmpcli.(*mock.MockClient) //nolint:errcheck // Test code - panic on wrong type is acceptable
 
 			testAccount := &newTestAccountBuilder().WithSpec(awsv1alpha1.AccountSpec{
 				AwsAccountID:       "123456789012",
@@ -1735,7 +1735,7 @@ var _ = Describe("Account Controller", func() {
 			// run GetClient once so the cached client is actually populated
 			tmpcli, err := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
 			Expect(err).ToNot(HaveOccurred())
-			mockAWSClient = tmpcli.(*mock.MockClient)
+			mockAWSClient = tmpcli.(*mock.MockClient) //nolint:errcheck // Test code - panic on wrong type is acceptable
 
 			testAccount := &newTestAccountBuilder().BYOC(false).WithState(AccountCreating).acct
 			testAccount.Status.Conditions = append(testAccount.Status.Conditions, awsv1alpha1.AccountCondition{
