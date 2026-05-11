@@ -350,7 +350,7 @@ func TestCreateOrUpdateIAMPolicy(t *testing.T) {
 	mockAWSClient.EXPECT().CreatePolicy(gomock.Any(), &iam.CreatePolicyInput{
 		PolicyName:     aws.String(policyName),
 		Description:    aws.String(afr.Spec.AWSCustomPolicy.Description),
-		PolicyDocument: aws.String(string(jsonPolicyDoc)),
+		PolicyDocument: aws.String(jsonPolicyDoc),
 	}).Return(
 		nil,
 		&iamtypes.EntityAlreadyExistsException{Message: aws.String("")},
@@ -365,7 +365,7 @@ func TestCreateOrUpdateIAMPolicy(t *testing.T) {
 	mockAWSClient.EXPECT().CreatePolicy(gomock.Any(), &iam.CreatePolicyInput{
 		PolicyName:     aws.String(policyName),
 		Description:    aws.String(afr.Spec.AWSCustomPolicy.Description),
-		PolicyDocument: aws.String(string(jsonPolicyDoc)),
+		PolicyDocument: aws.String(jsonPolicyDoc),
 	}).Return(
 		&iam.CreatePolicyOutput{
 			Policy: &iamtypes.Policy{},

@@ -217,7 +217,7 @@ func CreateIAMUser(reqLogger logr.Logger, client awsclient.Client, userName stri
 					utils.LogAwsError(reqLogger, "CreateIAMUser: Unexpected AWS Error during creation of IAM user", nil, err)
 					return &iam.CreateUserOutput{}, err
 				}
-				time.Sleep(time.Duration(time.Duration(attempt*5*testSleepModifier) * time.Second))
+				time.Sleep(time.Duration(attempt*5*testSleepModifier) * time.Second)
 			} else {
 				return &iam.CreateUserOutput{}, err
 			}

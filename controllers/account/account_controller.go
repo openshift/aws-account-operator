@@ -1158,7 +1158,7 @@ func ClaimAccount(r *AccountReconciler, currentAcctInstance *awsv1alpha1.Account
 		currentAcctInstance.Spec.ClaimLinkNamespace)
 	currentAcctInstance.Status.Conditions = utils.SetAccountCondition(
 		currentAcctInstance.Status.Conditions,
-		awsv1alpha1.AccountConditionType(awsv1alpha1.AccountIsClaimed),
+		awsv1alpha1.AccountIsClaimed,
 		// Switch the Condition off
 		corev1.ConditionTrue,
 		AccountInitializingRegions,
@@ -1406,7 +1406,7 @@ func parseTagsFromString(tags string) []awsclient.AWSTag {
 }
 
 func castAWSRegionType(regions []ec2types.Region) []awsv1alpha1.AwsRegions {
-	var awsRegions []awsv1alpha1.AwsRegions
+	awsRegions := make([]awsv1alpha1.AwsRegions, 0, len(regions))
 	for _, region := range regions {
 		awsRegions = append(awsRegions, awsv1alpha1.AwsRegions{Name: *region.RegionName})
 	}

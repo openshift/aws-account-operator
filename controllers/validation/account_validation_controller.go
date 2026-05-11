@@ -660,8 +660,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	return utils.DoNotRequeue()
 }
 func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder, optInRegions string) error {
-	var regionList []string
 	regions := strings.Split(optInRegions, ",")
+	regionList := make([]string, 0, len(regions))
 	for _, region := range regions {
 		regionList = append(regionList, strings.TrimSpace(region))
 	}

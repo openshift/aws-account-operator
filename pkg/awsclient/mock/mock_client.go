@@ -33,12 +33,12 @@ func (mp *Builder) GetClient(controllerName string, kubeClient client.Client, in
 // mocked AWS Client as a MockClient so it can be EXPECT()ed upon.
 func GetMockClient(b awsclient.IBuilder) *MockClient {
 	// Make sure this is only called from tests
-	_ = b.(*Builder)
+	_ = b.(*Builder) //nolint:errcheck // Intentional panic if wrong type in test code
 	// The arguments don't matter. This returns a Client
 	c, err := b.GetClient("", nil, awsclient.NewAwsClientInput{})
 	if err != nil {
 		panic("GetMockClient failed: " + err.Error())
 	}
 	// What we want is a MockClient
-	return c.(*MockClient)
+	return c.(*MockClient) //nolint:errcheck // Intentional panic if wrong type in test code
 }
