@@ -365,7 +365,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 
 		err = MoveAccountToOU(r, reqLogger, awsClient, accountClaim, unclaimedAccount)
 		if err != nil {
-			if err == awsv1alpha1.ErrAccMoveRaceCondition {
+			if errors.Is(err, awsv1alpha1.ErrAccMoveRaceCondition) {
 				// Due to a race condition, we need to requeue the reconcile to ensure that the account was correctly moved into the correct OU
 				return reconcile.Result{Requeue: true}, nil
 			}
@@ -419,7 +419,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 
 			// Implement IAM user deletion logic
 			if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil {
-				return reconcile.Result{}, fmt.Errorf("failed deleting IAM users: %v", err)
+				return reconcile.Result{}, fmt.Errorf("failed deleting IAM users: %w", err)
 			}
 
 			// Deletes account IAM user Secret

@@ -327,7 +327,7 @@ func TestValidateAccountOU(t *testing.T) {
 			r := &AccountValidationReconciler{}
 			r.OUNameIDMap = tt.ouMap
 			err := r.ValidateAccountOU(tt.awsClient, tt.account, testPoolOUID, testBaseOUID)
-			if err != tt.wantErr {
+			if !errors.Is(err, tt.wantErr) {
 				var ave *AccountValidationError
 				if errors.As(err, &ave) {
 					if ave.Err.Error() == tt.wantErr.Error() {
@@ -413,14 +413,14 @@ func TestValidateAccountOrigin(t *testing.T) {
 				t.Errorf("ValidateAccountOrigin() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
 				if tt.wantErr {
-					err, ok := err.(*AccountValidationError)
-					if !ok {
+					var validationErr *AccountValidationError
+					if !errors.As(err, &validationErr) {
 						t.Errorf("ValidateAccountOrigin() error, expected AccountValidationError")
 					}
-					if err.Type != InvalidAccount {
-						t.Errorf("ValidateAccountOrigin() error, expected error of type InvalidAccount but was %v", err.Type)
+					if validationErr.Type != InvalidAccount {
+						t.Errorf("ValidateAccountOrigin() error, expected error of type InvalidAccount but was %v", validationErr.Type)
 					}
-					if err.Err.Error() != tt.expectedErr {
+					if validationErr.Err.Error() != tt.expectedErr {
 						t.Errorf("ValidateAccountOrigin() error, did not get correct error message")
 					}
 				}
@@ -570,17 +570,17 @@ func TestValidateAccount_ValidateAccountTags(t *testing.T) {
 				t.Errorf("ValidateAccountTags() error = %v, wantErr %v", err, tt.wantErr)
 			} else {
 				if tt.wantErr {
-					err, ok := err.(*AccountValidationError)
-					if !ok {
-						t.Errorf("ValidateAccountTags() error, expected error of type AccountValidationError but was %v", err.Type)
+					var validationErr *AccountValidationError
+					if !errors.As(err, &validationErr) {
+						t.Errorf("ValidateAccountTags() error, expected error of type AccountValidationError but was %v", validationErr.Type)
 					}
-					if err.Type == MissingTag && err.Err.Error() != "account is not tagged with an owner" {
+					if validationErr.Type == MissingTag && validationErr.Err.Error() != "account is not tagged with an owner" {
 						t.Errorf("ValidateAccountTags() error, did not get correct error message")
 					}
-					if err.Type == IncorrectOwnerTag && err.Err.Error() != "account is not tagged with the correct owner" {
+					if validationErr.Type == IncorrectOwnerTag && validationErr.Err.Error() != "account is not tagged with the correct owner" {
 						t.Errorf("ValidateAccountTags() error, did not get correct error message")
 					}
-					if err.Type == AccountTagFailed && err.Err.Error() != "failed" {
+					if validationErr.Type == AccountTagFailed && validationErr.Err.Error() != "failed" {
 						t.Errorf("ValidateAccountTags() error, did not get correct error message")
 					}
 				}
