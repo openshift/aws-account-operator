@@ -3,6 +3,7 @@ package accountclaim
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -461,7 +462,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			err = r.createIAMSecret(reqLogger, accountClaim, unclaimedAccount)
 			if err != nil {
-				return reconcile.Result{}, nil
+				return reconcile.Result{}, err
 			}
 			reqLogger.V(1).Info("successfully created IAM secret", "accountclaim", accountClaim.Name)
 		}
@@ -484,7 +485,7 @@ func (r *AccountClaimReconciler) CleanUpIAMRoleAndPolicies(reqLogger logr.Logger
 		RoleName: aws.String(roleName),
 	})
 	if err != nil {
-		return nil
+		return err
 	}
 
 	respPolicy, err := awsClient.ListRolePolicies(context.TODO(), &iam.ListRolePoliciesInput{
@@ -823,7 +824,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)
 			if err != nil {
-				return reconcile.Result{}, nil
+				return reconcile.Result{}, err
 			}
 			reqLogger.V(1).Info("successfully created IAM secret", "accountclaim", accountClaim.Name)
 		}

@@ -454,7 +454,7 @@ func (r *AccountReconciler) generateAccountTags(reqLogger logr.Logger, configMap
 	enabled, err := strconv.ParseBool(configMap.Data["feature.compliance_tags"])
 	if err != nil {
 		reqLogger.Info("Could not retrieve feature flag 'feature.compliance_tags' - compliance tagging is disabled")
-		return tags, nil
+		return tags, err
 	}
 
 	if !enabled {
@@ -487,7 +487,7 @@ func (r *AccountReconciler) generateAccountTags(reqLogger logr.Logger, configMap
 func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string) (reconcile.Result, error) {
 	numberOfAccountsOptingIn, err := CalculateOptingInRegionAccounts(reqLogger, r.Client)
 	if err != nil {
-		return reconcile.Result{}, nil
+		return reconcile.Result{}, err
 	}
 
 	if currentAcctInstance.Status.OptInRegions == nil {
