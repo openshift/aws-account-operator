@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 
 	"github.com/aws/aws-sdk-go-v2/aws"

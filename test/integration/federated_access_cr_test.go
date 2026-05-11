@@ -149,7 +149,6 @@ func testAction(t *testing.T, iamClient *iam.Client, roleARN string, stmt statem
 	}
 }
 
-
 // Unmarshals YAML from File
 func unmarshalFromFile(t *testing.T, cr string, crToTest *crStruct) {
 	file := "../../" + cr

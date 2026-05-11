@@ -1,8 +1,8 @@
 package mock
 
 import (
-	"go.uber.org/mock/gomock"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
+	"go.uber.org/mock/gomock"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -18,7 +18,9 @@ type Builder struct {
 // GetClient generates a mocked AWS client using the embedded MockController.
 // The arguments are ignored, and the error is always nil.
 // The returned client is a singleton for any given MockBuilder instance, so you can do e.g.
-//    mp.GetClient(...).EXPECT()...
+//
+//	mp.GetClient(...).EXPECT()...
+//
 // and then when the code uses a client created via GetClient(), it'll be using the same client.
 func (mp *Builder) GetClient(controllerName string, kubeClient client.Client, input awsclient.NewAwsClientInput) (awsclient.Client, error) {
 	if mp.cachedClient == nil {

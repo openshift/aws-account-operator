@@ -1453,9 +1453,9 @@ var _ = Describe("Account Controller", func() {
 	Context("Testing BuildAccount", func() {
 		var (
 			knownErrors = map[string]struct {
-				err          error
-				expectedErr  error
-				errorSubstr  string
+				err         error
+				expectedErr error
+				errorSubstr string
 			}{
 				"ConcurrentModificationException": {
 					err:         &organizationstypes.ConcurrentModificationException{Message: aws.String("Error String")},

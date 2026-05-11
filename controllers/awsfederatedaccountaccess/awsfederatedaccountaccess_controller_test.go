@@ -133,7 +133,7 @@ func TestCheckAndDeletePolicy(t *testing.T) {
 			mockAWSClient.EXPECT().ListPolicyVersions(gomock.Any(), &iam.ListPolicyVersionsInput{PolicyArn: policyArn}).Return(test.listPolicyVersionsOutput, nil)
 			mockAWSClient.EXPECT().DeletePolicy(
 				gomock.Any(),
-			&iam.DeletePolicyInput{PolicyArn: policyArn}).Return(test.deletePolicyOut, test.err)
+				&iam.DeletePolicyInput{PolicyArn: policyArn}).Return(test.deletePolicyOut, test.err)
 			if test.listPolicyVersionsOutput.Versions != nil {
 				mockAWSClient.EXPECT().DeletePolicyVersion(gomock.Any(), gomock.Any()).Return(nil, test.err)
 			}
