@@ -1509,7 +1509,8 @@ var _ = Describe("Account Controller", func() {
 
 	Context("Testing Reconciliation", func() {
 		It("Should recreate the IAM user and secret for a non-CCS account that is ready for reuse but missing the IAM user and secret.", func() {
-			tmpcli, _ := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
+			tmpcli, err := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
+			Expect(err).ToNot(HaveOccurred())
 			mockAWSClient = tmpcli.(*mock.MockClient)
 
 			testAccount := &newTestAccountBuilder().WithSpec(awsv1alpha1.AccountSpec{
@@ -1656,7 +1657,7 @@ var _ = Describe("Account Controller", func() {
 				},
 			}, nil)
 
-			_, err := r.Reconcile(context.TODO(), req)
+			_, err = r.Reconcile(context.TODO(), req)
 			Expect(err).ToNot(HaveOccurred())
 
 			ac := &awsv1alpha1.Account{}
@@ -1732,7 +1733,8 @@ var _ = Describe("Account Controller", func() {
 
 		It("Should try reconciliation again when region init failed due to an OptInError", func() {
 			// run GetClient once so the cached client is actually populated
-			tmpcli, _ := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
+			tmpcli, err := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
+			Expect(err).ToNot(HaveOccurred())
 			mockAWSClient = tmpcli.(*mock.MockClient)
 
 			testAccount := &newTestAccountBuilder().BYOC(false).WithState(AccountCreating).acct

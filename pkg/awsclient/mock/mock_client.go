@@ -35,7 +35,10 @@ func GetMockClient(b awsclient.IBuilder) *MockClient {
 	// Make sure this is only called from tests
 	_ = b.(*Builder)
 	// The arguments don't matter. This returns a Client
-	c, _ := b.GetClient("", nil, awsclient.NewAwsClientInput{})
+	c, err := b.GetClient("", nil, awsclient.NewAwsClientInput{})
+	if err != nil {
+		panic("GetMockClient failed: " + err.Error())
+	}
 	// What we want is a MockClient
 	return c.(*MockClient)
 }
