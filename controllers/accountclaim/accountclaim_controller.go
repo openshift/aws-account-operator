@@ -234,7 +234,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 				}
 				reqLogger.V(1).Info("successfully deleted IAM secret", "accountclaim", accountClaim.Name)
 			}
-			currentAcctInstance, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+			currentAcctInstance, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink)
 			if accountErr != nil {
 				reqLogger.Error(accountErr, "Unable to get claimed account")
 			}
@@ -314,7 +314,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		}
 		reqLogger.V(1).Info("successfully got unclaimed account", "accountclaim", accountClaim.Name)
 	} else {
-		unclaimedAccount, err = r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+		unclaimedAccount, err = r.getClaimedAccount(accountClaim.Spec.AccountLink)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -698,7 +698,7 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logge
 			}
 
 			// Get account claimed by deleted accountclaim
-			failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+			failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink)
 			if accountErr != nil {
 				reqLogger.Error(accountErr, "Failed to get claimed account")
 				return fmt.Errorf("failed to get claimed account: %w", err)
@@ -715,7 +715,7 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logge
 	}
 
 	// Remove finalizer to unlock deletion of the accountClaim
-	return r.removeFinalizer(reqLogger, accountClaim, accountClaimFinalizer)
+	return r.removeFinalizer(reqLogger, accountClaim)
 }
 
 func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (reconcile.Result, error) {
@@ -852,9 +852,9 @@ func (r *AccountClaimReconciler) createAccountForBYOCClaim(accountClaim *awsv1al
 	return err
 }
 
-func (r *AccountClaimReconciler) getClaimedAccount(accountLink string, namespace string) (*awsv1alpha1.Account, error) {
+func (r *AccountClaimReconciler) getClaimedAccount(accountLink string) (*awsv1alpha1.Account, error) {
 	account := &awsv1alpha1.Account{}
-	err := r.Get(context.TODO(), types.NamespacedName{Name: accountLink, Namespace: namespace}, account)
+	err := r.Get(context.TODO(), types.NamespacedName{Name: accountLink, Namespace: awsv1alpha1.AccountCrNamespace}, account)
 	if err != nil {
 		return nil, err
 	}

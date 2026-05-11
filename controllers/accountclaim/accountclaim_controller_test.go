@@ -143,7 +143,17 @@ var _ = Describe("AccountClaim", func() {
 					},
 				}
 
-				objs = []runtime.Object{accountClaim, account}
+				configMap = &v1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "aws-account-operator-configmap",
+						Namespace: "aws-account-operator",
+					},
+					Data: map[string]string{
+						"feature.accountclaim_fleet_manager_trusted_arn": "false",
+					},
+				}
+
+				objs = []runtime.Object{accountClaim, account, configMap}
 			})
 
 			It("should delete AccountClaim", func() {
@@ -480,7 +490,17 @@ var _ = Describe("AccountClaim", func() {
 				accountClaim.Spec.AwsCredentialSecret = dummySecretRef
 				accountClaim.Spec.BYOCAWSAccountID = "123456"
 
-				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(accountClaim).Build()
+				configMap := &v1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "aws-account-operator-configmap",
+						Namespace: "aws-account-operator",
+					},
+					Data: map[string]string{
+						"feature.accountclaim_fleet_manager_trusted_arn": "false",
+					},
+				}
+
+				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(accountClaim, configMap).Build()
 
 				_, err := r.Reconcile(context.TODO(), req)
 				Expect(err).NotTo(HaveOccurred())

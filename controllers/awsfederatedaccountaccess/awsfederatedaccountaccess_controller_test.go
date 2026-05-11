@@ -14,7 +14,6 @@ import (
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
-	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"github.com/openshift/aws-account-operator/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -455,9 +454,8 @@ func TestCreateOrUpdateIAMRole(t *testing.T) {
 	)
 
 	r := AWSFederatedAccountAccessReconciler{}
-	nullLogger := testutils.NewTestLogger().Logger()
 
-	outputRole, err := r.createOrUpdateIAMRole(mockAWSClient, afr, afaa, nullLogger)
+	outputRole, err := r.createOrUpdateIAMRole(mockAWSClient, afr, afaa)
 	assert.Equal(t, outputRole, createRoleOutput.Role)
 	assert.Nil(t, err)
 }

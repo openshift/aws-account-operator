@@ -406,7 +406,7 @@ func CleanUpIAM(reqLogger logr.Logger, awsClient awsclient.Client, accountCR *aw
 	return nil
 }
 
-func deleteIAMUser(reqLogger logr.Logger, awsClient awsclient.Client, user *iamtypes.User) error {
+func deleteIAMUser(awsClient awsclient.Client, user *iamtypes.User) error {
 	var err error
 	// Detach User Policies
 	if err = detachUserPolicies(awsClient, user); err != nil {
@@ -467,7 +467,7 @@ func DeleteIAMUsers(reqLogger logr.Logger, awsClient awsclient.Client, accountCR
 			}
 		}
 		if clusterNameTag && clusterNamespaceTag {
-			err = deleteIAMUser(reqLogger, awsClient, getUser.User)
+			err = deleteIAMUser(awsClient, getUser.User)
 			if err != nil {
 				return err
 			}

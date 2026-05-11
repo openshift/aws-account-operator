@@ -35,7 +35,7 @@ const (
 func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 
 	// Get account claimed by deleted accountclaim
-	reusedAccount, err := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+	reusedAccount, err := r.getClaimedAccount(accountClaim.Spec.AccountLink)
 	if err != nil {
 		// This check ensures that if a BYOC Account CR gets deleted, the rest of the BYOC finalizer logic can still run
 		if !accountClaim.Spec.BYOC {

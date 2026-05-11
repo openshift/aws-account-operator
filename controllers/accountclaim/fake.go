@@ -45,7 +45,7 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 		}
 
 		// Remove finalizer to unlock deletion of the accountClaim
-		err := r.removeFinalizer(reqLogger, accountClaim, accountClaimFinalizer)
+		err := r.removeFinalizer(reqLogger, accountClaim)
 		if err != nil {
 			return true, err
 		}

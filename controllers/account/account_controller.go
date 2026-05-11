@@ -287,7 +287,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				awsv1alpha1.AccountCreationFailed,
 				initErr.Error(),
 				"Failed to initialize new CCS account",
-				AccountFailed,
 			)
 			if stateErr != nil {
 				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
@@ -326,7 +325,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				awsv1alpha1.AccountCreationFailed,
 				"CreationTimeout",
 				errMsg,
-				AccountFailed,
 			)
 			if stateErr != nil {
 				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
@@ -575,7 +573,6 @@ func (r *AccountReconciler) handleIAMUserCreation(reqLogger logr.Logger, current
 			errType,
 			reason,
 			errMsg,
-			AccountFailed,
 		)
 		if stateErr != nil {
 			reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
@@ -607,7 +604,6 @@ func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentA
 		awsv1alpha1.AccountClientError,
 		reason,
 		errMsg,
-		AccountFailed,
 	)
 	if stateErr != nil {
 		reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
@@ -628,7 +624,6 @@ func (r *AccountReconciler) handleAccountInitializingRegions(reqLogger logr.Logg
 			awsv1alpha1.AccountInternalError,
 			"MissingCondition",
 			errMsg,
-			AccountFailed,
 		)
 		return reconcile.Result{}, stateErr
 	}
@@ -673,7 +668,6 @@ func (r *AccountReconciler) handleAccountInitializingRegions(reqLogger logr.Logg
 			awsv1alpha1.AccountCreationFailed,
 			"RegionInitializationTimeout",
 			errMsg,
-			AccountFailed,
 		)
 		return reconcile.Result{}, stateErr
 	}
@@ -1187,7 +1181,7 @@ func (r *AccountReconciler) statusUpdate(account *awsv1alpha1.Account) error {
 	return err
 }
 
-func (r *AccountReconciler) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype awsv1alpha1.AccountConditionType, reason string, message string, state string) (reconcile.Result, error) {
+func (r *AccountReconciler) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype awsv1alpha1.AccountConditionType, reason string, message string) (reconcile.Result, error) {
 	reqLogger.Info(message)
 	// Update account status and condition
 	account.Status.Conditions = utils.SetAccountCondition(
@@ -1199,7 +1193,7 @@ func (r *AccountReconciler) setAccountFailed(reqLogger logr.Logger, account *aws
 		utils.UpdateConditionNever,
 		account.Spec.BYOC,
 	)
-	account.Status.State = state
+	account.Status.State = AccountFailed
 
 	// Set the failure in the accountClaim as well
 	err := r.accountClaimError(reqLogger, account, reason, message)
@@ -1460,7 +1454,7 @@ func (r *AccountReconciler) handleCreateAdminAccessRole(
 			}
 			return nil, nil, acctClaimErr
 		}
-		ccsClient, err := r.getCCSClient(currentAcctInstance, accountClaim)
+		ccsClient, err := r.getCCSClient(accountClaim)
 		if err != nil {
 			reqLogger.Error(err, "An error was encountered retrieving CCS Client")
 			return nil, nil, err
