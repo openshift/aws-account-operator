@@ -6,4 +6,4 @@ if ! command -v prek &>/dev/null; then
   exit 1
 fi
 
-prek run --all-files
+prek run
