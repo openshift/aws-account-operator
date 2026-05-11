@@ -1321,11 +1321,11 @@ var _ = Describe("Account Controller", func() {
 				Annotations: map[string]string{},
 			},
 			Data: map[string]string{
-				"ami-owner":                 "12345",
-				"feature.compliance_tags":   "false",
-				"feature.opt_in_regions":    "false",
-				"feature.account_tags":      "false",
-				"feature.service_quotas":    "false",
+				"ami-owner":                                      "12345",
+				"feature.compliance_tags":                        "false",
+				"feature.opt_in_regions":                         "false",
+				"feature.account_tags":                           "false",
+				"feature.service_quotas":                         "false",
 				"feature.accountclaim_fleet_manager_trusted_arn": "false",
 			},
 		}
