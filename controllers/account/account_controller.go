@@ -278,7 +278,7 @@ func (r *AccountReconciler) handleAccountDeletion(ctx context.Context, reqLogger
 			_, err = r.handleAWSClientError(ctx, reqLogger, account, err)
 			var aerr smithy.APIError
 			if errors.As(err, &aerr) {
-				if aerr.ErrorCode() == "AccessDenied" && account.IsBYOC() {
+				if aerr.ErrorCode() == "AccessDenied" {
 					err = r.removeFinalizer(ctx, account, awsv1alpha1.AccountFinalizer)
 					if err != nil {
 						reqLogger.Error(err, "failed removing account finalizer")
