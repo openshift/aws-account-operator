@@ -11,6 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/aws/smithy-go"
 	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 
 	"github.com/go-logr/logr"
@@ -300,7 +301,13 @@ func (r *AccountClaimReconciler) handleDeletion(ctx context.Context, reqLogger l
 		}
 		currentAcctInstance, accountErr := r.getClaimedAccount(ctx, accountClaim.Spec.AccountLink)
 		if accountErr != nil {
-			reqLogger.Error(accountErr, "Unable to get claimed account")
+			if !k8serr.IsNotFound(accountErr) {
+				// Transient error - retry to ensure we don't skip IAM cleanup
+				reqLogger.Error(accountErr, "Unable to get claimed account")
+				return reconcile.Result{}, accountErr
+			}
+			// Account not found - skip cleanup and proceed to deletion
+			reqLogger.Info("Claimed account not found - skipping IAM cleanup")
 		} else if currentAcctInstance != nil {
 			reqLogger.V(1).Info("successfully got claimed account", "accountclaim", accountClaim.Name)
 		}
@@ -538,6 +545,12 @@ func (r *AccountClaimReconciler) CleanUpIAMRoleAndPolicies(ctx context.Context, 
 		RoleName: aws.String(roleName),
 	})
 	if err != nil {
+		// If role doesn't exist, cleanup is already complete
+		var aerr smithy.APIError
+		if errors.As(err, &aerr) && aerr.ErrorCode() == "NoSuchEntity" {
+			reqLogger.Info("IAM role does not exist - cleanup not needed", "roleName", roleName)
+			return nil
+		}
 		return err
 	}
 
@@ -643,6 +656,7 @@ func (r *AccountClaimReconciler) createIAMRoleSecret(ctx context.Context, reqLog
 	err = r.Update(ctx, accountClaim)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("AccountClaim spec update for %s failed", accountClaim.Name))
+		return err
 	}
 	return nil
 }
