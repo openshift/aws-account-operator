@@ -290,7 +290,7 @@ func getAllPolicies(awsClient awsclient.Client) ([]iamtypes.Policy, error) {
 // Create list of policy names from a Policy slice
 func buildPolicyNameSlice(policies []iamtypes.Policy) []string {
 
-	var policyNames []string
+	policyNames := make([]string, 0, len(policies))
 	for _, policy := range policies {
 		policyNames = append(policyNames, *policy.PolicyName)
 	}

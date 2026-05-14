@@ -1321,7 +1321,12 @@ var _ = Describe("Account Controller", func() {
 				Annotations: map[string]string{},
 			},
 			Data: map[string]string{
-				"ami-owner": "12345",
+				"ami-owner":                                      "12345",
+				"feature.compliance_tags":                        "false",
+				"feature.opt_in_regions":                         "false",
+				"feature.account_tags":                           "false",
+				"feature.service_quotas":                         "false",
+				"feature.accountclaim_fleet_manager_trusted_arn": "false",
 			},
 		}
 		r = &AccountReconciler{
@@ -1453,9 +1458,9 @@ var _ = Describe("Account Controller", func() {
 	Context("Testing BuildAccount", func() {
 		var (
 			knownErrors = map[string]struct {
-				err          error
-				expectedErr  error
-				errorSubstr  string
+				err         error
+				expectedErr error
+				errorSubstr string
 			}{
 				"ConcurrentModificationException": {
 					err:         &organizationstypes.ConcurrentModificationException{Message: aws.String("Error String")},
@@ -1509,8 +1514,9 @@ var _ = Describe("Account Controller", func() {
 
 	Context("Testing Reconciliation", func() {
 		It("Should recreate the IAM user and secret for a non-CCS account that is ready for reuse but missing the IAM user and secret.", func() {
-			tmpcli, _ := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
-			mockAWSClient = tmpcli.(*mock.MockClient)
+			tmpcli, err := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
+			Expect(err).ToNot(HaveOccurred())
+			mockAWSClient = tmpcli.(*mock.MockClient) //nolint:errcheck // Test code - panic on wrong type is acceptable
 
 			testAccount := &newTestAccountBuilder().WithSpec(awsv1alpha1.AccountSpec{
 				AwsAccountID:       "123456789012",
@@ -1656,7 +1662,7 @@ var _ = Describe("Account Controller", func() {
 				},
 			}, nil)
 
-			_, err := r.Reconcile(context.TODO(), req)
+			_, err = r.Reconcile(context.TODO(), req)
 			Expect(err).ToNot(HaveOccurred())
 
 			ac := &awsv1alpha1.Account{}
@@ -1732,8 +1738,9 @@ var _ = Describe("Account Controller", func() {
 
 		It("Should try reconciliation again when region init failed due to an OptInError", func() {
 			// run GetClient once so the cached client is actually populated
-			tmpcli, _ := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
-			mockAWSClient = tmpcli.(*mock.MockClient)
+			tmpcli, err := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
+			Expect(err).ToNot(HaveOccurred())
+			mockAWSClient = tmpcli.(*mock.MockClient) //nolint:errcheck // Test code - panic on wrong type is acceptable
 
 			testAccount := &newTestAccountBuilder().BYOC(false).WithState(AccountCreating).acct
 			testAccount.Status.Conditions = append(testAccount.Status.Conditions, awsv1alpha1.AccountCondition{

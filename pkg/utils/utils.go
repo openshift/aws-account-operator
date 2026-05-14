@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/openshift/aws-account-operator/test/fixtures"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/openshift/aws-account-operator/test/fixtures"
 
 	"github.com/aws/smithy-go"
 	"gopkg.in/yaml.v2"

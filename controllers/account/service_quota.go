@@ -49,12 +49,13 @@ func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Clien
 		)
 
 		// Check to see have we already requested this increase
-		requestStatus, err := checkQuotaRequestStatus(reqLogger, awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
+		requestStatus, err := checkQuotaRequestStatus(awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
 		if err != nil {
 			reqLogger.Error(err, "failed to get quota change history")
 			return err
 		}
 
+		//nolint:exhaustive // Unknown status is handled by default case as error
 		switch requestStatus {
 		case awsv1alpha1.ServiceRequestCompleted:
 			reqLogger.Info(
@@ -77,7 +78,7 @@ func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Clien
 			serviceQuotaStatus.Status = awsv1alpha1.ServiceRequestDenied
 			return nil
 		case awsv1alpha1.ServiceRequestTodo:
-			submitted, err := setServiceQuota(reqLogger, awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
+			submitted, err := setServiceQuota(awsClient, string(quotaCode), serviceCode, float64(serviceQuotaStatus.Value))
 			if err != nil {
 				reqLogger.Error(err, "failed requesting quota increase", "QuotaCode", string(quotaCode))
 			}
@@ -203,7 +204,7 @@ func serviceQuotaNeedsIncrease(reqLogger logr.Logger, client awsclient.Client, q
 	return false, err
 }
 
-func setServiceQuota(reqLogger logr.Logger, client awsclient.Client, quotaCode string, serviceCode string, desiredQuota float64) (bool, error) {
+func setServiceQuota(client awsclient.Client, quotaCode string, serviceCode string, desiredQuota float64) (bool, error) {
 	// Request a service quota increase for vCPU quota
 	var result *servicequotas.RequestServiceQuotaIncreaseOutput
 	var alreadySubmitted bool
@@ -291,7 +292,7 @@ func setServiceQuota(reqLogger logr.Logger, client awsclient.Client, quotaCode s
 	return true, nil
 }
 
-func checkQuotaRequestStatus(reqLogger logr.Logger, awsClient awsclient.Client, quotaCode string, serviceCode string, expectedQuota float64) (awsv1alpha1.ServiceRequestStatus, error) {
+func checkQuotaRequestStatus(awsClient awsclient.Client, quotaCode string, serviceCode string, expectedQuota float64) (awsv1alpha1.ServiceRequestStatus, error) {
 
 	var nextToken *string
 	// Default is 1/10 of a second, but any retries we need to make should be delayed a few seconds
@@ -358,7 +359,7 @@ func checkQuotaRequestStatus(reqLogger logr.Logger, awsClient awsclient.Client, 
 		// If so, it's already been submitted
 		for _, change := range result.RequestedQuotas {
 			if changeRequestMatches(change, quotaCode, serviceCode, expectedQuota) {
-				switch change.Status {
+				switch change.Status { //nolint:exhaustive
 				case servicequotastypes.RequestStatusPending, servicequotastypes.RequestStatusCaseOpened:
 					return awsv1alpha1.ServiceRequestInProgress, nil
 				case servicequotastypes.RequestStatusApproved, servicequotastypes.RequestStatusCaseClosed:
