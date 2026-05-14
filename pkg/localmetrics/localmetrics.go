@@ -60,6 +60,7 @@ type MetricsCollector struct {
 	ccsAccountClaimPendingDuration  prometheus.Histogram
 	accountReuseCleanupDuration     prometheus.Histogram
 	accountReuseCleanupFailureCount prometheus.Counter
+	accountClosedCount              prometheus.Counter
 	reconcileDuration               *prometheus.HistogramVec
 	apiCallDuration                 *prometheus.HistogramVec
 }
@@ -171,6 +172,11 @@ func NewMetricsCollector(store cache.Cache) *MetricsCollector {
 			Help:        "Number of account reuse cleanup failures",
 			ConstLabels: prometheus.Labels{"name": operatorName},
 		}),
+		accountClosedCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Name:        "aws_account_operator_accounts_closed_total",
+			Help:        "Total number of AWS accounts closed via CloseAccount API",
+			ConstLabels: prometheus.Labels{"name": operatorName},
+		}),
 		reconcileDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:        "aws_account_operator_reconcile_duration_seconds",
 			Help:        "Distribution of the number of seconds a Reconcile takes, broken down by controller",
@@ -211,6 +217,7 @@ func (c *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	c.ccsAccountClaimPendingDuration.Describe(ch)
 	c.accountReuseCleanupDuration.Describe(ch)
 	c.accountReuseCleanupFailureCount.Describe(ch)
+	c.accountClosedCount.Describe(ch)
 	c.reconcileDuration.Describe(ch)
 	c.apiCallDuration.Describe(ch)
 }
@@ -235,6 +242,7 @@ func (c *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.ccsAccountClaimPendingDuration.Collect(ch)
 	c.accountReuseCleanupDuration.Collect(ch)
 	c.accountReuseCleanupFailureCount.Collect(ch)
+	c.accountClosedCount.Collect(ch)
 	c.reconcileDuration.Collect(ch)
 	c.apiCallDuration.Collect(ch)
 }
@@ -352,6 +360,11 @@ func (c *MetricsCollector) SetAccountReusedCleanupDuration(duration float64) {
 // AddAccountReuseCleanupFailure describes the number of accounts that have failed reuse
 func (c *MetricsCollector) AddAccountReuseCleanupFailure() {
 	c.accountReuseCleanupFailureCount.Inc()
+}
+
+// AddAccountClosed increments the counter for AWS accounts closed via CloseAccount API
+func (c *MetricsCollector) AddAccountClosed() {
+	c.accountClosedCount.Inc()
 }
 
 type ReportedError struct {

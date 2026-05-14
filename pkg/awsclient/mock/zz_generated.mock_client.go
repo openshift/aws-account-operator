@@ -124,6 +124,21 @@ func (mr *MockClientMockRecorder) ChangeResourceRecordSets(arg0, arg1 any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChangeResourceRecordSets", reflect.TypeOf((*MockClient)(nil).ChangeResourceRecordSets), arg0, arg1)
 }
 
+// CloseAccount mocks base method.
+func (m *MockClient) CloseAccount(arg0 context.Context, arg1 *organizations.CloseAccountInput) (*organizations.CloseAccountOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CloseAccount", arg0, arg1)
+	ret0, _ := ret[0].(*organizations.CloseAccountOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CloseAccount indicates an expected call of CloseAccount.
+func (mr *MockClientMockRecorder) CloseAccount(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloseAccount", reflect.TypeOf((*MockClient)(nil).CloseAccount), arg0, arg1)
+}
+
 // CreateAccessKey mocks base method.
 func (m *MockClient) CreateAccessKey(arg0 context.Context, arg1 *iam.CreateAccessKeyInput) (*iam.CreateAccessKeyOutput, error) {
 	m.ctrl.T.Helper()
@@ -467,6 +482,21 @@ func (m *MockClient) DeleteVpcEndpointServiceConfigurations(arg0 context.Context
 func (mr *MockClientMockRecorder) DeleteVpcEndpointServiceConfigurations(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteVpcEndpointServiceConfigurations", reflect.TypeOf((*MockClient)(nil).DeleteVpcEndpointServiceConfigurations), arg0, arg1)
+}
+
+// DescribeAccount mocks base method.
+func (m *MockClient) DescribeAccount(arg0 context.Context, arg1 *organizations.DescribeAccountInput) (*organizations.DescribeAccountOutput, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DescribeAccount", arg0, arg1)
+	ret0, _ := ret[0].(*organizations.DescribeAccountOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DescribeAccount indicates an expected call of DescribeAccount.
+func (mr *MockClientMockRecorder) DescribeAccount(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeAccount", reflect.TypeOf((*MockClient)(nil).DescribeAccount), arg0, arg1)
 }
 
 // DescribeCases mocks base method.
