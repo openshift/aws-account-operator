@@ -25,7 +25,7 @@ import (
 func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Client, quotaCode awsv1alpha1.SupportedServiceQuotas, serviceQuotaStatus *awsv1alpha1.ServiceQuotaStatus) error {
 
 	reqLogger.Info("Handling ServiceQuota Requests")
-	serviceCode, found := getServiceCode(quotaCode)
+	serviceCode, found := awsv1alpha1.ServiceCodeFor(quotaCode)
 	if !found {
 		reqLogger.Error(fixtures.NotFound, "cannot find corresponding ServiceCode for QuotaCode", "QuotaCode", string(quotaCode))
 		return fixtures.NotFound
@@ -98,21 +98,6 @@ func HandleServiceQuotaRequests(reqLogger logr.Logger, awsClient awsclient.Clien
 		serviceQuotaStatus.Status = awsv1alpha1.ServiceRequestCompleted
 	}
 	return nil
-}
-
-func getServiceCode(quotaCode awsv1alpha1.SupportedServiceQuotas) (string, bool) {
-
-	servicesMap := map[awsv1alpha1.SupportedServiceQuotas]string{
-		awsv1alpha1.RunningStandardInstances:  string(awsv1alpha1.EC2ServiceQuota),
-		awsv1alpha1.EC2VPCElasticIPsQuotaCode: string(awsv1alpha1.EC2ServiceQuota),
-		awsv1alpha1.NLBPerRegion:              string(awsv1alpha1.Elasticloadbalancing),
-		awsv1alpha1.RulesPerSecurityGroup:     string(awsv1alpha1.VPCServiceQuota),
-		awsv1alpha1.VPCNetworkAclQuotaCode:    string(awsv1alpha1.VPCServiceQuota),
-		awsv1alpha1.GeneralPurposeSSD:         string(awsv1alpha1.EBSServiceQuota),
-	}
-
-	v, found := servicesMap[quotaCode]
-	return v, found
 }
 
 // getDesiredServiceQuotaValue retrieves the desired quota information from the operator configmap and converts it to a float64
@@ -395,33 +380,46 @@ func changeRequestMatches(change servicequotastypes.RequestedServiceQuotaChange,
 }
 
 func GetServiceQuotaRequest(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) (reconcile.Result, error) {
-	// First we get all request we need to get a status update on:
-	// - Requests that are not yet open on the AWS side
-	// - Requests that are open but not yet completed
-	currentInFlightCount, inFlightQuotaRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
-	_, onlyOpenRequests := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
-	if currentInFlightCount <= MaxOpenQuotaRequests {
-		reqLogger.Info(fmt.Sprintf("currentInFlightCount (%d) <= maxOpenQuotaRequests (%d)", currentInFlightCount, MaxOpenQuotaRequests))
-		var maxRequestsReached = false
-		for region, onlyOpenRequest := range onlyOpenRequests {
-			if maxRequestsReached {
+	// Collect in-flight and pending requests for both regional and global quotas.
+	regionalInFlightCount, inFlightRegional := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
+	globalInFlightCount, inFlightGlobal := currentAcctInstance.GetGlobalQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
+	totalInFlightCount := regionalInFlightCount + globalInFlightCount
+
+	if totalInFlightCount > MaxOpenQuotaRequests {
+		reqLogger.Info("Max open quota requests reached, skipping new requests", "total-in-flight-count", totalInFlightCount)
+		return reconcile.Result{RequeueAfter: 30 * time.Second, Requeue: true}, nil
+	}
+
+	_, onlyOpenRegional := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
+	// Promote pending regional requests into the in-flight set.
+	for region, onlyOpenRequest := range onlyOpenRegional {
+		if totalInFlightCount >= MaxOpenQuotaRequests {
+			break
+		}
+		if _, ok := inFlightRegional[region]; !ok {
+			inFlightRegional[region] = awsv1alpha1.AccountServiceQuota{}
+		}
+		for quotaCode, req := range onlyOpenRequest {
+			inFlightRegional[region][quotaCode] = req
+			totalInFlightCount++
+			if totalInFlightCount >= MaxOpenQuotaRequests {
 				break
-			}
-			if _, ok := inFlightQuotaRequests[region]; !ok {
-				inFlightQuotaRequests[region] = awsv1alpha1.AccountServiceQuota{}
-			}
-			for quotaCode, req := range onlyOpenRequest {
-				inFlightQuotaRequests[region][quotaCode] = req
-				currentInFlightCount += 1
-				if currentInFlightCount >= MaxOpenQuotaRequests {
-					maxRequestsReached = true
-					break
-				}
 			}
 		}
 	}
-	reqLogger.Info("Handling quotarequets", "current-in-flight-count", currentInFlightCount)
-	err := UpdateServiceQuotaRequests(reqLogger, awsClientBuilder, awsSetupClient, currentAcctInstance, client, inFlightQuotaRequests, currentInFlightCount)
+
+	_, onlyOpenGlobal := currentAcctInstance.GetGlobalQuotaRequestsByStatus(awsv1alpha1.ServiceRequestTodo)
+	// Promote pending global requests into the in-flight set.
+	for quotaCode, req := range onlyOpenGlobal {
+		if totalInFlightCount >= MaxOpenQuotaRequests {
+			break
+		}
+		inFlightGlobal[quotaCode] = req
+		totalInFlightCount++
+	}
+
+	reqLogger.Info("Handling quota requests", "total-in-flight-count", totalInFlightCount)
+	err := UpdateServiceQuotaRequests(reqLogger, awsClientBuilder, awsSetupClient, currentAcctInstance, client, inFlightRegional, inFlightGlobal)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -432,29 +430,52 @@ func GetServiceQuotaRequest(reqLogger logr.Logger, awsClientBuilder awsclient.IB
 	return reconcile.Result{RequeueAfter: 30 * time.Second, Requeue: true}, err
 }
 
-func UpdateServiceQuotaRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, serviceQuotaRequests awsv1alpha1.RegionalServiceQuotas, count int) error {
-	for region, quotaRequest := range serviceQuotaRequests {
+// UpdateServiceQuotaRequests processes in-flight regional and global quota increase requests.
+// Regional quotas are applied per region via a region-scoped assumed role. Global quotas (e.g. IAM)
+// are account-wide and applied once via a us-east-1 assumed role.
+func UpdateServiceQuotaRequests(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, regionalQuotaRequests awsv1alpha1.RegionalServiceQuotas, globalQuotaRequests awsv1alpha1.AccountServiceQuota) error {
+	roleToAssume := currentAcctInstance.GetAssumeRole()
+
+	// Process per-region quota requests.
+	for region, quotaRequest := range regionalQuotaRequests {
 		regionLogger := reqLogger.WithValues("Region", region)
-		roleToAssume := currentAcctInstance.GetAssumeRole()
+
 		awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, region, roleToAssume, "")
 		if err != nil {
 			reqLogger.Error(err, "Could not impersonate AWS account", "aws-account", currentAcctInstance.Spec.AwsAccountID)
 			return err
 		}
 
-		// for each open quota in this region check to see if we need to request an increase.
 		for quotaCode, openQuotaRef := range quotaRequest {
-			reqLogger.Info(fmt.Sprintf("Handling quota request for quotaCode: %s", quotaCode))
+			reqLogger.Info(fmt.Sprintf("Handling regional quota request for quotaCode: %s", quotaCode))
 			err = HandleServiceQuotaRequests(regionLogger, awsAssumedRoleClient, quotaCode, openQuotaRef)
 			if err != nil {
-				return err // TODO: For review, do we want to be handling the error like this?
+				return err
 			}
 		}
 	}
 
-	deniedCount, _ := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestDenied)
+	// Process global quota requests using a us-east-1 client (assumed once for all global quotas).
+	if len(globalQuotaRequests) > 0 {
+		globalLogger := reqLogger.WithValues("Region", "us-east-1 (global)")
+		awsGlobalClient, _, err := AssumeRoleAndCreateClient(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, "us-east-1", roleToAssume, "")
+		if err != nil {
+			reqLogger.Error(err, "Could not impersonate AWS account for global quotas", "aws-account", currentAcctInstance.Spec.AwsAccountID)
+			return err
+		}
+		for quotaCode, openQuotaRef := range globalQuotaRequests {
+			reqLogger.Info(fmt.Sprintf("Handling global quota request for quotaCode: %s", quotaCode))
+			err = HandleServiceQuotaRequests(globalLogger, awsGlobalClient, quotaCode, openQuotaRef)
+			if err != nil {
+				return err
+			}
+		}
+	}
 
-	if deniedCount > 0 {
+	// If any quota request was denied, fail the account.
+	deniedRegionalCount, _ := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestDenied)
+	deniedGlobalCount, _ := currentAcctInstance.GetGlobalQuotaRequestsByStatus(awsv1alpha1.ServiceRequestDenied)
+	if deniedRegionalCount+deniedGlobalCount > 0 {
 		controllerutils.SetAccountStatus(currentAcctInstance, "ServiceQuota increase got denied", awsv1alpha1.AccountFailed, AccountFailed)
 	}
 

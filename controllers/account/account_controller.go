@@ -754,9 +754,10 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 		}
 	}
 
-	openCaseCount, _ := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
+	openRegionalCount, _ := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
+	openGlobalCount, _ := currentAcctInstance.GetGlobalQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
 	// Case Resolved and quota increases are all done: account is Ready
-	if supportCaseResolved && openCaseCount == 0 {
+	if supportCaseResolved && openRegionalCount+openGlobalCount == 0 {
 		reqLogger.Info("case and quota increases resolved", "caseID", currentAcctInstance.Status.SupportCaseID)
 		utils.SetAccountStatus(currentAcctInstance, "Account ready to be claimed", awsv1alpha1.AccountReady, AccountReady)
 		_ = r.statusUpdate(currentAcctInstance)
@@ -771,24 +772,41 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 	return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
 }
 
-// This function takes any service quotas defined in the account CR spec and builds them out in the status. The struct for the service quoats in spec and status will differ
-// as the spec uses a 'default' region to reduce configuation complexity, whereas the status lists all regions and their service quoata values as it's easier to iterate over.
+// SetCurrentAccountServiceQuotas takes the service quotas defined in the Account CR spec and
+// expands them into the status. Regional quotas (Spec.RegionalServiceQuotas) are expanded once
+// per enabled AWS region. Global quotas (Spec.GlobalServiceQuotas) are copied once into
+// Status.GlobalServiceQuotas and applied via the us-east-1 endpoint by UpdateServiceQuotaRequests.
 func SetCurrentAccountServiceQuotas(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) error {
 
-	// If standard account, return early
-	if currentAcctInstance.Spec.RegionalServiceQuotas == nil {
+	// Nothing to do if no regional or global quotas are configured.
+	if currentAcctInstance.Spec.RegionalServiceQuotas == nil && currentAcctInstance.Spec.GlobalServiceQuotas == nil {
 		return nil
 	}
 
-	var defaultAccountServiceQuotas awsv1alpha1.AccountServiceQuota
-	var ok bool
-	if defaultAccountServiceQuotas, ok = currentAcctInstance.Spec.RegionalServiceQuotas["default"]; !ok {
+	// Copy global quotas from spec to status. These are account-wide and require no per-region
+	// expansion. They are applied once via us-east-1 in UpdateServiceQuotaRequests.
+	currentAcctInstance.Status.GlobalServiceQuotas = make(awsv1alpha1.AccountServiceQuota)
+	for code, status := range currentAcctInstance.Spec.GlobalServiceQuotas {
+		currentAcctInstance.Status.GlobalServiceQuotas[code] = &awsv1alpha1.ServiceQuotaStatus{
+			Value:  status.Value,
+			Status: awsv1alpha1.ServiceRequestTodo,
+		}
+	}
+
+	// Regional quota expansion requires describing the enabled regions in this account.
+	// If there are no regional quotas configured, skip the AWS describe call entirely.
+	if len(currentAcctInstance.Spec.RegionalServiceQuotas) == 0 {
+		return nil
+	}
+
+	defaultAccountServiceQuotas, ok := currentAcctInstance.Spec.RegionalServiceQuotas["default"]
+	if !ok {
 		err := fmt.Errorf("could not find default key in RegionalServiceQuotas for Account")
 		reqLogger.Error(err, "Could not find default key in RegionalServiceQuotas for Account")
 		return err
 	}
 
-	// Need to assume role into the cluster account
+	// Assume a role in the target account to query which regions are enabled.
 	roleToAssume := currentAcctInstance.GetAssumeRole()
 	awsAssumedRoleClient, _, err := AssumeRoleAndCreateClient(reqLogger, awsClientBuilder, currentAcctInstance, client, awsSetupClient, "", roleToAssume, "")
 	if err != nil {
@@ -796,7 +814,7 @@ func SetCurrentAccountServiceQuotas(reqLogger logr.Logger, awsClientBuilder awsc
 		return err
 	}
 
-	// Get a list of regions enabled in the current account
+	// Get a list of regions enabled in the current account.
 	regionsEnabledInAccount, err := awsAssumedRoleClient.DescribeRegions(context.TODO(), &ec2.DescribeRegionsInput{
 		AllRegions: aws.Bool(false),
 	})
@@ -813,27 +831,32 @@ func SetCurrentAccountServiceQuotas(reqLogger logr.Logger, awsClientBuilder awsc
 	}
 
 	currentAcctInstance.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
-	// By iterating over the regions returned by AWS as opposed to what's in the Account CR Spec, we
-	// won't set the SQ for a region the account doesn't support by mistake.
-	for _, region := range regionsEnabledInAccount.Regions {
-		// Take the default service quota values and apply to all regions - save to CR status
-		currentAcctInstance.Status.RegionalServiceQuotas[*region.RegionName] = defaultAccountServiceQuotas
 
-		// If we've specified another value for a specific region, set it in the status.
+	// By iterating over the regions returned by AWS (not the spec), we avoid setting quotas for
+	// regions the account does not support.
+	for _, region := range regionsEnabledInAccount.Regions {
+		// Seed this region's quota map from the "default" values, deep-copying to avoid sharing
+		// the same pointer across regions.
+		regionQuotas := make(awsv1alpha1.AccountServiceQuota, len(defaultAccountServiceQuotas))
+		for k, v := range defaultAccountServiceQuotas {
+			regionQuotas[k] = &awsv1alpha1.ServiceQuotaStatus{
+				Value:  v.Value,
+				Status: awsv1alpha1.ServiceRequestTodo,
+			}
+		}
+		currentAcctInstance.Status.RegionalServiceQuotas[*region.RegionName] = regionQuotas
+
+		// Apply any region-specific overrides from the spec.
 		if currentAcctInstance.Spec.RegionalServiceQuotas[*region.RegionName] != nil {
-			// For each value in the spec, set it in the status
 			for k, v := range currentAcctInstance.Spec.RegionalServiceQuotas[*region.RegionName] {
-				currentAcctInstance.Status.RegionalServiceQuotas[*region.RegionName][k] = v
+				currentAcctInstance.Status.RegionalServiceQuotas[*region.RegionName][k] = &awsv1alpha1.ServiceQuotaStatus{
+					Value:  v.Value,
+					Status: awsv1alpha1.ServiceRequestTodo,
+				}
 			}
 		}
 	}
 
-	// Blanket setting all status values to TODO.
-	for _, quota := range currentAcctInstance.Status.RegionalServiceQuotas {
-		for k := range quota {
-			quota[k].Status = awsv1alpha1.ServiceRequestTodo
-		}
-	}
 	return nil
 }
 
