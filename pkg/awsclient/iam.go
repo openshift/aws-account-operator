@@ -126,9 +126,9 @@ func CheckIAMUserExists(reqLogger logr.Logger, client Client, userName string) (
 					utils.LogAwsError(reqLogger, "checkIAMUserExists: Unexpected AWS Error when checking IAM user exists", nil, err)
 					return false, nil, awsv1alpha1.ErrAccessDenied
 				}
-				time.Sleep(time.Duration(time.Duration(i*5) * time.Second))
+				time.Sleep(time.Duration(i*5) * time.Second)
 			} else {
-				return false, nil, fmt.Errorf("unable to check if user %s exists error: %s", userName, err)
+				return false, nil, fmt.Errorf("unable to check if user %s exists error: %w", userName, err)
 			}
 		} else {
 			break
@@ -185,7 +185,7 @@ func CreateIAMUser(reqLogger logr.Logger, client Client, account *awsv1alpha1.Ac
 					utils.LogAwsError(reqLogger, "CreateIAMUser: Unexpected AWS Error during creation of IAM user", nil, err)
 					return &iam.CreateUserOutput{}, err
 				}
-				time.Sleep(time.Duration(time.Duration(i*5) * time.Second))
+				time.Sleep(time.Duration(i*5) * time.Second)
 			} else {
 				return &iam.CreateUserOutput{}, err
 			}

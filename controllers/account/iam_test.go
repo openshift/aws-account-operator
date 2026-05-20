@@ -459,7 +459,6 @@ func TestBuildIAMUser(t *testing.T) {
 }
 
 func TestDeleteIAMUser(t *testing.T) {
-	nullLogger := testutils.NewTestLogger().Logger()
 	mocks := setupDefaultMocks(t, []runtime.Object{})
 	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
 	defer mocks.mockCtrl.Finish()
@@ -480,7 +479,7 @@ func TestDeleteIAMUser(t *testing.T) {
 
 	user := iamtypes.User{UserName: aws.String("MyUserName")}
 
-	err := deleteIAMUser(nullLogger, mockAWSClient, &user)
+	err := deleteIAMUser(mockAWSClient, &user)
 	assert.Nil(t, err)
 }
 
