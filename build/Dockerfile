@@ -10,7 +10,7 @@ WORKDIR ${OPERATOR_PATH}
 
 RUN make go-build FIPS_ENABLED=${FIPS_ENABLED}
 
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7-1778562320
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8-1779777572
 ENV OPERATOR_BIN=aws-account-operator
 
 WORKDIR /root/
