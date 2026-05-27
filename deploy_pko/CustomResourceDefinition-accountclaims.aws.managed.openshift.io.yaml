@@ -34,28 +34,19 @@ spec:
         description: AccountClaim is the Schema for the accountclaims API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object.
-
-              Servers should convert recognized schemas to the latest internal value,
-              and
-
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
               may reject unrecognized values.
-
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents.
-
-              Servers may infer this from the endpoint the client submits requests
-              to.
-
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
               Cannot be updated.
-
               In CamelCase.
-
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -74,11 +65,9 @@ spec:
                 properties:
                   regions:
                     items:
-                      description: 'AwsRegions struct contains specific AwsRegion
-                        information, at the moment its just
-
-                        name but in the future it will contain specific resource limits
-                        etc.'
+                      description: |-
+                        AwsRegions struct contains specific AwsRegion information, at the moment its just
+                        name but in the future it will contain specific resource limits etc.
                       properties:
                         name:
                           type: string
