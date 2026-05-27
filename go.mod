@@ -24,7 +24,7 @@ require (
 	github.com/onsi/gomega v1.24.1
 	github.com/openshift/api v0.0.0-20220414050251-a83e6f8f1d50
 	github.com/openshift/aws-account-operator/api v0.0.0-00010101000000-000000000000
-	github.com/openshift/operator-custom-metrics v0.5.1-0.20220802235640-dc76a1f15ee8
+	github.com/openshift/operator-custom-metrics v0.5.1
 	github.com/operator-framework/operator-lib v0.11.0
 	github.com/prometheus/client_golang v1.14.0
 	github.com/rkt/rkt v1.30.0
