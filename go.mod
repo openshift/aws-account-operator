@@ -22,8 +22,8 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/ginkgo/v2 v2.6.0
 	github.com/onsi/gomega v1.24.1
-	github.com/openshift/api v0.0.0-20220414050251-a83e6f8f1d50
-	github.com/openshift/aws-account-operator/api v0.0.0-00010101000000-000000000000
+	github.com/openshift/api d6ce07951593
+	github.com/openshift/aws-account-operator/api 71a586bf9aa0
 	github.com/openshift/operator-custom-metrics v0.5.1
 	github.com/operator-framework/operator-lib v0.11.0
 	github.com/prometheus/client_golang v1.14.0
@@ -75,7 +75,7 @@ require (
 	github.com/go-openapi/swag/typeutils v0.26.0 // indirect
 	github.com/go-openapi/swag/yamlutils v0.26.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+	github.com/golang/groupcache 2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
@@ -112,9 +112,9 @@ require (
 	k8s.io/apiextensions-apiserver v0.26.1 // indirect
 	k8s.io/component-base v0.26.1 // indirect
 	k8s.io/klog/v2 v2.80.1 // indirect
-	k8s.io/kube-openapi v0.0.0-20221012153701-172d655c2280 // indirect
-	k8s.io/utils v0.0.0-20221128185143-99ec85e7a448 // indirect
-	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
+	k8s.io/kube-openapi aa012df4f4af // indirect
+	k8s.io/utils ff6756f316d2 // indirect
+	sigs.k8s.io/json 2d320260d730 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
