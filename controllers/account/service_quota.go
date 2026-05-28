@@ -177,7 +177,7 @@ func serviceQuotaNeedsIncrease(reqLogger logr.Logger, client awsclient.Client, q
 
 	// Regardless of errors, if we got the result for the actual quota,
 	// then compare it to the desired quota.
-	if result.Quota != nil {
+	if result != nil && result.Quota != nil {
 		if *result.Quota.Value < desiredQuota {
 			reqLogger.Info(fmt.Sprintf("Requiring a servicequota increase: current [%.1f] wanted [%.1f]\n", *result.Quota.Value, desiredQuota))
 			return true, err
