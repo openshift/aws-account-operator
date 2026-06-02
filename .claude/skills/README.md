@@ -63,7 +63,7 @@ To add a new skill:
 6. Test the skill workflow
 
 **Directory structure**:
-```
+```text
 .claude/skills/
 ├── README.md
 └── skillname/

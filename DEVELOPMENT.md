@@ -1,6 +1,6 @@
 # Development Guide
 
-Quick reference for developing the Aws Account.
+Quick reference for developing the AWS Account Operator.
 
 ## Prerequisites
 
@@ -81,7 +81,7 @@ boilerplate/_lib/container-make generate
 ```bash
 # After code changes
 go build ./...                # Fast compile check (~5s)
-go test ./pkg/mypackage       # Run affected tests
+go test ./pkg/<package-name>  # Run affected tests (replace with actual package)
 pre-commit run                # Lint staged files
 ```
 
@@ -141,7 +141,7 @@ go mod verify
 - **Controllers**: `controllers/{account,accountclaim,accountpool}/` - Reconciliation logic
 - **Business Logic**: `pkg/awsclient/` - AWS integration and resource management
 - **Tests**: `*_test.go` alongside source, `*_suite_test.go` for Ginkgo
-- **Mocks**: `pkg/util/test/generated/` - Generated mocks
+- **Mocks**: `pkg/awsclient/mock/` - Generated mocks
 - **E2E**: `test/integration/` - Integration tests
 
 ## CI Parity
@@ -193,6 +193,6 @@ boilerplate/_lib/container-make go-test
 ## Further Reading
 
 - [Testing Guide](./TESTING.md)
-- [Design Documentation](./docs/design.md)
-- [How to Test](./docs/how-to-test.md)
+- [Documentation](./docs/README.md)
+- [Custom Resources and Controllers](./docs/3.0-Custom-Resources-and-Controllers.md)
 - [Operator SDK Docs](https://sdk.operatorframework.io/)

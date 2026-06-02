@@ -116,7 +116,7 @@ grep -r "password\s*:=\s*\"" --include="*.go" .
 Files requiring extra scrutiny:
 - `deploy/*.yaml` (RBAC, NetworkPolicy)
 - `*_rbac.go` (authorization logic)
-- `pkg/ocmagenthandler/*_secret.go` (secret handling)
+- `pkg/utils/*secret*.go` (secret handling)
 - `.tekton/*.yaml` (CI/CD pipelines)
 - `build/Dockerfile` (container security)
 

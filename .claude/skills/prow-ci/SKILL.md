@@ -4,7 +4,7 @@ description: Fetch and analyze OpenShift Prow CI job failures with automated art
 trigger: prow, prow-ci, /prow-ci, ci results, check ci, analyze ci failure
 ---
 
-# Prow CI Analysis for Rbac Permissions Operator
+# Prow CI Analysis for AWS Account Operator
 
 This skill fetches Prow CI job artifacts from Google Cloud Storage and provides automated failure analysis.
 
@@ -29,7 +29,7 @@ gh pr checks <PR_NUMBER>
 /prow-ci <prow-job-url>
 
 # Or ask naturally:
-"Analyze the lint failure in PR 328"
+"Analyze the lint failure in PR <NUMBER>"
 "Check why the validate job failed"
 "Show me what broke in the coverage job"
 ```
@@ -52,9 +52,9 @@ When invoked, this skill:
 
 3. **Generates report**:
    - Markdown format with failure summary
-   - Test failures with details
    - Pattern detection (compilation errors, lint failures, timeouts)
-   - Actionable error messages
+   - Top error messages and failures
+   - Actionable failure details
 
 ## Usage Instructions
 
@@ -69,17 +69,16 @@ gh pr view <PR_NUMBER> --json statusCheckRollup --jq '.statusCheckRollup[] | sel
 ```
 
 Example Prow job URL:
-```
-https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift_rbac-permissions-operator/328/pull-ci-openshift-rbac-permissions-operator-master-lint/2059308810190721024
+```text
+https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift_aws_account_operator/<PR_NUMBER>/pull-ci-openshift-aws-account-operator-master-lint/<BUILD_ID>
 ```
 
 ### Step 2: Fetch and Analyze
 
-Run the fetch script first:
+Run the fetch script from repository root:
 ```bash
-cd /Users/ppanda/rh-projects/ROSA-730/rbac-permissions-operator/.claude/skills/prow-ci
-
-python3 fetch_prow_artifacts.py "<prow-job-url>" -o .work/prow-artifacts
+# From repository root
+python3 .claude/skills/prow-ci/fetch_prow_artifacts.py "<prow-job-url>" -o .work/prow-artifacts
 ```
 
 This downloads only the essential files:
@@ -89,38 +88,38 @@ This downloads only the essential files:
 ### Step 3: Analyze Failures
 
 ```bash
-python3 analyze_failure.py .work/prow-artifacts/<build-id> -f markdown
+python3 .claude/skills/prow-ci/analyze_failure.py .work/prow-artifacts/<build-id> -f markdown
 ```
 
 Output includes:
 - Job information (name, state, URL)
-- JUnit test failures with messages and stack traces
 - Detected failure patterns (lint errors, build failures, timeouts)
 - Top error messages from build log
+- Failure details extracted from log
 
 ### Step 4: Present Findings
 
 Create a clear summary for the user with:
 - Root cause identification
-- Failed tests with error messages
 - Detected patterns (lint, build, timeout, etc.)
+- Key error messages
 - Actionable next steps to fix the issue
 
 ### Example Workflow
 
 ```bash
-# User provides: "Analyze the lint failure in PR 328"
+# User provides: "Analyze the lint failure in PR <NUMBER>"
 
 # 1. Get Prow job URL
-gh pr checks 328 | grep lint
+gh pr checks <PR_NUMBER> | grep lint
 
 # 2. Fetch artifacts
 python3 .claude/skills/prow-ci/fetch_prow_artifacts.py \
-  "https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift_rbac-permissions-operator/328/pull-ci-openshift-rbac-permissions-operator-master-lint/2059308810190721024"
+  "https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift_aws_account_operator/<PR_NUMBER>/pull-ci-openshift-aws-account-operator-master-lint/<BUILD_ID>"
 
 # 3. Analyze
 python3 .claude/skills/prow-ci/analyze_failure.py \
-  .work/prow-artifacts/2059308810190721024 \
+  .work/prow-artifacts/<BUILD_ID> \
   -f markdown
 
 # 4. Review the output and provide actionable summary
@@ -130,30 +129,29 @@ python3 .claude/skills/prow-ci/analyze_failure.py \
 
 **Main Dashboard**: https://prow.ci.openshift.org/  
 **CI Search**: https://github.com/openshift/ci-search  
-**Job History**: https://prow.ci.openshift.org/?repo=openshift%2Frbac-permissions-operator
+**Job History**: https://prow.ci.openshift.org/?repo=openshift%2Faws-account-operator
 
 ## Common Use Cases
 
 ### 1. Check Recent CI Results
 
 ```bash
-# View recent PR jobs
-curl -s "https://prow.ci.openshift.org/?repo=openshift%2Frbac-permissions-operator&type=presubmit" | grep -E "pull-ci-openshift-rbac-permissions-operator"
-
 # Check latest job status for specific PR
-# Replace PR_NUMBER with actual PR number
 gh pr view PR_NUMBER --json statusCheckRollup --jq '.statusCheckRollup[] | select(.context | contains("prow"))'
+
+# Or view all checks for a PR
+gh pr checks PR_NUMBER
 ```
 
 ### 2. Access Build Logs
 
 Prow logs are stored at:
-- **Pull request jobs**: `gs://test-platform-results/pr-logs/pull/openshift_rbac-permissions-operator/[PR_NUMBER]/[JOB_NAME]/[JOB_ID]`
+- **Pull request jobs**: `gs://test-platform-results/pr-logs/pull/openshift_aws_account_operator/[PR_NUMBER]/[JOB_NAME]/[JOB_ID]`
 - **Periodic jobs**: `gs://test-platform-results/logs/[JOB_NAME]/[JOB_ID]`
 
 **Viewing logs via web**:
 ```text
-https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift_rbac-permissions-operator/[PR_NUMBER]/[JOB_NAME]/[JOB_ID]
+https://prow.ci.openshift.org/view/gs/test-platform-results/pr-logs/pull/openshift_aws_account_operator/[PR_NUMBER]/[JOB_NAME]/[JOB_ID]
 ```
 
 ### 3. Analyze Test Failures
@@ -165,26 +163,23 @@ gh pr view PR_NUMBER --json statusCheckRollup
 # Find failed jobs
 gh pr checks PR_NUMBER | grep -i "fail"
 
-# Access specific job artifacts
-# Navigate to Prow UI and click on:
-# - Build Log (for compilation/test output)
-# - JUnit (for structured test results)
-# - Artifacts (for generated files, coverage, etc.)
+# Use this skill to fetch and analyze failures
+# The script downloads prowjob.json and build-log.txt for analysis
 ```
 
 ### 4. Common Job Names
 
 **Prow CI Jobs** (configured in openshift/release):
-- `pull-ci-openshift-rbac-permissions-operator-master-e2e-binary-build-success` - E2E binary build verification
-- `pull-ci-openshift-rbac-permissions-operator-master-coverage` - Code coverage analysis (with Codecov)
-- `pull-ci-openshift-rbac-permissions-operator-master-lint` - Linting checks
-- `pull-ci-openshift-rbac-permissions-operator-master-test` - Unit tests
-- `pull-ci-openshift-rbac-permissions-operator-master-validate` - Validation checks
+- `pull-ci-openshift-aws-account-operator-master-e2e-binary-build-success` - E2E binary build verification
+- `pull-ci-openshift-aws-account-operator-master-coverage` - Code coverage analysis (with Codecov)
+- `pull-ci-openshift-aws-account-operator-master-lint` - Linting checks
+- `pull-ci-openshift-aws-account-operator-master-test` - Unit tests
+- `pull-ci-openshift-aws-account-operator-master-validate` - Validation checks
 
 **Tekton Pipelines** (configured in `.tekton/`):
-- `rbac-permissions-operator-pull-request` - Main PR pipeline (docker build with OCI-TA)
-- `rbac-permissions-operator-e2e-pull-request` - E2E testing pipeline
-- `rbac-permissions-operator-pko-pull-request` - PKO (Package Operator) pipeline
+- `aws-account-operator-pull-request` - Main PR pipeline (docker build with OCI-TA)
+- `aws-account-operator-e2e-pull-request` - E2E testing pipeline
+- `aws-account-operator-pko-pull-request` - PKO (Package Operator) pipeline
 - Corresponding `-push` pipelines for merged commits
 
 ## Debugging CI Failures
@@ -197,7 +192,7 @@ gh pr checks PR_NUMBER
 ### Step 2: Access Prow UI
 Open the Prow link from PR checks or construct manually:
 ```text
-https://prow.ci.openshift.org/?repo=openshift%2Frbac-permissions-operator&type=presubmit
+https://prow.ci.openshift.org/?repo=openshift%2Faws-account-operator&type=presubmit
 ```
 
 ### Step 3: Review Logs
@@ -217,8 +212,8 @@ make go-test
 
 # For linting (matches: pull-ci-...-lint)
 make go-check
-# OR use pre-commit for comprehensive linting
-pre-commit run --all-files
+# OR use prek for comprehensive linting
+prek run --all-files
 
 # For validation (matches: pull-ci-...-validate)
 make validate
@@ -238,15 +233,15 @@ make docker-build
 This repo uses **both Prow and Tekton** for comprehensive CI:
 
 **Prow CI** (openshift/release):
-- Configuration: `ci-operator/config/openshift/rbac-permissions-operator/openshift-rbac-permissions-operator-master.yaml`
+- Configuration: `ci-operator/config/openshift/aws-account-operator/openshift-aws-account-operator-master.yaml`
 - Runs: lint, test, validate, coverage, e2e-binary-build
-- Uses Codecov for coverage reporting (secret: `rbac-permissions-operator-codecov-token`)
-- Skip rules: Changes to `.tekton/`, `.github/`, `.md` files, `OWNERS`, `LICENSE` don't trigger most jobs
+- Uses Codecov for coverage reporting (secret: `aws-account-operator-codecov-token`)
+- Skip rules: Changes to `.tekton/`, GitHub (`.github/`), `.md` files, `OWNERS`, `LICENSE` don't trigger most jobs
 
 **Tekton Pipelines** (`.tekton/`):
 - Primary build pipeline using Pipelines as Code
 - Three pipeline types: main, e2e, pko
-- Builds container images to Quay (rbac-permissions-operator-tenant)
+- Builds container images to Quay (aws-account-operator-tenant)
 - Pull request images expire after 5 days
 - Uses boilerplate framework from `openshift/boilerplate` (docker-build-oci-ta pipeline)
 
@@ -260,31 +255,31 @@ gh pr checks <PR_NUMBER>
 gh pr view <PR_NUMBER> --json statusCheckRollup
 
 # Filter only Prow jobs
-gh pr checks <PR_NUMBER> | grep "pull-ci-openshift-rbac-permissions-operator"
+gh pr checks <PR_NUMBER> | grep "pull-ci-openshift-aws-account-operator"
 
 # Check Tekton pipeline status
 gh pr view <PR_NUMBER> --json statusCheckRollup --jq '.statusCheckRollup[] | select(.context | contains("Tekton"))'
 
 # Open Prow dashboard in browser (cross-platform)
 # Copy and paste this URL into your browser:
-# https://prow.ci.openshift.org/?repo=openshift%2Frbac-permissions-operator
+# https://prow.ci.openshift.org/?repo=openshift%2Faws-account-operator
 
 # Or use platform-specific command:
-# macOS: open "https://prow.ci.openshift.org/?repo=openshift%2Frbac-permissions-operator"
-# Linux: xdg-open "https://prow.ci.openshift.org/?repo=openshift%2Frbac-permissions-operator"
-# Windows: start "https://prow.ci.openshift.org/?repo=openshift%2Frbac-permissions-operator"
+# macOS: open "https://prow.ci.openshift.org/?repo=openshift%2Faws-account-operator"
+# Linux: xdg-open "https://prow.ci.openshift.org/?repo=openshift%2Faws-account-operator"
+# Windows: start "https://prow.ci.openshift.org/?repo=openshift%2Faws-account-operator"
 
 # View specific PR on Prow (replace <PR_NUMBER>)
-# https://prow.ci.openshift.org/?repo=openshift%2Frbac-permissions-operator&type=presubmit&pull=<PR_NUMBER>
+# https://prow.ci.openshift.org/?repo=openshift%2Faws-account-operator&type=presubmit&pull=<PR_NUMBER>
 ```
 
 ## Troubleshooting
 
 ### Can't find job results?
 - Check both Prow AND Tekton - this repo uses both systems
-- Prow jobs: `pull-ci-openshift-rbac-permissions-operator-master-*`
+- Prow jobs: `pull-ci-openshift-aws-account-operator-master-*`
 - Tekton jobs: Usually show as "Tekton" or pipeline names in PR checks
-- Verify repo name format in Prow: `openshift_rbac-permissions-operator` (underscore, not dash)
+- Verify repo name format in Prow: `openshift_aws_account_operator` (underscore, not dash)
 - Ensure PR has been opened and CI has run
 
 ### Logs show permission denied?
@@ -303,7 +298,7 @@ gh pr view <PR_NUMBER> --json statusCheckRollup --jq '.statusCheckRollup[] | sel
 - Common issues:
   - Image build failures → Check Dockerfile syntax and build context
   - Pipeline timeout → Check for slow steps or network issues
-  - Auth failures → Secret configuration in `rbac-permissions-operator-tenant` namespace
+  - Auth failures → Secret configuration in `aws-account-operator-tenant` namespace
 - Local validation:
   ```bash
   # Validate Tekton YAML syntax
@@ -333,27 +328,27 @@ git clone https://github.com/openshift/ci-search.git
 ## CI Configuration Files
 
 **Prow Configuration** (in openshift/release repo):
-- Location: `ci-operator/config/openshift/rbac-permissions-operator/openshift-rbac-permissions-operator-master.yaml`
+- Location: `ci-operator/config/openshift/aws-account-operator/openshift-aws-account-operator-master.yaml`
 - Update process: Submit PR to openshift/release repository
-- Auto-generated jobs in: `ci-operator/jobs/openshift/rbac-permissions-operator/`
+- Auto-generated jobs in: `ci-operator/jobs/openshift/aws-account-operator/`
 
 **Tekton Pipelines** (in this repo):
 - Location: `.tekton/` directory
 - Files:
-  - `rbac-permissions-operator-pull-request.yaml` - Main PR pipeline
-  - `rbac-permissions-operator-push.yaml` - Post-merge pipeline
-  - `rbac-permissions-operator-e2e-pull-request.yaml` - E2E testing
-  - `rbac-permissions-operator-pko-pull-request.yaml` - PKO validation
+  - `aws-account-operator-pull-request.yaml` - Main PR pipeline
+  - `aws-account-operator-push.yaml` - Post-merge pipeline
+  - `aws-account-operator-e2e-pull-request.yaml` - E2E testing
+  - `aws-account-operator-pko-pull-request.yaml` - PKO validation
 - Triggered by: Pipelines as Code (via Tekton)
 - Uses: Boilerplate docker-build-oci-ta pipeline from openshift/boilerplate
 
 ## Coverage Reporting
 
 This repository uses Codecov for coverage tracking:
-- Secret: `rbac-permissions-operator-codecov-token` (stored in Prow)
+- Secret: `aws-account-operator-codecov-token` (stored in Prow)
 - Generate coverage locally: `make coverage`
 - Coverage runs on PRs and post-merge (`publish-coverage`)
-- Dashboard: Check Codecov for rbac-permissions-operator
+- Dashboard: Check Codecov for aws-account-operator
 
 ## Integration with Other Skills
 

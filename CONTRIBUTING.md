@@ -1,6 +1,6 @@
-# Contributing to Aws Account
+# Contributing to AWS Account Operator
 
-Thank you for your interest in contributing to the Aws Account project.
+Thank you for your interest in contributing to the AWS Account Operator project.
 
 ## Quick Start
 

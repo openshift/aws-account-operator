@@ -81,8 +81,12 @@ def fetch_prowjob_json(gcs_base_path, output_dir):
     local_path = os.path.join(output_dir, 'prowjob.json')
 
     if download_from_gcs(gcs_path, local_path):
-        with open(local_path, 'r') as f:
-            return json.load(f)
+        try:
+            with open(local_path, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"Error: Could not parse JSON from {local_path}: {e}", file=sys.stderr)
+            return None
     return None
 
 
@@ -119,6 +123,9 @@ def main():
     output_dir = os.path.join(args.output, parsed['build_id'])
     os.makedirs(output_dir, exist_ok=True)
 
+    # Track failures
+    had_errors = False
+
     # Fetch prowjob.json
     print("Fetching prowjob.json...")
     prowjob = fetch_prowjob_json(parsed['gcs_base_path'], output_dir)
@@ -126,6 +133,7 @@ def main():
         print("✓ prowjob.json downloaded")
     else:
         print("✗ Could not fetch prowjob.json")
+        had_errors = True
 
     # Fetch build-log.txt
     print("Fetching build-log.txt...")
@@ -133,10 +141,11 @@ def main():
         print("✓ build-log.txt downloaded")
     else:
         print("✗ Could not fetch build-log.txt")
+        had_errors = True
 
     print(f"\nArtifacts saved to: {output_dir}")
 
-    return 0
+    return 1 if had_errors else 0
 
 
 if __name__ == '__main__':

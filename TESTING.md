@@ -1,6 +1,6 @@
 # Testing Guide
 
-Testing guidelines for the Aws Account.
+Testing guidelines for the AWS Account Operator.
 
 ## Framework
 
@@ -263,15 +263,12 @@ boilerplate/_lib/container-make go-test
 
 ## Pre-commit Integration
 
-Tests run automatically in pre-commit when Go files change:
-```yaml
-- id: go-test
-  entry: make go-test
-  files: '\.go$'
-```
+The `go-test` hook is NOT enabled in the current pre-commit configuration (tests are too slow for pre-commit).
 
-This is NOT in current pre-commit config (too slow for pre-commit).
-Run manually before pushing: `make go-test`
+Run tests manually before pushing:
+```bash
+make go-test
+```
 
 ## Further Reading
 

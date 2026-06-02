@@ -15,8 +15,9 @@ This repository uses **prek** (git hook manager) for quality checks and validati
                │
                ▼
 ┌─────────────────────────────────────┐
-│   Stop Hook (every turn)            │
-│   - Runs prek validation            │
+│   Stop Hook (conditional)           │
+│   - Default: runs only with changes │
+│   - Strict: runs every turn         │
 │   - Blocks if issues found          │
 │   - Claude fixes automatically      │
 └──────────────┬──────────────────────┘
@@ -138,7 +139,7 @@ Used for local development with internal network access.
 
 **Usage**:
 ```bash
-prek run --all-files
+prek run  # Uses prek.toml by default
 ```
 
 ### 2. **hack/prek.ci.toml** (CI-compatible)
@@ -179,13 +180,14 @@ This sets up pre-commit hooks that run validation automatically.
 
 ### Automatic Validation
 Prek runs automatically:
-- **On every turn**: Stop hook runs `prek run --all-files`
+- **Stop hook (default mode)**: Runs `prek run --config hack/prek.ci.toml` only when changes are present (staged, unstaged, or untracked files)
+- **Stop hook (strict mode)**: Set `CLAUDE_LINT_ON_STOP=true` to run on every turn regardless of changes
 - **On commit**: Pre-commit hook runs relevant checks
 
 ### Manual Validation
 ```bash
 # Run all checks
-prek run --all-files
+prek run --config hack/prek.ci.toml
 
 # Run specific check
 prek run gitleaks
@@ -320,7 +322,7 @@ SKIP=hook-id git commit
    - Open an issue documenting the problem
    - Request reviewer approval before merge
 3. **Re-run full validation:**
-   - `prek run --all-files` locally
+   - `prek run --config hack/prek.ci.toml` locally
    - Ensure all required CI checks pass
    - Get explicit code review approval
 
@@ -331,7 +333,7 @@ SKIP=hook-id git commit
 ### Prek Version
 Pinned in `.prek-version` for CI consistency:
 ```bash
-cat .prek-version  # v0.3.9
+cat .prek-version  # v0.4.1
 ```
 
 Update when new prek releases are available.
