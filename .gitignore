@@ -98,3 +98,4 @@ localOperator.log
 
 # Claude Code logs
 claude_logs.txt
+.work/

@@ -1,124 +1,154 @@
-# Contributing
+# Contributing to Aws Account
 
-## Prerequisites
+Thank you for your interest in contributing to the Aws Account project.
 
-- **Go 1.22+** — required for building and testing
-- **golangci-lint** — installed automatically via `make lint`
-- **[prek](https://prek.j178.dev/)** — git hook manager that runs validation automatically on commit
+## Quick Start
 
-## Setup
+1. **Setup**: Install Go 1.22.7+, operator-sdk v1.21.0
+2. **Install tools**: `make tools`
+3. **Run pre-commit**: `pip install pre-commit && pre-commit install`
+4. **Build**: `make go-build`
+5. **Test**: `make go-test`
+6. **Lint**: `make go-check`
 
-```bash
-# Install prek (macOS)
-brew install prek
+See [DEVELOPMENT.md](./DEVELOPMENT.md) for detailed setup instructions.
 
-# Install prek (Linux)
-curl -fsSL https://prek.j178.dev/install.sh | bash
+## Before Submitting a PR
 
-# Install pre-commit hooks
-prek install
-```
+All contributions must pass:
 
-`prek install` sets up pre-commit hooks that automatically run file hygiene checks and golangci-lint before each commit.
-
-## prek Version
-
-The `.prek-version` file in the repo root pins the prek version used in CI. Periodically check [prek releases](https://github.com/j178/prek/releases) and update `.prek-version` when a new version is available.
-
-## Validation
-
-The validation runs automatically via pre-commit hooks, or you can run it manually:
-
-```bash
-# Run all validations (file hygiene + golangci-lint)
-prek run --all-files
-
-# Run linting (olm-deploy-yaml-validate + golangci-lint)
-make lint
-
-# Run only golangci-lint
-make go-check
-```
-
-For CI pipelines, use `hack/ci.sh`.
-
-## Linting
-
-This project uses golangci-lint configured via the boilerplate framework:
-
-- **Full config**: `boilerplate/openshift/golang-osd-operator/golangci.yml`
-- **Project override**: `.golangci.yml` (minimal - just concurrency: 10)
-
-Enabled linters: errcheck, gosec, govet, ineffassign, misspell, staticcheck, unused
-
-```bash
-# Run linting (includes olm-deploy-yaml-validate + golangci-lint)
-make lint
-
-# Run only golangci-lint
-make go-check
-```
-
-## Testing
-
-```bash
-# Run unit tests
-make test
-
-# Run API tests
-make test-apis
-
-# Run all tests (lint + unit + API + integration)
-make test-all
-
-# Run integration tests locally (automated setup, 5/8 tests)
-make test-integration-local
-
-# Run integration tests for CI/PROW (all 8 tests)
-make test-integration
-```
-
-See [CLAUDE.md](CLAUDE.md) for detailed integration testing documentation.
-
-## Stop Hook: prek Validation on Every Turn
-
-A Claude Code [stop hook](https://docs.anthropic.com/en/docs/claude-code/hooks) in `.claude/settings.json` runs `prek run --all-files` every time Claude finishes a turn and is about to stop. If prek finds violations (trailing whitespace, invalid JSON/YAML, linting errors, etc.), the hook **blocks Claude from stopping** and feeds the errors back so Claude can fix them automatically.
-
-Without this hook, prek violations would only surface at `git commit` time via the pre-commit hook. The stop hook shortens the feedback loop by catching issues between prompts, allowing longer stretches of autonomous work without human intervention.
-
-The hook script (`.claude/hooks/stop-prek-validation.sh`) includes a guard against infinite loops: if it has already blocked once and Claude retries, it allows the stop to proceed.
-
-## Boilerplate Framework
-
-This repository uses the [openshift/golang-osd-operator](https://github.com/openshift/boilerplate/tree/master/boilerplate/openshift/golang-osd-operator) convention from [boilerplate](https://github.com/openshift/boilerplate/).
-
-Key boilerplate targets:
-- `make validate` — Check code generation and boilerplate
-- `make lint` — Static analysis (olm-deploy-yaml-validate + golangci-lint)
-- `make test` — Unit tests
-- `make coverage` — Code coverage analysis
-
-See [boilerplate/openshift/golang-osd-operator/README.md](boilerplate/openshift/golang-osd-operator/README.md) for details.
-
-## PROW CI
-
-CI is configured via [openshift/release](https://github.com/openshift/release) repository. PROW runs:
-- `make validate` — Code generation checks
-- `hack/ci.sh` — prek validation (file hygiene + golangci-lint)
-- `make lint` — Static analysis
-- `make test` — Unit tests
-- `make coverage` — Code coverage (postsubmit)
-- `make test-integration` — Integration tests (optional, requires AWS)
-
-**Note:** `hack/ci.sh` runs prek validation independently. Future boilerplate versions may integrate prek into `make validate`.
-
-Config: `openshift/release/ci-operator/config/openshift/aws-account-operator/openshift-aws-account-operator-master.yaml`
+1. **Formatting & linting**: `pre-commit run --all-files`
+2. **Unit tests**: `make go-test`
+3. **Build verification**: `make go-build`
+4. **Security scan**: Automatic via pre-commit (gitleaks)
 
 ## Development Workflow
 
-1. Make code changes
-2. Run `make lint` to check locally
-3. Commit (pre-commit hooks run automatically via prek)
-4. If pre-commit hooks fail, fix issues and re-commit
-5. Push to GitHub
-6. PROW CI runs validation, linting, and tests
+### Human Contributors
+
+```bash
+# Create a feature branch
+git checkout -b feature/my-change
+
+# Make changes, following existing code patterns
+# Add/update tests for your changes
+
+# Run validation locally
+pre-commit run --all-files
+make go-test
+
+# Commit with descriptive message
+git commit -m "feat: add support for X"
+
+# Push and create PR
+git push origin feature/my-change
+```
+
+### AI-Assisted Development
+
+When using AI coding agents (Claude Code, GitHub Copilot, Cursor, etc.):
+
+**Agents MUST:**
+- Run `pre-commit run` on changed files before committing
+- Execute relevant tests after code changes: `make go-test`
+- Preserve existing code style and patterns
+- Avoid editing generated files (`**/zz_generated.*.go`, `go.sum` without `go.mod`)
+- Never bypass hooks with `--no-verify`
+- Never commit secrets, tokens, or credentials
+- Reuse existing utilities and abstractions
+- Make incremental, focused changes
+
+**Validation expectations:**
+1. Format check: `go fmt ./...`
+2. Lint: `make go-check` (or `pre-commit run golangci-lint`)
+3. Type safety: Verified by `go build ./...` in pre-commit
+4. Tests: `make go-test` for affected packages
+5. Secret scan: Automatic via pre-commit gitleaks hook
+
+**Required checks before PR:**
+- [ ] All pre-commit hooks pass
+- [ ] Unit tests pass for modified packages
+- [ ] No new linter warnings introduced
+- [ ] No secrets or credentials in diff
+- [ ] Mocks regenerated if interfaces changed: `boilerplate/_lib/container-make generate`
+
+## Code Style
+
+Follow existing patterns:
+- Standard Go formatting (`gofmt`)
+- golangci-lint rules in `boilerplate/openshift/golang-osd-operator/golangci.yml`
+- Ginkgo/Gomega for tests
+- GoMock for interface mocking
+
+## Testing Requirements
+
+- **Unit tests required** for all new functionality
+- Use Ginkgo BDD style: `Describe`, `Context`, `It`
+- Mock external dependencies with GoMock
+- Aim for meaningful test coverage, not just metrics
+
+See [TESTING.md](./TESTING.md) for testing guidelines.
+
+## Regenerating Code
+
+After modifying API types or interfaces:
+
+```bash
+# Regenerate deepcopy, OpenAPI, mocks (in container for consistency)
+boilerplate/_lib/container-make generate
+```
+
+## Security
+
+**Never commit:**
+- API keys, tokens, passwords
+- AWS credentials, kubeconfig files
+- Private keys, certificates
+- `.env` files with secrets
+- Debug statements printing sensitive data
+
+The pre-commit gitleaks hook will block commits containing secrets.
+
+**High-risk changes** (requiring extra review):
+- Authentication/authorization logic
+- RBAC manifests with wildcard permissions
+- Network policies
+- CI/CD pipeline modifications
+- Dockerfile changes
+
+## Commit Message Format
+
+Use conventional commits style:
+
+```text
+<type>: <short summary>
+
+<optional body>
+
+<optional footer>
+```
+
+Types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`, `ci`
+
+Examples:
+- `feat: add support for fleet notification filtering`
+- `fix: correct RBAC permissions for service monitor`
+- `test: add unit tests for network policy handler`
+
+## Pull Request Process
+
+1. **Title**: Clear, descriptive summary
+2. **Description**: Explain what changed and why
+3. **Testing**: Describe how you tested the changes
+4. **CI**: All Tekton pipeline checks must pass
+5. **Review**: Address review feedback promptly
+
+## Questions?
+
+- Check existing documentation in [docs/](./docs/)
+- Review similar PRs for patterns
+- Ask in PR comments for clarification
+
+## License
+
+All contributions are licensed under Apache 2.0. See [LICENSE](./LICENSE).
