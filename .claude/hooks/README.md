@@ -256,15 +256,18 @@ prek run rbac-wildcard-check
 
 **Action**: BLOCK commit
 
-### Generated File Protection
+### File Edit Protection
 **Implementation**: pre-edit.sh (standalone)
 
 **Detects**:
-- `zz_generated.*.go`
-- Generated mocks
-- CRD manifests
+- Generated files (`zz_generated.*.go`)
+- Generated mocks (`**/generated/mock_*.go`)
+- CRD manifests (`deploy/crds/*.yaml`)
+- Vendored code (`vendor/`)
+- Boilerplate files (managed upstream)
+- High-risk files (RBAC, auth, NetworkPolicy, `.tekton/*.yaml`, Dockerfiles)
 
-**Action**: BLOCK edit (suggest regeneration)
+**Action**: BLOCK edit on generated/vendored files, WARN on high-risk files
 
 ## Hook Performance
 

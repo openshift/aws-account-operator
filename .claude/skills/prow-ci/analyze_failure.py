@@ -182,6 +182,12 @@ def main():
     # Generate analysis
     report = generate_analysis_report(args.artifacts_dir)
 
+    # Fail fast if build log is missing (required artifact)
+    if report.get('build_log') is None:
+        print(f"Error: Missing required build-log.txt in {args.artifacts_dir}", file=sys.stderr)
+        print("The artifacts directory must contain build-log.txt for analysis.", file=sys.stderr)
+        return 1
+
     # Format output
     if args.format == 'json':
         output = json.dumps(report, indent=2)
