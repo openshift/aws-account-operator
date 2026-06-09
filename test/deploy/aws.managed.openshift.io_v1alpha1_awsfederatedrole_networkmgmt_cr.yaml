@@ -17,6 +17,8 @@ spec:
       - effect: Allow
         action:
           - "ec2:CreateTransitGatewayVpcAttachment"
+          - "ec2:AssociateVpcCidrBlock"
+          - "ec2:CreateSubnet"
         resource:
           - "arn:aws:ec2:*:*:subnet/*"
           - "arn:aws:ec2:*:*:transit-gateway/*"
