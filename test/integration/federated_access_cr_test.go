@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -148,7 +148,6 @@ func testAction(t *testing.T, iamClient *iam.Client, roleARN string, stmt statem
 		}
 	}
 }
-
 
 // Unmarshals YAML from File
 func unmarshalFromFile(t *testing.T, cr string, crToTest *crStruct) {
