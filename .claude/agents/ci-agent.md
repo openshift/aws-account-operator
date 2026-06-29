@@ -148,8 +148,11 @@ diff <(grep -E '(rev|additional_dependencies)' prek.toml) <(grep -E '(rev|additi
 # Test container build (same as CI)
 make docker-build
 
-# Run in CI-equivalent environment
-boilerplate/_lib/container-make
+# Run tests in CI-equivalent environment
+boilerplate/_lib/container-make go-test
+
+# Run linting in CI-equivalent environment
+boilerplate/_lib/container-make go-check
 ```
 
 ## Execution Ordering Optimization

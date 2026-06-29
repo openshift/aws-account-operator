@@ -7,7 +7,7 @@ Quick reference for developing AWS Account Operator.
 - **Go**: 1.22 or later
 - **operator-sdk**: v1.21.0 or later
 - **kubectl/oc**: For cluster interaction
-- **prek**: Git hook manager (`uv tool install prek` or see [prek docs](https://prek.j178.dev/))
+- **prek**: Git hook manager v0.4.1 (`uv tool install prek==0.4.1` - pinned version in `.prek-version`)
 - **AWS credentials**: Configured via `rh-aws-saml-login`
 
 ## Initial Setup

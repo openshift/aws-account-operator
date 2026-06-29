@@ -41,8 +41,8 @@ Update docs when:
 
 ### Command Examples
 ```bash
-# Extract commands from markdown
-grep '```bash' -A 10 *.md | grep '^make\|^go\|^ginkgo'
+# Extract commands from markdown (recursive, filename-suppressed)
+grep -rh '```bash' -A 10 --include='*.md' . | grep -E '^(make|go|prek) '
 
 # Test each command (in safe read-only way)
 make -n go-build  # Dry-run

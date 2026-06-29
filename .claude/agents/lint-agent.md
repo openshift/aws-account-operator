@@ -20,11 +20,12 @@ Automated linting and code quality enforcement for this operator.
 
 ### Validation Flow
 1. Identify changed Go files: `git diff --name-only HEAD | grep '\.go$'`
-2. Run `gofmt -l` on changed files to detect formatting issues
-3. Auto-fix formatting: `gofmt -w` on changed files only
-4. Run `make go-check` (golangci-lint)
-5. Attempt auto-fixes on changed packages: `golangci-lint run --fix ./changed/pkg/...`
-6. Report remaining issues with file:line references
+2. Build package list: `PACKAGES=$(git diff --name-only HEAD | grep '\.go$' | xargs -r dirname | sort -u | sed 's|^|./|')`
+3. Run `gofmt -l` on changed files to detect formatting issues
+4. Auto-fix formatting: `gofmt -w` on changed files only
+5. Run `make go-check` (golangci-lint)
+6. Attempt auto-fixes on changed packages: `golangci-lint run --fix $PACKAGES`
+7. Report remaining issues with file:line references
 
 ### Auto-Fix Criteria
 Safe to auto-fix:

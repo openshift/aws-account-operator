@@ -8,8 +8,12 @@
 set -euo pipefail
 
 # Ensure we're in the repo root (handle subdirectory invocation)
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
-cd "$REPO_ROOT"
+if ! REPO_ROOT=$(git rev-parse --show-toplevel 2>&1); then
+  echo "Error: Not in a git repository. Cannot determine repo root." >&2
+  echo "git rev-parse failed with: $REPO_ROOT" >&2
+  exit 1
+fi
+cd "$REPO_ROOT" || exit 1
 
 # Check for prek dependency
 if ! command -v prek &>/dev/null; then

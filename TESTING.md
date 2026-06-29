@@ -232,7 +232,7 @@ boilerplate/_lib/container-make go-test
 **Target timings:**
 - Unit tests: <5s per package
 - Controller tests: <15s per controller
-- Full suite: <2min
+- Full unit/controller suite: <2min (integration tests excluded)
 
 **If tests are slow:**
 - Check for unnecessary sleeps
@@ -271,8 +271,9 @@ boilerplate/_lib/container-make go-test
 
 ## Prek Integration
 
-Tests are **not** included in the prek pre-commit hooks because `make test` is
-too slow for a commit hook. Run tests manually before pushing:
+Tests are **not** included in prek hooks (`prek.toml` and `hack/prek.ci.toml`)
+because `make test` is too slow for pre-commit validation. Run tests manually
+before pushing:
 
 ```bash
 make test-all
