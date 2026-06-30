@@ -24,7 +24,6 @@ spec:
           resources:
             limits:
               cpu: "200m"
-              memory: "3Gi"
           env:
             - name: WATCH_NAMESPACE
               value: ""
