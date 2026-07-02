@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	stsclient "github.com/openshift/aws-account-operator/pkg/awsclient/sts"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -296,7 +297,7 @@ func (r *AccountReconciler) getSTSClient(log logr.Logger, accountClaim *awsv1alp
 	return customerClient, customerAccountCreds, nil
 }
 
-func (r *AccountReconciler) getCCSClient(currentAcct *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) (awsclient.Client, error) {
+func (r *AccountReconciler) getCCSClient(accountClaim *awsv1alpha1.AccountClaim) (awsclient.Client, error) {
 	awsRegion := config.GetDefaultRegion()
 
 	// Get credentials

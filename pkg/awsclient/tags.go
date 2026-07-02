@@ -29,7 +29,7 @@ type AWSTagBuilder interface {
 
 // GetIAMTags returns IAM tags
 func (t *AWSAccountOperatorTags) GetIAMTags() []iamtypes.Tag {
-	var tags []iamtypes.Tag
+	tags := make([]iamtypes.Tag, 0, len(t.Tags))
 	for _, tag := range t.Tags {
 		tags = append(tags, iamtypes.Tag{Key: aws.String(tag.Key), Value: aws.String(tag.Value)})
 	}
@@ -38,7 +38,7 @@ func (t *AWSAccountOperatorTags) GetIAMTags() []iamtypes.Tag {
 
 // GetEC2Tags returns EC2 tags
 func (t *AWSAccountOperatorTags) GetEC2Tags() []ec2types.Tag {
-	var tags []ec2types.Tag
+	tags := make([]ec2types.Tag, 0, len(t.Tags)+1)
 	for _, tag := range t.Tags {
 		tags = append(tags, ec2types.Tag{Key: aws.String(tag.Key), Value: aws.String(tag.Value)})
 	}

@@ -134,7 +134,7 @@ func iamTag(key string, value string) iamtypes.Tag {
 }
 
 func iamTags(tags []AWSTag) []iamtypes.Tag {
-	var convertedTags []iamtypes.Tag
+	convertedTags := make([]iamtypes.Tag, 0, len(tags))
 	for _, tag := range tags {
 		convertedTags = append(convertedTags, iamTag(tag.Key, tag.Value))
 	}
@@ -149,7 +149,7 @@ func ec2Tag(key string, value string) ec2types.Tag {
 }
 
 func ec2Tags(tags []AWSTag) []ec2types.Tag {
-	var convertedTags []ec2types.Tag
+	convertedTags := make([]ec2types.Tag, 0, len(tags))
 	for _, tag := range tags {
 		convertedTags = append(convertedTags, ec2Tag(tag.Key, tag.Value))
 	}

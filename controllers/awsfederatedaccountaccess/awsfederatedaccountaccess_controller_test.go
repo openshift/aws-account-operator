@@ -14,7 +14,6 @@ import (
 
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
-	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"github.com/openshift/aws-account-operator/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -133,7 +132,7 @@ func TestCheckAndDeletePolicy(t *testing.T) {
 			mockAWSClient.EXPECT().ListPolicyVersions(gomock.Any(), &iam.ListPolicyVersionsInput{PolicyArn: policyArn}).Return(test.listPolicyVersionsOutput, nil)
 			mockAWSClient.EXPECT().DeletePolicy(
 				gomock.Any(),
-			&iam.DeletePolicyInput{PolicyArn: policyArn}).Return(test.deletePolicyOut, test.err)
+				&iam.DeletePolicyInput{PolicyArn: policyArn}).Return(test.deletePolicyOut, test.err)
 			if test.listPolicyVersionsOutput.Versions != nil {
 				mockAWSClient.EXPECT().DeletePolicyVersion(gomock.Any(), gomock.Any()).Return(nil, test.err)
 			}
@@ -350,7 +349,7 @@ func TestCreateOrUpdateIAMPolicy(t *testing.T) {
 	mockAWSClient.EXPECT().CreatePolicy(gomock.Any(), &iam.CreatePolicyInput{
 		PolicyName:     aws.String(policyName),
 		Description:    aws.String(afr.Spec.AWSCustomPolicy.Description),
-		PolicyDocument: aws.String(string(jsonPolicyDoc)),
+		PolicyDocument: aws.String(jsonPolicyDoc),
 	}).Return(
 		nil,
 		&iamtypes.EntityAlreadyExistsException{Message: aws.String("")},
@@ -365,7 +364,7 @@ func TestCreateOrUpdateIAMPolicy(t *testing.T) {
 	mockAWSClient.EXPECT().CreatePolicy(gomock.Any(), &iam.CreatePolicyInput{
 		PolicyName:     aws.String(policyName),
 		Description:    aws.String(afr.Spec.AWSCustomPolicy.Description),
-		PolicyDocument: aws.String(string(jsonPolicyDoc)),
+		PolicyDocument: aws.String(jsonPolicyDoc),
 	}).Return(
 		&iam.CreatePolicyOutput{
 			Policy: &iamtypes.Policy{},
@@ -455,9 +454,8 @@ func TestCreateOrUpdateIAMRole(t *testing.T) {
 	)
 
 	r := AWSFederatedAccountAccessReconciler{}
-	nullLogger := testutils.NewTestLogger().Logger()
 
-	outputRole, err := r.createOrUpdateIAMRole(mockAWSClient, afr, afaa, nullLogger)
+	outputRole, err := r.createOrUpdateIAMRole(mockAWSClient, afr, afaa)
 	assert.Equal(t, outputRole, createRoleOutput.Role)
 	assert.Nil(t, err)
 }

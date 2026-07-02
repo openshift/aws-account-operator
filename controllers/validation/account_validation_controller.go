@@ -560,8 +560,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	err = ValidateAccountOrigin(account)
 	if err != nil {
 		// Decide who we will requeue now
-		validationError, ok := err.(*AccountValidationError)
-		if ok && validationError.Type == InvalidAccount {
+		var validationError *AccountValidationError
+		if errors.As(err, &validationError) && validationError.Type == InvalidAccount {
 			return utils.DoNotRequeue()
 		}
 		return utils.RequeueWithError(err)
@@ -569,8 +569,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 
 	err = ValidateAwsAccountId(account)
 	if err != nil {
-		validationError, ok := err.(*AccountValidationError)
-		if ok && validationError.Type == MissingAWSAccount {
+		var validationError *AccountValidationError
+		if errors.As(err, &validationError) && validationError.Type == MissingAWSAccount {
 			return utils.DoNotRequeue()
 		}
 		return utils.RequeueWithError(err)
@@ -579,8 +579,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	err = r.ValidateAccountOU(awsClient, account, cm.Data["root"], cm.Data["base"])
 	if err != nil {
 		// Decide who we will requeue now
-		validationError, ok := err.(*AccountValidationError)
-		if ok && validationError.Type == AccountMoveFailed {
+		var validationError *AccountValidationError
+		if errors.As(err, &validationError) && validationError.Type == AccountMoveFailed {
 			return utils.RequeueAfter(moveWaitTime)
 		}
 		return utils.RequeueWithError(err)
@@ -596,8 +596,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 			// Validate owner tag
 			err = ValidateAccountTags(awsClient, aws.String(account.Spec.AwsAccountID), shardName, accountTagEnabled)
 			if err != nil {
-				validationError, ok := err.(*AccountValidationError)
-				if ok && (validationError.Type == MissingTag || validationError.Type == IncorrectOwnerTag) {
+				var validationError *AccountValidationError
+				if errors.As(err, &validationError) && (validationError.Type == MissingTag || validationError.Type == IncorrectOwnerTag) {
 					log.Error(validationError, validationError.Err.Error())
 				}
 				return utils.RequeueWithError(err)
@@ -638,8 +638,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		if ok && isOptInRegionFeatureEnabled {
 			err = r.ValidateOptInRegions(reqLogger, &account, r.awsClientBuilder, optInRegions)
 			if err != nil {
-				validationError, ok := err.(*AccountValidationError)
-				if ok && validationError.Type == NotAllOptInRegionsEnabled {
+				var validationError *AccountValidationError
+				if errors.As(err, &validationError) && validationError.Type == NotAllOptInRegionsEnabled {
 					return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
 				}
 				return utils.RequeueWithError(err)
@@ -649,8 +649,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 
 		err = r.ValidateRegionalServiceQuotas(reqLogger, &account, r.awsClientBuilder)
 		if err != nil {
-			validationError, ok := err.(*AccountValidationError)
-			if ok && validationError.Type == NotAllServicequotasApplied {
+			var validationError *AccountValidationError
+			if errors.As(err, &validationError) && validationError.Type == NotAllServicequotasApplied {
 				return reconcile.Result{RequeueAfter: 10 * time.Minute}, nil
 			}
 			return utils.RequeueWithError(err)
@@ -660,8 +660,8 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	return utils.DoNotRequeue()
 }
 func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder, optInRegions string) error {
-	var regionList []string
 	regions := strings.Split(optInRegions, ",")
+	regionList := make([]string, 0, len(regions))
 	for _, region := range regions {
 		regionList = append(regionList, strings.TrimSpace(region))
 	}

@@ -281,13 +281,12 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		result, initErr = r.initializeNewCCSAccount(reqLogger, currentAcctInstance)
 		if initErr != nil {
 			// TODO: If we have recoverable results from above, how do we allow them to requeue if state is failed
-			_, stateErr := r.setAccountFailed(
+			stateErr := r.setAccountFailed( //nolint:contextcheck // Context threading addressed in follow-up PR
 				reqLogger,
 				currentAcctInstance,
 				awsv1alpha1.AccountCreationFailed,
 				initErr.Error(),
 				"Failed to initialize new CCS account",
-				AccountFailed,
 			)
 			if stateErr != nil {
 				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
@@ -320,13 +319,12 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		// see if in creating for longer than default wait time
 		if currentAcctInstance.IsCreating() && utils.CreationConditionOlderThan(*currentAcctInstance, createPendTime) {
 			errMsg := fmt.Sprintf("Creation pending for longer than %d minutes", utils.WaitTime)
-			_, stateErr := r.setAccountFailed(
+			stateErr := r.setAccountFailed( //nolint:contextcheck // Context threading addressed in follow-up PR
 				reqLogger,
 				currentAcctInstance,
 				awsv1alpha1.AccountCreationFailed,
 				"CreationTimeout",
 				errMsg,
-				AccountFailed,
 			)
 			if stateErr != nil {
 				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
@@ -454,7 +452,7 @@ func (r *AccountReconciler) generateAccountTags(reqLogger logr.Logger, configMap
 	enabled, err := strconv.ParseBool(configMap.Data["feature.compliance_tags"])
 	if err != nil {
 		reqLogger.Info("Could not retrieve feature flag 'feature.compliance_tags' - compliance tagging is disabled")
-		return tags, nil
+		return tags, err
 	}
 
 	if !enabled {
@@ -487,12 +485,12 @@ func (r *AccountReconciler) generateAccountTags(reqLogger logr.Logger, configMap
 func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string) (reconcile.Result, error) {
 	numberOfAccountsOptingIn, err := CalculateOptingInRegionAccounts(reqLogger, r.Client)
 	if err != nil {
-		return reconcile.Result{}, nil
+		return reconcile.Result{}, err
 	}
 
 	if currentAcctInstance.Status.OptInRegions == nil {
 		switch utils.DetectDevMode {
-		case utils.DevModeProduction:
+		case utils.DevModeProduction, utils.DevModeLocal, utils.DevModeCluster:
 			if numberOfAccountsOptingIn >= MaxAccountRegionEnablement {
 				return reconcile.Result{RequeueAfter: intervalBetweenChecksMinutes * time.Minute}, nil
 			}
@@ -522,7 +520,7 @@ func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, c
 
 	if currentAcctInstance.HasOpenOptInRegionRequests() {
 		switch utils.DetectDevMode {
-		case utils.DevModeProduction:
+		case utils.DevModeProduction, utils.DevModeLocal, utils.DevModeCluster:
 			return GetOptInRegionStatus(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
 		}
 	}
@@ -569,13 +567,12 @@ func (r *AccountReconciler) handleIAMUserCreation(reqLogger logr.Logger, current
 	if err != nil {
 		reason, errType := getBuildIAMUserErrorReason(err)
 		errMsg := fmt.Sprintf("Failed to build IAM UHC user %s: %s", iamUserUHC, err)
-		_, stateErr := r.setAccountFailed(
+		stateErr := r.setAccountFailed(
 			reqLogger,
 			currentAcctInstance,
 			errType,
 			reason,
 			errMsg,
-			AccountFailed,
 		)
 		if stateErr != nil {
 			reqLogger.Error(err, "failed setting account state", "desiredState", AccountFailed)
@@ -601,13 +598,12 @@ func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentA
 		reason = aerr.ErrorCode()
 	}
 	errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s: %s", currentAcctInstance.Spec.AwsAccountID, err)
-	_, stateErr := r.setAccountFailed(
+	stateErr := r.setAccountFailed(
 		reqLogger,
 		currentAcctInstance,
 		awsv1alpha1.AccountClientError,
 		reason,
 		errMsg,
-		AccountFailed,
 	)
 	if stateErr != nil {
 		reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
@@ -622,13 +618,12 @@ func (r *AccountReconciler) handleAccountInitializingRegions(reqLogger logr.Logg
 		// This should never happen: the thing that made IsInitializingRegions true
 		// also added the Condition.
 		errMsg := "Unexpectedly couldn't find the InitializingRegions Condition"
-		_, stateErr := r.setAccountFailed(
+		stateErr := r.setAccountFailed(
 			reqLogger,
 			currentAcctInstance,
 			awsv1alpha1.AccountInternalError,
 			"MissingCondition",
 			errMsg,
-			AccountFailed,
 		)
 		return reconcile.Result{}, stateErr
 	}
@@ -667,13 +662,12 @@ func (r *AccountReconciler) handleAccountInitializingRegions(reqLogger logr.Logg
 	// The goroutines happened in this invocation. Time out if that has taken too long.
 	if time.Since(irCond.LastTransitionTime.Time) > regionInitTime {
 		errMsg := fmt.Sprintf("Initializing regions for longer than %d seconds", regionInitTime/time.Second)
-		_, stateErr := r.setAccountFailed(
+		stateErr := r.setAccountFailed(
 			reqLogger,
 			currentAcctInstance,
 			awsv1alpha1.AccountCreationFailed,
 			"RegionInitializationTimeout",
 			errMsg,
-			AccountFailed,
 		)
 		return reconcile.Result{}, stateErr
 	}
@@ -728,7 +722,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 
 			// This will requeue verification for between 30 and 60 (30+30) seconds, depending on the account
 			return reconcile.Result{RequeueAfter: time.Duration(intervalAfterCaseCreationSecs+randomInterval) * time.Second}, nil
-		default:
+		case utils.DevModeLocal, utils.DevModeCluster:
 			log.Info("Running in development mode, Skipping Support Case Creation.")
 		}
 	}
@@ -742,7 +736,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 			return reconcile.Result{}, err
 		}
 		supportCaseResolved = resolvedScoped
-	default:
+	case utils.DevModeLocal, utils.DevModeCluster:
 		log.Info("Running in development mode, Skipping case resolution check")
 		supportCaseResolved = true
 	}
@@ -751,6 +745,8 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 		switch utils.DetectDevMode {
 		case utils.DevModeProduction:
 			return GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
+		case utils.DevModeLocal, utils.DevModeCluster:
+			// Skip service quota requests in development mode
 		}
 	}
 
@@ -885,7 +881,7 @@ func (r *AccountReconciler) nonCCSAssignAccountID(reqLogger logr.Logger, current
 	var awsAccountID string
 
 	switch utils.DetectDevMode {
-	case utils.DevModeProduction:
+	case utils.DevModeProduction, utils.DevModeLocal, utils.DevModeCluster:
 		var err error
 		awsAccountID, err = r.BuildAccount(reqLogger, awsSetupClient, currentAcctInstance)
 		if err != nil {
@@ -1072,8 +1068,7 @@ func (r *AccountReconciler) BuildAccount(reqLogger logr.Logger, awsClient awscli
 	orgOutput, orgErr := CreateAccount(reqLogger, awsClient, account.Name, email)
 	// If it was an api or a limit issue don't modify account and exit if anything else set to failed
 	if orgErr != nil {
-		switch orgErr {
-		case awsv1alpha1.ErrAwsFailedCreateAccount:
+		if errors.Is(orgErr, awsv1alpha1.ErrAwsFailedCreateAccount) {
 			utils.SetAccountStatus(account, "Failed to create AWS Account", awsv1alpha1.AccountCreationFailed, AccountFailed)
 			err := r.statusUpdate(account)
 			if err != nil {
@@ -1082,12 +1077,10 @@ func (r *AccountReconciler) BuildAccount(reqLogger logr.Logger, awsClient awscli
 
 			reqLogger.Error(awsv1alpha1.ErrAwsFailedCreateAccount, "Failed to create AWS Account")
 			return "", orgErr
-
-		case awsv1alpha1.ErrAwsAccountLimitExceeded:
+		} else if errors.Is(orgErr, awsv1alpha1.ErrAwsAccountLimitExceeded) {
 			log.Error(orgErr, "Failed to create AWS Account limit reached")
 			return "", orgErr
-
-		default:
+		} else {
 			log.Error(orgErr, "Failed to create AWS Account nonfatal error")
 			return "", orgErr
 		}
@@ -1156,7 +1149,7 @@ func CreateAccount(reqLogger logr.Logger, client awsclient.Client, accountName, 
 
 		if createStatus == organizationstypes.CreateAccountStateFailed {
 			var returnErr error
-			switch status.CreateAccountStatus.FailureReason {
+			switch status.CreateAccountStatus.FailureReason { //nolint:exhaustive
 			case organizationstypes.CreateAccountFailureReasonAccountLimitExceeded:
 				returnErr = awsv1alpha1.ErrAwsAccountLimitExceeded
 			case organizationstypes.CreateAccountFailureReasonInternalFailure:
@@ -1184,7 +1177,7 @@ func ClaimAccount(r *AccountReconciler, currentAcctInstance *awsv1alpha1.Account
 		currentAcctInstance.Spec.ClaimLinkNamespace)
 	currentAcctInstance.Status.Conditions = utils.SetAccountCondition(
 		currentAcctInstance.Status.Conditions,
-		awsv1alpha1.AccountConditionType(awsv1alpha1.AccountIsClaimed),
+		awsv1alpha1.AccountIsClaimed,
 		// Switch the Condition off
 		corev1.ConditionTrue,
 		AccountInitializingRegions,
@@ -1213,7 +1206,7 @@ func (r *AccountReconciler) statusUpdate(account *awsv1alpha1.Account) error {
 	return err
 }
 
-func (r *AccountReconciler) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype awsv1alpha1.AccountConditionType, reason string, message string, state string) (reconcile.Result, error) {
+func (r *AccountReconciler) setAccountFailed(reqLogger logr.Logger, account *awsv1alpha1.Account, ctype awsv1alpha1.AccountConditionType, reason string, message string) error {
 	reqLogger.Info(message)
 	// Update account status and condition
 	account.Status.Conditions = utils.SetAccountCondition(
@@ -1225,21 +1218,22 @@ func (r *AccountReconciler) setAccountFailed(reqLogger logr.Logger, account *aws
 		utils.UpdateConditionNever,
 		account.Spec.BYOC,
 	)
-	account.Status.State = state
+	account.Status.State = AccountFailed
 
 	// Set the failure in the accountClaim as well
 	err := r.accountClaimError(reqLogger, account, reason, message)
 	if err != nil {
-		return reconcile.Result{}, err
+		return err
 	}
 
 	// Apply update
 	err = r.statusUpdate(account)
 	if err != nil {
 		reqLogger.Error(err, "failed to update account status")
+		return err
 	}
 
-	return reconcile.Result{Requeue: true}, nil
+	return nil
 }
 
 func (r *AccountReconciler) getAccountClaim(account *awsv1alpha1.Account) (*awsv1alpha1.AccountClaim, error) {
@@ -1344,12 +1338,11 @@ func matchSubstring(roleID, role string) (bool, error) {
 }
 
 func getBuildIAMUserErrorReason(err error) (string, awsv1alpha1.AccountConditionType) {
-	switch err {
-	case awsv1alpha1.ErrInvalidToken:
+	if errors.Is(err, awsv1alpha1.ErrInvalidToken) {
 		return "InvalidClientTokenId", awsv1alpha1.AccountAuthenticationError
-	case awsv1alpha1.ErrAccessDenied:
+	} else if errors.Is(err, awsv1alpha1.ErrAccessDenied) {
 		return "AccessDenied", awsv1alpha1.AccountAuthorizationError
-	default:
+	} else {
 		var aerr smithy.APIError
 		if errors.As(err, &aerr) {
 			return aerr.ErrorCode(), awsv1alpha1.AccountClientError
@@ -1433,7 +1426,7 @@ func parseTagsFromString(tags string) []awsclient.AWSTag {
 }
 
 func castAWSRegionType(regions []ec2types.Region) []awsv1alpha1.AwsRegions {
-	var awsRegions []awsv1alpha1.AwsRegions
+	awsRegions := make([]awsv1alpha1.AwsRegions, 0, len(regions))
 	for _, region := range regions {
 		awsRegions = append(awsRegions, awsv1alpha1.AwsRegions{Name: *region.RegionName})
 	}
@@ -1487,7 +1480,7 @@ func (r *AccountReconciler) handleCreateAdminAccessRole(
 			}
 			return nil, nil, acctClaimErr
 		}
-		ccsClient, err := r.getCCSClient(currentAcctInstance, accountClaim)
+		ccsClient, err := r.getCCSClient(accountClaim)
 		if err != nil {
 			reqLogger.Error(err, "An error was encountered retrieving CCS Client")
 			return nil, nil, err

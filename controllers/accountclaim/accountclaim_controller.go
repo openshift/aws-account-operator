@@ -3,6 +3,7 @@ package accountclaim
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -233,7 +234,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 				}
 				reqLogger.V(1).Info("successfully deleted IAM secret", "accountclaim", accountClaim.Name)
 			}
-			currentAcctInstance, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+			currentAcctInstance, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink) //nolint:contextcheck // Context threading addressed in follow-up PR
 			if accountErr != nil {
 				reqLogger.Error(accountErr, "Unable to get claimed account")
 			}
@@ -313,7 +314,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		}
 		reqLogger.V(1).Info("successfully got unclaimed account", "accountclaim", accountClaim.Name)
 	} else {
-		unclaimedAccount, err = r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+		unclaimedAccount, err = r.getClaimedAccount(accountClaim.Spec.AccountLink) //nolint:contextcheck // Context threading addressed in follow-up PR
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -365,7 +366,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 
 		err = MoveAccountToOU(r, reqLogger, awsClient, accountClaim, unclaimedAccount)
 		if err != nil {
-			if err == awsv1alpha1.ErrAccMoveRaceCondition {
+			if errors.Is(err, awsv1alpha1.ErrAccMoveRaceCondition) {
 				// Due to a race condition, we need to requeue the reconcile to ensure that the account was correctly moved into the correct OU
 				return reconcile.Result{Requeue: true}, nil
 			}
@@ -419,7 +420,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 
 			// Implement IAM user deletion logic
 			if err := account.DeleteIAMUsers(reqLogger, awsClient, unclaimedAccount); err != nil {
-				return reconcile.Result{}, fmt.Errorf("failed deleting IAM users: %v", err)
+				return reconcile.Result{}, fmt.Errorf("failed deleting IAM users: %w", err)
 			}
 
 			// Deletes account IAM user Secret
@@ -461,7 +462,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			err = r.createIAMSecret(reqLogger, accountClaim, unclaimedAccount)
 			if err != nil {
-				return reconcile.Result{}, nil
+				return reconcile.Result{}, err
 			}
 			reqLogger.V(1).Info("successfully created IAM secret", "accountclaim", accountClaim.Name)
 		}
@@ -484,7 +485,7 @@ func (r *AccountClaimReconciler) CleanUpIAMRoleAndPolicies(reqLogger logr.Logger
 		RoleName: aws.String(roleName),
 	})
 	if err != nil {
-		return nil
+		return err
 	}
 
 	respPolicy, err := awsClient.ListRolePolicies(context.TODO(), &iam.ListRolePoliciesInput{
@@ -697,7 +698,7 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logge
 			}
 
 			// Get account claimed by deleted accountclaim
-			failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink, awsv1alpha1.AccountCrNamespace)
+			failedReusedAccount, accountErr := r.getClaimedAccount(accountClaim.Spec.AccountLink)
 			if accountErr != nil {
 				reqLogger.Error(accountErr, "Failed to get claimed account")
 				return fmt.Errorf("failed to get claimed account: %w", err)
@@ -714,7 +715,7 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logge
 	}
 
 	// Remove finalizer to unlock deletion of the accountClaim
-	return r.removeFinalizer(reqLogger, accountClaim, accountClaimFinalizer)
+	return r.removeFinalizer(reqLogger, accountClaim)
 }
 
 func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) (reconcile.Result, error) {
@@ -823,7 +824,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)
 			if err != nil {
-				return reconcile.Result{}, nil
+				return reconcile.Result{}, err
 			}
 			reqLogger.V(1).Info("successfully created IAM secret", "accountclaim", accountClaim.Name)
 		}
@@ -851,9 +852,9 @@ func (r *AccountClaimReconciler) createAccountForBYOCClaim(accountClaim *awsv1al
 	return err
 }
 
-func (r *AccountClaimReconciler) getClaimedAccount(accountLink string, namespace string) (*awsv1alpha1.Account, error) {
+func (r *AccountClaimReconciler) getClaimedAccount(accountLink string) (*awsv1alpha1.Account, error) {
 	account := &awsv1alpha1.Account{}
-	err := r.Get(context.TODO(), types.NamespacedName{Name: accountLink, Namespace: namespace}, account)
+	err := r.Get(context.TODO(), types.NamespacedName{Name: accountLink, Namespace: awsv1alpha1.AccountCrNamespace}, account)
 	if err != nil {
 		return nil, err
 	}
