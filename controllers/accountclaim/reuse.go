@@ -77,6 +77,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 
 	var awsClient awsclient.Client
 	var awsClientInput awsclient.NewAwsClientInput
+	var managementAwsClient awsclient.Client // Client for management/payer account (used for CloseAccount)
 
 	clusterAwsRegion := accountClaim.Spec.Aws.Regions[0].Name
 	if reusedAccount.IsBYOC() {
@@ -116,6 +117,10 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 			reqLogger.Error(err, connErr)
 			return err
 		}
+
+		// Store the management account client for CloseAccount API calls
+		// CloseAccount must be called from the management/payer account, not the child account
+		managementAwsClient = awsSetupClient
 	}
 
 	if reusedAccount.IsBYOC() {
@@ -171,7 +176,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(reqLogger logr.Logger, acc
 	// Close account instead of reusing if feature is enabled
 	// Skip for FedRAMP (different compliance requirements)
 	if utils.IsCloseOnReleaseEnabled(configMap) && !config.IsFedramp() {
-		closeErr := r.closeAndDeleteAccount(context.TODO(), reqLogger, reusedAccount, awsClient, configMap)
+		closeErr := r.closeAndDeleteAccount(context.TODO(), reqLogger, reusedAccount, managementAwsClient, configMap)
 		if closeErr != nil {
 			if errors.Is(closeErr, ErrDryRunMode) {
 				reqLogger.Info("Dry-run mode active, falling back to reuse",
@@ -250,7 +255,7 @@ func (r *AccountClaimReconciler) closeAndDeleteAccount(
 	ctx context.Context,
 	reqLogger logr.Logger,
 	account *awsv1alpha1.Account,
-	awsClient awsclient.Client,
+	managementAwsClient awsclient.Client,
 	configMap *corev1.ConfigMap,
 ) error {
 	awsAccountID := account.Spec.AwsAccountID
@@ -271,12 +276,12 @@ func (r *AccountClaimReconciler) closeAndDeleteAccount(
 		return ErrDryRunMode
 	}
 
-	// Call CloseAccount API
+	// Call CloseAccount API using the management/payer account credentials
 	reqLogger.Info("Closing AWS account", "accountID", awsAccountID)
 	callCtx, cancel := context.WithTimeout(ctx, closeAccountTimeout)
 	defer cancel()
 
-	_, err := awsClient.CloseAccount(callCtx, &organizations.CloseAccountInput{
+	_, err := managementAwsClient.CloseAccount(callCtx, &organizations.CloseAccountInput{
 		AccountId: aws.String(awsAccountID),
 	})
 
