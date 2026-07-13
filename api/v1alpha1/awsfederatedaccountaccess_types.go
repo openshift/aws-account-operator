@@ -1,9 +1,14 @@
 package v1alpha1
 
 import (
+	"errors"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// ErrAWSCustomerCredentialSecretNamespaceMismatch indicates the AWSCustomerCredentialSecret namespace does not match the CR namespace
+var ErrAWSCustomerCredentialSecretNamespaceMismatch = errors.New("AWSCustomerCredentialSecretNamespaceMismatch")
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
@@ -108,6 +113,15 @@ type AWSFederatedAccountAccessList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []AWSFederatedAccountAccess `json:"items"`
+}
+
+// Validate checks that the AWSFederatedAccountAccess CR does not reference secrets outside its own namespace
+func (a *AWSFederatedAccountAccess) Validate() error {
+	if a.Spec.AWSCustomerCredentialSecret.Namespace != "" &&
+		a.Spec.AWSCustomerCredentialSecret.Namespace != a.Namespace {
+		return ErrAWSCustomerCredentialSecretNamespaceMismatch
+	}
+	return nil
 }
 
 func init() {

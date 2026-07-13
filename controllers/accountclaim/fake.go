@@ -23,6 +23,12 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 		return true, nil
 	}
 
+	// Defense-in-depth: block cross-namespace secret access
+	if err := validateSecretRefNamespace(accountClaim.Spec.AwsCredentialSecret, accountClaim.Namespace); err != nil {
+		reqLogger.Error(err, "cross-namespace secret reference blocked in fake process")
+		return false, err
+	}
+
 	// Check if accountClaim is being deleted, and remove the fakesecret
 	if accountClaim.DeletionTimestamp != nil {
 		// Delete fake secret if it exists

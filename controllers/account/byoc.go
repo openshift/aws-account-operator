@@ -297,6 +297,12 @@ func (r *AccountReconciler) getSTSClient(log logr.Logger, accountClaim *awsv1alp
 }
 
 func (r *AccountReconciler) getCCSClient(currentAcct *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) (awsclient.Client, error) {
+	// Defense-in-depth: block cross-namespace secret references
+	if accountClaim.Spec.BYOCSecretRef.Namespace != "" && accountClaim.Spec.BYOCSecretRef.Namespace != accountClaim.Namespace {
+		return nil, fmt.Errorf("BYOCSecretRef namespace %q does not match AccountClaim namespace %q",
+			accountClaim.Spec.BYOCSecretRef.Namespace, accountClaim.Namespace)
+	}
+
 	awsRegion := config.GetDefaultRegion()
 
 	// Get credentials

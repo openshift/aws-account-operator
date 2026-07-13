@@ -2,6 +2,7 @@ package accountclaim
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
@@ -69,6 +70,12 @@ func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountC
 }
 
 func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha1.AccountClaim) error {
+	// Defense-in-depth: block cross-namespace secret references
+	if accountClaim.Spec.BYOCSecretRef.Namespace != "" &&
+		accountClaim.Spec.BYOCSecretRef.Namespace != accountClaim.Namespace {
+		return fmt.Errorf("BYOCSecretRef namespace %q does not match AccountClaim namespace %q",
+			accountClaim.Spec.BYOCSecretRef.Namespace, accountClaim.Namespace)
+	}
 
 	byocSecret := &corev1.Secret{}
 	err := r.Get(context.TODO(),
@@ -92,6 +99,11 @@ func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha
 }
 
 func (r *AccountClaimReconciler) removeBYOCSecretFinalizer(accountClaim *awsv1alpha1.AccountClaim) error {
+	// Defense-in-depth: skip cross-namespace secret cleanup to avoid touching foreign secrets
+	if accountClaim.Spec.BYOCSecretRef.Namespace != "" &&
+		accountClaim.Spec.BYOCSecretRef.Namespace != accountClaim.Namespace {
+		return nil
+	}
 
 	byocSecret := &corev1.Secret{}
 	err := r.Get(context.TODO(),
