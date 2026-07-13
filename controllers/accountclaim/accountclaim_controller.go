@@ -233,12 +233,11 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	}
 
 	if accountClaim.DeletionTimestamp != nil {
-		// Defense-in-depth: block cross-namespace secret access during deletion
+		// Defense-in-depth: skip fleet-manager secret cleanup for cross-namespace refs,
+		// but always proceed to handleAccountClaimDeletion to remove finalizers.
 		if err := validateSecretRefNamespace(accountClaim.Spec.AwsCredentialSecret, accountClaim.Namespace); err != nil {
-			reqLogger.Error(err, "cross-namespace secret reference blocked during deletion")
-			return reconcile.Result{}, err
-		}
-		if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" {
+			reqLogger.Info("skipping fleet-manager secret cleanup for cross-namespace ref during deletion", "error", err.Error())
+		} else if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" {
 			if r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 				err = r.deleteIAMSecret(reqLogger, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace)
 				if err != nil {
@@ -499,7 +498,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			err = r.createIAMSecret(reqLogger, accountClaim, unclaimedAccount)
 			if err != nil {
-				return reconcile.Result{}, nil
+				return reconcile.Result{}, err
 			}
 			reqLogger.V(1).Info("successfully created IAM secret", "accountclaim", accountClaim.Name)
 		}
@@ -869,7 +868,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)
 			if err != nil {
-				return reconcile.Result{}, nil
+				return reconcile.Result{}, err
 			}
 			reqLogger.V(1).Info("successfully created IAM secret", "accountclaim", accountClaim.Name)
 		}

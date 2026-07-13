@@ -131,7 +131,7 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(ctx context.Context, req
 		err := fmt.Errorf("AWSCustomerCredentialSecret namespace %q does not match CR namespace %q",
 			currentFAA.Spec.AWSCustomerCredentialSecret.Namespace, currentFAA.Namespace)
 		reqLogger.Error(err, "cross-namespace secret reference blocked")
-		return reconcile.Result{}, err
+		return reconcile.Result{}, nil
 	}
 
 	// Get aws client

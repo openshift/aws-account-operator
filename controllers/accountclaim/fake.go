@@ -23,19 +23,13 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 		return true, nil
 	}
 
-	// Defense-in-depth: block cross-namespace secret access
-	if err := validateSecretRefNamespace(accountClaim.Spec.AwsCredentialSecret, accountClaim.Namespace); err != nil {
-		reqLogger.Error(err, "cross-namespace secret reference blocked in fake process")
-		return false, err
-	}
-
 	// Check if accountClaim is being deleted, and remove the fakesecret
 	if accountClaim.DeletionTimestamp != nil {
-		// Delete fake secret if it exists
-		// Create secret for OCM to consume
-		if r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
-
-			// Need to check if the secret exists AND that it matches what we're expecting
+		// Defense-in-depth: skip secret cleanup for cross-namespace refs,
+		// but always remove finalizer to avoid wedging the CR.
+		if err := validateSecretRefNamespace(accountClaim.Spec.AwsCredentialSecret, accountClaim.Namespace); err != nil {
+			reqLogger.Info("skipping fake secret cleanup for cross-namespace ref during deletion", "error", err.Error())
+		} else if r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			secret := corev1.Secret{}
 			secretObjectKey := client.ObjectKey{Name: accountClaim.Spec.AwsCredentialSecret.Name, Namespace: accountClaim.Spec.AwsCredentialSecret.Namespace}
 			err := r.Get(context.TODO(), secretObjectKey, &secret)
@@ -56,6 +50,12 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 			return true, err
 		}
 		return false, nil
+	}
+
+	// Defense-in-depth: block cross-namespace secret access for non-deletion paths
+	if err := validateSecretRefNamespace(accountClaim.Spec.AwsCredentialSecret, accountClaim.Namespace); err != nil {
+		reqLogger.Error(err, "cross-namespace secret reference blocked in fake process")
+		return false, err
 	}
 
 	// Create Fake Secret if it doesnt exist
