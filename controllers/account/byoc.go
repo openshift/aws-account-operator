@@ -297,12 +297,20 @@ func (r *AccountReconciler) getSTSClient(log logr.Logger, accountClaim *awsv1alp
 }
 
 func (r *AccountReconciler) getCCSClient(currentAcct *awsv1alpha1.Account, accountClaim *awsv1alpha1.AccountClaim) (awsclient.Client, error) {
+	if err := accountClaim.Validate(); err != nil {
+		return nil, err
+	}
+
+	secretNamespace := accountClaim.Spec.BYOCSecretRef.Namespace
+	if secretNamespace == "" {
+		secretNamespace = accountClaim.Namespace
+	}
+
 	awsRegion := config.GetDefaultRegion()
 
-	// Get credentials
 	ccsAWSClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: accountClaim.Spec.BYOCSecretRef.Name,
-		NameSpace:  accountClaim.Spec.BYOCSecretRef.Namespace,
+		NameSpace:  secretNamespace,
 		AwsRegion:  awsRegion,
 	})
 	if err != nil {

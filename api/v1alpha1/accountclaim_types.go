@@ -166,6 +166,12 @@ var ErrBYOCSecretRefMissing = errors.New("BYOCSecretRefMissing")
 // ErrSTSRoleARNMissing is an error for missing STS Role ARN definition in the AccountClaim
 var ErrSTSRoleARNMissing = errors.New("STSRoleARNMissing")
 
+// ErrBYOCSecretRefNamespaceMismatch is an error for BYOC secret ref namespace not matching CR namespace
+var ErrBYOCSecretRefNamespaceMismatch = errors.New("BYOCSecretRefNamespaceMismatch")
+
+// ErrAWSSecretRefNamespaceMismatch is an error for AWS credential secret ref namespace not matching CR namespace
+var ErrAWSSecretRefNamespaceMismatch = errors.New("AWSSecretRefNamespaceMismatch")
+
 // Validates an AccountClaim object
 func (a *AccountClaim) Validate() error {
 	// Validate STS mode first since we only require the
@@ -180,14 +186,20 @@ func (a *AccountClaim) Validate() error {
 		return a.validateBYOC()
 	}
 
-	// we don't do any validation for non-ccs accounts currently, so
-	// let's keep that behavior
+	// For non-CCS accounts, still validate namespace match if AwsCredentialSecret is set
+	if a.Spec.AwsCredentialSecret.Namespace != "" && a.Spec.AwsCredentialSecret.Namespace != a.Namespace {
+		return ErrAWSSecretRefNamespaceMismatch
+	}
+
 	return nil
 }
 
 func (a *AccountClaim) validateSTS() error {
 	if a.Spec.STSRoleARN == "" {
 		return ErrSTSRoleARNMissing
+	}
+	if a.Spec.AwsCredentialSecret.Namespace != "" && a.Spec.AwsCredentialSecret.Namespace != a.Namespace {
+		return ErrAWSSecretRefNamespaceMismatch
 	}
 	return nil
 }
@@ -201,6 +213,12 @@ func (a *AccountClaim) validateBYOC() error {
 	}
 	if a.Spec.AwsCredentialSecret.Name == "" || a.Spec.AwsCredentialSecret.Namespace == "" {
 		return ErrAWSSecretRefMissing
+	}
+	if a.Spec.BYOCSecretRef.Namespace != a.Namespace {
+		return ErrBYOCSecretRefNamespaceMismatch
+	}
+	if a.Spec.AwsCredentialSecret.Namespace != a.Namespace {
+		return ErrAWSSecretRefNamespaceMismatch
 	}
 
 	return nil

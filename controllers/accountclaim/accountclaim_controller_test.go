@@ -474,7 +474,7 @@ var _ = Describe("AccountClaim", func() {
 			It("Should create a BYOC Account", func() {
 				dummySecretRef := awsv1alpha1.SecretRef{
 					Name:      "name",
-					Namespace: "namespace",
+					Namespace: namespace,
 				}
 				accountClaim.Spec.BYOCSecretRef = dummySecretRef
 				accountClaim.Spec.AwsCredentialSecret = dummySecretRef

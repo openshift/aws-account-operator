@@ -64,7 +64,8 @@ type AWSFederatedAccountAccessReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.2/pkg/reconcile
-func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, request ctrl.Request) (ctrl.Result, error) {
+//nolint:gocyclo // pre-existing complexity; security validation adds minimal branches
+func (r *AWSFederatedAccountAccessReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	reqLogger := log.WithValues("Controller", controllerName, "Request.Namespace", request.Namespace, "Request.Name", request.Name)
 
 	// Fetch the AWSFederatedAccountAccess instance
@@ -79,6 +80,19 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
+	}
+
+	// Allow deletion to proceed even for invalid CRs to prevent stuck finalizers
+	if currentFAA.DeletionTimestamp != nil {
+		if err := r.handleDeletion(ctx, reqLogger, currentFAA); err != nil {
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{}, nil
+	}
+
+	// Validate the CR spec — prevent cross-namespace secret references
+	if valid, validationErr := r.validateSpec(ctx, reqLogger, currentFAA); !valid {
+		return reconcile.Result{}, validationErr
 	}
 
 	requestedRole := &awsv1alpha1.AWSFederatedRole{}
@@ -109,24 +123,6 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{}, nil
-	}
-
-	if currentFAA.DeletionTimestamp != nil {
-
-		if controllerutils.Contains(currentFAA.GetFinalizers(), controllerutils.Finalizer) {
-
-			reqLogger.Info("Cleaning up FederatedAccountAccess Roles")
-			err = r.cleanFederatedRoles(reqLogger, currentFAA, requestedRole)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-
-			reqLogger.Info("Removing Finalizer")
-			err = r.removeFinalizer(reqLogger, currentFAA, controllerutils.Finalizer)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-		}
 	}
 
 	// Get aws client
@@ -296,6 +292,44 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(_ context.Context, reque
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func (r *AWSFederatedAccountAccessReconciler) validateSpec(ctx context.Context, reqLogger logr.Logger, currentFAA *awsv1alpha1.AWSFederatedAccountAccess) (bool, error) {
+	if validateErr := currentFAA.Validate(); validateErr != nil {
+		SetStatuswithCondition(currentFAA, fmt.Sprintf("Invalid spec: %s", validateErr.Error()),
+			awsv1alpha1.AWSFederatedAccountFailed, awsv1alpha1.AWSFederatedAccountStateFailed)
+		reqLogger.Error(validateErr, "AWSFederatedAccountAccess spec validation failed")
+		err := r.Client.Status().Update(ctx, currentFAA)
+		if err != nil {
+			reqLogger.Error(err, fmt.Sprintf("Status update for %s failed", currentFAA.Name))
+			return false, err
+		}
+		return false, nil
+	}
+	return true, nil
+}
+
+func (r *AWSFederatedAccountAccessReconciler) handleDeletion(ctx context.Context, reqLogger logr.Logger, currentFAA *awsv1alpha1.AWSFederatedAccountAccess) error {
+	if !controllerutils.Contains(currentFAA.GetFinalizers(), controllerutils.Finalizer) {
+		return nil
+	}
+
+	requestedRole := &awsv1alpha1.AWSFederatedRole{}
+	err := r.Get(ctx, types.NamespacedName{Name: currentFAA.Spec.AWSFederatedRole.Name, Namespace: currentFAA.Spec.AWSFederatedRole.Namespace}, requestedRole)
+	if err != nil {
+		if !k8serr.IsNotFound(err) {
+			return err
+		}
+	} else {
+		reqLogger.Info("Cleaning up FederatedAccountAccess Roles")
+		err = r.cleanFederatedRoles(reqLogger, currentFAA, requestedRole) //nolint:contextcheck // cleanFederatedRoles uses context.TODO() internally
+		if err != nil {
+			return err
+		}
+	}
+
+	reqLogger.Info("Removing Finalizer")
+	return r.removeFinalizer(reqLogger, currentFAA, controllerutils.Finalizer) //nolint:contextcheck // removeFinalizer uses context.TODO() internally
 }
 
 func detachRolePolicy(awsClient awsclient.Client, federatedRole *awsv1alpha1.AWSFederatedRole, awsAccountID string, uid string) error {

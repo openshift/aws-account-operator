@@ -377,11 +377,11 @@ func TestInitializeNewCCSAccount(t *testing.T) {
 						BYOCAWSAccountID: "1234",
 						BYOCSecretRef: awsv1alpha1.SecretRef{
 							Name:      "SecretName",
-							Namespace: "SecretNamespace",
+							Namespace: awsv1alpha1.AccountCrNamespace,
 						},
 						AwsCredentialSecret: awsv1alpha1.SecretRef{
 							Name:      "SecretName",
-							Namespace: "SecretNamespace",
+							Namespace: awsv1alpha1.AccountCrNamespace,
 						},
 					},
 				},
@@ -432,11 +432,11 @@ func TestInitializeNewCCSAccount(t *testing.T) {
 						BYOCAWSAccountID: "1234",
 						BYOCSecretRef: awsv1alpha1.SecretRef{
 							Name:      "SecretName",
-							Namespace: "SecretNamespace",
+							Namespace: awsv1alpha1.AccountCrNamespace,
 						},
 						AwsCredentialSecret: awsv1alpha1.SecretRef{
 							Name:      "SecretName",
-							Namespace: "SecretNamespace",
+							Namespace: awsv1alpha1.AccountCrNamespace,
 						},
 					},
 				},

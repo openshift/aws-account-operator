@@ -25,11 +25,16 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 
 	// Check if accountClaim is being deleted, and remove the fakesecret
 	if accountClaim.DeletionTimestamp != nil {
-		// Delete fake secret if it exists
-		// Create secret for OCM to consume
-		if r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
+		if err := accountClaim.Validate(); err != nil {
+			reqLogger.Info("skipping fake secret cleanup due to invalid spec during deletion", "error", err.Error())
+			err = r.removeFinalizer(reqLogger, accountClaim, accountClaimFinalizer)
+			if err != nil {
+				return true, err
+			}
+			return false, nil
+		}
 
-			// Need to check if the secret exists AND that it matches what we're expecting
+		if r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			secret := corev1.Secret{}
 			secretObjectKey := client.ObjectKey{Name: accountClaim.Spec.AwsCredentialSecret.Name, Namespace: accountClaim.Spec.AwsCredentialSecret.Namespace}
 			err := r.Get(context.TODO(), secretObjectKey, &secret)
@@ -50,6 +55,12 @@ func (r *AccountClaimReconciler) processFake(reqLogger logr.Logger, accountClaim
 			return true, err
 		}
 		return false, nil
+	}
+
+	// Block cross-namespace secret access for non-deletion paths
+	if err := accountClaim.Validate(); err != nil {
+		reqLogger.Error(err, "invalid AccountClaim spec blocked in fake process")
+		return false, err
 	}
 
 	// Create Fake Secret if it doesnt exist
