@@ -125,15 +125,6 @@ func (r *AWSFederatedAccountAccessReconciler) Reconcile(ctx context.Context, req
 		return reconcile.Result{}, nil
 	}
 
-	// Defense-in-depth: block cross-namespace secret references
-	if currentFAA.Spec.AWSCustomerCredentialSecret.Namespace != "" &&
-		currentFAA.Spec.AWSCustomerCredentialSecret.Namespace != currentFAA.Namespace {
-		err := fmt.Errorf("AWSCustomerCredentialSecret namespace %q does not match CR namespace %q",
-			currentFAA.Spec.AWSCustomerCredentialSecret.Namespace, currentFAA.Namespace)
-		reqLogger.Error(err, "cross-namespace secret reference blocked")
-		return reconcile.Result{}, nil
-	}
-
 	// Get aws client
 	awsClient, err := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: currentFAA.Spec.AWSCustomerCredentialSecret.Name,

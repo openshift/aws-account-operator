@@ -143,14 +143,6 @@ func generateInlinePolicy(accountID string) (string, error) {
 	return string(policyJSON), nil
 }
 
-// validateSecretRefNamespace is a defense-in-depth check that prevents cross-namespace secret access.
-func validateSecretRefNamespace(ref awsv1alpha1.SecretRef, crNamespace string) error {
-	if ref.Namespace != "" && ref.Namespace != crNamespace {
-		return fmt.Errorf("secret ref namespace %q does not match CR namespace %q", ref.Namespace, crNamespace)
-	}
-	return nil
-}
-
 var log = logf.Log.WithName("controller_accountclaim")
 
 // AccountClaimReconciler reconciles a AccountClaim object
@@ -233,11 +225,12 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	}
 
 	if accountClaim.DeletionTimestamp != nil {
-		// Defense-in-depth: skip fleet-manager secret cleanup for cross-namespace refs,
-		// but always proceed to handleAccountClaimDeletion to remove finalizers.
-		if err := validateSecretRefNamespace(accountClaim.Spec.AwsCredentialSecret, accountClaim.Namespace); err != nil {
-			reqLogger.Info("skipping fleet-manager secret cleanup for cross-namespace ref during deletion", "error", err.Error())
-		} else if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" {
+		if err := accountClaim.Validate(); err != nil {
+			reqLogger.Info("skipping fleet-manager secret cleanup due to invalid spec during deletion", "error", err.Error())
+			return reconcile.Result{}, r.handleAccountClaimDeletion(reqLogger, accountClaim) //nolint:contextcheck // pre-existing function signature
+		}
+
+		if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" {
 			if r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 				err = r.deleteIAMSecret(reqLogger, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace)
 				if err != nil {
@@ -464,11 +457,6 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 				return reconcile.Result{}, err
 			}
 
-			// Defense-in-depth: block cross-namespace secret access on fleet manager path
-			if err := validateSecretRefNamespace(accountClaim.Spec.AwsCredentialSecret, accountClaim.Namespace); err != nil {
-				return reconcile.Result{}, err
-			}
-
 			// Creates IAM role secret
 			if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 				if err := r.createIAMRoleSecret(reqLogger, accountClaim, roleARN); err != nil {
@@ -490,10 +478,6 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		}
 	} else {
 
-		// Defense-in-depth: block cross-namespace secret access
-		if err := validateSecretRefNamespace(accountClaim.Spec.AwsCredentialSecret, accountClaim.Namespace); err != nil {
-			return reconcile.Result{}, err
-		}
 		// Create secret for OCM to consume
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			err = r.createIAMSecret(reqLogger, accountClaim, unclaimedAccount)
@@ -596,10 +580,6 @@ func newStsSecretforCR(secretName string, secretNameSpace string, arn []byte) *c
 
 // CreateOrUpdateSecret creates a secret in AWS Secrets Manager or updates it if it already exists.
 func (r *AccountClaimReconciler) createIAMRoleSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, roleARN string) error {
-	if err := validateSecretRefNamespace(accountClaim.Spec.AwsCredentialSecret, accountClaim.Namespace); err != nil {
-		return err
-	}
-
 	var OCMSecretNamespace string
 	var OCMSecretName string
 
@@ -860,10 +840,6 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 		}
 		reqLogger.V(1).Info("successfully set support role ARN", "accountclaim", accountClaim.Name)
 
-		// Defense-in-depth: block cross-namespace secret access
-		if err := validateSecretRefNamespace(accountClaim.Spec.AwsCredentialSecret, accountClaim.Namespace); err != nil {
-			return reconcile.Result{}, err
-		}
 		// Create secret for OCM to consume
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)
@@ -1031,10 +1007,6 @@ func CanAccountBeClaimedByAccountClaim(account *awsv1alpha1.Account, accountclai
 }
 
 func (r *AccountClaimReconciler) createIAMSecret(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, unclaimedAccount *awsv1alpha1.Account) error {
-	if err := validateSecretRefNamespace(accountClaim.Spec.AwsCredentialSecret, accountClaim.Namespace); err != nil {
-		return err
-	}
-
 	// Get secret created by Account controller and copy it to the name/namespace combo that OCM is expecting
 	accountIAMUserSecret := &corev1.Secret{}
 	objectKey := client.ObjectKey{Namespace: unclaimedAccount.Namespace, Name: unclaimedAccount.Spec.IAMUserSecret}

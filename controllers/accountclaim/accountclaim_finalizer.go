@@ -2,7 +2,6 @@ package accountclaim
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
@@ -70,11 +69,8 @@ func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountC
 }
 
 func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha1.AccountClaim) error {
-	// Defense-in-depth: block cross-namespace secret references
-	if accountClaim.Spec.BYOCSecretRef.Namespace != "" &&
-		accountClaim.Spec.BYOCSecretRef.Namespace != accountClaim.Namespace {
-		return fmt.Errorf("BYOCSecretRef namespace %q does not match AccountClaim namespace %q",
-			accountClaim.Spec.BYOCSecretRef.Namespace, accountClaim.Namespace)
+	if err := accountClaim.Validate(); err != nil {
+		return err
 	}
 
 	byocSecret := &corev1.Secret{}
@@ -99,10 +95,9 @@ func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha
 }
 
 func (r *AccountClaimReconciler) removeBYOCSecretFinalizer(accountClaim *awsv1alpha1.AccountClaim) error {
-	// Defense-in-depth: skip cross-namespace secret cleanup to avoid touching foreign secrets
-	if accountClaim.Spec.BYOCSecretRef.Namespace != "" &&
-		accountClaim.Spec.BYOCSecretRef.Namespace != accountClaim.Namespace {
-		return nil
+	// Skip cleanup for invalid specs to avoid touching foreign secrets, but don't block deletion
+	if err := accountClaim.Validate(); err != nil {
+		return nil //nolint:nilerr // intentional: skip cleanup without blocking deletion
 	}
 
 	byocSecret := &corev1.Secret{}
