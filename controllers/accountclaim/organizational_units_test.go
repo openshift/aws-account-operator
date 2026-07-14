@@ -1,16 +1,17 @@
 package accountclaim
 
 import (
-	"github.com/openshift/aws-account-operator/pkg/testutils"
 	"testing"
+
+	"github.com/openshift/aws-account-operator/pkg/testutils"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	organizationstypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
-	"go.uber.org/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"

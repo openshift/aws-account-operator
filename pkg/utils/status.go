@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"

@@ -25,9 +25,10 @@ func (r *AccountClaimReconciler) addFinalizer(reqLogger logr.Logger, accountClai
 	return nil
 }
 
-func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim, finalizerName string) error {
+func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 	reqLogger.Info("Removing Finalizer for the AccountClaim")
 
+	finalizerName := accountClaimFinalizer
 	maxRetries := 5
 	for attempt := range maxRetries {
 		if attempt > 0 {

@@ -211,6 +211,7 @@ func main() {
 
 	// initialize metrics collector
 	localmetrics.Collector = localmetrics.NewMetricsCollector(mgr.GetCache())
+	//nolint:exhaustive // Only handling DevModeLocal, Production and Cluster handled elsewhere
 	switch utils.DetectDevMode {
 	case utils.DevModeLocal:
 		if err := prometheus.Register(localmetrics.Collector); err != nil {
