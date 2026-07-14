@@ -69,6 +69,9 @@ func (r *AccountClaimReconciler) removeFinalizer(reqLogger logr.Logger, accountC
 }
 
 func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha1.AccountClaim) error {
+	if err := accountClaim.Validate(); err != nil {
+		return err
+	}
 
 	byocSecret := &corev1.Secret{}
 	err := r.Get(context.TODO(),
@@ -92,6 +95,10 @@ func (r *AccountClaimReconciler) addBYOCSecretFinalizer(accountClaim *awsv1alpha
 }
 
 func (r *AccountClaimReconciler) removeBYOCSecretFinalizer(accountClaim *awsv1alpha1.AccountClaim) error {
+	// Skip cleanup for invalid specs to avoid touching foreign secrets, but don't block deletion
+	if err := accountClaim.Validate(); err != nil {
+		return nil //nolint:nilerr // intentional: skip cleanup without blocking deletion
+	}
 
 	byocSecret := &corev1.Secret{}
 	err := r.Get(context.TODO(),

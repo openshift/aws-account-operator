@@ -225,6 +225,11 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	}
 
 	if accountClaim.DeletionTimestamp != nil {
+		if err := accountClaim.Validate(); err != nil {
+			reqLogger.Info("skipping fleet-manager secret cleanup due to invalid spec during deletion", "error", err.Error())
+			return reconcile.Result{}, r.handleAccountClaimDeletion(reqLogger, accountClaim) //nolint:contextcheck // pre-existing function signature
+		}
+
 		if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" {
 			if r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 				err = r.deleteIAMSecret(reqLogger, accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace)
@@ -275,6 +280,22 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 
 	if accountClaim.Spec.BYOC {
 		return r.handleBYOCAccountClaim(reqLogger, accountClaim)
+	}
+
+	// Validate namespace constraints for non-BYOC claims
+	if validateErr := accountClaim.Validate(); validateErr != nil {
+		controllerutils.SetAccountClaimStatus(
+			accountClaim,
+			"Invalid AccountClaim",
+			validateErr.Error(),
+			awsv1alpha1.InvalidAccountClaim,
+			awsv1alpha1.ClaimStatusError,
+		)
+		err = r.Client.Status().Update(ctx, accountClaim)
+		if err != nil {
+			reqLogger.Error(err, "Failed to update AccountClaim status")
+		}
+		return reconcile.Result{}, validateErr
 	}
 
 	// Return if this claim has been satisfied
@@ -461,7 +482,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			err = r.createIAMSecret(reqLogger, accountClaim, unclaimedAccount)
 			if err != nil {
-				return reconcile.Result{}, nil
+				return reconcile.Result{}, err
 			}
 			reqLogger.V(1).Info("successfully created IAM secret", "accountclaim", accountClaim.Name)
 		}
@@ -823,7 +844,7 @@ func (r *AccountClaimReconciler) handleBYOCAccountClaim(reqLogger logr.Logger, a
 		if !r.checkIAMSecretExists(accountClaim.Spec.AwsCredentialSecret.Name, accountClaim.Spec.AwsCredentialSecret.Namespace) {
 			err = r.createIAMSecret(reqLogger, accountClaim, byocAccount)
 			if err != nil {
-				return reconcile.Result{}, nil
+				return reconcile.Result{}, err
 			}
 			reqLogger.V(1).Info("successfully created IAM secret", "accountclaim", accountClaim.Name)
 		}

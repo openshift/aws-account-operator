@@ -2,6 +2,8 @@ package v1alpha1
 
 import (
 	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestValidate(t *testing.T) {
@@ -46,6 +48,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "Testing Valid CCS",
 			accountClaim: &AccountClaim{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test"},
 				Spec: AccountClaimSpec{
 					BYOC:             true,
 					BYOCAWSAccountID: "123456789",
@@ -60,6 +63,57 @@ func TestValidate(t *testing.T) {
 				},
 			},
 			expectedErr: nil,
+		},
+		{
+			name: "Testing CCS BYOCSecretRef namespace mismatch",
+			accountClaim: &AccountClaim{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-ns"},
+				Spec: AccountClaimSpec{
+					BYOC:             true,
+					BYOCAWSAccountID: "123456789",
+					BYOCSecretRef: SecretRef{
+						Name:      "testBYOC",
+						Namespace: "aws-account-operator",
+					},
+					AwsCredentialSecret: SecretRef{
+						Name:      "testAWS",
+						Namespace: "tenant-ns",
+					},
+				},
+			},
+			expectedErr: ErrBYOCSecretRefNamespaceMismatch,
+		},
+		{
+			name: "Testing CCS AwsCredentialSecret namespace mismatch",
+			accountClaim: &AccountClaim{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-ns"},
+				Spec: AccountClaimSpec{
+					BYOC:             true,
+					BYOCAWSAccountID: "123456789",
+					BYOCSecretRef: SecretRef{
+						Name:      "testBYOC",
+						Namespace: "tenant-ns",
+					},
+					AwsCredentialSecret: SecretRef{
+						Name:      "testAWS",
+						Namespace: "different-ns",
+					},
+				},
+			},
+			expectedErr: ErrAWSSecretRefNamespaceMismatch,
+		},
+		{
+			name: "Testing non-CCS AwsCredentialSecret namespace mismatch",
+			accountClaim: &AccountClaim{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-ns"},
+				Spec: AccountClaimSpec{
+					AwsCredentialSecret: SecretRef{
+						Name:      "testAWS",
+						Namespace: "aws-account-operator",
+					},
+				},
+			},
+			expectedErr: ErrAWSSecretRefNamespaceMismatch,
 		},
 		{
 			name: "Testing STS Missing RoleARN",
