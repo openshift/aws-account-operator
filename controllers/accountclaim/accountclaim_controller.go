@@ -208,6 +208,14 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		return reconcile.Result{}, nil
 	}
 
+	// --- Early exit checks (cheap, no AWS client or ConfigMap needed) ---
+
+	// Return if this claim has been satisfied — avoids all downstream work
+	if accountClaim.DeletionTimestamp == nil && claimIsSatisfied(accountClaim) {
+		reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.Name))
+		return reconcile.Result{}, nil
+	}
+
 	// CRITICAL SAFETY CHECK: Block operations on payer/root accounts
 	if accountClaim.Spec.BYOCAWSAccountID != "" {
 		isPayer, err := config.IsPayerAccount(accountClaim.Spec.BYOCAWSAccountID, r.Client)
@@ -296,12 +304,6 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			reqLogger.Error(err, "Failed to update AccountClaim status")
 		}
 		return reconcile.Result{}, validateErr
-	}
-
-	// Return if this claim has been satisfied
-	if claimIsSatisfied(accountClaim) {
-		reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.Name))
-		return reconcile.Result{}, nil
 	}
 
 	if accountClaim.Status.State == "" {
