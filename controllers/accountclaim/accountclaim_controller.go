@@ -211,7 +211,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	// --- Early exit checks (cheap, no AWS client or ConfigMap needed) ---
 
 	// Return if this claim has been satisfied — avoids all downstream work
-	if accountClaim.DeletionTimestamp == nil && claimIsSatisfied(accountClaim) {
+	if accountClaim.DeletionTimestamp == nil && !accountClaim.Spec.BYOC && claimIsSatisfied(accountClaim) {
 		reqLogger.Info(fmt.Sprintf("Claim %s has been satisfied ignoring", accountClaim.Name))
 		return reconcile.Result{}, nil
 	}
