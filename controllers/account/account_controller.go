@@ -121,10 +121,63 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return reconcile.Result{}, nil
 	}
 
+	// --- Early exit checks (cheap, no AWS client or ConfigMap needed) ---
+
+	// Log accounts that have failed and don't attempt to reconcile them
+	if currentAcctInstance.IsFailed() && !currentAcctInstance.IsPendingDeletion() {
+		reqLogger.Info(fmt.Sprintf("Account %s is failed. Ignoring.", currentAcctInstance.Name))
+		return reconcile.Result{}, nil
+	}
+
+	// Detect accounts for which we kicked off asynchronous region initialization
+	if currentAcctInstance.IsInitializingRegions() && !currentAcctInstance.IsPendingDeletion() {
+		return r.handleAccountInitializingRegions(reqLogger, currentAcctInstance) //nolint:contextcheck // pre-existing function signature
+	}
+
+	// Update account Status.Claimed to true if the account is ready and the claim link is not empty
+	if !currentAcctInstance.IsPendingDeletion() && !currentAcctInstance.IsBYOC() && currentAcctInstance.IsReadyUnclaimedAndHasClaimLink() {
+		return reconcile.Result{}, ClaimAccount(r, currentAcctInstance) //nolint:contextcheck // pre-existing function signature
+	}
+
+	// see if in creating for longer than default wait time
+	if !currentAcctInstance.IsPendingDeletion() && !currentAcctInstance.IsBYOC() && currentAcctInstance.IsCreating() && utils.CreationConditionOlderThan(*currentAcctInstance, createPendTime) {
+		errMsg := fmt.Sprintf("Creation pending for longer than %d minutes", utils.WaitTime)
+		_, stateErr := r.setAccountFailed( //nolint:contextcheck // pre-existing function signature
+			reqLogger,
+			currentAcctInstance,
+			awsv1alpha1.AccountCreationFailed,
+			"CreationTimeout",
+			errMsg,
+			AccountFailed,
+		)
+		if stateErr != nil {
+			reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
+			return reconcile.Result{}, stateErr
+		}
+		return reconcile.Result{}, errors.New(errMsg)
+	}
+
+	// Check account limit before doing any expensive work
+	if !currentAcctInstance.IsPendingDeletion() && !currentAcctInstance.IsBYOC() && currentAcctInstance.IsUnclaimedAndHasNoState() && !currentAcctInstance.HasAwsAccountID() {
+		if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
+			if !config.IsFedramp() {
+				reqLogger.Info("AWS Account limit reached. This does not always indicate a problem, it's a limit we enforce in the configmap to prevent runaway account creation")
+				return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(5) * time.Minute}, nil
+			}
+		}
+	}
+
+	// --- ConfigMap fetch (single fetch, used by all paths below) ---
+
+	configMap, err := utils.GetOperatorConfigMap(r.Client) //nolint:contextcheck // pre-existing function signature
+	if err != nil {
+		log.Error(err, "Failed retrieving configmap")
+		return reconcile.Result{}, err
+	}
+
 	// CRITICAL SAFETY CHECK: Block all operations on payer/root accounts
-	// This prevents accidental modification or deletion of critical infrastructure
 	if currentAcctInstance.Spec.AwsAccountID != "" {
-		isPayer, err := config.IsPayerAccount(currentAcctInstance.Spec.AwsAccountID, r.Client)
+		isPayer, err := config.IsPayerAccountFromConfigMap(currentAcctInstance.Spec.AwsAccountID, configMap)
 		if err != nil {
 			reqLogger.Error(err, "Failed to check if account is a payer account")
 			return reconcile.Result{}, err
@@ -136,12 +189,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				"action", "blocked")
 			return reconcile.Result{}, nil
 		}
-	}
-
-	configMap, err := utils.GetOperatorConfigMap(r.Client)
-	if err != nil {
-		log.Error(err, "Failed retrieving configmap")
-		return reconcile.Result{}, err
 	}
 
 	// Read compliance tags from ConfigMap
@@ -169,6 +216,8 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	} else {
 		reqLogger.Info("Could not retrieve shard-name from configMap")
 	}
+
+	// --- AWS client creation (deferred until after cheap checks) ---
 
 	awsRegion := config.GetDefaultRegion()
 	// We expect this secret to exist in the same namespace Account CR's are created
@@ -262,17 +311,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		reqLogger.Info(fmt.Sprintf("Account %s IAM user and secret has been recreated.", currentAcctInstance.Name))
 	}
 
-	// Log accounts that have failed and don't attempt to reconcile them
-	if currentAcctInstance.IsFailed() {
-		reqLogger.Info(fmt.Sprintf("Account %s is failed. Ignoring.", currentAcctInstance.Name))
-		return reconcile.Result{}, nil
-	}
-
-	// Detect accounts for which we kicked off asynchronous region initialization
-	if currentAcctInstance.IsInitializingRegions() {
-		return r.handleAccountInitializingRegions(reqLogger, currentAcctInstance)
-	}
-
 	// If the account is BYOC, needs some different set up
 	if newBYOCAccount(currentAcctInstance) {
 		var result reconcile.Result
@@ -312,41 +350,8 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			return r.HandleNonCCSPendingVerification(reqLogger, currentAcctInstance, awsSetupClient)
 		}
 
-		// Update account Status.Claimed to true if the account is ready and the claim link is not empty
-		if currentAcctInstance.IsReadyUnclaimedAndHasClaimLink() {
-			return reconcile.Result{}, ClaimAccount(r, currentAcctInstance)
-		}
-
-		// see if in creating for longer than default wait time
-		if currentAcctInstance.IsCreating() && utils.CreationConditionOlderThan(*currentAcctInstance, createPendTime) {
-			errMsg := fmt.Sprintf("Creation pending for longer than %d minutes", utils.WaitTime)
-			_, stateErr := r.setAccountFailed(
-				reqLogger,
-				currentAcctInstance,
-				awsv1alpha1.AccountCreationFailed,
-				"CreationTimeout",
-				errMsg,
-				AccountFailed,
-			)
-			if stateErr != nil {
-				reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
-				return reconcile.Result{}, stateErr
-			}
-			return reconcile.Result{}, errors.New(errMsg)
-		}
-
 		if currentAcctInstance.IsUnclaimedAndHasNoState() {
 			if !currentAcctInstance.HasAwsAccountID() {
-				// before doing anything make sure we are not over the limit if we are just error
-				if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
-					// fedramp clusters are all CCS, so the account limit is irrelevant there
-					if !config.IsFedramp() {
-						reqLogger.Info("AWS Account limit reached. This does not always indicate a problem, it's a limit we enforce in the configmap to prevent runaway account creation")
-						// We don't expect the limit to change very frequently, so wait a while before requeueing to avoid hot lopping.
-						return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(5) * time.Minute}, nil
-					}
-				}
-
 				if err := r.nonCCSAssignAccountID(reqLogger, currentAcctInstance, awsSetupClient, complianceTags); err != nil {
 					return reconcile.Result{}, err
 				}
