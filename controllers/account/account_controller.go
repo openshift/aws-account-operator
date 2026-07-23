@@ -140,7 +140,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	// see if in creating for longer than default wait time
-	if !currentAcctInstance.IsPendingDeletion() && currentAcctInstance.IsCreating() && utils.CreationConditionOlderThan(*currentAcctInstance, createPendTime) {
+	if !currentAcctInstance.IsPendingDeletion() && !currentAcctInstance.IsBYOC() && currentAcctInstance.IsCreating() && utils.CreationConditionOlderThan(*currentAcctInstance, createPendTime) {
 		errMsg := fmt.Sprintf("Creation pending for longer than %d minutes", utils.WaitTime)
 		_, stateErr := r.setAccountFailed( //nolint:contextcheck // pre-existing function signature
 			reqLogger,
