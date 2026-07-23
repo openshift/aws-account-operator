@@ -158,3 +158,34 @@ func IsPayerAccount(accountID string, kubeClient client.Client) (bool, error) {
 	}
 	return slices.Contains(payerAccounts, accountID), nil
 }
+
+// IsPayerAccountFromConfigMap checks if the given AWS account ID is a payer/root account
+// using an already-fetched ConfigMap to avoid redundant API calls
+func IsPayerAccountFromConfigMap(accountID string, configMap *corev1.ConfigMap) (bool, error) {
+	payerAccounts := GetPayerAccountIDsFromConfigMap(configMap)
+	return slices.Contains(payerAccounts, accountID), nil
+}
+
+// GetPayerAccountIDsFromConfigMap returns the list of payer account IDs from an already-fetched ConfigMap
+func GetPayerAccountIDsFromConfigMap(configMap *corev1.ConfigMap) []string {
+	if configMap == nil {
+		return []string{}
+	}
+
+	payerAccountsString, ok := configMap.Data["payer-account-ids"]
+	if !ok {
+		return []string{}
+	}
+
+	payerAccounts := strings.Split(payerAccountsString, ",")
+
+	result := make([]string, 0, len(payerAccounts))
+	for _, accountID := range payerAccounts {
+		trimmed := strings.TrimSpace(accountID)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+
+	return result
+}

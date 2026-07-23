@@ -402,3 +402,69 @@ func TestIsPayerAccount(t *testing.T) {
 		})
 	}
 }
+
+func TestIsPayerAccountFromConfigMap(t *testing.T) {
+	tests := []struct {
+		name           string
+		accountID      string
+		configMap      *corev1.ConfigMap
+		expectedResult bool
+	}{
+		{
+			name:      "account ID in payer blocklist",
+			accountID: "111111111111",
+			configMap: &corev1.ConfigMap{
+				Data: map[string]string{
+					"payer-account-ids": "111111111111,222222222222",
+				},
+			},
+			expectedResult: true,
+		},
+		{
+			name:      "account ID not in payer blocklist",
+			accountID: "999999999999",
+			configMap: &corev1.ConfigMap{
+				Data: map[string]string{
+					"payer-account-ids": "111111111111,222222222222",
+				},
+			},
+			expectedResult: false,
+		},
+		{
+			name:           "nil configmap returns false",
+			accountID:      "111111111111",
+			configMap:      nil,
+			expectedResult: false,
+		},
+		{
+			name:      "missing payer-account-ids field returns false",
+			accountID: "111111111111",
+			configMap: &corev1.ConfigMap{
+				Data: map[string]string{"other": "value"},
+			},
+			expectedResult: false,
+		},
+		{
+			name:      "whitespace in blocklist is trimmed",
+			accountID: "111111111111",
+			configMap: &corev1.ConfigMap{
+				Data: map[string]string{
+					"payer-account-ids": " 111111111111 , 222222222222 ",
+				},
+			},
+			expectedResult: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isPayer, err := IsPayerAccountFromConfigMap(tt.accountID, tt.configMap)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if isPayer != tt.expectedResult {
+				t.Errorf("expected %v, got %v", tt.expectedResult, isPayer)
+			}
+		})
+	}
+}
