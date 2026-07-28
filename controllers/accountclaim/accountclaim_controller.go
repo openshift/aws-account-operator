@@ -3,6 +3,7 @@ package accountclaim
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -717,6 +718,17 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logge
 			if k8serr.IsConflict(err) {
 				reqLogger.Info("Account CR Modified during CR reset.")
 				return fmt.Errorf("account CR modified during reset: %w", err)
+			}
+
+			// A CloseAccount rate limit is expected and transient: when close-on-release
+			// is enabled and we exceed the AWS Organizations CloseAccount quota, the close
+			// is deferred with an exponential backoff (see closeAndDeleteAccount). This is
+			// not a reuse failure, so do NOT mark the account Failed - just requeue so the
+			// finalizer retries once the backoff window elapses.
+			if errors.Is(err, ErrRateLimited) {
+				reqLogger.Info("Account closure rate limited during claim deletion, will retry after backoff",
+					"accountLink", accountClaim.Spec.AccountLink)
+				return err
 			}
 
 			// Get account claimed by deleted accountclaim
