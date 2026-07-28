@@ -2,6 +2,7 @@ package accountclaim
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -33,6 +34,7 @@ import (
 	"github.com/openshift/aws-account-operator/config"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/localmetrics"
+	controllerutils "github.com/openshift/aws-account-operator/pkg/utils"
 	"github.com/openshift/aws-account-operator/test/fixtures"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -308,6 +310,95 @@ var _ = Describe("AccountClaim", func() {
 				err = r.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ac.Finalizers).To(Equal(accountClaim.GetFinalizers()))
+			})
+
+			It("should requeue without marking the account Failed when account closure is rate limited", func() {
+				// close-on-release is enabled, so a deleted claim tries to CloseAccount
+				// instead of returning the account to the pool. Pre-seed a future
+				// rate-limit annotation so closeAndDeleteAccount short-circuits and
+				// returns ErrRateLimited (a transient, expected condition).
+				configMap = &v1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      awsv1alpha1.DefaultConfigMap,
+						Namespace: awsv1alpha1.AccountCrNamespace,
+					},
+					Data: map[string]string{
+						controllerutils.FeatureCloseOnRelease: "true",
+						controllerutils.CloseAccountDryRun:    "false",
+					},
+				}
+
+				// The account under the claim carries an unexpired rate-limit backoff.
+				account := &awsv1alpha1.Account{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "osd-creds-mgmt-aaabbb",
+						Namespace: awsv1alpha1.AccountCrNamespace,
+						Annotations: map[string]string{
+							controllerutils.CloseAccountRateLimitAnnotation: time.Now().Add(time.Hour).Format(time.RFC3339),
+							controllerutils.CloseAccountBackoffAnnotation:   "3600",
+						},
+					},
+					Spec: awsv1alpha1.AccountSpec{
+						LegalEntity: awsv1alpha1.LegalEntity{
+							Name: "LegalCorp. Inc.",
+							ID:   "abcdefg123456",
+						},
+					},
+					Status: awsv1alpha1.AccountStatus{
+						State:  string(awsv1alpha1.AccountReady),
+						Reused: true,
+					},
+				}
+
+				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+					WithRuntimeObjects(accountClaim, account, configMap).
+					Build()
+
+				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
+				// AWS cleanup runs before the close attempt; return empty responses.
+				mockAWSClient.EXPECT().AssumeRole(gomock.Any(), &sts.AssumeRoleInput{
+					DurationSeconds: aws.Int32(3600),
+					RoleArn:         &orgAccessArn,
+					RoleSessionName: &roleSessionName,
+				}).Return(&sts.AssumeRoleOutput{
+					AssumedRoleUser: &ststypes.AssumedRoleUser{
+						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
+						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
+					},
+					Credentials: &ststypes.Credentials{
+						AccessKeyId:     aws.String("ACCESS_KEY"),
+						SecretAccessKey: aws.String("SECRET_KEY"),
+						SessionToken:    aws.String("SESSION_TOKEN"),
+					},
+					PackedPolicySize: aws.Int32(40),
+				}, nil)
+				mockAWSClient.EXPECT().ListHostedZones(gomock.Any(), gomock.Any()).Return(&route53.ListHostedZonesOutput{HostedZones: []route53types.HostedZone{}}, nil)
+				mockAWSClient.EXPECT().ListBuckets(gomock.Any(), gomock.Any()).Return(&s3.ListBucketsOutput{Buckets: []s3types.Bucket{}}, nil)
+				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any(), gomock.Any()).Return(&ec2.DescribeVpcEndpointServiceConfigurationsOutput{ServiceConfigurations: []ec2types.ServiceConfiguration{}}, nil)
+				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any(), gomock.Any()).Return(&ec2.DescribeSnapshotsOutput{Snapshots: []ec2types.Snapshot{}}, nil)
+				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any(), gomock.Any()).Return(&ec2.DescribeVolumesOutput{Volumes: []ec2types.Volume{}}, nil)
+				// CloseAccount must NOT be called - we're inside the backoff window.
+
+				_, err := r.Reconcile(context.TODO(), req)
+				Expect(err).To(HaveOccurred())
+				Expect(errors.Is(err, ErrRateLimited)).To(BeTrue())
+
+				// The claim keeps its finalizer (still Pending, will retry).
+				ac := awsv1alpha1.AccountClaim{}
+				err = r.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, &ac)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ac.Finalizers).To(Equal(accountClaim.GetFinalizers()))
+
+				// The account must NOT be flipped to Failed by a transient rate limit.
+				acc := awsv1alpha1.Account{}
+				err = r.Get(context.TODO(), types.NamespacedName{Name: ac.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}, &acc)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(acc.Status.State).NotTo(Equal(string(awsv1alpha1.AccountFailed)))
+				for _, cond := range acc.Status.Conditions {
+					if cond.Type == awsv1alpha1.AccountFailed {
+						Expect(string(cond.Status)).NotTo(Equal("True"))
+					}
+				}
 			})
 
 			It("should do nothing when there are additional finalizers present", func() {
