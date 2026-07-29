@@ -136,6 +136,7 @@ func TestReconcileAccountPool(t *testing.T) {
 		verifyAccountFunction func(client.Client, *awsv1alpha1.AccountPool) bool
 		expectedAWSCount      int
 		expectedLimit         int
+		expectedAccountCRs    int // when non-zero, assert exact Account CR count after reconcile
 	}{
 		{
 			name: "Account count >= Pool Size",
@@ -283,6 +284,7 @@ func TestReconcileAccountPool(t *testing.T) {
 			},
 			expectedAWSCount:      2,
 			expectedLimit:         2,
+			expectedAccountCRs:    2,
 			verifyAccountFunction: verifyAccountPool,
 		},
 	}
@@ -326,6 +328,13 @@ func TestReconcileAccountPool(t *testing.T) {
 
 			assert.NoError(t, err, "Unexpected Error")
 			assert.True(t, test.verifyAccountFunction(mocks.fakeKubeClient, &test.expectedAccountPool)) // #nosec G601
+
+			if test.expectedAccountCRs > 0 {
+				accountList := &awsv1alpha1.AccountList{}
+				err = mocks.fakeKubeClient.List(context.TODO(), accountList, client.InNamespace("aws-account-operator"))
+				assert.NoError(t, err)
+				assert.Equal(t, test.expectedAccountCRs, len(accountList.Items), "unexpected number of Account CRs after reconcile")
+			}
 		})
 	}
 }
