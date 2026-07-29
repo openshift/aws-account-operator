@@ -24,7 +24,7 @@ type AccountPoolStatus struct {
 	// ClaimedAccounts is an approximate value representing the amount of accounts that are currently claimed
 	ClaimedAccounts int `json:"claimedAccounts"`
 
-	// AvailableAccounts denotes accounts that HAVE NEVER BEEN CLAIMED, so NOT reused, and are READY to be claimed.  This differs from the UnclaimedAccounts, who similarly HAVE NEVER BEEN CLAIMED, but include ALL non-FAILED states
+	// AvailableAccounts is the count of accounts that are Ready, not currently claimed, and have no active claim link. This includes both fresh and reused accounts.
 	AvailableAccounts int `json:"availableAccounts"`
 
 	// AccountsProgressing shows the approximate value of the number of accounts that are in the creation workflow (Creating, PendingVerification, InitializingRegions)

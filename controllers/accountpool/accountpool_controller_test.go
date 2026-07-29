@@ -56,8 +56,10 @@ const (
 
 func createAccountMock(name string, state string, claimed bool) *awsv1alpha1.Account {
 	leID := ""
+	claimLink := ""
 	if claimed {
 		leID = "12345"
+		claimLink = "claim"
 	}
 	return &awsv1alpha1.Account{
 		ObjectMeta: metav1.ObjectMeta{
@@ -68,7 +70,7 @@ func createAccountMock(name string, state string, claimed bool) *awsv1alpha1.Acc
 		Spec: awsv1alpha1.AccountSpec{
 			AwsAccountID:  "000000",
 			IAMUserSecret: "secret",
-			ClaimLink:     "claim",
+			ClaimLink:     claimLink,
 			LegalEntity: awsv1alpha1.LegalEntity{
 				ID:   leID,
 				Name: "",
@@ -82,7 +84,32 @@ func createAccountMock(name string, state string, claimed bool) *awsv1alpha1.Acc
 			RotateCredentials: false,
 		},
 	}
+}
 
+func createReusedAccountMock(name string, state string) *awsv1alpha1.Account {
+	return &awsv1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			Namespace:       "aws-account-operator",
+			OwnerReferences: []metav1.OwnerReference{{Kind: "AccountPool"}},
+		},
+		Spec: awsv1alpha1.AccountSpec{
+			AwsAccountID:  "000000",
+			IAMUserSecret: "secret",
+			LegalEntity: awsv1alpha1.LegalEntity{
+				ID:   "prev-claim-entity",
+				Name: "Previous Entity",
+			},
+		},
+		Status: awsv1alpha1.AccountStatus{
+			Claimed:           false,
+			Reused:            true,
+			SupportCaseID:     "000000",
+			Conditions:        []awsv1alpha1.AccountCondition{},
+			State:             state,
+			RotateCredentials: false,
+		},
+	}
 }
 
 func TestReconcileAccountPool(t *testing.T) {
@@ -221,6 +248,41 @@ func TestReconcileAccountPool(t *testing.T) {
 			},
 			expectedAWSCount:      5,
 			expectedLimit:         6,
+			verifyAccountFunction: verifyAccountPool,
+		},
+		{
+			name: "Pool satisfied by reused accounts",
+			localObjects: []runtime.Object{
+				&awsv1alpha1.AccountPool{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "aws-account-operator",
+					},
+					Spec: awsv1alpha1.AccountPoolSpec{
+						PoolSize: 2,
+					},
+				},
+				configmap,
+				createReusedAccountMock("reused1", "Ready"),
+				createReusedAccountMock("reused2", "Ready"),
+			},
+			expectedAccountPool: awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
+				Spec: awsv1alpha1.AccountPoolSpec{
+					PoolSize: 2,
+				},
+				Status: awsv1alpha1.AccountPoolStatus{
+					PoolSize:          2,
+					UnclaimedAccounts: 0,
+					ClaimedAccounts:   2,
+					AvailableAccounts: 2,
+				},
+			},
+			expectedAWSCount:      2,
+			expectedLimit:         2,
 			verifyAccountFunction: verifyAccountPool,
 		},
 	}

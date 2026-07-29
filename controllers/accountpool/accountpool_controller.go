@@ -77,12 +77,12 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 
 	// Get the number of desired unclaimed AWS accounts in the pool
 	poolSizeCount := currentAccountPool.Spec.PoolSize
-	unclaimedAccountCount := calculatedStatus.UnclaimedAccounts
+	availableAccountCount := calculatedStatus.AvailableAccounts
 
 	reqLogger.Info(fmt.Sprintf("AccountPool Calculations Completed: %+v", calculatedStatus))
 
-	if unclaimedAccountCount >= poolSizeCount {
-		reqLogger.Info(fmt.Sprintf("unclaimed account pool satisfied, unclaimedAccounts %d >= poolSize %d", unclaimedAccountCount, poolSizeCount))
+	if availableAccountCount >= poolSizeCount {
+		reqLogger.Info(fmt.Sprintf("account pool satisfied, availableAccounts %d >= poolSize %d", availableAccountCount, poolSizeCount))
 		return reconcile.Result{}, nil
 	}
 
@@ -100,7 +100,7 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 		return reconcile.Result{}, err
 	}
 
-	reqLogger.Info(fmt.Sprintf("Creating account %s for accountpool. Unclaimed accounts: %d, poolsize%d", newAccount.Name, unclaimedAccountCount, poolSizeCount))
+	reqLogger.Info(fmt.Sprintf("Creating account %s for accountpool. Available accounts: %d, poolsize %d", newAccount.Name, availableAccountCount, poolSizeCount))
 	err = r.Create(context.TODO(), newAccount)
 	if err != nil {
 		return reconcile.Result{}, err
@@ -179,8 +179,8 @@ func (r *AccountPoolReconciler) calculateAccountPoolStatus(reqLogger logr.Logger
 			claimedAccountCount++
 		}
 
-		// count available accounts
-		if account.HasNeverBeenClaimed() && account.IsReady() {
+		// count available accounts (Ready, not claimed, no claim link - includes reused)
+		if account.IsClaimable() {
 			availableAccounts++
 		}
 
@@ -188,6 +188,7 @@ func (r *AccountPoolReconciler) calculateAccountPoolStatus(reqLogger logr.Logger
 		if account.IsProgressing() {
 			accountsProgressing++
 		}
+
 	}
 
 	accountDelta := r.calculateAccountDelta()

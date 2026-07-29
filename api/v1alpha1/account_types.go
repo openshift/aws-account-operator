@@ -532,6 +532,12 @@ func (a *Account) HasNeverBeenClaimed() bool {
 	return !a.Status.Claimed && a.Spec.LegalEntity.ID == ""
 }
 
+// IsClaimable returns true if the account is Ready, not currently claimed,
+// and has no active claim link. This includes both never-claimed and reused accounts.
+func (a *Account) IsClaimable() bool {
+	return a.IsReady() && !a.Status.Claimed && !a.HasClaimLink()
+}
+
 // IsOwnedByAccountPool returns true if the account has an ownerreference type that is the accountpool or if the accountpool is defined in the account spec
 func (a *Account) IsOwnedByAccountPool() bool {
 	if a.ObjectMeta.OwnerReferences == nil {
