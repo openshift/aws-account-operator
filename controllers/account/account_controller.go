@@ -125,6 +125,23 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	// Log accounts that have failed and don't attempt to reconcile them
 	if currentAcctInstance.IsFailed() && !currentAcctInstance.IsPendingDeletion() {
+		// Garbage-collect zombie CRs: Failed, no AWS account, pool-owned.
+		// These were created by the pool controller but never provisioned in AWS
+		// (e.g. account limit was reached). They are irrecoverable and inflate
+		// the Account CR list, adding overhead to every pool reconcile.
+		if !currentAcctInstance.HasAwsAccountID() && currentAcctInstance.IsOwnedByAccountPool() {
+			reqLogger.Info("Deleting zombie Account CR (failed, no AWS account)",
+				"account", currentAcctInstance.Name)
+			if err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer); err != nil { //nolint:contextcheck // removeFinalizer doesn't accept context
+				reqLogger.Error(err, "failed removing finalizer from zombie account")
+				return reconcile.Result{}, err
+			}
+			if err := r.Delete(ctx, currentAcctInstance); err != nil {
+				reqLogger.Error(err, "failed deleting zombie account")
+				return reconcile.Result{}, err
+			}
+			return reconcile.Result{}, nil
+		}
 		reqLogger.Info(fmt.Sprintf("Account %s is failed. Ignoring.", currentAcctInstance.Name))
 		return reconcile.Result{}, nil
 	}
