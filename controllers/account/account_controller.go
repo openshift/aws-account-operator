@@ -158,32 +158,28 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	// Check account limit before doing any expensive work.
-	// If the account has been stuck waiting for the limit to clear for too long,
-	// fail it so the pool controller's satisfaction check isn't inflated by
-	// accounts that will never provision.
+	// Set an observable Condition (not State) so the account remains recoverable
+	// when the limit clears. Keeping State empty preserves the creation path.
 	if !currentAcctInstance.IsPendingDeletion() && !currentAcctInstance.IsBYOC() && currentAcctInstance.IsUnclaimedAndHasNoState() && !currentAcctInstance.HasAwsAccountID() {
 		if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
 			if !config.IsFedramp() {
-				stuckDuration := time.Since(currentAcctInstance.CreationTimestamp.Time)
-				if stuckDuration > createPendTime {
-					errMsg := fmt.Sprintf("Account limit reached for longer than %d minutes, failing account", utils.WaitTime)
-					reqLogger.Info(errMsg, "stuckFor", stuckDuration.String())
-					_, stateErr := r.setAccountFailed( //nolint:contextcheck // pre-existing function signature
-						reqLogger,
-						currentAcctInstance,
-						awsv1alpha1.AccountCreationFailed,
-						"AccountLimitTimeout",
-						errMsg,
-						AccountFailed,
-					)
-					if stateErr != nil {
-						reqLogger.Error(stateErr, "failed setting account state", "desiredState", AccountFailed)
-						return reconcile.Result{}, stateErr
-					}
-					return reconcile.Result{}, errors.New(errMsg)
+				msg := fmt.Sprintf("AWS account limit reached (count=%d, limit=%d), waiting for capacity",
+					totalaccountwatcher.TotalAccountWatcher.GetAccountCount(), totalaccountwatcher.TotalAccountWatcher.GetLimit())
+				reqLogger.Info(msg, "waitingSince", currentAcctInstance.CreationTimestamp.String())
+				currentAcctInstance.Status.Conditions = utils.SetAccountCondition(
+					currentAcctInstance.Status.Conditions,
+					awsv1alpha1.AccountPending,
+					corev1.ConditionTrue,
+					"AWSAccountLimitReached",
+					msg,
+					utils.UpdateConditionAlways,
+					currentAcctInstance.Spec.BYOC,
+				)
+				if err := r.statusUpdate(currentAcctInstance); err != nil { //nolint:contextcheck // pre-existing function signature
+					reqLogger.Error(err, "failed to update account condition")
+					return reconcile.Result{}, err
 				}
-				reqLogger.Info("AWS Account limit reached, will retry", "stuckFor", stuckDuration.String())
-				return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(5) * time.Minute}, nil
+				return reconcile.Result{RequeueAfter: 5 * time.Minute}, nil
 			}
 		}
 	}
