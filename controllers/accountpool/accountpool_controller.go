@@ -92,7 +92,9 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 	// Don't create Account CRs when the AWS account limit is reached.
 	// Without this, the pool creates CRs that sit in NoState requeueing every 5m,
 	// inflating the unclaimed count and preventing healthy account creation.
-	if r.accountWatcher.GetAccountCount() >= r.accountWatcher.GetLimit() {
+	// Uses AccountsCanBeCreated() so both controllers share the same limit logic,
+	// including the fail-safe that defaults to false until the watcher's first poll.
+	if !r.accountWatcher.AccountsCanBeCreated() {
 		reqLogger.Info("AWS account limit reached, pausing pool creation",
 			"accounts", r.accountWatcher.GetAccountCount(), "limit", r.accountWatcher.GetLimit())
 		return reconcile.Result{RequeueAfter: 5 * time.Minute}, nil

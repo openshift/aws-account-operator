@@ -180,21 +180,25 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	if !currentAcctInstance.IsPendingDeletion() && !currentAcctInstance.IsBYOC() && currentAcctInstance.IsUnclaimedAndHasNoState() && !currentAcctInstance.HasAwsAccountID() {
 		if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
 			if !config.IsFedramp() {
-				msg := fmt.Sprintf("AWS account limit reached (count=%d, limit=%d), waiting for capacity",
-					totalaccountwatcher.TotalAccountWatcher.GetAccountCount(), totalaccountwatcher.TotalAccountWatcher.GetLimit())
-				reqLogger.Info(msg, "waitingSince", currentAcctInstance.CreationTimestamp.String())
-				currentAcctInstance.Status.Conditions = utils.SetAccountCondition(
-					currentAcctInstance.Status.Conditions,
-					awsv1alpha1.AccountPending,
-					corev1.ConditionTrue,
-					"AWSAccountLimitReached",
-					msg,
-					utils.UpdateConditionAlways,
-					currentAcctInstance.Spec.BYOC,
-				)
-				if err := r.statusUpdate(currentAcctInstance); err != nil { //nolint:contextcheck // pre-existing function signature
-					reqLogger.Error(err, "failed to update account condition")
-					return reconcile.Result{}, err
+				reqLogger.Info("AWS account limit reached, waiting for capacity",
+					"waitingSince", currentAcctInstance.CreationTimestamp.String(),
+					"count", totalaccountwatcher.TotalAccountWatcher.GetAccountCount(),
+					"limit", totalaccountwatcher.TotalAccountWatcher.GetLimit())
+				existing := utils.FindAccountCondition(currentAcctInstance.Status.Conditions, awsv1alpha1.AccountPending)
+				if existing == nil || existing.Reason != "AWSAccountLimitReached" {
+					currentAcctInstance.Status.Conditions = utils.SetAccountCondition(
+						currentAcctInstance.Status.Conditions,
+						awsv1alpha1.AccountPending,
+						corev1.ConditionTrue,
+						"AWSAccountLimitReached",
+						"AWS account limit reached, waiting for capacity",
+						utils.UpdateConditionNever,
+						currentAcctInstance.Spec.BYOC,
+					)
+					if err := r.statusUpdate(currentAcctInstance); err != nil { //nolint:contextcheck // pre-existing function signature
+						reqLogger.Error(err, "failed to update account condition")
+						return reconcile.Result{}, err
+					}
 				}
 				return reconcile.Result{RequeueAfter: 5 * time.Minute}, nil
 			}

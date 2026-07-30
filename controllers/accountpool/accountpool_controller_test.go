@@ -39,6 +39,9 @@ func (s *mockTAW) GetAccountCount() int {
 func (s *mockTAW) GetLimit() int {
 	return s.limit
 }
+func (s *mockTAW) AccountsCanBeCreated() bool {
+	return s.limit > 0 && s.accounts < s.limit
+}
 
 // setupDefaultMocks is an easy way to setup all of the default mocks
 func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
@@ -580,4 +583,62 @@ func TestPoolDoesNotCreateWhenAccountLimitReached(t *testing.T) {
 	err = mocks.fakeKubeClient.List(context.TODO(), &al, client.InNamespace("aws-account-operator"))
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(al.Items), "No new account should be created when limit is reached")
+}
+
+func TestPoolDoesNotCreateBeforeWatcherInitializes(t *testing.T) {
+	err := awsaccountapis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		t.Fatalf("failed adding to scheme: %v", err)
+	}
+
+	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
+	configmap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      awsv1alpha1.DefaultConfigMap,
+			Namespace: awsv1alpha1.AccountCrNamespace,
+		},
+		Data: map[string]string{
+			"accountpool": "test: {\"default\": true}",
+		},
+	}
+
+	localObjects := []runtime.Object{
+		&awsv1alpha1.AccountPool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test",
+				Namespace: "aws-account-operator",
+			},
+			Spec: awsv1alpha1.AccountPoolSpec{
+				PoolSize: 3,
+			},
+		},
+		configmap,
+	}
+
+	mocks := setupDefaultMocks(t, localObjects)
+	defer mocks.mockCtrl.Finish()
+
+	rap := &AccountPoolReconciler{
+		Client: mocks.fakeKubeClient,
+		Scheme: scheme.Scheme,
+		accountWatcher: &mockTAW{
+			accounts: 0,
+			limit:    0,
+		},
+	}
+
+	result, err := rap.Reconcile(context.TODO(), reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "test",
+			Namespace: "aws-account-operator",
+		},
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 5*time.Minute, result.RequeueAfter, "Should requeue when watcher has not initialized (limit=0)")
+
+	al := awsv1alpha1.AccountList{}
+	err = mocks.fakeKubeClient.List(context.TODO(), &al, client.InNamespace("aws-account-operator"))
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(al.Items), "No accounts should be created before watcher initializes")
 }
