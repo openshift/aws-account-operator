@@ -30,6 +30,9 @@ type AccountPoolStatus struct {
 	// AccountsProgressing shows the approximate value of the number of accounts that are in the creation workflow (Creating, PendingVerification, InitializingRegions)
 	AccountsProgressing int `json:"accountsProgressing"`
 
+	// AccountsPending shows the number of accounts with no state that are waiting for the account controller to begin processing them
+	AccountsPending int `json:"accountsPending"`
+
 	// AWSLimitDelta shows the approximate difference between the number of AWS accounts currently created and the limit. This should be the same across all hive shards in an environment
 	AWSLimitDelta int `json:"awsLimitDelta"`
 }
@@ -45,6 +48,7 @@ type AccountPoolStatus struct {
 // +kubebuilder:printcolumn:name="Claimed Accounts",type="integer",JSONPath=".status.claimedAccounts",description="Number of claimed accounts"
 // +kubebuilder:printcolumn:name="Available Accounts",type="integer",JSONPath=".status.availableAccounts",description="Number of ready accounts"
 // +kubebuilder:printcolumn:name="Accounts Progressing",type="integer",JSONPath=".status.accountsProgressing",description="Number of accounts progressing towards ready"
+// +kubebuilder:printcolumn:name="Accounts Pending",type="integer",JSONPath=".status.accountsPending",description="Number of accounts pending initial processing"
 // +kubebuilder:printcolumn:name="AWS Limit Delta",type="integer",JSONPath=".status.awsLimitDelta",description="Difference between accounts created and soft limit"
 // +kubebuilder:resource:path=accountpools,scope=Namespaced
 type AccountPool struct {

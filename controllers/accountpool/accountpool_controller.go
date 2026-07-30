@@ -3,6 +3,8 @@ package accountpool
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -77,13 +79,23 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 
 	// Get the number of desired unclaimed AWS accounts in the pool
 	poolSizeCount := currentAccountPool.Spec.PoolSize
-	unclaimedAccountCount := calculatedStatus.UnclaimedAccounts
+	effectiveCount := calculatedStatus.AvailableAccounts + calculatedStatus.AccountsProgressing + calculatedStatus.AccountsPending
 
 	reqLogger.Info(fmt.Sprintf("AccountPool Calculations Completed: %+v", calculatedStatus))
 
-	if unclaimedAccountCount >= poolSizeCount {
-		reqLogger.Info(fmt.Sprintf("unclaimed account pool satisfied, unclaimedAccounts %d >= poolSize %d", unclaimedAccountCount, poolSizeCount))
+	if effectiveCount >= poolSizeCount {
+		reqLogger.Info(fmt.Sprintf("account pool satisfied, available %d + progressing %d + pending %d = %d >= poolSize %d",
+			calculatedStatus.AvailableAccounts, calculatedStatus.AccountsProgressing, calculatedStatus.AccountsPending, effectiveCount, poolSizeCount))
 		return reconcile.Result{}, nil
+	}
+
+	// Don't create Account CRs when the AWS account limit is reached.
+	// Without this, the pool creates CRs that become NoState zombies (failed after 25m),
+	// then creates replacements in a wasteful churn cycle.
+	if r.accountWatcher.GetAccountCount() >= r.accountWatcher.GetLimit() {
+		reqLogger.Info("AWS account limit reached, pausing pool creation",
+			"accounts", r.accountWatcher.GetAccountCount(), "limit", r.accountWatcher.GetLimit())
+		return reconcile.Result{RequeueAfter: 5 * time.Minute}, nil
 	}
 
 	// Create Account CR
@@ -100,7 +112,8 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 		return reconcile.Result{}, err
 	}
 
-	reqLogger.Info(fmt.Sprintf("Creating account %s for accountpool. Unclaimed accounts: %d, poolsize%d", newAccount.Name, unclaimedAccountCount, poolSizeCount))
+	reqLogger.Info(fmt.Sprintf("Creating account %s for accountpool. Available: %d, Progressing: %d, Pending: %d, poolSize: %d",
+		newAccount.Name, calculatedStatus.AvailableAccounts, calculatedStatus.AccountsProgressing, calculatedStatus.AccountsPending, poolSizeCount))
 	err = r.Create(context.TODO(), newAccount)
 	if err != nil {
 		return reconcile.Result{}, err
@@ -130,6 +143,7 @@ func (r *AccountPoolReconciler) calculateAccountPoolStatus(reqLogger logr.Logger
 	claimedAccountCount := 0
 	availableAccounts := 0
 	accountsProgressing := 0
+	accountsPending := 0
 
 	//Get the number of actual unclaimed AWS accounts in the pool
 	accountList := &awsv1alpha1.AccountList{}
@@ -188,6 +202,11 @@ func (r *AccountPoolReconciler) calculateAccountPoolStatus(reqLogger logr.Logger
 		if account.IsProgressing() {
 			accountsProgressing++
 		}
+
+		// count accounts pending first processing (NoState, non-failed, pool-owned, never-claimed)
+		if account.IsPendingFirstProcessing() {
+			accountsPending++
+		}
 	}
 
 	accountDelta := r.calculateAccountDelta()
@@ -197,6 +216,7 @@ func (r *AccountPoolReconciler) calculateAccountPoolStatus(reqLogger logr.Logger
 		ClaimedAccounts:     claimedAccountCount,
 		AvailableAccounts:   availableAccounts,
 		AccountsProgressing: accountsProgressing,
+		AccountsPending:     accountsPending,
 		AWSLimitDelta:       accountDelta,
 	}, nil
 }
