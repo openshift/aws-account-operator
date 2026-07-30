@@ -3,6 +3,8 @@ package accountpool
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -23,6 +25,11 @@ import (
 
 const (
 	controllerName = "accountpool"
+
+	// Delay between creating individual Account CRs to prevent burst-creating
+	// many AWS accounts simultaneously, which can cause creation timeouts
+	// when MaxConcurrentReconciles for the account controller is low.
+	accountCreationDelay = 30 * time.Second
 )
 
 var log = logf.Log.WithName("controller_accountpool")
@@ -77,12 +84,13 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 
 	// Get the number of desired unclaimed AWS accounts in the pool
 	poolSizeCount := currentAccountPool.Spec.PoolSize
-	unclaimedAccountCount := calculatedStatus.UnclaimedAccounts
+	effectiveCount := calculatedStatus.AvailableAccounts + calculatedStatus.AccountsProgressing
 
 	reqLogger.Info(fmt.Sprintf("AccountPool Calculations Completed: %+v", calculatedStatus))
 
-	if unclaimedAccountCount >= poolSizeCount {
-		reqLogger.Info(fmt.Sprintf("unclaimed account pool satisfied, unclaimedAccounts %d >= poolSize %d", unclaimedAccountCount, poolSizeCount))
+	if effectiveCount >= poolSizeCount {
+		reqLogger.Info(fmt.Sprintf("account pool satisfied, available %d + progressing %d = %d >= poolSize %d",
+			calculatedStatus.AvailableAccounts, calculatedStatus.AccountsProgressing, effectiveCount, poolSizeCount))
 		return reconcile.Result{}, nil
 	}
 
@@ -100,13 +108,17 @@ func (r *AccountPoolReconciler) Reconcile(ctx context.Context, request ctrl.Requ
 		return reconcile.Result{}, err
 	}
 
-	reqLogger.Info(fmt.Sprintf("Creating account %s for accountpool. Unclaimed accounts: %d, poolsize%d", newAccount.Name, unclaimedAccountCount, poolSizeCount))
+	reqLogger.Info(fmt.Sprintf("Creating account %s for accountpool. Available: %d, Progressing: %d, poolSize: %d", newAccount.Name, calculatedStatus.AvailableAccounts, calculatedStatus.AccountsProgressing, poolSizeCount))
 	err = r.Create(context.TODO(), newAccount)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	return reconcile.Result{}, nil
+	// Delay before creating the next account to prevent burst-provisioning
+	// many AWS accounts at once. Without this, each Account CR creation triggers
+	// an immediate re-reconcile (via ownership watch), causing the pool to
+	// rapidly create all CRs in quick succession.
+	return reconcile.Result{RequeueAfter: accountCreationDelay}, nil
 }
 
 func (r *AccountPoolReconciler) handleServiceQuotas(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account) error {

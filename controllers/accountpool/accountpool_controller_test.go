@@ -54,6 +54,24 @@ const (
 	claimed   = true
 )
 
+// createNoStateAccountMock creates an Account CR that simulates a zombie stuck on account-limit:
+// no state, no AWS account ID, never claimed.
+func createNoStateAccountMock(name string) *awsv1alpha1.Account {
+	return &awsv1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			Namespace:       "aws-account-operator",
+			OwnerReferences: []metav1.OwnerReference{{Kind: "AccountPool"}},
+		},
+		Spec: awsv1alpha1.AccountSpec{
+			AwsAccountID: "",
+		},
+		Status: awsv1alpha1.AccountStatus{
+			State: "",
+		},
+	}
+}
+
 func createAccountMock(name string, state string, claimed bool) *awsv1alpha1.Account {
 	leID := ""
 	if claimed {
@@ -181,6 +199,39 @@ func TestReconcileAccountPool(t *testing.T) {
 			},
 			expectedAWSCount:      1,
 			expectedLimit:         1,
+			verifyAccountFunction: verifyAccountCreated,
+		},
+		{
+			name: "NoState zombies do not satisfy pool",
+			localObjects: []runtime.Object{
+				&awsv1alpha1.AccountPool{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "aws-account-operator",
+					},
+					Spec: awsv1alpha1.AccountPoolSpec{
+						PoolSize: 2,
+					},
+				},
+				configmap,
+				createNoStateAccountMock("zombie1"),
+				createNoStateAccountMock("zombie2"),
+			},
+			expectedAccountPool: awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
+				Spec: awsv1alpha1.AccountPoolSpec{
+					PoolSize: 2,
+				},
+				Status: awsv1alpha1.AccountPoolStatus{
+					PoolSize:          2,
+					UnclaimedAccounts: 3, // 2 zombies + 1 newly created
+				},
+			},
+			expectedAWSCount:      2,
+			expectedLimit:         2,
 			verifyAccountFunction: verifyAccountCreated,
 		},
 		{
