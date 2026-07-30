@@ -535,7 +535,7 @@ func (a *Account) HasNeverBeenClaimed() bool {
 // IsPendingFirstProcessing returns true for newly created Account CRs that haven't been
 // processed by the account controller yet: no state, not failed, never claimed, pool-owned.
 func (a *Account) IsPendingFirstProcessing() bool {
-	return !a.HasState() && !a.IsFailed() && a.HasNeverBeenClaimed() && a.IsOwnedByAccountPool()
+	return !a.IsPendingDeletion() && !a.HasState() && !a.IsFailed() && a.HasNeverBeenClaimed() && a.IsOwnedByAccountPool()
 }
 
 // IsOwnedByAccountPool returns true if the account has an ownerreference type that is the accountpool or if the accountpool is defined in the account spec
