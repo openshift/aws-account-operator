@@ -35,6 +35,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/utils"
 	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
+	k8serr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -1694,6 +1695,64 @@ var _ = Describe("Account Controller", func() {
 			Expect(ac.Status.Conditions).Should(ContainElement(MatchFields(IgnoreExtras, Fields{
 				"Type": Equal(awsv1alpha1.AccountIsClaimed),
 			})))
+		})
+
+		It("should delete a zombie Account CR that is Failed with no AWS account ID", func() {
+			zombieAccount := &newTestAccountBuilder().
+				WithState(awsv1alpha1.AccountFailed).
+				WithFinalizers([]string{awsv1alpha1.AccountFinalizer}).
+				WithSpec(awsv1alpha1.AccountSpec{
+					AccountPool: "default",
+				}).acct
+			zombieAccount.Spec.AwsAccountID = ""
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{zombieAccount, configMap}...).Build()
+
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: zombieAccount.Namespace,
+					Name:      zombieAccount.Name,
+				},
+			}
+
+			_, err := r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+
+			// The zombie CR should be deleted
+			ac := &awsv1alpha1.Account{}
+			err = r.Get(context.TODO(), types.NamespacedName{Name: zombieAccount.Name, Namespace: zombieAccount.Namespace}, ac)
+			Expect(k8serr.IsNotFound(err)).To(BeTrue())
+		})
+
+		It("should NOT delete a Failed account that has an AWS account ID", func() {
+			failedAccount := &newTestAccountBuilder().
+				WithState(awsv1alpha1.AccountFailed).
+				WithFinalizers([]string{awsv1alpha1.AccountFinalizer}).
+				WithAwsAccountID("123456789012").
+				WithSpec(awsv1alpha1.AccountSpec{
+					AccountPool:  "default",
+					AwsAccountID: "123456789012",
+				}).acct
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{failedAccount, configMap}...).Build()
+
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: failedAccount.Namespace,
+					Name:      failedAccount.Name,
+				},
+			}
+
+			_, err := r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+
+			// The account should still exist
+			ac := &awsv1alpha1.Account{}
+			err = r.Get(context.TODO(), types.NamespacedName{Name: failedAccount.Name, Namespace: failedAccount.Namespace}, ac)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ac.Status.State).To(Equal(string(awsv1alpha1.AccountFailed)))
 		})
 
 		It("A ready BYOC account being claimed adds a claimed status condition", func() {

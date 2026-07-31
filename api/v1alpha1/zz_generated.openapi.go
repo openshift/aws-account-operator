@@ -738,6 +738,14 @@ func schema_openshift_aws_account_operator_api_v1alpha1_AccountPoolStatus(ref co
 							Format:      "int32",
 						},
 					},
+					"accountsPending": {
+						SchemaProps: spec.SchemaProps{
+							Description: "AccountsPending shows the number of accounts with no state that are waiting for the account controller to begin processing them",
+							Default:     0,
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
 					"awsLimitDelta": {
 						SchemaProps: spec.SchemaProps{
 							Description: "AWSLimitDelta shows the approximate difference between the number of AWS accounts currently created and the limit. This should be the same across all hive shards in an environment",
@@ -747,7 +755,7 @@ func schema_openshift_aws_account_operator_api_v1alpha1_AccountPoolStatus(ref co
 						},
 					},
 				},
-				Required: []string{"poolSize", "unclaimedAccounts", "claimedAccounts", "availableAccounts", "accountsProgressing", "awsLimitDelta"},
+				Required: []string{"poolSize", "unclaimedAccounts", "claimedAccounts", "availableAccounts", "accountsProgressing", "accountsPending", "awsLimitDelta"},
 			},
 		},
 	}

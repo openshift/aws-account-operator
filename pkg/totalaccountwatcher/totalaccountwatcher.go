@@ -33,6 +33,7 @@ var log = logf.Log.WithName("aws-account-operator")
 type AccountWatcherIface interface {
 	GetAccountCount() int
 	GetLimit() int
+	AccountsCanBeCreated() bool
 }
 
 type AccountWatcher struct {
