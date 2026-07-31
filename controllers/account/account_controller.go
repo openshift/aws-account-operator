@@ -76,8 +76,6 @@ const (
 	// PauseReconciliationAnnotation is the annotation key to pause all reconciliation for an account
 	PauseReconciliationAnnotation = "aws.managed.openshift.com/pause-reconciliation"
 
-	// STSClientErrorRetryAnnotation tracks the number of STS client error retries for bounded retry.
-	STSClientErrorRetryAnnotation = "aws.managed.openshift.com/sts-client-error-count"
 	// maxSTSClientErrorRetries is the maximum number of reconcile-level retries for transient
 	// STS AssumeRole failures before permanently failing the account. Each retry includes the
 	// 100-iteration in-loop retry in GetSTSCredentials (~50s), so 3 retries = ~2.5 minutes of
@@ -99,6 +97,7 @@ type AccountReconciler struct {
 	Scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
 	shardName        string
+	stsRetryCount    map[string]int
 }
 
 //+kubebuilder:rbac:groups=aws.managed.openshift.io,resources=accounts,verbs=get;list;watch;create;update;patch;delete
@@ -402,13 +401,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 					return reconcile.Result{}, err
 				}
 			} else {
-				if _, hasRetry := currentAcctInstance.Annotations[STSClientErrorRetryAnnotation]; hasRetry {
-					delete(currentAcctInstance.Annotations, STSClientErrorRetryAnnotation)
-					if err := r.Update(ctx, currentAcctInstance); err != nil {
-						reqLogger.Error(err, "failed clearing STS retry annotation")
-						return reconcile.Result{}, err
-					}
-				}
+				delete(r.stsRetryCount, currentAcctInstance.Name)
 				utils.SetAccountStatus(currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, AccountCreating)
 				err = r.statusUpdate(currentAcctInstance)
 
@@ -657,21 +650,11 @@ func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentA
 		reason = aerr.ErrorCode()
 	}
 
-	retryCount := 0
-	if v, ok := currentAcctInstance.Annotations[STSClientErrorRetryAnnotation]; ok {
-		retryCount, _ = strconv.Atoi(v)
-	}
+	retryCount := r.stsRetryCount[currentAcctInstance.Name]
 
 	if retryCount < maxSTSClientErrorRetries {
 		retryCount++
-		if currentAcctInstance.Annotations == nil {
-			currentAcctInstance.Annotations = map[string]string{}
-		}
-		currentAcctInstance.Annotations[STSClientErrorRetryAnnotation] = strconv.Itoa(retryCount)
-		if updateErr := r.accountSpecUpdate(reqLogger, currentAcctInstance); updateErr != nil {
-			reqLogger.Error(updateErr, "failed to update STS retry annotation")
-			return reconcile.Result{}, updateErr
-		}
+		r.stsRetryCount[currentAcctInstance.Name] = retryCount
 		backoff := time.Duration(retryCount) * 30 * time.Second
 		reqLogger.Info("STS client error, will retry",
 			"attempt", retryCount, "maxRetries", maxSTSClientErrorRetries,
@@ -679,6 +662,7 @@ func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentA
 		return reconcile.Result{RequeueAfter: backoff}, nil
 	}
 
+	delete(r.stsRetryCount, currentAcctInstance.Name)
 	errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s after %d retries: %s",
 		currentAcctInstance.Spec.AwsAccountID, maxSTSClientErrorRetries, err)
 	_, stateErr := r.setAccountFailed(
@@ -1630,6 +1614,7 @@ func (r *AccountReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	// Initialize shardName to empty string. It will be read from configMap in Reconcile()
 	r.shardName = ""
+	r.stsRetryCount = make(map[string]int)
 
 	rwm := utils.NewReconcilerWithMetrics(r, controllerName)
 	return ctrl.NewControllerManagedBy(mgr).
