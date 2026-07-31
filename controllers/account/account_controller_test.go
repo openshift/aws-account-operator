@@ -2869,8 +2869,9 @@ var _ = Describe("Account Controller", func() {
 			r.stsRetryCount[testAcct.Name] = maxSTSClientErrorRetries
 
 			stsErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: "access denied"}
-			_, _ = r.handleAWSClientError(nullLogger, testAcct, stsErr)
+			_, err := r.handleAWSClientError(nullLogger, testAcct, stsErr)
 
+			Expect(err).ToNot(HaveOccurred())
 			_, exists := r.stsRetryCount[testAcct.Name]
 			Expect(exists).To(BeFalse(),
 				"retry count should be cleaned up after permanent failure")
