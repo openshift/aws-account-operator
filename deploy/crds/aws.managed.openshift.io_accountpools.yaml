@@ -35,6 +35,10 @@ spec:
       jsonPath: .status.accountsProgressing
       name: Accounts Progressing
       type: integer
+    - description: Number of accounts pending initial processing
+      jsonPath: .status.accountsPending
+      name: Accounts Pending
+      type: integer
     - description: Difference between accounts created and soft limit
       jsonPath: .status.awsLimitDelta
       name: AWS Limit Delta
@@ -72,6 +76,11 @@ spec:
           status:
             description: AccountPoolStatus defines the observed state of AccountPool
             properties:
+              accountsPending:
+                description: AccountsPending shows the number of accounts with no
+                  state that are waiting for the account controller to begin processing
+                  them
+                type: integer
               accountsProgressing:
                 description: AccountsProgressing shows the approximate value of the
                   number of accounts that are in the creation workflow (Creating,
@@ -99,6 +108,7 @@ spec:
                   the amount of non-failed accounts
                 type: integer
             required:
+            - accountsPending
             - accountsProgressing
             - availableAccounts
             - awsLimitDelta

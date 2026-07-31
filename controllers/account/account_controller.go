@@ -125,6 +125,23 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	// Log accounts that have failed and don't attempt to reconcile them
 	if currentAcctInstance.IsFailed() && !currentAcctInstance.IsPendingDeletion() {
+		// Garbage-collect zombie CRs: Failed, no AWS account, pool-owned.
+		// These were created by the pool controller but never provisioned in AWS
+		// (e.g. account limit was reached). They are irrecoverable and inflate
+		// the Account CR list, adding overhead to every pool reconcile.
+		if !currentAcctInstance.HasAwsAccountID() && currentAcctInstance.IsOwnedByAccountPool() {
+			reqLogger.Info("Deleting zombie Account CR (failed, no AWS account)",
+				"account", currentAcctInstance.Name)
+			if err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer); err != nil { //nolint:contextcheck // removeFinalizer doesn't accept context
+				reqLogger.Error(err, "failed removing finalizer from zombie account")
+				return reconcile.Result{}, err
+			}
+			if err := r.Delete(ctx, currentAcctInstance); err != nil {
+				reqLogger.Error(err, "failed deleting zombie account")
+				return reconcile.Result{}, err
+			}
+			return reconcile.Result{}, nil
+		}
 		reqLogger.Info(fmt.Sprintf("Account %s is failed. Ignoring.", currentAcctInstance.Name))
 		return reconcile.Result{}, nil
 	}
@@ -157,12 +174,33 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		return reconcile.Result{}, errors.New(errMsg)
 	}
 
-	// Check account limit before doing any expensive work
+	// Check account limit before doing any expensive work.
+	// Set an observable Condition (not State) so the account remains recoverable
+	// when the limit clears. Keeping State empty preserves the creation path.
 	if !currentAcctInstance.IsPendingDeletion() && !currentAcctInstance.IsBYOC() && currentAcctInstance.IsUnclaimedAndHasNoState() && !currentAcctInstance.HasAwsAccountID() {
 		if !totalaccountwatcher.TotalAccountWatcher.AccountsCanBeCreated() {
 			if !config.IsFedramp() {
-				reqLogger.Info("AWS Account limit reached. This does not always indicate a problem, it's a limit we enforce in the configmap to prevent runaway account creation")
-				return reconcile.Result{Requeue: true, RequeueAfter: time.Duration(5) * time.Minute}, nil
+				reqLogger.Info("AWS account limit reached, waiting for capacity",
+					"waitingSince", currentAcctInstance.CreationTimestamp.String(),
+					"count", totalaccountwatcher.TotalAccountWatcher.GetAccountCount(),
+					"limit", totalaccountwatcher.TotalAccountWatcher.GetLimit())
+				existing := utils.FindAccountCondition(currentAcctInstance.Status.Conditions, awsv1alpha1.AccountPending)
+				if existing == nil || existing.Reason != "AWSAccountLimitReached" {
+					currentAcctInstance.Status.Conditions = utils.SetAccountCondition(
+						currentAcctInstance.Status.Conditions,
+						awsv1alpha1.AccountPending,
+						corev1.ConditionTrue,
+						"AWSAccountLimitReached",
+						"AWS account limit reached, waiting for capacity",
+						utils.UpdateConditionNever,
+						currentAcctInstance.Spec.BYOC,
+					)
+					if err := r.statusUpdate(currentAcctInstance); err != nil { //nolint:contextcheck // pre-existing function signature
+						reqLogger.Error(err, "failed to update account condition")
+						return reconcile.Result{}, err
+					}
+				}
+				return reconcile.Result{RequeueAfter: 5 * time.Minute}, nil
 			}
 		}
 	}

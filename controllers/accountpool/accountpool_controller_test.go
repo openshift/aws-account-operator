@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"go.uber.org/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -38,6 +39,9 @@ func (s *mockTAW) GetAccountCount() int {
 func (s *mockTAW) GetLimit() int {
 	return s.limit
 }
+func (s *mockTAW) AccountsCanBeCreated() bool {
+	return s.limit > 0 && s.accounts < s.limit
+}
 
 // setupDefaultMocks is an easy way to setup all of the default mocks
 func setupDefaultMocks(t *testing.T, localObjects []runtime.Object) *mocks {
@@ -53,6 +57,40 @@ const (
 	unclaimed = false
 	claimed   = true
 )
+
+// createNoStateAccountMock creates an Account CR that simulates a newly created account
+// pending first processing: no state, no AWS account ID, never claimed, pool-owned.
+func createNoStateAccountMock(name string) *awsv1alpha1.Account {
+	return &awsv1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			Namespace:       "aws-account-operator",
+			OwnerReferences: []metav1.OwnerReference{{Kind: "AccountPool"}},
+		},
+		Spec: awsv1alpha1.AccountSpec{
+			AwsAccountID: "",
+		},
+		Status: awsv1alpha1.AccountStatus{
+			State: "",
+		},
+	}
+}
+
+func createFailedNoStateAccountMock(name string) *awsv1alpha1.Account {
+	return &awsv1alpha1.Account{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			Namespace:       "aws-account-operator",
+			OwnerReferences: []metav1.OwnerReference{{Kind: "AccountPool"}},
+		},
+		Spec: awsv1alpha1.AccountSpec{
+			AwsAccountID: "",
+		},
+		Status: awsv1alpha1.AccountStatus{
+			State: "Failed",
+		},
+	}
+}
 
 func createAccountMock(name string, state string, claimed bool) *awsv1alpha1.Account {
 	leID := ""
@@ -177,11 +215,119 @@ func TestReconcileAccountPool(t *testing.T) {
 				Status: awsv1alpha1.AccountPoolStatus{
 					PoolSize:          1,
 					UnclaimedAccounts: 1,
+					AWSLimitDelta:     1,
 				},
 			},
 			expectedAWSCount:      1,
-			expectedLimit:         1,
+			expectedLimit:         2,
 			verifyAccountFunction: verifyAccountCreated,
+		},
+		{
+			name: "NoState pending accounts satisfy pool and prevent burst creation",
+			localObjects: []runtime.Object{
+				&awsv1alpha1.AccountPool{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "aws-account-operator",
+					},
+					Spec: awsv1alpha1.AccountPoolSpec{
+						PoolSize: 2,
+					},
+				},
+				configmap,
+				createNoStateAccountMock("pending1"),
+				createNoStateAccountMock("pending2"),
+			},
+			expectedAccountPool: awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
+				Spec: awsv1alpha1.AccountPoolSpec{
+					PoolSize: 2,
+				},
+				Status: awsv1alpha1.AccountPoolStatus{
+					PoolSize:          2,
+					UnclaimedAccounts: 2,
+					AccountsPending:   2,
+					AWSLimitDelta:     8,
+				},
+			},
+			expectedAWSCount:      2,
+			expectedLimit:         10,
+			verifyAccountFunction: verifyAccountPool,
+		},
+		{
+			name: "Failed NoState accounts do not satisfy pool",
+			localObjects: []runtime.Object{
+				&awsv1alpha1.AccountPool{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "aws-account-operator",
+					},
+					Spec: awsv1alpha1.AccountPoolSpec{
+						PoolSize: 2,
+					},
+				},
+				configmap,
+				createFailedNoStateAccountMock("failed1"),
+				createFailedNoStateAccountMock("failed2"),
+			},
+			expectedAccountPool: awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
+				Spec: awsv1alpha1.AccountPoolSpec{
+					PoolSize: 2,
+				},
+				Status: awsv1alpha1.AccountPoolStatus{
+					PoolSize:          2,
+					UnclaimedAccounts: 1,
+					AWSLimitDelta:     8,
+				},
+			},
+			expectedAWSCount:      2,
+			expectedLimit:         10,
+			verifyAccountFunction: verifyAccountCreated,
+		},
+		{
+			name: "Mix of pending and progressing satisfies pool",
+			localObjects: []runtime.Object{
+				&awsv1alpha1.AccountPool{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test",
+						Namespace: "aws-account-operator",
+					},
+					Spec: awsv1alpha1.AccountPoolSpec{
+						PoolSize: 3,
+					},
+				},
+				configmap,
+				createAccountMock("ready1", "Ready", unclaimed),
+				createAccountMock("creating1", "Creating", unclaimed),
+				createNoStateAccountMock("pending1"),
+			},
+			expectedAccountPool: awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
+				Spec: awsv1alpha1.AccountPoolSpec{
+					PoolSize: 3,
+				},
+				Status: awsv1alpha1.AccountPoolStatus{
+					PoolSize:            3,
+					UnclaimedAccounts:   3,
+					AvailableAccounts:   1,
+					AccountsProgressing: 1,
+					AccountsPending:     1,
+					AWSLimitDelta:       7,
+				},
+			},
+			expectedAWSCount:      3,
+			expectedLimit:         10,
+			verifyAccountFunction: verifyAccountPool,
 		},
 		{
 			name: "TestAccountStatusCounter",
@@ -377,4 +523,122 @@ func TestUpdateAccountPoolStatus(t *testing.T) {
 	if shouldUpdateAccountPoolStatus(testAccountPoolCR, testAccountStatus) {
 		t.Error("AccountPool status doesn't need updating, but function returns true")
 	}
+}
+
+func TestPoolDoesNotCreateWhenAccountLimitReached(t *testing.T) {
+	err := awsaccountapis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		t.Fatalf("failed adding to scheme: %v", err)
+	}
+
+	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
+	configmap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      awsv1alpha1.DefaultConfigMap,
+			Namespace: awsv1alpha1.AccountCrNamespace,
+		},
+		Data: map[string]string{
+			"accountpool": "test: {\"default\": true}",
+		},
+	}
+
+	localObjects := []runtime.Object{
+		&awsv1alpha1.AccountPool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test",
+				Namespace: "aws-account-operator",
+			},
+			Spec: awsv1alpha1.AccountPoolSpec{
+				PoolSize: 3,
+			},
+		},
+		configmap,
+		createAccountMock("ready1", "Ready", unclaimed),
+	}
+
+	mocks := setupDefaultMocks(t, localObjects)
+	defer mocks.mockCtrl.Finish()
+
+	rap := &AccountPoolReconciler{
+		Client: mocks.fakeKubeClient,
+		Scheme: scheme.Scheme,
+		accountWatcher: &mockTAW{
+			accounts: 100,
+			limit:    100,
+		},
+	}
+
+	result, err := rap.Reconcile(context.TODO(), reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "test",
+			Namespace: "aws-account-operator",
+		},
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 5*time.Minute, result.RequeueAfter, "Should requeue after 5 minutes when limit is reached")
+
+	// Verify no new account was created
+	al := awsv1alpha1.AccountList{}
+	err = mocks.fakeKubeClient.List(context.TODO(), &al, client.InNamespace("aws-account-operator"))
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(al.Items), "No new account should be created when limit is reached")
+}
+
+func TestPoolDoesNotCreateBeforeWatcherInitializes(t *testing.T) {
+	err := awsaccountapis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		t.Fatalf("failed adding to scheme: %v", err)
+	}
+
+	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
+	configmap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      awsv1alpha1.DefaultConfigMap,
+			Namespace: awsv1alpha1.AccountCrNamespace,
+		},
+		Data: map[string]string{
+			"accountpool": "test: {\"default\": true}",
+		},
+	}
+
+	localObjects := []runtime.Object{
+		&awsv1alpha1.AccountPool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test",
+				Namespace: "aws-account-operator",
+			},
+			Spec: awsv1alpha1.AccountPoolSpec{
+				PoolSize: 3,
+			},
+		},
+		configmap,
+	}
+
+	mocks := setupDefaultMocks(t, localObjects)
+	defer mocks.mockCtrl.Finish()
+
+	rap := &AccountPoolReconciler{
+		Client: mocks.fakeKubeClient,
+		Scheme: scheme.Scheme,
+		accountWatcher: &mockTAW{
+			accounts: 0,
+			limit:    0,
+		},
+	}
+
+	result, err := rap.Reconcile(context.TODO(), reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "test",
+			Namespace: "aws-account-operator",
+		},
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 5*time.Minute, result.RequeueAfter, "Should requeue when watcher has not initialized (limit=0)")
+
+	al := awsv1alpha1.AccountList{}
+	err = mocks.fakeKubeClient.List(context.TODO(), &al, client.InNamespace("aws-account-operator"))
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(al.Items), "No accounts should be created before watcher initializes")
 }
