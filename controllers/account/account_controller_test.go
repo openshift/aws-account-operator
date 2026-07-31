@@ -2814,4 +2814,67 @@ var _ = Describe("Account Controller", func() {
 			})
 		})
 	})
+
+	Context("handleAWSClientError bounded retry", func() {
+		var testAcct *awsv1alpha1.Account
+
+		BeforeEach(func() {
+			testAcct = &newTestAccountBuilder().
+				WithAwsAccountID("123456789012").
+				WithState(AccountCreating).
+				acct
+			testAcct.Name = accountName
+			testAcct.Namespace = awsv1alpha1.AccountCrNamespace
+			r.stsRetryCount = make(map[string]int)
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{testAcct}...).
+				Build()
+		})
+
+		It("should increment retry count and requeue on first failure", func() {
+			stsErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: "access denied"}
+			result, err := r.handleAWSClientError(nullLogger, testAcct, stsErr)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(30 * time.Second))
+			Expect(r.stsRetryCount[testAcct.Name]).To(Equal(1))
+			Expect(testAcct.Status.State).To(Equal(AccountCreating),
+				"account should NOT be Failed yet on first retry")
+		})
+
+		It("should increment retry count on subsequent failures with increasing backoff", func() {
+			r.stsRetryCount[testAcct.Name] = 1
+
+			stsErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: "access denied"}
+			result, err := r.handleAWSClientError(nullLogger, testAcct, stsErr)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(60 * time.Second))
+			Expect(r.stsRetryCount[testAcct.Name]).To(Equal(2))
+		})
+
+		It("should permanently fail the account after max retries", func() {
+			r.stsRetryCount[testAcct.Name] = maxSTSClientErrorRetries
+
+			stsErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: "access denied"}
+			result, err := r.handleAWSClientError(nullLogger, testAcct, stsErr)
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeZero(),
+				"should not requeue — account is permanently failed")
+			Expect(testAcct.Status.State).To(Equal(AccountFailed))
+		})
+
+		It("should clean up retry count after permanent failure", func() {
+			r.stsRetryCount[testAcct.Name] = maxSTSClientErrorRetries
+
+			stsErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: "access denied"}
+			_, err := r.handleAWSClientError(nullLogger, testAcct, stsErr)
+
+			Expect(err).ToNot(HaveOccurred())
+			_, exists := r.stsRetryCount[testAcct.Name]
+			Expect(exists).To(BeFalse(),
+				"retry count should be cleaned up after permanent failure")
+		})
+	})
 })
