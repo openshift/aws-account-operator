@@ -82,6 +82,11 @@ const (
 	// actual AWS API attempts spread across ~6 minutes of wall clock (with backoff).
 	maxSTSClientErrorRetries = 3
 
+	// stsExhaustedRequeueInterval is how long to wait before retrying an account whose
+	// STS retries have been exhausted. Long enough to avoid queue congestion, short enough
+	// to recover if the underlying issue (e.g. missing OrganizationAccountAccessRole) is fixed.
+	stsExhaustedRequeueInterval = 6 * time.Hour
+
 	// number of service quota requests we are allowed to open concurrently in AWS
 	MaxOpenQuotaRequests = 20
 
@@ -323,6 +328,25 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				return reconcile.Result{}, err
 			}
 		} else {
+			// Pod-restart resilience: if the account already has AccountClientError
+			// from a previous run, pre-fill the counter so we skip straight to long
+			// backoff instead of re-doing 3 rapid retries that already failed.
+			if _, seen := r.stsRetryCount[currentAcctInstance.Name]; !seen {
+				if currentAcctInstance.GetCondition(awsv1alpha1.AccountClientError) != nil {
+					r.stsRetryCount[currentAcctInstance.Name] = maxSTSClientErrorRetries
+				}
+			}
+
+			if r.stsRetryCount[currentAcctInstance.Name] >= maxSTSClientErrorRetries {
+				reqLogger.Info("STS retries exhausted for pending-deletion account, requeueing with long backoff",
+					"account", currentAcctInstance.Name,
+					"awsAccountID", currentAcctInstance.Spec.AwsAccountID,
+					"retryCount", r.stsRetryCount[currentAcctInstance.Name],
+					"requeueAfter", stsExhaustedRequeueInterval.String(),
+				)
+				r.stsRetryCount[currentAcctInstance.Name] = maxSTSClientErrorRetries - 1
+				return reconcile.Result{RequeueAfter: stsExhaustedRequeueInterval}, nil
+			}
 			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
 			if err != nil {
 				reqLogger.Error(err, "failed building AWS client from assume_role")
@@ -662,7 +686,13 @@ func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentA
 		return reconcile.Result{RequeueAfter: backoff}, nil
 	}
 
-	delete(r.stsRetryCount, currentAcctInstance.Name)
+	reqLogger.Info("STS retries exhausted, permanently failing account",
+		"account", currentAcctInstance.Name,
+		"awsAccountID", currentAcctInstance.Spec.AwsAccountID,
+		"retries", maxSTSClientErrorRetries,
+		"errorCode", reason,
+		"pendingDeletion", currentAcctInstance.IsPendingDeletion(),
+	)
 	errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s after %d retries: %s",
 		currentAcctInstance.Spec.AwsAccountID, maxSTSClientErrorRetries, err)
 	_, stateErr := r.setAccountFailed(

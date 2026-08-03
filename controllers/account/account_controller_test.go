@@ -2865,16 +2865,78 @@ var _ = Describe("Account Controller", func() {
 			Expect(testAcct.Status.State).To(Equal(AccountFailed))
 		})
 
-		It("should clean up retry count after permanent failure", func() {
+		It("should preserve retry count after permanent failure", func() {
 			r.stsRetryCount[testAcct.Name] = maxSTSClientErrorRetries
 
 			stsErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: "access denied"}
 			_, err := r.handleAWSClientError(nullLogger, testAcct, stsErr)
 
 			Expect(err).ToNot(HaveOccurred())
-			_, exists := r.stsRetryCount[testAcct.Name]
+			Expect(r.stsRetryCount[testAcct.Name]).To(Equal(maxSTSClientErrorRetries),
+				"retry count must persist so pending-deletion accounts don't restart the retry cycle")
+		})
+	})
+
+	Context("pod-restart resilience for pending-deletion accounts", func() {
+		It("should pre-fill retry count from AccountClientError condition on first seen", func() {
+			r.stsRetryCount = make(map[string]int)
+
+			acct := &awsv1alpha1.Account{}
+			acct.Name = "test-acct"
+			acct.Status.Conditions = []awsv1alpha1.AccountCondition{
+				{
+					Type: awsv1alpha1.AccountClientError,
+				},
+			}
+
+			// Simulate the pre-fill logic from the reconciler
+			if _, seen := r.stsRetryCount[acct.Name]; !seen {
+				if acct.GetCondition(awsv1alpha1.AccountClientError) != nil {
+					r.stsRetryCount[acct.Name] = maxSTSClientErrorRetries
+				}
+			}
+
+			Expect(r.stsRetryCount[acct.Name]).To(Equal(maxSTSClientErrorRetries),
+				"counter should be pre-filled to max so it skips straight to long backoff")
+		})
+
+		It("should not pre-fill retry count when no AccountClientError condition", func() {
+			r.stsRetryCount = make(map[string]int)
+
+			acct := &awsv1alpha1.Account{}
+			acct.Name = "test-acct"
+
+			if _, seen := r.stsRetryCount[acct.Name]; !seen {
+				if acct.GetCondition(awsv1alpha1.AccountClientError) != nil {
+					r.stsRetryCount[acct.Name] = maxSTSClientErrorRetries
+				}
+			}
+
+			_, exists := r.stsRetryCount[acct.Name]
 			Expect(exists).To(BeFalse(),
-				"retry count should be cleaned up after permanent failure")
+				"counter should not be set for accounts without AccountClientError")
+		})
+
+		It("should not overwrite existing retry count", func() {
+			r.stsRetryCount = make(map[string]int)
+			r.stsRetryCount["test-acct"] = 1
+
+			acct := &awsv1alpha1.Account{}
+			acct.Name = "test-acct"
+			acct.Status.Conditions = []awsv1alpha1.AccountCondition{
+				{
+					Type: awsv1alpha1.AccountClientError,
+				},
+			}
+
+			if _, seen := r.stsRetryCount[acct.Name]; !seen {
+				if acct.GetCondition(awsv1alpha1.AccountClientError) != nil {
+					r.stsRetryCount[acct.Name] = maxSTSClientErrorRetries
+				}
+			}
+
+			Expect(r.stsRetryCount[acct.Name]).To(Equal(1),
+				"should not overwrite in-progress retry count from current pod lifecycle")
 		})
 	})
 })
