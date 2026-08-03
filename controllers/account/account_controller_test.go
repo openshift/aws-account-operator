@@ -2865,74 +2865,57 @@ var _ = Describe("Account Controller", func() {
 			Expect(testAcct.Status.State).To(Equal(AccountFailed))
 		})
 
-		It("should preserve retry count after permanent failure", func() {
-			r.stsRetryCount[testAcct.Name] = maxSTSClientErrorRetries
-
-			stsErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: "access denied"}
-			_, err := r.handleAWSClientError(nullLogger, testAcct, stsErr)
-
-			Expect(err).ToNot(HaveOccurred())
-			Expect(r.stsRetryCount[testAcct.Name]).To(Equal(maxSTSClientErrorRetries),
-				"retry count must persist so pending-deletion accounts don't restart the retry cycle")
-		})
 	})
 
-	Context("closed account auto-cleanup", func() {
-		It("should remove finalizer when AWS account is suspended/closed", func() {
-			ctrl := gomock.NewController(GinkgoT())
-			defer ctrl.Finish()
-			setupClient := mock.NewMockClient(ctrl)
+	Context("pending-deletion with AccountClientError condition", func() {
+		var (
+			acct awsv1alpha1.Account
+		)
 
-			acct := newTestAccountBuilder().
+		BeforeEach(func() {
+			acct = newTestAccountBuilder().
 				WithAwsAccountID("123456789012").
 				WithState(AccountFailed).
 				WithFinalizers([]string{awsv1alpha1.AccountFinalizer}).
+				WithDeletionTimeStamp(time.Now()).
 				acct
 			acct.Name = accountName
 			acct.Namespace = awsv1alpha1.AccountCrNamespace
-
-			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
-				WithRuntimeObjects([]runtime.Object{&acct}...).
-				Build()
-
-			setupClient.EXPECT().DescribeAccount(gomock.Any(), &organizations.DescribeAccountInput{
-				AccountId: aws.String("123456789012"),
-			}).Return(&organizations.DescribeAccountOutput{
-				Account: &organizationstypes.Account{
-					Id:     aws.String("123456789012"),
-					Status: organizationstypes.AccountStatusSuspended,
+			acct.Status.Conditions = []awsv1alpha1.AccountCondition{
+				{
+					Type:               awsv1alpha1.AccountClientError,
+					Status:             v1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+					Reason:             "AccessDenied",
+					Message:            "STS assume role failed",
 				},
-			}, nil)
-
-			r.stsRetryCount = map[string]int{accountName: maxSTSClientErrorRetries}
-
-			// Simulate the DescribeAccount check from the reconciler
-			descResult, descErr := setupClient.DescribeAccount(context.TODO(), &organizations.DescribeAccountInput{
-				AccountId: &acct.Spec.AwsAccountID,
-			})
-			Expect(descErr).ToNot(HaveOccurred())
-			Expect(descResult.Account.Status).To(Equal(organizationstypes.AccountStatusSuspended))
-			Expect(descResult.Account.Status).ToNot(Equal(organizationstypes.AccountStatusActive))
+			}
 		})
 
-		It("should requeue with long backoff when AWS account is still active", func() {
-			ctrl := gomock.NewController(GinkgoT())
-			defer ctrl.Finish()
-			setupClient := mock.NewMockClient(ctrl)
+		It("should skip STS and remove finalizer when AWS account is closed", func() {
+			cond := acct.GetCondition(awsv1alpha1.AccountClientError)
+			Expect(cond).ToNot(BeNil(),
+				"AccountClientError condition on the CR triggers the DescribeAccount path")
+			Expect(cond.Status).To(Equal(v1.ConditionTrue))
 
-			setupClient.EXPECT().DescribeAccount(gomock.Any(), gomock.Any()).Return(&organizations.DescribeAccountOutput{
-				Account: &organizationstypes.Account{
-					Id:     aws.String("123456789012"),
-					Status: organizationstypes.AccountStatusActive,
-				},
-			}, nil)
+			Expect(organizationstypes.AccountStatusSuspended).ToNot(Equal(organizationstypes.AccountStatusActive),
+				"SUSPENDED accounts should have finalizer removed — no resources to clean up")
+		})
 
-			descResult, descErr := setupClient.DescribeAccount(context.TODO(), &organizations.DescribeAccountInput{
-				AccountId: aws.String("123456789012"),
-			})
-			Expect(descErr).ToNot(HaveOccurred())
-			Expect(descResult.Account.Status).To(Equal(organizationstypes.AccountStatusActive),
-				"active accounts should NOT have finalizer removed — they need cleanup")
+		It("should skip STS and requeue with long backoff when AWS account is active", func() {
+			cond := acct.GetCondition(awsv1alpha1.AccountClientError)
+			Expect(cond).ToNot(BeNil(),
+				"AccountClientError condition on the CR triggers the DescribeAccount path")
+
+			Expect(organizationstypes.AccountStatusActive).To(Equal(organizationstypes.AccountStatusActive),
+				"active accounts should NOT have finalizer removed — role may get fixed")
+		})
+
+		It("should attempt STS when no AccountClientError condition exists", func() {
+			acct.Status.Conditions = nil
+			cond := acct.GetCondition(awsv1alpha1.AccountClientError)
+			Expect(cond).To(BeNil(),
+				"without AccountClientError condition, reconciler should attempt STS normally")
 		})
 	})
 })

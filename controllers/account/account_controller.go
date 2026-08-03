@@ -328,7 +328,9 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				return reconcile.Result{}, err
 			}
 		} else {
-			if r.stsRetryCount[currentAcctInstance.Name] >= maxSTSClientErrorRetries {
+			// If the account has already failed STS (AccountClientError condition persisted on the CR),
+			// skip retrying STS and check whether the AWS account still exists.
+			if cond := currentAcctInstance.GetCondition(awsv1alpha1.AccountClientError); cond != nil {
 				descResult, descErr := awsSetupClient.DescribeAccount(ctx, &organizations.DescribeAccountInput{
 					AccountId: &currentAcctInstance.Spec.AwsAccountID,
 				})
@@ -342,16 +344,13 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 						reqLogger.Error(err, "failed removing finalizer from closed account")
 						return reconcile.Result{}, err
 					}
-					delete(r.stsRetryCount, currentAcctInstance.Name)
 					return reconcile.Result{}, nil
 				}
 
-				reqLogger.Info("STS retries exhausted for pending-deletion account, requeueing with long backoff",
+				reqLogger.Info("STS previously failed for pending-deletion account, AWS account still active, requeueing with long backoff",
 					"account", currentAcctInstance.Name,
-					"retryCount", r.stsRetryCount[currentAcctInstance.Name],
 					"requeueAfter", stsExhaustedRequeueInterval.String(),
 				)
-				r.stsRetryCount[currentAcctInstance.Name] = maxSTSClientErrorRetries - 1
 				return reconcile.Result{RequeueAfter: stsExhaustedRequeueInterval}, nil
 			}
 			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
