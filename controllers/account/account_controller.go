@@ -332,7 +332,10 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				descResult, descErr := awsSetupClient.DescribeAccount(ctx, &organizations.DescribeAccountInput{
 					AccountId: &currentAcctInstance.Spec.AwsAccountID,
 				})
-				if descErr == nil && descResult.Account != nil &&
+				if descErr != nil {
+					reqLogger.Info("DescribeAccount failed, falling through to STS",
+						"account", currentAcctInstance.Name, "error", descErr.Error())
+				} else if descResult.Account != nil &&
 					descResult.Account.Status != organizationstypes.AccountStatusActive {
 					reqLogger.Info("AWS account is no longer active, removing finalizer — no resources to clean up",
 						"account", currentAcctInstance.Name,
@@ -343,10 +346,11 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 						return reconcile.Result{}, err
 					}
 					return reconcile.Result{}, nil
+				} else {
+					reqLogger.Info("AWS account still active, retrying STS",
+						"account", currentAcctInstance.Name,
+					)
 				}
-				reqLogger.Info("AWS account still active, retrying STS",
-					"account", currentAcctInstance.Name,
-				)
 			}
 			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
 			if err != nil {
