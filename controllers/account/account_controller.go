@@ -328,15 +328,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				return reconcile.Result{}, err
 			}
 		} else {
-			// Pod-restart resilience: if the account already has AccountClientError
-			// from a previous run, pre-fill the counter so we skip straight to long
-			// backoff instead of re-doing 3 rapid retries that already failed.
-			if _, seen := r.stsRetryCount[currentAcctInstance.Name]; !seen {
-				if currentAcctInstance.GetCondition(awsv1alpha1.AccountClientError) != nil {
-					r.stsRetryCount[currentAcctInstance.Name] = maxSTSClientErrorRetries
-				}
-			}
-
 			if r.stsRetryCount[currentAcctInstance.Name] >= maxSTSClientErrorRetries {
 				descResult, descErr := awsSetupClient.DescribeAccount(ctx, &organizations.DescribeAccountInput{
 					AccountId: &currentAcctInstance.Spec.AwsAccountID,
@@ -345,7 +336,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 					descResult.Account.Status != organizationstypes.AccountStatusActive {
 					reqLogger.Info("AWS account is no longer active, removing finalizer — no resources to clean up",
 						"account", currentAcctInstance.Name,
-						"awsAccountID", currentAcctInstance.Spec.AwsAccountID,
 						"awsAccountStatus", string(descResult.Account.Status),
 					)
 					if err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer); err != nil { //nolint:contextcheck // removeFinalizer doesn't accept context
@@ -358,7 +348,6 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 				reqLogger.Info("STS retries exhausted for pending-deletion account, requeueing with long backoff",
 					"account", currentAcctInstance.Name,
-					"awsAccountID", currentAcctInstance.Spec.AwsAccountID,
 					"retryCount", r.stsRetryCount[currentAcctInstance.Name],
 					"requeueAfter", stsExhaustedRequeueInterval.String(),
 				)
@@ -706,7 +695,6 @@ func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentA
 
 	reqLogger.Info("STS retries exhausted, permanently failing account",
 		"account", currentAcctInstance.Name,
-		"awsAccountID", currentAcctInstance.Spec.AwsAccountID,
 		"retries", maxSTSClientErrorRetries,
 		"errorCode", reason,
 		"pendingDeletion", currentAcctInstance.IsPendingDeletion(),

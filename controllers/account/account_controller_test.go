@@ -2877,69 +2877,6 @@ var _ = Describe("Account Controller", func() {
 		})
 	})
 
-	Context("pod-restart resilience for pending-deletion accounts", func() {
-		It("should pre-fill retry count from AccountClientError condition on first seen", func() {
-			r.stsRetryCount = make(map[string]int)
-
-			acct := &awsv1alpha1.Account{}
-			acct.Name = "test-acct"
-			acct.Status.Conditions = []awsv1alpha1.AccountCondition{
-				{
-					Type: awsv1alpha1.AccountClientError,
-				},
-			}
-
-			// Simulate the pre-fill logic from the reconciler
-			if _, seen := r.stsRetryCount[acct.Name]; !seen {
-				if acct.GetCondition(awsv1alpha1.AccountClientError) != nil {
-					r.stsRetryCount[acct.Name] = maxSTSClientErrorRetries
-				}
-			}
-
-			Expect(r.stsRetryCount[acct.Name]).To(Equal(maxSTSClientErrorRetries),
-				"counter should be pre-filled to max so it skips straight to long backoff")
-		})
-
-		It("should not pre-fill retry count when no AccountClientError condition", func() {
-			r.stsRetryCount = make(map[string]int)
-
-			acct := &awsv1alpha1.Account{}
-			acct.Name = "test-acct"
-
-			if _, seen := r.stsRetryCount[acct.Name]; !seen {
-				if acct.GetCondition(awsv1alpha1.AccountClientError) != nil {
-					r.stsRetryCount[acct.Name] = maxSTSClientErrorRetries
-				}
-			}
-
-			_, exists := r.stsRetryCount[acct.Name]
-			Expect(exists).To(BeFalse(),
-				"counter should not be set for accounts without AccountClientError")
-		})
-
-		It("should not overwrite existing retry count", func() {
-			r.stsRetryCount = make(map[string]int)
-			r.stsRetryCount["test-acct"] = 1
-
-			acct := &awsv1alpha1.Account{}
-			acct.Name = "test-acct"
-			acct.Status.Conditions = []awsv1alpha1.AccountCondition{
-				{
-					Type: awsv1alpha1.AccountClientError,
-				},
-			}
-
-			if _, seen := r.stsRetryCount[acct.Name]; !seen {
-				if acct.GetCondition(awsv1alpha1.AccountClientError) != nil {
-					r.stsRetryCount[acct.Name] = maxSTSClientErrorRetries
-				}
-			}
-
-			Expect(r.stsRetryCount[acct.Name]).To(Equal(1),
-				"should not overwrite in-progress retry count from current pod lifecycle")
-		})
-	})
-
 	Context("closed account auto-cleanup", func() {
 		It("should remove finalizer when AWS account is suspended/closed", func() {
 			ctrl := gomock.NewController(GinkgoT())
