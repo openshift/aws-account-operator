@@ -32,6 +32,7 @@ import (
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
+	"github.com/openshift/aws-account-operator/pkg/totalaccountwatcher"
 	"github.com/openshift/aws-account-operator/pkg/utils"
 	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
@@ -1811,12 +1812,13 @@ var _ = Describe("Account Controller", func() {
 				"NoState account younger than createPendTime should NOT be garbage-collected")
 		})
 
-		It("should NOT delete a zombie-looking BYOC account", func() {
+		It("should NOT delete a zombie-looking BYOC account even if pool-owned", func() {
 			byocAccount := &newTestAccountBuilder().
 				WithState(awsv1alpha1.AccountFailed).
 				BYOC(true).
 				WithFinalizers([]string{awsv1alpha1.AccountFinalizer}).acct
 			byocAccount.Spec.AwsAccountID = ""
+			byocAccount.Spec.AccountPool = "default"
 
 			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
 				WithRuntimeObjects([]runtime.Object{byocAccount, configMap}...).Build()
@@ -3159,8 +3161,10 @@ var _ = Describe("Account Controller", func() {
 
 	Context("account limit requeue", func() {
 		It("requeues NoState account when AWS account limit is reached", func() {
-			// The default global TotalAccountWatcher has accountsCanBeCreated=false,
-			// simulating an uninitialized watcher or a reached limit.
+			savedWatcher := totalaccountwatcher.TotalAccountWatcher
+			totalaccountwatcher.TotalAccountWatcher = &totalaccountwatcher.AccountWatcher{}
+			defer func() { totalaccountwatcher.TotalAccountWatcher = savedWatcher }()
+
 			noStateAcct := newTestAccountBuilder().
 				WithoutState().
 				WithSpec(awsv1alpha1.AccountSpec{

@@ -135,7 +135,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	// (e.g. account limit was reached). They are irrecoverable and inflate
 	// the Account CR list, adding overhead to every pool reconcile.
 	zombieAge := time.Since(currentAcctInstance.CreationTimestamp.Time)
-	if !currentAcctInstance.IsPendingDeletion() && !currentAcctInstance.HasAwsAccountID() && currentAcctInstance.IsOwnedByAccountPool() &&
+	if !currentAcctInstance.IsPendingDeletion() && !currentAcctInstance.IsBYOC() && !currentAcctInstance.HasAwsAccountID() && currentAcctInstance.IsOwnedByAccountPool() &&
 		(currentAcctInstance.IsFailed() || (!currentAcctInstance.HasState() && zombieAge > createPendTime)) {
 		reqLogger.Info("Deleting zombie Account CR (no AWS account)",
 			"account", currentAcctInstance.Name, "state", currentAcctInstance.Status.State)
@@ -328,7 +328,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		} else {
 			// If the account has already failed STS (AccountClientError condition persisted on the CR),
 			// check whether the AWS account still exists before retrying.
-			if cond := currentAcctInstance.GetCondition(awsv1alpha1.AccountClientError); cond != nil {
+			if cond := currentAcctInstance.GetCondition(awsv1alpha1.AccountClientError); cond != nil && currentAcctInstance.Spec.AwsAccountID != "" {
 				descResult, descErr := awsSetupClient.DescribeAccount(ctx, &organizations.DescribeAccountInput{
 					AccountId: &currentAcctInstance.Spec.AwsAccountID,
 				})
