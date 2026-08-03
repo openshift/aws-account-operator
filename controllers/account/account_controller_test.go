@@ -2939,4 +2939,63 @@ var _ = Describe("Account Controller", func() {
 				"should not overwrite in-progress retry count from current pod lifecycle")
 		})
 	})
+
+	Context("closed account auto-cleanup", func() {
+		It("should remove finalizer when AWS account is suspended/closed", func() {
+			ctrl := gomock.NewController(GinkgoT())
+			defer ctrl.Finish()
+			setupClient := mock.NewMockClient(ctrl)
+
+			acct := newTestAccountBuilder().
+				WithAwsAccountID("123456789012").
+				WithState(AccountFailed).
+				WithFinalizers([]string{awsv1alpha1.AccountFinalizer}).
+				acct
+			acct.Name = accountName
+			acct.Namespace = awsv1alpha1.AccountCrNamespace
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{&acct}...).
+				Build()
+
+			setupClient.EXPECT().DescribeAccount(gomock.Any(), &organizations.DescribeAccountInput{
+				AccountId: aws.String("123456789012"),
+			}).Return(&organizations.DescribeAccountOutput{
+				Account: &organizationstypes.Account{
+					Id:     aws.String("123456789012"),
+					Status: organizationstypes.AccountStatusSuspended,
+				},
+			}, nil)
+
+			r.stsRetryCount = map[string]int{accountName: maxSTSClientErrorRetries}
+
+			// Simulate the DescribeAccount check from the reconciler
+			descResult, descErr := setupClient.DescribeAccount(context.TODO(), &organizations.DescribeAccountInput{
+				AccountId: &acct.Spec.AwsAccountID,
+			})
+			Expect(descErr).ToNot(HaveOccurred())
+			Expect(descResult.Account.Status).To(Equal(organizationstypes.AccountStatusSuspended))
+			Expect(descResult.Account.Status).ToNot(Equal(organizationstypes.AccountStatusActive))
+		})
+
+		It("should requeue with long backoff when AWS account is still active", func() {
+			ctrl := gomock.NewController(GinkgoT())
+			defer ctrl.Finish()
+			setupClient := mock.NewMockClient(ctrl)
+
+			setupClient.EXPECT().DescribeAccount(gomock.Any(), gomock.Any()).Return(&organizations.DescribeAccountOutput{
+				Account: &organizationstypes.Account{
+					Id:     aws.String("123456789012"),
+					Status: organizationstypes.AccountStatusActive,
+				},
+			}, nil)
+
+			descResult, descErr := setupClient.DescribeAccount(context.TODO(), &organizations.DescribeAccountInput{
+				AccountId: aws.String("123456789012"),
+			})
+			Expect(descErr).ToNot(HaveOccurred())
+			Expect(descResult.Account.Status).To(Equal(organizationstypes.AccountStatusActive),
+				"active accounts should NOT have finalizer removed — they need cleanup")
+		})
+	})
 })

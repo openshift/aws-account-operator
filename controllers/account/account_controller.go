@@ -338,6 +338,24 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			}
 
 			if r.stsRetryCount[currentAcctInstance.Name] >= maxSTSClientErrorRetries {
+				descResult, descErr := awsSetupClient.DescribeAccount(ctx, &organizations.DescribeAccountInput{
+					AccountId: &currentAcctInstance.Spec.AwsAccountID,
+				})
+				if descErr == nil && descResult.Account != nil &&
+					descResult.Account.Status != organizationstypes.AccountStatusActive {
+					reqLogger.Info("AWS account is no longer active, removing finalizer — no resources to clean up",
+						"account", currentAcctInstance.Name,
+						"awsAccountID", currentAcctInstance.Spec.AwsAccountID,
+						"awsAccountStatus", string(descResult.Account.Status),
+					)
+					if err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer); err != nil { //nolint:contextcheck // removeFinalizer doesn't accept context
+						reqLogger.Error(err, "failed removing finalizer from closed account")
+						return reconcile.Result{}, err
+					}
+					delete(r.stsRetryCount, currentAcctInstance.Name)
+					return reconcile.Result{}, nil
+				}
+
 				reqLogger.Info("STS retries exhausted for pending-deletion account, requeueing with long backoff",
 					"account", currentAcctInstance.Name,
 					"awsAccountID", currentAcctInstance.Spec.AwsAccountID,
