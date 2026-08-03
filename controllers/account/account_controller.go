@@ -82,11 +82,6 @@ const (
 	// actual AWS API attempts spread across ~6 minutes of wall clock (with backoff).
 	maxSTSClientErrorRetries = 3
 
-	// stsExhaustedRequeueInterval is how long to wait before retrying an account whose
-	// STS retries have been exhausted. Long enough to avoid queue congestion, short enough
-	// to recover if the underlying issue (e.g. missing OrganizationAccountAccessRole) is fixed.
-	stsExhaustedRequeueInterval = 6 * time.Hour
-
 	// number of service quota requests we are allowed to open concurrently in AWS
 	MaxOpenQuotaRequests = 20
 
@@ -329,7 +324,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			}
 		} else {
 			// If the account has already failed STS (AccountClientError condition persisted on the CR),
-			// skip retrying STS and check whether the AWS account still exists.
+			// check whether the AWS account still exists before retrying.
 			if cond := currentAcctInstance.GetCondition(awsv1alpha1.AccountClientError); cond != nil {
 				descResult, descErr := awsSetupClient.DescribeAccount(ctx, &organizations.DescribeAccountInput{
 					AccountId: &currentAcctInstance.Spec.AwsAccountID,
@@ -346,12 +341,9 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 					}
 					return reconcile.Result{}, nil
 				}
-
-				reqLogger.Info("STS previously failed for pending-deletion account, AWS account still active, requeueing with long backoff",
+				reqLogger.Info("AWS account still active, retrying STS",
 					"account", currentAcctInstance.Name,
-					"requeueAfter", stsExhaustedRequeueInterval.String(),
 				)
-				return reconcile.Result{RequeueAfter: stsExhaustedRequeueInterval}, nil
 			}
 			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
 			if err != nil {
