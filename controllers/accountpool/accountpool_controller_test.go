@@ -642,3 +642,237 @@ func TestPoolDoesNotCreateBeforeWatcherInitializes(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(al.Items), "No accounts should be created before watcher initializes")
 }
+
+func TestBurstCreationPrevention(t *testing.T) {
+	err := awsaccountapis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		t.Fatalf("failed adding to scheme: %v", err)
+	}
+
+	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
+	configmap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      awsv1alpha1.DefaultConfigMap,
+			Namespace: awsv1alpha1.AccountCrNamespace,
+		},
+		Data: map[string]string{
+			"accountpool": "test: {\"default\": true}",
+		},
+	}
+
+	t.Run("pool creates exactly one account per reconcile, not poolSize at once", func(t *testing.T) {
+		localObjects := []runtime.Object{
+			&awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
+				Spec: awsv1alpha1.AccountPoolSpec{
+					PoolSize: 50,
+				},
+			},
+			configmap,
+		}
+
+		mocks := setupDefaultMocks(t, localObjects)
+		defer mocks.mockCtrl.Finish()
+
+		rap := &AccountPoolReconciler{
+			Client: mocks.fakeKubeClient,
+			Scheme: scheme.Scheme,
+			accountWatcher: &mockTAW{
+				accounts: 0,
+				limit:    1000,
+			},
+		}
+
+		_, err := rap.Reconcile(context.TODO(), reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "test",
+				Namespace: "aws-account-operator",
+			},
+		})
+
+		assert.NoError(t, err)
+
+		al := awsv1alpha1.AccountList{}
+		err = mocks.fakeKubeClient.List(context.TODO(), &al, client.InNamespace("aws-account-operator"))
+		assert.NoError(t, err)
+		assert.Equal(t, 1, len(al.Items), "Pool should create exactly 1 account per reconcile, not poolSize (50)")
+	})
+
+	t.Run("pool stops creating when pending accounts fill the gap", func(t *testing.T) {
+		localObjects := []runtime.Object{
+			&awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
+				Spec: awsv1alpha1.AccountPoolSpec{
+					PoolSize: 5,
+				},
+			},
+			configmap,
+			createNoStateAccountMock("pending1"),
+			createNoStateAccountMock("pending2"),
+			createNoStateAccountMock("pending3"),
+			createNoStateAccountMock("pending4"),
+			createNoStateAccountMock("pending5"),
+		}
+
+		mocks := setupDefaultMocks(t, localObjects)
+		defer mocks.mockCtrl.Finish()
+
+		rap := &AccountPoolReconciler{
+			Client: mocks.fakeKubeClient,
+			Scheme: scheme.Scheme,
+			accountWatcher: &mockTAW{
+				accounts: 5,
+				limit:    1000,
+			},
+		}
+
+		_, err := rap.Reconcile(context.TODO(), reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "test",
+				Namespace: "aws-account-operator",
+			},
+		})
+
+		assert.NoError(t, err)
+
+		al := awsv1alpha1.AccountList{}
+		err = mocks.fakeKubeClient.List(context.TODO(), &al, client.InNamespace("aws-account-operator"))
+		assert.NoError(t, err)
+		assert.Equal(t, 5, len(al.Items), "No new accounts should be created when 5 pending accounts satisfy poolSize=5")
+	})
+
+	t.Run("pool stops at AWS account limit even when pool unsatisfied", func(t *testing.T) {
+		localObjects := []runtime.Object{
+			&awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
+				Spec: awsv1alpha1.AccountPoolSpec{
+					PoolSize: 10,
+				},
+			},
+			configmap,
+		}
+
+		mocks := setupDefaultMocks(t, localObjects)
+		defer mocks.mockCtrl.Finish()
+
+		rap := &AccountPoolReconciler{
+			Client: mocks.fakeKubeClient,
+			Scheme: scheme.Scheme,
+			accountWatcher: &mockTAW{
+				accounts: 100,
+				limit:    100,
+			},
+		}
+
+		result, err := rap.Reconcile(context.TODO(), reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "test",
+				Namespace: "aws-account-operator",
+			},
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 5*time.Minute, result.RequeueAfter, "Should requeue when at limit")
+
+		al := awsv1alpha1.AccountList{}
+		err = mocks.fakeKubeClient.List(context.TODO(), &al, client.InNamespace("aws-account-operator"))
+		assert.NoError(t, err)
+		assert.Equal(t, 0, len(al.Items), "No accounts should be created when AWS limit reached")
+	})
+
+	t.Run("rapid successive reconciles don't burst past poolSize", func(t *testing.T) {
+		localObjects := []runtime.Object{
+			&awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
+				Spec: awsv1alpha1.AccountPoolSpec{
+					PoolSize: 3,
+				},
+			},
+			configmap,
+		}
+
+		mocks := setupDefaultMocks(t, localObjects)
+		defer mocks.mockCtrl.Finish()
+
+		rap := &AccountPoolReconciler{
+			Client: mocks.fakeKubeClient,
+			Scheme: scheme.Scheme,
+			accountWatcher: &mockTAW{
+				accounts: 0,
+				limit:    1000,
+			},
+		}
+
+		for i := range 5 {
+			_, err := rap.Reconcile(context.TODO(), reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
+			})
+			assert.NoError(t, err, "reconcile %d should not error", i)
+		}
+
+		al := awsv1alpha1.AccountList{}
+		err = mocks.fakeKubeClient.List(context.TODO(), &al, client.InNamespace("aws-account-operator"))
+		assert.NoError(t, err)
+		assert.Equal(t, 3, len(al.Items),
+			"After 5 rapid reconciles with poolSize=3, exactly 3 accounts should exist (pending accounts satisfy pool)")
+	})
+
+	t.Run("failed accounts don't satisfy pool — pool replaces them", func(t *testing.T) {
+		localObjects := []runtime.Object{
+			&awsv1alpha1.AccountPool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "aws-account-operator",
+				},
+				Spec: awsv1alpha1.AccountPoolSpec{
+					PoolSize: 2,
+				},
+			},
+			configmap,
+			createFailedNoStateAccountMock("failed1"),
+			createFailedNoStateAccountMock("failed2"),
+		}
+
+		mocks := setupDefaultMocks(t, localObjects)
+		defer mocks.mockCtrl.Finish()
+
+		rap := &AccountPoolReconciler{
+			Client: mocks.fakeKubeClient,
+			Scheme: scheme.Scheme,
+			accountWatcher: &mockTAW{
+				accounts: 2,
+				limit:    1000,
+			},
+		}
+
+		_, err := rap.Reconcile(context.TODO(), reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      "test",
+				Namespace: "aws-account-operator",
+			},
+		})
+
+		assert.NoError(t, err)
+
+		al := awsv1alpha1.AccountList{}
+		err = mocks.fakeKubeClient.List(context.TODO(), &al, client.InNamespace("aws-account-operator"))
+		assert.NoError(t, err)
+		assert.Equal(t, 3, len(al.Items),
+			"Pool should create 1 new account to replace 2 failed accounts (2 failed + 1 new pending)")
+	})
+}

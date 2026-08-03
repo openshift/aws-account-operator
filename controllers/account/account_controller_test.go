@@ -1755,6 +1755,88 @@ var _ = Describe("Account Controller", func() {
 			Expect(ac.Status.State).To(Equal(string(awsv1alpha1.AccountFailed)))
 		})
 
+		It("should delete a NoState zombie account with no AWS ID after createPendTime", func() {
+			zombieAccount := &newTestAccountBuilder().
+				WithoutState().
+				WithFinalizers([]string{awsv1alpha1.AccountFinalizer}).
+				WithCreationTimeStamp(time.Now().Add(-30 * time.Minute)).
+				WithSpec(awsv1alpha1.AccountSpec{
+					AccountPool: "default",
+				}).acct
+			zombieAccount.Spec.AwsAccountID = ""
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{zombieAccount, configMap}...).Build()
+
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: zombieAccount.Namespace,
+					Name:      zombieAccount.Name,
+				},
+			}
+
+			_, err := r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+
+			ac := &awsv1alpha1.Account{}
+			err = r.Get(context.TODO(), types.NamespacedName{Name: zombieAccount.Name, Namespace: zombieAccount.Namespace}, ac)
+			Expect(k8serr.IsNotFound(err)).To(BeTrue(),
+				"NoState zombie older than createPendTime should be garbage-collected")
+		})
+
+		It("should NOT delete a young NoState account (under createPendTime)", func() {
+			youngAccount := &newTestAccountBuilder().
+				WithoutState().
+				WithFinalizers([]string{awsv1alpha1.AccountFinalizer}).
+				WithCreationTimeStamp(time.Now().Add(-5 * time.Minute)).
+				WithSpec(awsv1alpha1.AccountSpec{
+					AccountPool: "default",
+				}).acct
+			youngAccount.Spec.AwsAccountID = ""
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{youngAccount, configMap}...).Build()
+
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: youngAccount.Namespace,
+					Name:      youngAccount.Name,
+				},
+			}
+
+			_, _ = r.Reconcile(context.TODO(), req)
+			ac := &awsv1alpha1.Account{}
+			err := r.Get(context.TODO(), types.NamespacedName{Name: youngAccount.Name, Namespace: youngAccount.Namespace}, ac)
+			Expect(err).ToNot(HaveOccurred(),
+				"NoState account younger than createPendTime should NOT be garbage-collected")
+		})
+
+		It("should NOT delete a zombie-looking BYOC account", func() {
+			byocAccount := &newTestAccountBuilder().
+				WithState(awsv1alpha1.AccountFailed).
+				BYOC(true).
+				WithFinalizers([]string{awsv1alpha1.AccountFinalizer}).acct
+			byocAccount.Spec.AwsAccountID = ""
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{byocAccount, configMap}...).Build()
+
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: byocAccount.Namespace,
+					Name:      byocAccount.Name,
+				},
+			}
+
+			_, err := r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+
+			ac := &awsv1alpha1.Account{}
+			err = r.Get(context.TODO(), types.NamespacedName{Name: byocAccount.Name, Namespace: byocAccount.Namespace}, ac)
+			Expect(err).ToNot(HaveOccurred(),
+				"BYOC accounts should never be garbage-collected regardless of state")
+		})
+
 		It("A ready BYOC account being claimed adds a claimed status condition", func() {
 			claimName := fmt.Sprintf("%s-%s", accountName, "claim")
 			accountClaim := &awsv1alpha1.AccountClaim{
@@ -2916,6 +2998,196 @@ var _ = Describe("Account Controller", func() {
 			cond := acct.GetCondition(awsv1alpha1.AccountClientError)
 			Expect(cond).To(BeNil(),
 				"without AccountClientError condition, reconciler should attempt STS normally")
+		})
+	})
+
+	Context("PendingDeletion STS failure regression", func() {
+		It("removes finalizer when DescribeAccount returns SUSPENDED (no STS attempted)", func() {
+			tmpcli, err := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
+			Expect(err).ToNot(HaveOccurred())
+			mockAWSClient, _ = tmpcli.(*mock.MockClient)
+
+			pendingDelAcct := newTestAccountBuilder().
+				WithAwsAccountID("123456789012").
+				WithState(AccountFailed).
+				WithFinalizers([]string{awsv1alpha1.AccountFinalizer}).
+				WithDeletionTimeStamp(time.Now()).
+				WithSpec(awsv1alpha1.AccountSpec{
+					AccountPool:  "default",
+					AwsAccountID: "123456789012",
+				}).acct
+			pendingDelAcct.Status.Conditions = []awsv1alpha1.AccountCondition{
+				{
+					Type:               awsv1alpha1.AccountClientError,
+					Status:             v1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+					Reason:             "AccessDenied",
+					Message:            "STS assume role failed",
+				},
+			}
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{&pendingDelAcct, configMap}...).Build()
+
+			mockAWSClient.EXPECT().DescribeAccount(gomock.Any(), gomock.Any()).Return(
+				&organizations.DescribeAccountOutput{
+					Account: &organizationstypes.Account{
+						Id:     aws.String("123456789012"),
+						Status: organizationstypes.AccountStatusSuspended,
+					},
+				}, nil)
+
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: pendingDelAcct.Namespace,
+					Name:      pendingDelAcct.Name,
+				},
+			}
+
+			_, err = r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+
+			ac := &awsv1alpha1.Account{}
+			err = r.Get(context.TODO(), types.NamespacedName{Name: pendingDelAcct.Name, Namespace: pendingDelAcct.Namespace}, ac)
+			Expect(k8serr.IsNotFound(err)).To(BeTrue(),
+				"account should be fully deleted after finalizer removed from PendingDeletion object")
+		})
+
+		It("removes finalizer when DescribeAccount returns PendingClosure", func() {
+			tmpcli, err := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
+			Expect(err).ToNot(HaveOccurred())
+			mockAWSClient, _ = tmpcli.(*mock.MockClient)
+
+			pendingDelAcct := newTestAccountBuilder().
+				WithAwsAccountID("123456789012").
+				WithState(AccountFailed).
+				WithFinalizers([]string{awsv1alpha1.AccountFinalizer}).
+				WithDeletionTimeStamp(time.Now()).
+				WithSpec(awsv1alpha1.AccountSpec{
+					AccountPool:  "default",
+					AwsAccountID: "123456789012",
+				}).acct
+			pendingDelAcct.Status.Conditions = []awsv1alpha1.AccountCondition{
+				{
+					Type:               awsv1alpha1.AccountClientError,
+					Status:             v1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+					Reason:             "AccessDenied",
+					Message:            "STS assume role failed",
+				},
+			}
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{&pendingDelAcct, configMap}...).Build()
+
+			mockAWSClient.EXPECT().DescribeAccount(gomock.Any(), gomock.Any()).Return(
+				&organizations.DescribeAccountOutput{
+					Account: &organizationstypes.Account{
+						Id:     aws.String("123456789012"),
+						Status: organizationstypes.AccountStatusPendingClosure,
+					},
+				}, nil)
+
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: pendingDelAcct.Namespace,
+					Name:      pendingDelAcct.Name,
+				},
+			}
+
+			_, err = r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+
+			ac := &awsv1alpha1.Account{}
+			err = r.Get(context.TODO(), types.NamespacedName{Name: pendingDelAcct.Name, Namespace: pendingDelAcct.Namespace}, ac)
+			Expect(k8serr.IsNotFound(err)).To(BeTrue(),
+				"account should be fully deleted after finalizer removed from PendingDeletion object")
+		})
+
+		It("condition survives simulated pod restart", func() {
+			acctWithCondition := &newTestAccountBuilder().
+				WithAwsAccountID("123456789012").
+				WithState(AccountFailed).
+				WithFinalizers([]string{awsv1alpha1.AccountFinalizer}).acct
+			acctWithCondition.Status.Conditions = []awsv1alpha1.AccountCondition{
+				{
+					Type:               awsv1alpha1.AccountClientError,
+					Status:             v1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+					Reason:             "AccessDenied",
+					Message:            "STS assume role failed",
+				},
+			}
+
+			freshReconciler := &AccountReconciler{
+				Scheme:        scheme.Scheme,
+				stsRetryCount: make(map[string]int),
+			}
+
+			Expect(freshReconciler.stsRetryCount).To(BeEmpty(),
+				"after pod restart, in-memory retry map is empty")
+			cond := acctWithCondition.GetCondition(awsv1alpha1.AccountClientError)
+			Expect(cond).ToNot(BeNil(),
+				"AccountClientError condition persisted on the CR survives pod restart")
+			Expect(cond.Reason).To(Equal("AccessDenied"))
+		})
+
+		It("sets AccountClientError condition after exhausting retries", func() {
+			testAcct := &newTestAccountBuilder().
+				WithAwsAccountID("123456789012").
+				WithState(AccountCreating).acct
+			testAcct.Name = accountName
+			testAcct.Namespace = awsv1alpha1.AccountCrNamespace
+
+			r.stsRetryCount = make(map[string]int)
+			r.stsRetryCount[testAcct.Name] = maxSTSClientErrorRetries
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{testAcct}...).Build()
+
+			stsErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: "access denied"}
+			_, err := r.handleAWSClientError(nullLogger, testAcct, stsErr)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(testAcct.Status.State).To(Equal(AccountFailed),
+				"account should be permanently failed after max retries")
+			cond := testAcct.GetCondition(awsv1alpha1.AccountClientError)
+			Expect(cond).ToNot(BeNil(),
+				"AccountClientError condition should be set so PendingDeletion path can use it")
+			Expect(cond.Status).To(Equal(v1.ConditionTrue))
+		})
+	})
+
+	Context("account limit requeue", func() {
+		It("requeues NoState account when AWS account limit is reached", func() {
+			// The default global TotalAccountWatcher has accountsCanBeCreated=false,
+			// simulating an uninitialized watcher or a reached limit.
+			noStateAcct := newTestAccountBuilder().
+				WithoutState().
+				WithSpec(awsv1alpha1.AccountSpec{
+					AccountPool: "default",
+				}).acct
+			noStateAcct.Spec.AwsAccountID = ""
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{&noStateAcct, configMap}...).Build()
+
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: noStateAcct.Namespace,
+					Name:      noStateAcct.Name,
+				},
+			}
+
+			result, err := r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RequeueAfter).To(Equal(5*time.Minute),
+				"should requeue after 5 minutes when account limit is reached")
+
+			ac := &awsv1alpha1.Account{}
+			err = r.Get(context.TODO(), types.NamespacedName{Name: noStateAcct.Name, Namespace: noStateAcct.Namespace}, ac)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ac.Status.State).To(BeEmpty(),
+				"account should NOT be failed — just waiting for capacity")
 		})
 	})
 })
