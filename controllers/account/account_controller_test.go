@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -2909,7 +2910,6 @@ var _ = Describe("Account Controller", func() {
 				acct
 			testAcct.Name = accountName
 			testAcct.Namespace = awsv1alpha1.AccountCrNamespace
-			r.stsRetryCount = make(map[string]int)
 			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
 				WithRuntimeObjects([]runtime.Object{testAcct}...).
 				Build()
@@ -2921,31 +2921,43 @@ var _ = Describe("Account Controller", func() {
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.RequeueAfter).To(Equal(30 * time.Second))
-			Expect(r.stsRetryCount[testAcct.Name]).To(Equal(1))
+
+			ac := &awsv1alpha1.Account{}
+			err = r.Get(context.TODO(), types.NamespacedName{Name: testAcct.Name, Namespace: testAcct.Namespace}, ac)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ac.Annotations[stsRetryAnnotation]).To(Equal("1"))
 			Expect(testAcct.Status.State).To(Equal(AccountCreating),
 				"account should NOT be Failed yet on first retry")
 		})
 
 		It("should increment retry count on subsequent failures with increasing backoff", func() {
-			r.stsRetryCount[testAcct.Name] = 1
+			testAcct.Annotations = map[string]string{stsRetryAnnotation: "1"}
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{testAcct}...).Build()
 
 			stsErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: "access denied"}
 			result, err := r.handleAWSClientError(nullLogger, testAcct, stsErr)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.RequeueAfter).To(Equal(60 * time.Second))
-			Expect(r.stsRetryCount[testAcct.Name]).To(Equal(2))
+
+			ac := &awsv1alpha1.Account{}
+			err = r.Get(context.TODO(), types.NamespacedName{Name: testAcct.Name, Namespace: testAcct.Namespace}, ac)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ac.Annotations[stsRetryAnnotation]).To(Equal("2"))
 		})
 
 		It("should permanently fail the account after max retries", func() {
-			r.stsRetryCount[testAcct.Name] = maxSTSClientErrorRetries
+			testAcct.Annotations = map[string]string{stsRetryAnnotation: strconv.Itoa(maxSTSClientErrorRetries)}
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{testAcct}...).Build()
 
 			stsErr := &smithy.GenericAPIError{Code: "AccessDenied", Message: "access denied"}
 			result, err := r.handleAWSClientError(nullLogger, testAcct, stsErr)
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(result.RequeueAfter).To(BeZero(),
-				"should not requeue — account is permanently failed")
+			Expect(result.RequeueAfter).To(Equal(stsExhaustedRequeueInterval),
+				"should requeue with long interval after exhaustion")
 			Expect(testAcct.Status.State).To(Equal(AccountFailed))
 		})
 
@@ -3122,12 +3134,10 @@ var _ = Describe("Account Controller", func() {
 			}
 
 			freshReconciler := &AccountReconciler{
-				Scheme:        scheme.Scheme,
-				stsRetryCount: make(map[string]int),
+				Scheme: scheme.Scheme,
 			}
+			_ = freshReconciler
 
-			Expect(freshReconciler.stsRetryCount).To(BeEmpty(),
-				"after pod restart, in-memory retry map is empty")
 			cond := acctWithCondition.GetCondition(awsv1alpha1.AccountClientError)
 			Expect(cond).ToNot(BeNil(),
 				"AccountClientError condition persisted on the CR survives pod restart")
@@ -3141,8 +3151,7 @@ var _ = Describe("Account Controller", func() {
 			testAcct.Name = accountName
 			testAcct.Namespace = awsv1alpha1.AccountCrNamespace
 
-			r.stsRetryCount = make(map[string]int)
-			r.stsRetryCount[testAcct.Name] = maxSTSClientErrorRetries
+			testAcct.Annotations = map[string]string{stsRetryAnnotation: strconv.Itoa(maxSTSClientErrorRetries)}
 			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
 				WithRuntimeObjects([]runtime.Object{testAcct}...).Build()
 
