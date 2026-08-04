@@ -19,7 +19,7 @@ require (
 	github.com/aws/smithy-go v1.25.1
 	github.com/go-logr/logr v1.3.0
 	github.com/google/go-cmp v0.6.0
-	github.com/onsi/ginkgo v1.16.5
+	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/ginkgo/v2 v2.6.0
 	github.com/onsi/gomega v1.24.1
 	github.com/openshift/api v0.0.0-20220414050251-a83e6f8f1d50
