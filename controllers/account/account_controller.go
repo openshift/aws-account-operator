@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -97,7 +98,30 @@ type AccountReconciler struct {
 	Scheme           *runtime.Scheme
 	awsClientBuilder awsclient.IBuilder
 	shardName        string
-	stsRetryCount    map[string]int
+	// stsRetryCount tracks reconcile-level STS retries per account. The account
+	// controller runs with MaxConcurrentReconciles > 1, so all access is guarded
+	// by stsRetryMu.
+	stsRetryCount map[string]int
+	stsRetryMu    sync.Mutex
+}
+
+func (r *AccountReconciler) incrementSTSRetry(name string) int {
+	r.stsRetryMu.Lock()
+	defer r.stsRetryMu.Unlock()
+	r.stsRetryCount[name]++
+	return r.stsRetryCount[name]
+}
+
+func (r *AccountReconciler) getSTSRetry(name string) int {
+	r.stsRetryMu.Lock()
+	defer r.stsRetryMu.Unlock()
+	return r.stsRetryCount[name]
+}
+
+func (r *AccountReconciler) clearSTSRetry(name string) {
+	r.stsRetryMu.Lock()
+	defer r.stsRetryMu.Unlock()
+	delete(r.stsRetryCount, name)
 }
 
 //+kubebuilder:rbac:groups=aws.managed.openshift.io,resources=accounts,verbs=get;list;watch;create;update;patch;delete
@@ -130,25 +154,28 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	// --- Early exit checks (cheap, no AWS client or ConfigMap needed) ---
 
+	// Garbage-collect zombie CRs: pool-owned, no AWS account, either Failed or NoState.
+	// These were created by the pool controller but never provisioned in AWS
+	// (e.g. account limit was reached). They are irrecoverable and inflate
+	// the Account CR list, adding overhead to every pool reconcile.
+	zombieAge := time.Since(currentAcctInstance.CreationTimestamp.Time)
+	if !currentAcctInstance.IsPendingDeletion() && !currentAcctInstance.IsBYOC() && !currentAcctInstance.HasAwsAccountID() && currentAcctInstance.IsOwnedByAccountPool() &&
+		(currentAcctInstance.IsFailed() || (!currentAcctInstance.HasState() && zombieAge > createPendTime)) {
+		reqLogger.Info("Deleting zombie Account CR (no AWS account)",
+			"account", currentAcctInstance.Name, "state", currentAcctInstance.Status.State)
+		if err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer); err != nil { //nolint:contextcheck // removeFinalizer doesn't accept context
+			reqLogger.Error(err, "failed removing finalizer from zombie account")
+			return reconcile.Result{}, err
+		}
+		if err := r.Delete(ctx, currentAcctInstance); err != nil {
+			reqLogger.Error(err, "failed deleting zombie account")
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{}, nil
+	}
+
 	// Log accounts that have failed and don't attempt to reconcile them
 	if currentAcctInstance.IsFailed() && !currentAcctInstance.IsPendingDeletion() {
-		// Garbage-collect zombie CRs: Failed, no AWS account, pool-owned.
-		// These were created by the pool controller but never provisioned in AWS
-		// (e.g. account limit was reached). They are irrecoverable and inflate
-		// the Account CR list, adding overhead to every pool reconcile.
-		if !currentAcctInstance.HasAwsAccountID() && currentAcctInstance.IsOwnedByAccountPool() {
-			reqLogger.Info("Deleting zombie Account CR (failed, no AWS account)",
-				"account", currentAcctInstance.Name)
-			if err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer); err != nil { //nolint:contextcheck // removeFinalizer doesn't accept context
-				reqLogger.Error(err, "failed removing finalizer from zombie account")
-				return reconcile.Result{}, err
-			}
-			if err := r.Delete(ctx, currentAcctInstance); err != nil {
-				reqLogger.Error(err, "failed deleting zombie account")
-				return reconcile.Result{}, err
-			}
-			return reconcile.Result{}, nil
-		}
 		reqLogger.Info(fmt.Sprintf("Account %s is failed. Ignoring.", currentAcctInstance.Name))
 		return reconcile.Result{}, nil
 	}
@@ -323,6 +350,32 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				return reconcile.Result{}, err
 			}
 		} else {
+			// If the account has already failed STS (AccountClientError condition persisted on the CR),
+			// check whether the AWS account still exists before retrying.
+			if cond := currentAcctInstance.GetCondition(awsv1alpha1.AccountClientError); cond != nil && currentAcctInstance.Spec.AwsAccountID != "" {
+				descResult, descErr := awsSetupClient.DescribeAccount(ctx, &organizations.DescribeAccountInput{
+					AccountId: &currentAcctInstance.Spec.AwsAccountID,
+				})
+				if descErr != nil {
+					reqLogger.Info("DescribeAccount failed, falling through to STS",
+						"account", currentAcctInstance.Name, "error", descErr.Error())
+				} else if descResult.Account != nil &&
+					descResult.Account.Status != organizationstypes.AccountStatusActive {
+					reqLogger.Info("AWS account is no longer active, removing finalizer — no resources to clean up",
+						"account", currentAcctInstance.Name,
+						"awsAccountStatus", string(descResult.Account.Status),
+					)
+					if err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer); err != nil { //nolint:contextcheck // removeFinalizer doesn't accept context
+						reqLogger.Error(err, "failed removing finalizer from closed account")
+						return reconcile.Result{}, err
+					}
+					return reconcile.Result{}, nil
+				} else {
+					reqLogger.Info("AWS account still active, retrying STS",
+						"account", currentAcctInstance.Name,
+					)
+				}
+			}
 			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", awsv1alpha1.AccountOperatorIAMRole, "")
 			if err != nil {
 				reqLogger.Error(err, "failed building AWS client from assume_role")
@@ -401,7 +454,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 					return reconcile.Result{}, err
 				}
 			} else {
-				delete(r.stsRetryCount, currentAcctInstance.Name)
+				r.clearSTSRetry(currentAcctInstance.Name)
 				utils.SetAccountStatus(currentAcctInstance, "AWS account already created", awsv1alpha1.AccountCreating, AccountCreating)
 				err = r.statusUpdate(currentAcctInstance)
 
@@ -650,11 +703,10 @@ func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentA
 		reason = aerr.ErrorCode()
 	}
 
-	retryCount := r.stsRetryCount[currentAcctInstance.Name]
+	retryCount := r.getSTSRetry(currentAcctInstance.Name)
 
 	if retryCount < maxSTSClientErrorRetries {
-		retryCount++
-		r.stsRetryCount[currentAcctInstance.Name] = retryCount
+		retryCount = r.incrementSTSRetry(currentAcctInstance.Name)
 		backoff := time.Duration(retryCount) * 30 * time.Second
 		reqLogger.Info("STS client error, will retry",
 			"attempt", retryCount, "maxRetries", maxSTSClientErrorRetries,
@@ -662,7 +714,12 @@ func (r *AccountReconciler) handleAWSClientError(reqLogger logr.Logger, currentA
 		return reconcile.Result{RequeueAfter: backoff}, nil
 	}
 
-	delete(r.stsRetryCount, currentAcctInstance.Name)
+	reqLogger.Info("STS retries exhausted, permanently failing account",
+		"account", currentAcctInstance.Name,
+		"retries", maxSTSClientErrorRetries,
+		"errorCode", reason,
+		"pendingDeletion", currentAcctInstance.IsPendingDeletion(),
+	)
 	errMsg := fmt.Sprintf("Failed to create STS Credentials for account ID %s after %d retries: %s",
 		currentAcctInstance.Spec.AwsAccountID, maxSTSClientErrorRetries, err)
 	_, stateErr := r.setAccountFailed(
