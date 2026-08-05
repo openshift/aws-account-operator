@@ -2244,7 +2244,7 @@ var _ = Describe("Account Controller", func() {
 						&awsaccount.EnableRegionOutput{},
 						nil,
 					)
-					_, err := r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions)
+					_, err := r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions, "")
 					Expect(err).To(Not(HaveOccurred()))
 				})
 				It("Handles unsupported opt-in region", func() {
@@ -2265,7 +2265,7 @@ var _ = Describe("Account Controller", func() {
 						&awsaccount.GetRegionOptStatusOutput{},
 						nil)
 
-					_, err = r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions)
+					_, err = r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions, "")
 					Expect(err).ToNot(HaveOccurred())
 				})
 			})
