@@ -282,6 +282,8 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		reqLogger.Info("Could not retrieve opt-in-regions from configMap")
 	}
 
+	disabledRegions := configMap.Data["disabled-regions"]
+
 	// Read shard-name from configMap (used for tagging AWS accounts)
 	if shardName, ok := configMap.Data["shard-name"]; ok {
 		r.shardName = shardName
@@ -467,7 +469,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 	// Handles account region enablement for non-BYOC accounts
 	if (currentAcctInstance.ReadyForRegionEnablement() || currentAcctInstance.IsEnablingOptInRegions()) && isOptInRegionFeatureEnabled && optInRegions != "" {
-		return r.handleOptInRegionEnablement(reqLogger, currentAcctInstance, awsSetupClient, optInRegions)
+		return r.handleOptInRegionEnablement(reqLogger, currentAcctInstance, awsSetupClient, optInRegions, disabledRegions) //nolint:contextcheck // CalculateOptingInRegionAccounts is pre-existing
 	}
 
 	// Get the owner of the Red Hat amis from the configmap
@@ -587,10 +589,15 @@ func (r *AccountReconciler) generateAccountTags(reqLogger logr.Logger, configMap
 	return tags, nil
 }
 
-func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string) (reconcile.Result, error) {
+func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, optInRegions string, disabledRegions string) (reconcile.Result, error) {
 	numberOfAccountsOptingIn, err := CalculateOptingInRegionAccounts(reqLogger, r.Client)
 	if err != nil {
 		return reconcile.Result{}, nil
+	}
+
+	disabledSet := parseDisabledRegions(disabledRegions)
+	if len(disabledSet) > 0 {
+		reqLogger.Info("Regions disabled via ConfigMap, will be skipped", "disabledRegions", disabledRegions)
 	}
 
 	if currentAcctInstance.Status.OptInRegions == nil {
@@ -602,9 +609,16 @@ func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, c
 			var regionList []string
 			regions := strings.Split(optInRegions, ",")
 			for _, region := range regions {
-				regionList = append(regionList, strings.TrimSpace(region))
+				region = strings.TrimSpace(region)
+				if region == "" {
+					continue
+				}
+				if disabledSet[region] {
+					reqLogger.Info("Skipping disabled region for new account", "region", region)
+					continue
+				}
+				regionList = append(regionList, region)
 			}
-			//updates account status to indicate supported opt-in region are pending enablement
 			err = SetOptRegionStatus(reqLogger, regionList, currentAcctInstance)
 			if err != nil {
 				reqLogger.Error(err, "failed to set account opt-in region status")

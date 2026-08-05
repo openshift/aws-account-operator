@@ -338,6 +338,20 @@ func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, r
 	}
 }
 
+func parseDisabledRegions(disabledRegions string) map[string]bool {
+	disabled := make(map[string]bool)
+	if disabledRegions == "" {
+		return disabled
+	}
+	for _, region := range strings.Split(disabledRegions, ",") {
+		region = strings.TrimSpace(region)
+		if region != "" {
+			disabled[region] = true
+		}
+	}
+	return disabled
+}
+
 func SetOptRegionStatus(reqLogger logr.Logger, optInRegions []string, currentAcctInstance *awsv1alpha1.Account) error {
 	reqLogger.Info("Setting Opt-In region status to todo of all Supported Opt-In regions")
 	currentAcctInstance.Status.OptInRegions = make(awsv1alpha1.OptInRegions)

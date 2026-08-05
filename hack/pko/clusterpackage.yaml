@@ -62,6 +62,9 @@ parameters:
   - name: OPT_IN_REGIONS
     value: ""
     required: false
+  - name: DISABLED_REGIONS
+    value: ""
+    required: false
   - name: APP_CODE
     value: ""
     required: false
@@ -108,6 +111,7 @@ objects:
         featureOptInRegions: ${FEATURE_OPT_IN_REGIONS}
         featureComplianceTags: ${FEATURE_COMPLIANCE_TAGS}
         optInRegions: ${OPT_IN_REGIONS}
+        disabledRegions: ${DISABLED_REGIONS}
         appCode: ${APP_CODE}
         servicePhase: ${SERVICE_PHASE}
         costCenter: ${COST_CENTER}
