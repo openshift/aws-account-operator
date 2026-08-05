@@ -126,6 +126,10 @@ spec:
           description: Comma-separated list of opt-in regions
           type: string
           default: ""
+        disabledRegions:
+          description: Comma-separated list of regions to skip during opt-in enablement
+          type: string
+          default: ""
         debugLogging:
           description: Enable debug logging
           type: string
