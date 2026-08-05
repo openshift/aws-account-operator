@@ -636,7 +636,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 		optInRegions, ok := cm.Data["opt-in-regions"]
 		// ValidateOptInRegions
 		if ok && isOptInRegionFeatureEnabled {
-			err = r.ValidateOptInRegions(reqLogger, &account, r.awsClientBuilder, optInRegions)
+			err = r.ValidateOptInRegions(reqLogger, &account, r.awsClientBuilder, optInRegions, cm.Data["disabled-regions"]) //nolint:contextcheck
 			if err != nil {
 				validationError, ok := err.(*AccountValidationError)
 				if ok && validationError.Type == NotAllOptInRegionsEnabled {
@@ -647,7 +647,7 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 
 		}
 
-		err = r.ValidateRegionalServiceQuotas(reqLogger, &account, r.awsClientBuilder)
+		err = r.ValidateRegionalServiceQuotas(reqLogger, &account, r.awsClientBuilder, cm.Data["disabled-regions"]) //nolint:contextcheck
 		if err != nil {
 			validationError, ok := err.(*AccountValidationError)
 			if ok && validationError.Type == NotAllServicequotasApplied {
@@ -659,11 +659,20 @@ func (r *AccountValidationReconciler) Reconcile(ctx context.Context, request ctr
 	}
 	return utils.DoNotRequeue()
 }
-func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder, optInRegions string) error {
+func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder, optInRegions string, disabledRegions string) error {
+	disabledSet := account.ParseDisabledRegions(disabledRegions)
 	var regionList []string
 	regions := strings.Split(optInRegions, ",")
 	for _, region := range regions {
-		regionList = append(regionList, strings.TrimSpace(region))
+		region = strings.TrimSpace(region)
+		if region == "" {
+			continue
+		}
+		if disabledSet[region] {
+			reqLogger.Info("Skipping disabled region for opt-in validation", "region", region)
+			continue
+		}
+		regionList = append(regionList, region)
 	}
 
 	numberOfAccountsOptingIn, err := account.CalculateOptingInRegionAccounts(reqLogger, r.Client)
@@ -734,7 +743,7 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 
 }
 
-func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder) error {
+func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder, disabledRegions string) error {
 	awsRegion := config.GetDefaultRegion()
 	awsSetupClient, err := awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
@@ -759,7 +768,7 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 	regionalStatusMissing := awsAccount.Spec.RegionalServiceQuotas != nil && awsAccount.Status.RegionalServiceQuotas == nil
 	globalStatusMissing := awsAccount.Spec.GlobalServiceQuotas != nil && awsAccount.Status.GlobalServiceQuotas == nil
 	if regionalStatusMissing || globalStatusMissing {
-		err = account.SetCurrentAccountServiceQuotas(reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client)
+		err = account.SetCurrentAccountServiceQuotas(reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client, disabledRegions)
 		if err != nil {
 			reqLogger.Error(err, "failed to set account service quotas")
 			return &AccountValidationError{

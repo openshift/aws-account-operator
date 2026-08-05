@@ -447,7 +447,7 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 
 		// Test PendingVerification state creating support case and checking for case status
 		if currentAcctInstance.IsPendingVerification() {
-			return r.HandleNonCCSPendingVerification(reqLogger, currentAcctInstance, awsSetupClient)
+			return r.HandleNonCCSPendingVerification(reqLogger, currentAcctInstance, awsSetupClient, disabledRegions) //nolint:contextcheck
 		}
 
 		if currentAcctInstance.IsUnclaimedAndHasNoState() {
@@ -595,7 +595,7 @@ func (r *AccountReconciler) handleOptInRegionEnablement(reqLogger logr.Logger, c
 		return reconcile.Result{}, nil
 	}
 
-	disabledSet := parseDisabledRegions(disabledRegions)
+	disabledSet := ParseDisabledRegions(disabledRegions)
 	if len(disabledSet) > 0 {
 		reqLogger.Info("Regions disabled via ConfigMap, will be skipped", "disabledRegions", disabledRegions)
 	}
@@ -820,7 +820,7 @@ func (r *AccountReconciler) handleAccountInitializingRegions(reqLogger logr.Logg
 	return reconcile.Result{}, nil
 }
 
-func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client) (reconcile.Result, error) {
+func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logger, currentAcctInstance *awsv1alpha1.Account, awsSetupClient awsclient.Client, disabledRegions string) (reconcile.Result, error) {
 	// If the supportCaseID is blank and Account State = PendingVerification, create a case
 	if currentAcctInstance.Spec.BYOC {
 		err := errors.New("account is BYOC - should not be handled in NonCCS method")
@@ -839,7 +839,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 			// Update supportCaseId in CR
 			currentAcctInstance.Status.SupportCaseID = caseID
 			utils.SetAccountStatus(currentAcctInstance, "Account pending verification in AWS", awsv1alpha1.AccountPendingVerification, AccountPendingVerification)
-			err = SetCurrentAccountServiceQuotas(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
+			err = SetCurrentAccountServiceQuotas(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client, disabledRegions)
 			if err != nil {
 				reqLogger.Error(err, "failed to set account service quotas")
 				return reconcile.Result{}, err
@@ -911,7 +911,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 // expands them into the status. Regional quotas (Spec.RegionalServiceQuotas) are expanded once
 // per enabled AWS region. Global quotas (Spec.GlobalServiceQuotas) are copied once into
 // Status.GlobalServiceQuotas and applied via the us-east-1 endpoint by UpdateServiceQuotaRequests.
-func SetCurrentAccountServiceQuotas(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) error {
+func SetCurrentAccountServiceQuotas(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, disabledRegions string) error {
 
 	// Nothing to do if no regional or global quotas are configured.
 	if currentAcctInstance.Spec.RegionalServiceQuotas == nil && currentAcctInstance.Spec.GlobalServiceQuotas == nil {
@@ -967,9 +967,15 @@ func SetCurrentAccountServiceQuotas(reqLogger logr.Logger, awsClientBuilder awsc
 
 	currentAcctInstance.Status.RegionalServiceQuotas = make(awsv1alpha1.RegionalServiceQuotas)
 
+	disabledSet := ParseDisabledRegions(disabledRegions)
+
 	// By iterating over the regions returned by AWS (not the spec), we avoid setting quotas for
 	// regions the account does not support.
 	for _, region := range regionsEnabledInAccount.Regions {
+		if disabledSet[*region.RegionName] {
+			reqLogger.Info("Skipping disabled region for service quota expansion", "region", *region.RegionName)
+			continue
+		}
 		// Seed this region's quota map from the "default" values, deep-copying to avoid sharing
 		// the same pointer across regions.
 		regionQuotas := make(awsv1alpha1.AccountServiceQuota, len(defaultAccountServiceQuotas))
