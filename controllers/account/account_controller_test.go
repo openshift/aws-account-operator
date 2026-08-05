@@ -2345,6 +2345,33 @@ var _ = Describe("Account Controller", func() {
 					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(1))
 					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))
 				})
+				It("skips disabled regions during quota expansion", func() {
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRoleAndCreateClient = func(
+						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
+						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+					subClient.EXPECT().DescribeRegions(gomock.Any(), gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []ec2types.Region{
+							{RegionName: aws.String("us-east-1")},
+							{RegionName: aws.String("me-south-1")},
+							{RegionName: aws.String("me-central-1")},
+						},
+					}, nil)
+					err := SetCurrentAccountServiceQuotas(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client, "me-south-1,me-central-1")
+					Expect(err).ToNot(HaveOccurred())
+					Expect(account.Status.RegionalServiceQuotas).To(HaveLen(1))
+					Expect(account.Status.RegionalServiceQuotas).To(HaveKey("us-east-1"))
+					Expect(account.Status.RegionalServiceQuotas).ToNot(HaveKey("me-south-1"))
+					Expect(account.Status.RegionalServiceQuotas).ToNot(HaveKey("me-central-1"))
+				})
 				It("errors when called with a unsupported (by us) servicequota", func() {
 					account = &newTestAccountBuilder().BYOC(false).WithServiceQuota(awsv1alpha1.RegionalServiceQuotas{
 						"default": awsv1alpha1.AccountServiceQuota{
