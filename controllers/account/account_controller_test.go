@@ -2163,7 +2163,7 @@ var _ = Describe("Account Controller", func() {
 		When("Called with a CCS account", func() {
 			account = &newTestAccountBuilder().BYOC(true).WithState(awsv1alpha1.AccountPendingVerification).acct
 			It("does nothing", func() {
-				_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+				_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(Equal("account is BYOC - should not be handled in NonCCS method"))
 			})
@@ -2188,7 +2188,7 @@ var _ = Describe("Account Controller", func() {
 					}, nil)
 					mockAWSClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any(), gomock.Any()).Times(0)
 					Eventually(func() []string {
-						_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+						_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 						Expect(err).NotTo(HaveOccurred())
 						return []string{account.Status.State, account.Status.SupportCaseID}
 					}).Should(Equal([]string{AccountReady, "123456"}))
@@ -2340,10 +2340,37 @@ var _ = Describe("Account Controller", func() {
 							},
 						},
 					}, nil)
-					err := SetCurrentAccountServiceQuotas(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client)
+					err := SetCurrentAccountServiceQuotas(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client, "")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(1))
 					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))
+				})
+				It("skips disabled regions during quota expansion", func() {
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRoleAndCreateClient = func(
+						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
+						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+					subClient.EXPECT().DescribeRegions(gomock.Any(), gomock.Any()).Return(&ec2.DescribeRegionsOutput{
+						Regions: []ec2types.Region{
+							{RegionName: aws.String("us-east-1")},
+							{RegionName: aws.String("me-south-1")},
+							{RegionName: aws.String("me-central-1")},
+						},
+					}, nil)
+					err := SetCurrentAccountServiceQuotas(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client, "me-south-1,me-central-1")
+					Expect(err).ToNot(HaveOccurred())
+					Expect(account.Status.RegionalServiceQuotas).To(HaveLen(1))
+					Expect(account.Status.RegionalServiceQuotas).To(HaveKey("us-east-1"))
+					Expect(account.Status.RegionalServiceQuotas).ToNot(HaveKey("me-south-1"))
+					Expect(account.Status.RegionalServiceQuotas).ToNot(HaveKey("me-central-1"))
 				})
 				It("errors when called with a unsupported (by us) servicequota", func() {
 					account = &newTestAccountBuilder().BYOC(false).WithServiceQuota(awsv1alpha1.RegionalServiceQuotas{
@@ -2377,7 +2404,7 @@ var _ = Describe("Account Controller", func() {
 							},
 						},
 					}, nil)
-					_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 					Expect(err).To(HaveOccurred())
 				})
 				It("does not create a servicequota case if the quota is already higher", func() {
@@ -2420,7 +2447,7 @@ var _ = Describe("Account Controller", func() {
 					}, nil)
 					subClient.EXPECT().RequestServiceQuotaIncrease(gomock.Any(), gomock.Any()).Times(0)
 					Eventually(func() []string {
-						_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+						_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 						Expect(err).NotTo(HaveOccurred())
 						return []string{account.Status.State, account.Status.SupportCaseID}
 					}, 60*time.Second).Should(Equal([]string{AccountReady, "123456"}))
@@ -2488,7 +2515,7 @@ var _ = Describe("Account Controller", func() {
 						},
 					}, nil)
 					Eventually(func() []string {
-						_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+						_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 						Expect(err).NotTo(HaveOccurred())
 						return []string{account.Status.State, account.Status.SupportCaseID}
 					}).Should(Equal([]string{AccountReady, "123456"}))
@@ -2546,7 +2573,7 @@ var _ = Describe("Account Controller", func() {
 						},
 					}, nil)
 					Eventually(func() []string {
-						_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+						_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 						Expect(err).NotTo(HaveOccurred())
 						status := account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances]
 						fmt.Printf("%+v\n", status.Status)
@@ -2588,7 +2615,7 @@ var _ = Describe("Account Controller", func() {
 							},
 						},
 					}, nil)
-					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(2))
 					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))
@@ -2616,7 +2643,7 @@ var _ = Describe("Account Controller", func() {
 							CaseId: aws.String("234567"),
 						},
 					}, nil).Times(2)
-					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 					Expect(account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestInProgress))
 					Expect(account.Status.RegionalServiceQuotas["us-east-2"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestInProgress))
 					Expect(account.Status.State).To(Equal(AccountPendingVerification))
@@ -2635,10 +2662,10 @@ var _ = Describe("Account Controller", func() {
 							Value:     aws.Float64(100),
 						},
 					}, nil).Times(2)
-					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 					Expect(account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestCompleted))
 					Expect(account.Status.RegionalServiceQuotas["us-east-2"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestCompleted))
-					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 					Expect(account.Status.State).To(Equal(AccountReady))
 				})
 				It("fails the account if a request is denied", func() {
@@ -2665,7 +2692,7 @@ var _ = Describe("Account Controller", func() {
 							},
 						},
 					}, nil)
-					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(len(account.Status.RegionalServiceQuotas)).To(Equal(1))
 					Expect(len(account.Status.RegionalServiceQuotas["us-east-1"])).To(Equal(1))
@@ -2694,7 +2721,7 @@ var _ = Describe("Account Controller", func() {
 							Value:     aws.Float64(0),
 						},
 					}, nil).Times(1)
-					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err = r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 					Expect(account.Status.RegionalServiceQuotas["us-east-1"][awsv1alpha1.RunningStandardInstances].Status).To(Equal(awsv1alpha1.ServiceRequestDenied))
 					Expect(account.Status.State).To(Equal(AccountFailed))
 				})
@@ -2733,7 +2760,7 @@ var _ = Describe("Account Controller", func() {
 						},
 					}, nil)
 
-					err := SetCurrentAccountServiceQuotas(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client)
+					err := SetCurrentAccountServiceQuotas(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client, "")
 					Expect(err).ToNot(HaveOccurred())
 
 					// Global quota lands in the dedicated GlobalServiceQuotas status field
@@ -2821,7 +2848,7 @@ var _ = Describe("Account Controller", func() {
 					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
 
 					// No DescribeRegions mock — test will fail if it's called unexpectedly
-					err := SetCurrentAccountServiceQuotas(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client)
+					err := SetCurrentAccountServiceQuotas(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client, "")
 					Expect(err).ToNot(HaveOccurred())
 
 					// Global quota should be in status
@@ -2850,7 +2877,7 @@ var _ = Describe("Account Controller", func() {
 					}
 					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
 
-					result, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					result, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(account.Status.State).ToNot(Equal(AccountReady),
 						"account should not be Ready while global quotas are IN_PROGRESS")
@@ -2874,7 +2901,7 @@ var _ = Describe("Account Controller", func() {
 					}
 					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
 
-					_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient)
+					_, err := r.HandleNonCCSPendingVerification(nullLogger, account, mockAWSClient, "")
 					Expect(err).ToNot(HaveOccurred())
 					Expect(account.Status.State).To(Equal(AccountReady),
 						"account should be Ready when all global quotas are COMPLETED")
