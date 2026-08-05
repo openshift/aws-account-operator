@@ -12,9 +12,58 @@ import (
 	"github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
 	"github.com/openshift/aws-account-operator/pkg/testutils"
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 	"k8s.io/client-go/kubernetes/scheme"
 )
+
+func TestParseDisabledRegions(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected map[string]bool
+	}{
+		{
+			name:     "empty string returns empty map",
+			input:    "",
+			expected: map[string]bool{},
+		},
+		{
+			name:  "single region",
+			input: "me-south-1",
+			expected: map[string]bool{
+				"me-south-1": true,
+			},
+		},
+		{
+			name:  "multiple regions",
+			input: "me-south-1,me-central-1",
+			expected: map[string]bool{
+				"me-south-1":   true,
+				"me-central-1": true,
+			},
+		},
+		{
+			name:  "handles whitespace",
+			input: " me-south-1 , me-central-1 ",
+			expected: map[string]bool{
+				"me-south-1":   true,
+				"me-central-1": true,
+			},
+		},
+		{
+			name:     "trailing comma produces no spurious entry",
+			input:    "me-south-1,",
+			expected: map[string]bool{"me-south-1": true},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseDisabledRegions(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
 
 func TestAccountReconciler_HandleOptInRegionRequests(t *testing.T) {
 
