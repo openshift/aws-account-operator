@@ -2247,6 +2247,45 @@ var _ = Describe("Account Controller", func() {
 					_, err := r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions, "")
 					Expect(err).To(Not(HaveOccurred()))
 				})
+				It("Skips disabled regions for new accounts", func() {
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRoleAndCreateClient = func(
+						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
+						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+					optInRegions := "af-south-1,me-south-1,me-central-1"
+					subClient.EXPECT().GetRegionOptStatus(gomock.Any(), gomock.Any()).Return(
+						&awsaccount.GetRegionOptStatusOutput{
+							RegionName:      aws.String("af-south-1"),
+							RegionOptStatus: accounttypes.RegionOptStatusDisabled,
+						},
+						nil)
+
+					subClient.EXPECT().GetRegionOptStatus(gomock.Any(), gomock.Any()).Return(
+						&awsaccount.GetRegionOptStatusOutput{
+							RegionName:      aws.String("af-south-1"),
+							RegionOptStatus: accounttypes.RegionOptStatusDisabled,
+						},
+						nil,
+					)
+
+					subClient.EXPECT().EnableRegion(gomock.Any(), gomock.Any()).Return(
+						&awsaccount.EnableRegionOutput{},
+						nil,
+					)
+					_, err := r.handleOptInRegionEnablement(nullLogger, account, mockAWSClient, optInRegions, "me-south-1,me-central-1")
+					Expect(err).To(Not(HaveOccurred()))
+					Expect(account.Status.OptInRegions).To(HaveKey("af-south-1"))
+					Expect(account.Status.OptInRegions).ToNot(HaveKey("me-south-1"))
+					Expect(account.Status.OptInRegions).ToNot(HaveKey("me-central-1"))
+				})
 				It("Handles unsupported opt-in region", func() {
 					subClient := mock.NewMockClient(ctrl)
 					AssumeRoleAndCreateClient = func(
