@@ -338,7 +338,7 @@ func checkOptInRegionStatus(reqLogger logr.Logger, awsClient awsclient.Client, r
 	}
 }
 
-func parseDisabledRegions(disabledRegions string) map[string]bool {
+func ParseDisabledRegions(disabledRegions string) map[string]bool {
 	disabled := make(map[string]bool)
 	if disabledRegions == "" {
 		return disabled
