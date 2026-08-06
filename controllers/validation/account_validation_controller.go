@@ -796,7 +796,7 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 	}
 
 	if awsAccount.HasOpenQuotaIncreaseRequests() && utils.DetectDevMode == utils.DevModeProduction {
-		_, err = account.GetServiceQuotaRequest(reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client)
+		_, err = account.GetServiceQuotaRequest(reqLogger, awsClientBuilder, awsSetupClient, awsAccount, r.Client, disabledRegions)
 		if err != nil {
 			return &AccountValidationError{
 				Type: NotAllServicequotasApplied,
