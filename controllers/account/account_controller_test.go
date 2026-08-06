@@ -2961,6 +2961,64 @@ var _ = Describe("Account Controller", func() {
 					Expect(account.Status.State).To(Equal(AccountFailed),
 						"account should be failed when global quota request is denied")
 				})
+				It("removes disabled regions from account status during quota processing", func() {
+					account = &newTestAccountBuilder().BYOC(false).
+						WithState(awsv1alpha1.AccountPendingVerification).WithAwsAccountID("4321").acct
+					account.Status.RegionalServiceQuotas = awsv1alpha1.RegionalServiceQuotas{
+						"us-east-1": awsv1alpha1.AccountServiceQuota{
+							awsv1alpha1.RunningStandardInstances: &awsv1alpha1.ServiceQuotaStatus{
+								Value:  500,
+								Status: awsv1alpha1.ServiceRequestInProgress,
+							},
+						},
+						"me-south-1": awsv1alpha1.AccountServiceQuota{
+							awsv1alpha1.RunningStandardInstances: &awsv1alpha1.ServiceQuotaStatus{
+								Value:  500,
+								Status: awsv1alpha1.ServiceRequestInProgress,
+							},
+						},
+						"me-central-1": awsv1alpha1.AccountServiceQuota{
+							awsv1alpha1.RunningStandardInstances: &awsv1alpha1.ServiceQuotaStatus{
+								Value:  500,
+								Status: awsv1alpha1.ServiceRequestTodo,
+							},
+						},
+					}
+					r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects([]runtime.Object{account, configMap}...).Build()
+
+					subClient := mock.NewMockClient(ctrl)
+					AssumeRoleAndCreateClient = func(
+						reqLogger logr.Logger,
+						awsClientBuilder awsclient.IBuilder,
+						currentAcctInstance *awsv1alpha1.Account,
+						client client.Client,
+						awsSetupClient awsclient.Client,
+						region string,
+						roleToAssume string,
+						ccsRoleID string) (awsclient.Client, *sts.AssumeRoleOutput, error) {
+						Expect(region).ToNot(HavePrefix("me-"), "should never assume role in disabled ME region")
+						return subClient, &sts.AssumeRoleOutput{}, nil
+					}
+
+					subClient.EXPECT().GetServiceQuota(gomock.Any(), gomock.Any()).Return(&servicequotas.GetServiceQuotaOutput{
+						Quota: &servicequotastypes.ServiceQuota{
+							QuotaCode: aws.String(string(awsv1alpha1.RunningStandardInstances)),
+							Value:     aws.Float64(500),
+						},
+					}, nil).AnyTimes()
+					subClient.EXPECT().ListRequestedServiceQuotaChangeHistoryByQuota(gomock.Any(), gomock.Any()).Return(
+						&servicequotas.ListRequestedServiceQuotaChangeHistoryByQuotaOutput{
+							RequestedQuotas: []servicequotastypes.RequestedServiceQuotaChange{},
+						}, nil).AnyTimes()
+
+					_, err := GetServiceQuotaRequest(nullLogger, r.awsClientBuilder, mockAWSClient, account, r.Client, "me-south-1,me-central-1")
+					Expect(err).ToNot(HaveOccurred())
+					Expect(account.Status.RegionalServiceQuotas).To(HaveKey("us-east-1"))
+					Expect(account.Status.RegionalServiceQuotas).ToNot(HaveKey("me-south-1"),
+						"disabled region me-south-1 should be removed from status")
+					Expect(account.Status.RegionalServiceQuotas).ToNot(HaveKey("me-central-1"),
+						"disabled region me-central-1 should be removed from status")
+				})
 			})
 		})
 	})
