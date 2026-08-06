@@ -379,7 +379,18 @@ func changeRequestMatches(change servicequotastypes.RequestedServiceQuotaChange,
 	return true
 }
 
-func GetServiceQuotaRequest(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client) (reconcile.Result, error) {
+func GetServiceQuotaRequest(reqLogger logr.Logger, awsClientBuilder awsclient.IBuilder, awsSetupClient awsclient.Client, currentAcctInstance *awsv1alpha1.Account, client client.Client, disabledRegions string) (reconcile.Result, error) {
+	disabled := ParseDisabledRegions(disabledRegions)
+
+	// Remove disabled regions from the account status so they no longer
+	// block progress (HasOpenQuotaIncreaseRequests checks status directly).
+	for region := range currentAcctInstance.Status.RegionalServiceQuotas {
+		if disabled[region] {
+			reqLogger.Info("Removing disabled region from quota status", "region", region)
+			delete(currentAcctInstance.Status.RegionalServiceQuotas, region)
+		}
+	}
+
 	// Collect in-flight and pending requests for both regional and global quotas.
 	regionalInFlightCount, inFlightRegional := currentAcctInstance.GetQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)
 	globalInFlightCount, inFlightGlobal := currentAcctInstance.GetGlobalQuotaRequestsByStatus(awsv1alpha1.ServiceRequestInProgress)

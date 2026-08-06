@@ -885,7 +885,7 @@ func (r *AccountReconciler) HandleNonCCSPendingVerification(reqLogger logr.Logge
 	if currentAcctInstance.HasOpenQuotaIncreaseRequests() {
 		switch utils.DetectDevMode {
 		case utils.DevModeProduction:
-			return GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client)
+			return GetServiceQuotaRequest(reqLogger, r.awsClientBuilder, awsSetupClient, currentAcctInstance, r.Client, disabledRegions)
 		}
 	}
 
