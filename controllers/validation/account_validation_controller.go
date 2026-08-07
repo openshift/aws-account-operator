@@ -749,27 +749,13 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 }
 
 func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder, disabledRegions string) error {
-	awsRegion := config.GetDefaultRegion()
-	awsSetupClient, err := awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
-		SecretName: utils.AwsSecretName,
-		NameSpace:  awsv1alpha1.AccountCrNamespace,
-		AwsRegion:  awsRegion,
-	})
-	if err != nil {
-		connErr := fmt.Sprintf("unable to connect to default region %s", awsRegion)
-		reqLogger.Error(err, connErr)
-		return &AccountValidationError{
-			Type: AWSErrorConnecting,
-			Err:  errors.New("unexpected error attempting to connect to AWS in default region"),
-		}
-	}
-
 	// Return early if no quotas (regional or global) are configured in the spec.
 	if awsAccount.Spec.RegionalServiceQuotas == nil && awsAccount.Spec.GlobalServiceQuotas == nil {
 		return nil
 	}
 
 	// Scrub disabled regions from the quota map on every validation pass.
+	// This runs before GetClient so cleanup succeeds even when AWS is unreachable.
 	// Accounts can carry stale region entries through reuse, recovery, or
 	// config changes — this ensures they are always cleaned out regardless
 	// of how the account entered the pipeline.
@@ -790,6 +776,21 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 					Err:  fmt.Errorf("failed to update account status after removing disabled regions: %w", err),
 				}
 			}
+		}
+	}
+
+	awsRegion := config.GetDefaultRegion()
+	awsSetupClient, err := awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+		SecretName: utils.AwsSecretName,
+		NameSpace:  awsv1alpha1.AccountCrNamespace,
+		AwsRegion:  awsRegion,
+	})
+	if err != nil {
+		connErr := fmt.Sprintf("unable to connect to default region %s", awsRegion)
+		reqLogger.Error(err, connErr)
+		return &AccountValidationError{
+			Type: AWSErrorConnecting,
+			Err:  errors.New("unexpected error attempting to connect to AWS in default region"),
 		}
 	}
 

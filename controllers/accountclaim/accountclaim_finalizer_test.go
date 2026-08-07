@@ -253,7 +253,7 @@ var _ = Describe("resetAccountSpecStatus", func() {
 
 	err := apis.AddToScheme(scheme.Scheme)
 	if err != nil {
-		fmt.Printf("failed adding apis to scheme in reuse tests")
+		panic(fmt.Sprintf("failed adding apis to scheme in reuse tests: %v", err))
 	}
 	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
 
