@@ -749,6 +749,36 @@ func (r *AccountValidationReconciler) ValidateOptInRegions(reqLogger logr.Logger
 }
 
 func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger logr.Logger, awsAccount *awsv1alpha1.Account, awsClientBuilder awsclient.IBuilder, disabledRegions string) error {
+	// Return early if no quotas (regional or global) are configured in the spec.
+	if awsAccount.Spec.RegionalServiceQuotas == nil && awsAccount.Spec.GlobalServiceQuotas == nil {
+		return nil
+	}
+
+	// Scrub disabled regions from the quota map on every validation pass.
+	// This runs before GetClient so cleanup succeeds even when AWS is unreachable.
+	// Accounts can carry stale region entries through reuse, recovery, or
+	// config changes — this ensures they are always cleaned out regardless
+	// of how the account entered the pipeline.
+	if awsAccount.Status.RegionalServiceQuotas != nil && disabledRegions != "" {
+		disabled := account.ParseDisabledRegions(disabledRegions)
+		dirty := false
+		for region := range awsAccount.Status.RegionalServiceQuotas {
+			if disabled[region] {
+				reqLogger.Info("Removing disabled region from quota status", "region", region)
+				delete(awsAccount.Status.RegionalServiceQuotas, region)
+				dirty = true
+			}
+		}
+		if dirty {
+			if err := r.statusUpdate(awsAccount); err != nil {
+				return &AccountValidationError{
+					Type: QuotaStatus,
+					Err:  fmt.Errorf("failed to update account status after removing disabled regions: %w", err),
+				}
+			}
+		}
+	}
+
 	awsRegion := config.GetDefaultRegion()
 	awsSetupClient, err := awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
 		SecretName: utils.AwsSecretName,
@@ -762,11 +792,6 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 			Type: AWSErrorConnecting,
 			Err:  errors.New("unexpected error attempting to connect to AWS in default region"),
 		}
-	}
-
-	// Return early if no quotas (regional or global) are configured in the spec.
-	if awsAccount.Spec.RegionalServiceQuotas == nil && awsAccount.Spec.GlobalServiceQuotas == nil {
-		return nil
 	}
 
 	// If status quota fields have not been populated yet, expand them from spec and re-queue.
