@@ -243,3 +243,128 @@ var _ = Describe("AccountClaim", func() {
 		})
 	})
 })
+
+var _ = Describe("resetAccountSpecStatus", func() {
+	var (
+		nullLogger = testutils.NewTestLogger().Logger()
+		r          *AccountClaimReconciler
+		ctrl       *gomock.Controller
+	)
+
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		panic(fmt.Sprintf("failed adding apis to scheme in reuse tests: %v", err))
+	}
+	localmetrics.Collector = localmetrics.NewMetricsCollector(nil)
+
+	BeforeEach(func() {
+		ctrl = gomock.NewController(GinkgoT())
+		r = &AccountClaimReconciler{
+			Scheme: scheme.Scheme,
+			awsClientBuilder: &mock.Builder{
+				MockController: ctrl,
+			},
+		}
+	})
+
+	AfterEach(func() {
+		ctrl.Finish()
+	})
+
+	It("clears RegionalServiceQuotas and SupportCaseID on reuse", func() {
+		reusedAccount := &v1alpha1.Account{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "osd-creds-mgmt-test123",
+				Namespace: v1alpha1.AccountCrNamespace,
+			},
+			Spec: v1alpha1.AccountSpec{
+				AwsAccountID: "123456789012",
+				LegalEntity: v1alpha1.LegalEntity{
+					ID:   "existing-entity",
+					Name: "Existing Corp",
+				},
+				ClaimLink:          "old-claim",
+				ClaimLinkNamespace: "old-namespace",
+			},
+			Status: v1alpha1.AccountStatus{
+				State:   "Ready",
+				Claimed: true,
+				RegionalServiceQuotas: v1alpha1.RegionalServiceQuotas{
+					"us-east-1":  {"L-1216C47A": {Value: 100, Status: v1alpha1.ServiceRequestCompleted}},
+					"me-south-1": {"L-1216C47A": {Value: 100, Status: v1alpha1.ServiceRequestCompleted}},
+				},
+				SupportCaseID: "case-12345",
+			},
+		}
+
+		deletedClaim := &v1alpha1.AccountClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "deleted-claim",
+				Namespace: "claim-namespace",
+			},
+			Spec: v1alpha1.AccountClaimSpec{
+				LegalEntity: v1alpha1.LegalEntity{
+					ID:   "claim-entity",
+					Name: "Claim Corp",
+				},
+			},
+		}
+
+		objs := []runtime.Object{reusedAccount}
+		r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
+
+		err := r.resetAccountSpecStatus(nullLogger, reusedAccount, deletedClaim, v1alpha1.AccountReused, "Ready")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(reusedAccount.Status.RegionalServiceQuotas).To(BeNil())
+		Expect(reusedAccount.Status.SupportCaseID).To(BeEmpty())
+		Expect(reusedAccount.Status.RotateCredentials).To(BeTrue())
+		Expect(reusedAccount.Status.RotateConsoleCredentials).To(BeTrue())
+		Expect(reusedAccount.Spec.ClaimLink).To(BeEmpty())
+		Expect(reusedAccount.Spec.ClaimLinkNamespace).To(BeEmpty())
+		// LegalEntity should be preserved when already set
+		Expect(reusedAccount.Spec.LegalEntity.ID).To(Equal("existing-entity"))
+	})
+
+	It("carries over LegalEntity from claim when account has none", func() {
+		reusedAccount := &v1alpha1.Account{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "osd-creds-mgmt-test456",
+				Namespace: v1alpha1.AccountCrNamespace,
+			},
+			Spec: v1alpha1.AccountSpec{
+				AwsAccountID:       "123456789012",
+				ClaimLink:          "old-claim",
+				ClaimLinkNamespace: "old-namespace",
+			},
+			Status: v1alpha1.AccountStatus{
+				State:   "Ready",
+				Claimed: true,
+			},
+		}
+
+		deletedClaim := &v1alpha1.AccountClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "deleted-claim",
+				Namespace: "claim-namespace",
+			},
+			Spec: v1alpha1.AccountClaimSpec{
+				LegalEntity: v1alpha1.LegalEntity{
+					ID:   "claim-entity",
+					Name: "Claim Corp",
+				},
+			},
+		}
+
+		objs := []runtime.Object{reusedAccount}
+		r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
+
+		err := r.resetAccountSpecStatus(nullLogger, reusedAccount, deletedClaim, v1alpha1.AccountReused, "Ready")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(reusedAccount.Spec.LegalEntity.ID).To(Equal("claim-entity"))
+		Expect(reusedAccount.Spec.LegalEntity.Name).To(Equal("Claim Corp"))
+		Expect(reusedAccount.Status.RegionalServiceQuotas).To(BeNil())
+		Expect(reusedAccount.Status.SupportCaseID).To(BeEmpty())
+	})
+})

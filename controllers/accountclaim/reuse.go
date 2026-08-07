@@ -233,6 +233,11 @@ func (r *AccountClaimReconciler) resetAccountSpecStatus(reqLogger logr.Logger, r
 		"Setting RotateCredentials and RotateConsoleCredentials for account %s", reusedAccount.Spec.AwsAccountID))
 	reusedAccount.Status.RotateConsoleCredentials = true
 	reusedAccount.Status.RotateCredentials = true
+	// Force quota map rebuild on next validation to reflect current disabled-regions config
+	reusedAccount.Status.RegionalServiceQuotas = nil
+	// Clear stale case ID from previous lifecycle so it can't cause the account
+	// controller to skip quota setup if this account ever re-enters the creation pipeline
+	reusedAccount.Status.SupportCaseID = ""
 
 	// Update account status and add conditions indicating account reuse
 	reusedAccount.Status.State = conditionStatus

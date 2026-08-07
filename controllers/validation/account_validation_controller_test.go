@@ -25,6 +25,7 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
 	"github.com/openshift/aws-account-operator/pkg/awsclient/mock"
+	"github.com/openshift/aws-account-operator/pkg/testutils"
 )
 
 func emptyOrganisation(ctrl *gomock.Controller) *mock.MockClient {
@@ -1196,6 +1197,108 @@ func TestValidateRemoval(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := ValidateRemoval(tt.args.account); (err != nil) != tt.wantErr {
 				t.Errorf("ValidateRemoval() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateRegionalServiceQuotas_ScrubsDisabledRegions(t *testing.T) {
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		t.Fatalf("failed adding to scheme: %v", err)
+	}
+
+	tests := []struct {
+		name            string
+		disabledRegions string
+		statusQuotas    awsv1alpha1.RegionalServiceQuotas
+		expectedRegions []string
+		removedRegions  []string
+	}{
+		{
+			name:            "removes disabled regions from quota map",
+			disabledRegions: "me-south-1,me-central-1",
+			statusQuotas: awsv1alpha1.RegionalServiceQuotas{
+				"us-east-1":    {"L-1216C47A": {Value: 100, Status: awsv1alpha1.ServiceRequestCompleted}},
+				"eu-west-1":    {"L-1216C47A": {Value: 100, Status: awsv1alpha1.ServiceRequestCompleted}},
+				"me-south-1":   {"L-1216C47A": {Value: 100, Status: awsv1alpha1.ServiceRequestCompleted}},
+				"me-central-1": {"L-1216C47A": {Value: 100, Status: awsv1alpha1.ServiceRequestCompleted}},
+			},
+			expectedRegions: []string{"us-east-1", "eu-west-1"},
+			removedRegions:  []string{"me-south-1", "me-central-1"},
+		},
+		{
+			name:            "no-op when no disabled regions match quota map",
+			disabledRegions: "me-south-1",
+			statusQuotas: awsv1alpha1.RegionalServiceQuotas{
+				"us-east-1": {"L-1216C47A": {Value: 100, Status: awsv1alpha1.ServiceRequestCompleted}},
+				"eu-west-1": {"L-1216C47A": {Value: 100, Status: awsv1alpha1.ServiceRequestCompleted}},
+			},
+			expectedRegions: []string{"us-east-1", "eu-west-1"},
+			removedRegions:  []string{},
+		},
+		{
+			name:            "no-op when disabled regions config is empty",
+			disabledRegions: "",
+			statusQuotas: awsv1alpha1.RegionalServiceQuotas{
+				"us-east-1":  {"L-1216C47A": {Value: 100, Status: awsv1alpha1.ServiceRequestCompleted}},
+				"me-south-1": {"L-1216C47A": {Value: 100, Status: awsv1alpha1.ServiceRequestCompleted}},
+			},
+			expectedRegions: []string{"us-east-1", "me-south-1"},
+			removedRegions:  []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			acct := &awsv1alpha1.Account{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "test-account",
+					Namespace: awsv1alpha1.AccountCrNamespace,
+				},
+				Spec: awsv1alpha1.AccountSpec{
+					AwsAccountID: "123456789012",
+					RegionalServiceQuotas: awsv1alpha1.RegionalServiceQuotas{
+						"us-east-1": {"L-1216C47A": {Value: 100}},
+					},
+				},
+				Status: awsv1alpha1.AccountStatus{
+					RegionalServiceQuotas: tt.statusQuotas,
+				},
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme.Scheme).
+				WithRuntimeObjects(acct).
+				Build()
+
+			mockBuilder := mock.NewMockIBuilder(ctrl)
+			mockAWSClient := mock.NewMockClient(ctrl)
+			mockBuilder.EXPECT().GetClient(gomock.Any(), gomock.Any(), gomock.Any()).Return(mockAWSClient, nil)
+
+			r := &AccountValidationReconciler{
+				Client: fakeClient,
+				Scheme: scheme.Scheme,
+			}
+
+			nullLogger := testutils.NewTestLogger().Logger()
+			err := r.ValidateRegionalServiceQuotas(nullLogger, acct, mockBuilder, tt.disabledRegions)
+			if err != nil {
+				t.Errorf("ValidateRegionalServiceQuotas() unexpected error: %v", err)
+			}
+
+			for _, region := range tt.expectedRegions {
+				if _, ok := acct.Status.RegionalServiceQuotas[region]; !ok {
+					t.Errorf("expected region %s to be present in quota map", region)
+				}
+			}
+			for _, region := range tt.removedRegions {
+				if _, ok := acct.Status.RegionalServiceQuotas[region]; ok {
+					t.Errorf("expected region %s to be removed from quota map", region)
+				}
 			}
 		})
 	}
