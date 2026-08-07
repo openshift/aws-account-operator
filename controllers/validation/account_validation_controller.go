@@ -769,6 +769,30 @@ func (r *AccountValidationReconciler) ValidateRegionalServiceQuotas(reqLogger lo
 		return nil
 	}
 
+	// Scrub disabled regions from the quota map on every validation pass.
+	// Accounts can carry stale region entries through reuse, recovery, or
+	// config changes — this ensures they are always cleaned out regardless
+	// of how the account entered the pipeline.
+	if awsAccount.Status.RegionalServiceQuotas != nil && disabledRegions != "" {
+		disabled := account.ParseDisabledRegions(disabledRegions)
+		dirty := false
+		for region := range awsAccount.Status.RegionalServiceQuotas {
+			if disabled[region] {
+				reqLogger.Info("Removing disabled region from quota status", "region", region)
+				delete(awsAccount.Status.RegionalServiceQuotas, region)
+				dirty = true
+			}
+		}
+		if dirty {
+			if err := r.statusUpdate(awsAccount); err != nil {
+				return &AccountValidationError{
+					Type: QuotaStatus,
+					Err:  fmt.Errorf("failed to update account status after removing disabled regions: %w", err),
+				}
+			}
+		}
+	}
+
 	// If status quota fields have not been populated yet, expand them from spec and re-queue.
 	regionalStatusMissing := awsAccount.Spec.RegionalServiceQuotas != nil && awsAccount.Status.RegionalServiceQuotas == nil
 	globalStatusMissing := awsAccount.Spec.GlobalServiceQuotas != nil && awsAccount.Status.GlobalServiceQuotas == nil
