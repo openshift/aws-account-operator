@@ -329,27 +329,13 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			roleToAssume := currentAcctInstance.GetAssumeRole()
 			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
 			if err != nil {
-				reqLogger.Error(err, "failed building BYOC client from assume_role")
-				_, err = r.handleAWSClientError(reqLogger, currentAcctInstance, err)
-				var aerr smithy.APIError
-				if errors.As(err, &aerr) {
-					switch aerr.ErrorCode() {
-					// If it's AccessDenied we want to just delete the finalizer and continue as we assume
-					// the credentials have been deleted by the customer. For additional safety we also only
-					// want to do this for CCS accounts.
-					case "AccessDenied":
-						if currentAcctInstance.IsBYOC() {
-							err = r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer)
-							if err != nil {
-								reqLogger.Error(err, "failed removing account finalizer")
-								return reconcile.Result{}, err
-							}
-							reqLogger.Info("Finalizer Removed on CCS Account with ACCESSDENIED")
-							return reconcile.Result{}, nil
-						}
-					}
+				reqLogger.Info("BYOC STS assume role failed, removing finalizer — customer-owned account, no retry",
+					"account", currentAcctInstance.Name)
+				if err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer); err != nil { //nolint:contextcheck // removeFinalizer doesn't accept context
+					reqLogger.Error(err, "failed removing finalizer from BYOC account")
+					return reconcile.Result{}, err
 				}
-				return reconcile.Result{}, err
+				return reconcile.Result{}, nil
 			}
 		} else {
 			// If the account has already failed STS (AccountClientError condition persisted on the CR),
