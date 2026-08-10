@@ -327,8 +327,13 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		var awsClient awsclient.Client
 		if currentAcctInstance.IsBYOC() {
 			roleToAssume := currentAcctInstance.GetAssumeRole()
-			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "")
-			if err != nil {
+			roleArn := config.GetIAMArn(currentAcctInstance.Spec.AwsAccountID, config.AwsResourceTypeRole, roleToAssume)
+			_, probeErr := awsSetupClient.AssumeRole(ctx, &sts.AssumeRoleInput{
+				DurationSeconds: aws.Int32(3600),
+				RoleArn:         &roleArn,
+				RoleSessionName: aws.String("awsAccountOperator"),
+			})
+			if probeErr != nil {
 				reqLogger.Info("BYOC STS assume role failed, removing finalizer — customer-owned account, no retry",
 					"account", currentAcctInstance.Name)
 				if err := r.removeFinalizer(currentAcctInstance, awsv1alpha1.AccountFinalizer); err != nil { //nolint:contextcheck // removeFinalizer doesn't accept context
@@ -336,6 +341,11 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 					return reconcile.Result{}, err
 				}
 				return reconcile.Result{}, nil
+			}
+			awsClient, _, err = stsclient.HandleRoleAssumption(reqLogger, r.awsClientBuilder, currentAcctInstance, r.Client, awsSetupClient, "", roleToAssume, "") //nolint:contextcheck // HandleRoleAssumption doesn't accept context
+			if err != nil {
+				reqLogger.Error(err, "failed building BYOC client from assume_role after successful probe")
+				return reconcile.Result{}, err
 			}
 		} else {
 			// If the account has already failed STS (AccountClientError condition persisted on the CR),

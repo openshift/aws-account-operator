@@ -3303,7 +3303,7 @@ var _ = Describe("Account Controller", func() {
 				WithRuntimeObjects([]runtime.Object{&byocAcct, configMap}...).Build()
 
 			mockAWSClient.EXPECT().AssumeRole(gomock.Any(), gomock.Any()).Return(
-				nil, fmt.Errorf("AccessDenied: not authorized")).AnyTimes()
+				nil, fmt.Errorf("AccessDenied: not authorized")).Times(1)
 
 			req = reconcile.Request{
 				NamespacedName: types.NamespacedName{
