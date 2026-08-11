@@ -3283,6 +3283,45 @@ var _ = Describe("Account Controller", func() {
 		})
 	})
 
+	Context("BYOC PendingDeletion STS failure", func() {
+		It("removes finalizer immediately on first STS failure without retry", func() {
+			tmpcli, err := r.awsClientBuilder.GetClient("", nil, awsclient.NewAwsClientInput{})
+			Expect(err).ToNot(HaveOccurred())
+			mockAWSClient, _ = tmpcli.(*mock.MockClient)
+
+			byocAcct := newTestAccountBuilder().
+				BYOC(true).
+				WithAwsAccountID("123456789012").
+				WithState(AccountFailed).
+				WithFinalizers([]string{awsv1alpha1.AccountFinalizer}).
+				WithDeletionTimeStamp(time.Now()).
+				WithLabels(map[string]string{
+					awsv1alpha1.IAMUserIDLabel: "abc123",
+				}).acct
+
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).
+				WithRuntimeObjects([]runtime.Object{&byocAcct, configMap}...).Build()
+
+			mockAWSClient.EXPECT().AssumeRole(gomock.Any(), gomock.Any()).Return(
+				nil, fmt.Errorf("AccessDenied: not authorized")).Times(1)
+
+			req = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: byocAcct.Namespace,
+					Name:      byocAcct.Name,
+				},
+			}
+
+			_, err = r.Reconcile(context.TODO(), req)
+			Expect(err).ToNot(HaveOccurred())
+
+			ac := &awsv1alpha1.Account{}
+			err = r.Get(context.TODO(), types.NamespacedName{Name: byocAcct.Name, Namespace: byocAcct.Namespace}, ac)
+			Expect(k8serr.IsNotFound(err)).To(BeTrue(),
+				"BYOC PendingDeletion account should have finalizer removed on first STS failure")
+		})
+	})
+
 	Context("account limit requeue", func() {
 		It("requeues NoState account when AWS account limit is reached", func() {
 			savedWatcher := totalaccountwatcher.TotalAccountWatcher
