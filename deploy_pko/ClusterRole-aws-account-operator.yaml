@@ -10,28 +10,30 @@ rules:
 - apiGroups:
   - ''
   resources:
+  - pods
+  - services
+  - endpoints
+  - persistentvolumeclaims
+  - events
+  - configmaps
   - secrets
   verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - delete
-- apiGroups:
-  - ''
-  resources:
-  - configmaps
-  verbs:
-  - get
-  - list
-  - watch
+  - '*'
 - apiGroups:
   - ''
   resources:
   - namespaces
   verbs:
   - get
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - daemonsets
+  - replicasets
+  - statefulsets
+  verbs:
+  - '*'
 - apiGroups:
   - monitoring.coreos.com
   resources:
@@ -48,5 +50,11 @@ rules:
   - accountpools
   - awsfederatedaccountaccesses
   - awsfederatedroles
+  verbs:
+  - '*'
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
   verbs:
   - '*'
