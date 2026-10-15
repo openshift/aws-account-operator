@@ -1,8 +1,10 @@
 reviewers:
 - srep-functional-team-aurora
 - dustman9000
+- rosa-trust-engineering-access-tooling
 approvers:
 - srep-functional-team-aurora
 - dustman9000
+- rosa-trust-engineering-access-tooling
 maintainers:
 - srep-functional-team-aurora
