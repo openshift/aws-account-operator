@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/openshift/aws-account-operator/config"
@@ -20,6 +21,7 @@ import (
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/go-logr/logr"
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/awsclient"
@@ -528,13 +530,22 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountS3(reqLogger logr.Logger, awsC
 	}
 
 	for _, bucket := range s3Buckets.Buckets {
+		bucketClient, err := awsClient.S3ClientForBucket(context.TODO(), *bucket.Name)
+		if err != nil {
+			var responseErr *smithyhttp.ResponseError
+			if errors.As(err, &responseErr) && responseErr.HTTPStatusCode() == http.StatusNotFound {
+				continue // The bucket was removed after ListBuckets.
+			}
+			awsErrors <- fmt.Errorf("failed to locate S3 bucket %s: %w", *bucket.Name, err).Error()
+			return err
+		}
 
 		deleteBucketInput := s3.DeleteBucketInput{
 			Bucket: bucket.Name,
 		}
 
 		// delete any content if any
-		err := DeleteBucketContent(awsClient, *bucket.Name)
+		err = DeleteBucketContent(bucketClient, *bucket.Name)
 		if err != nil {
 			ContentDelErr := fmt.Errorf("failed to delete bucket content: %s: %w", *bucket.Name, err).Error()
 			// Check for specific S3 exception types
@@ -546,7 +557,7 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountS3(reqLogger logr.Logger, awsC
 			}
 			// NoSuchBucket - ignore this error
 		}
-		_, err = awsClient.DeleteBucket(context.TODO(), &deleteBucketInput)
+		_, err = bucketClient.DeleteBucket(context.TODO(), &deleteBucketInput)
 		if err != nil {
 			DelError := fmt.Errorf("failed deleting S3 bucket: %s: %w", *bucket.Name, err).Error()
 			// Check for specific S3 exception types

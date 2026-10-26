@@ -15,6 +15,7 @@ package awsclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -138,6 +139,7 @@ type Client interface {
 
 	// S3
 	ListBuckets(context.Context, *s3.ListBucketsInput) (*s3.ListBucketsOutput, error)
+	S3ClientForBucket(context.Context, string) (Client, error)
 	DeleteBucket(context.Context, *s3.DeleteBucketInput) (*s3.DeleteBucketOutput, error)
 	BatchDeleteBucketObjects(context.Context, *string) error
 	ListObjectsV2(context.Context, *s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, error)
@@ -497,6 +499,37 @@ func (c *awsClient) GetFederationToken(ctx context.Context, input *sts.GetFedera
 
 func (c *awsClient) ListBuckets(ctx context.Context, input *s3.ListBucketsInput) (*s3.ListBucketsOutput, error) {
 	return c.s3Client.ListBuckets(ctx, input)
+}
+
+// S3ClientForBucket returns a client using the bucket's actual region for S3 requests.
+// HeadBucket includes the region in its response even when the initial endpoint is wrong.
+func (c *awsClient) S3ClientForBucket(ctx context.Context, bucketName string) (Client, error) {
+	output, err := c.s3Client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucketName)})
+	var region string
+	if err == nil {
+		region = aws.ToString(output.BucketRegion)
+	} else {
+		var responseErr *smithyhttp.ResponseError
+		if !errors.As(err, &responseErr) || responseErr.HTTPResponse() == nil || responseErr.HTTPStatusCode() == http.StatusNotFound {
+			return nil, err
+		}
+		region = responseErr.HTTPResponse().Header.Get("x-amz-bucket-region")
+		if region == "" {
+			return nil, err
+		}
+	}
+	if region == "" {
+		return nil, fmt.Errorf("bucket %s: HeadBucket returned no region", bucketName)
+	}
+
+	options := c.s3Client.Options()
+	if region == options.Region {
+		return c, nil
+	}
+	options.Region = region
+	regionalClient := *c
+	regionalClient.s3Client = s3.New(options)
+	return &regionalClient, nil
 }
 
 func (c *awsClient) DeleteBucket(ctx context.Context, input *s3.DeleteBucketInput) (*s3.DeleteBucketOutput, error) {
