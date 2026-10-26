@@ -510,7 +510,7 @@ func (c *awsClient) S3ClientForBucket(ctx context.Context, bucketName string) (C
 		region = aws.ToString(output.BucketRegion)
 	} else {
 		var responseErr *smithyhttp.ResponseError
-		if !errors.As(err, &responseErr) || responseErr.HTTPResponse() == nil || responseErr.HTTPStatusCode() == http.StatusNotFound {
+		if !errors.As(err, &responseErr) || responseErr.HTTPResponse() == nil {
 			return nil, err
 		}
 		region = responseErr.HTTPResponse().Header.Get("x-amz-bucket-region")

@@ -533,7 +533,9 @@ func (r *AccountClaimReconciler) cleanUpAwsAccountS3(reqLogger logr.Logger, awsC
 		bucketClient, err := awsClient.S3ClientForBucket(context.TODO(), *bucket.Name)
 		if err != nil {
 			var responseErr *smithyhttp.ResponseError
-			if errors.As(err, &responseErr) && responseErr.HTTPStatusCode() == http.StatusNotFound {
+			if errors.As(err, &responseErr) && responseErr.HTTPResponse() != nil &&
+				responseErr.HTTPStatusCode() == http.StatusNotFound &&
+				responseErr.HTTPResponse().Header.Get("x-amz-bucket-region") == "" {
 				continue // The bucket was removed after ListBuckets.
 			}
 			awsErrors <- fmt.Errorf("failed to locate S3 bucket %s: %w", *bucket.Name, err).Error()
