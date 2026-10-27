@@ -541,45 +541,41 @@ func (c *awsClient) ListObjectsV2(ctx context.Context, input *s3.ListObjectsV2In
 }
 
 func (c *awsClient) BatchDeleteBucketObjects(ctx context.Context, bucketName *string) error {
-	// List all objects in the bucket
-	paginator := s3.NewListObjectsV2Paginator(c.s3Client, &s3.ListObjectsV2Input{
-		Bucket: bucketName,
-	})
-
-	var objectsToDelete []s3types.ObjectIdentifier
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
+	// Always list the first page again after deleting it. Continuation tokens
+	// can skip keys when the objects used to construct the page are removed.
+	// A completed batch stays deleted if this attempt times out.
+	for {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
-		for _, obj := range page.Contents {
-			objectsToDelete = append(objectsToDelete, s3types.ObjectIdentifier{
-				Key: obj.Key,
-			})
-		}
-	}
-
-	// Delete objects in batches of 1000 (AWS limit)
-	batchSize := 1000
-	for i := 0; i < len(objectsToDelete); i += batchSize {
-		end := i + batchSize
-		if end > len(objectsToDelete) {
-			end = len(objectsToDelete)
-		}
-
-		batch := objectsToDelete[i:end]
-		_, err := c.s3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
-			Bucket: bucketName,
-			Delete: &s3types.Delete{
-				Objects: batch,
-			},
+		page, err := c.s3Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:  bucketName,
+			MaxKeys: aws.Int32(1000),
 		})
 		if err != nil {
 			return err
 		}
-	}
+		if len(page.Contents) == 0 {
+			return nil
+		}
 
-	return nil
+		objects := make([]s3types.ObjectIdentifier, 0, len(page.Contents))
+		for _, obj := range page.Contents {
+			objects = append(objects, s3types.ObjectIdentifier{Key: obj.Key})
+		}
+		result, err := c.s3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: bucketName,
+			Delete: &s3types.Delete{Objects: objects},
+		})
+		if err != nil {
+			return err
+		}
+		if len(result.Errors) != 0 {
+			first := result.Errors[0]
+			return fmt.Errorf("failed deleting objects from bucket %s: %s: %s",
+				aws.ToString(bucketName), aws.ToString(first.Code), aws.ToString(first.Message))
+		}
+	}
 }
 
 func (c *awsClient) ListHostedZones(ctx context.Context, input *route53.ListHostedZonesInput) (*route53.ListHostedZonesOutput, error) {

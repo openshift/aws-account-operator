@@ -214,6 +214,62 @@ var _ = Describe("AccountClaim", func() {
 				Expect(acc.Status.Reused).To(BeTrue())
 			})
 
+			It("retries a timed-out cleanup without failing or unlinking the account", func() {
+				r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
+				mockAWSClient := mock.GetMockClient(r.awsClientBuilder)
+				mockAWSClient.EXPECT().AssumeRole(gomock.Any(), &sts.AssumeRoleInput{
+					DurationSeconds: aws.Int32(3600),
+					RoleArn:         &orgAccessArn,
+					RoleSessionName: &roleSessionName,
+				}).Return(&sts.AssumeRoleOutput{
+					AssumedRoleUser: &ststypes.AssumedRoleUser{
+						Arn:           aws.String(fmt.Sprintf("aws:::%s/%s", orgAccessRoleName, roleSessionName)),
+						AssumedRoleId: aws.String(fmt.Sprintf("%s/%s", orgAccessRoleName, roleSessionName)),
+					},
+					Credentials: &ststypes.Credentials{
+						AccessKeyId: aws.String("ACCESS_KEY"), SecretAccessKey: aws.String("SECRET_KEY"),
+						SessionToken: aws.String("SESSION_TOKEN"),
+					},
+				}, nil).Times(2)
+				mockAWSClient.EXPECT().ListHostedZones(gomock.Any(), gomock.Any()).
+					Return(&route53.ListHostedZonesOutput{}, nil).AnyTimes()
+				mockAWSClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any(), gomock.Any()).
+					Return(&ec2.DescribeVpcEndpointServiceConfigurationsOutput{}, nil).AnyTimes()
+				mockAWSClient.EXPECT().DescribeSnapshots(gomock.Any(), gomock.Any()).
+					Return(&ec2.DescribeSnapshotsOutput{}, nil).AnyTimes()
+				mockAWSClient.EXPECT().DescribeVolumes(gomock.Any(), gomock.Any()).
+					Return(&ec2.DescribeVolumesOutput{}, nil).AnyTimes()
+
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				gomock.InOrder(
+					mockAWSClient.EXPECT().ListBuckets(gomock.Any(), gomock.Any()).
+						DoAndReturn(func(ctx context.Context, _ *s3.ListBucketsInput) (*s3.ListBucketsOutput, error) {
+							<-ctx.Done()
+							return nil, ctx.Err()
+						}),
+					mockAWSClient.EXPECT().ListBuckets(gomock.Any(), gomock.Any()).
+						Return(&s3.ListBucketsOutput{}, nil),
+				)
+				_, err := r.Reconcile(ctx, req)
+				Expect(errors.Is(err, context.DeadlineExceeded)).To(BeTrue())
+
+				claim := &awsv1alpha1.AccountClaim{}
+				Expect(r.Get(context.Background(), req.NamespacedName, claim)).To(Succeed())
+				Expect(claim.Spec.AccountLink).To(Equal(accountClaim.Spec.AccountLink))
+				Expect(claim.Finalizers).To(ContainElement(accountClaimFinalizer))
+				acc := &awsv1alpha1.Account{}
+				accountName := types.NamespacedName{Name: claim.Spec.AccountLink, Namespace: awsv1alpha1.AccountCrNamespace}
+				Expect(r.Get(context.Background(), accountName, acc)).To(Succeed())
+				Expect(acc.Status.State).NotTo(Equal(string(awsv1alpha1.AccountFailed)))
+
+				_, err = r.Reconcile(context.Background(), req)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(k8serr.IsNotFound(r.Get(context.Background(), req.NamespacedName, claim))).To(BeTrue())
+				Expect(r.Get(context.Background(), accountName, acc)).To(Succeed())
+				Expect(acc.Status.State).To(Equal(string(awsv1alpha1.AccountReady)))
+			})
+
 			It("should retry on a conflict error", func() {
 				r.Client = &possiblyErroringFakeCtrlRuntimeClient{
 					fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build(),
