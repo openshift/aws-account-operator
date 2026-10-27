@@ -1,6 +1,7 @@
 package accountclaim
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"testing"
@@ -25,19 +26,16 @@ func TestCleanUpAwsAccountS3UsesBucketRegions(t *testing.T) {
 	}, nil)
 	gomock.InOrder(
 		base.EXPECT().S3ClientForBucket(gomock.Any(), "east-bucket").Return(east, nil),
-		east.EXPECT().ListObjectsV2(gomock.Any(), &s3.ListObjectsV2Input{Bucket: aws.String("east-bucket")}).Return(&s3.ListObjectsV2Output{}, nil),
+		east.EXPECT().BatchDeleteBucketObjects(gomock.Any(), aws.String("east-bucket")).Return(nil),
 		east.EXPECT().DeleteBucket(gomock.Any(), &s3.DeleteBucketInput{Bucket: aws.String("east-bucket")}).Return(&s3.DeleteBucketOutput{}, nil),
 		base.EXPECT().S3ClientForBucket(gomock.Any(), "west-bucket").Return(west, nil),
-		west.EXPECT().ListObjectsV2(gomock.Any(), &s3.ListObjectsV2Input{Bucket: aws.String("west-bucket")}).Return(&s3.ListObjectsV2Output{
-			Contents: []s3types.Object{{Key: aws.String("object")}},
-		}, nil),
 		west.EXPECT().BatchDeleteBucketObjects(gomock.Any(), aws.String("west-bucket")).Return(nil),
 		west.EXPECT().DeleteBucket(gomock.Any(), &s3.DeleteBucketInput{Bucket: aws.String("west-bucket")}).Return(&s3.DeleteBucketOutput{}, nil),
 	)
 
 	notifications, errors := make(chan string, 1), make(chan string, 1)
 	r := &AccountClaimReconciler{}
-	if err := r.cleanUpAwsAccountS3(logr.Discard(), base, notifications, errors); err != nil {
+	if err := r.cleanUpAwsAccountS3(context.Background(), logr.Discard(), base, notifications, errors); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -64,13 +62,13 @@ func TestCleanUpAwsAccountS3SkipsMissingBucket(t *testing.T) {
 	gomock.InOrder(
 		base.EXPECT().S3ClientForBucket(gomock.Any(), "gone").Return(nil, missing),
 		base.EXPECT().S3ClientForBucket(gomock.Any(), "remaining").Return(regional, nil),
-		regional.EXPECT().ListObjectsV2(gomock.Any(), &s3.ListObjectsV2Input{Bucket: aws.String("remaining")}).Return(&s3.ListObjectsV2Output{}, nil),
+		regional.EXPECT().BatchDeleteBucketObjects(gomock.Any(), aws.String("remaining")).Return(nil),
 		regional.EXPECT().DeleteBucket(gomock.Any(), &s3.DeleteBucketInput{Bucket: aws.String("remaining")}).Return(&s3.DeleteBucketOutput{}, nil),
 	)
 
 	notifications, awsErrors := make(chan string, 1), make(chan string, 1)
 	r := &AccountClaimReconciler{}
-	if err := r.cleanUpAwsAccountS3(logr.Discard(), base, notifications, awsErrors); err != nil {
+	if err := r.cleanUpAwsAccountS3(context.Background(), logr.Discard(), base, notifications, awsErrors); err != nil {
 		t.Fatal(err)
 	}
 	select {

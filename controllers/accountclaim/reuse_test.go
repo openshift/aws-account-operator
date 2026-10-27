@@ -1,8 +1,8 @@
 package accountclaim_test
 
 import (
+	"context"
 	"fmt"
-	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
@@ -20,29 +20,20 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-type cleanupfunc func(logr.Logger, awsclient.Client, chan string, chan string) error
+type cleanupfunc func(context.Context, logr.Logger, awsclient.Client, chan string, chan string) error
 
 func runCleanupFunc(functorun cleanupfunc, client awsclient.Client) (string, string, error) {
 
-	wg := sync.WaitGroup{}
-	notifications, errors := make(chan string), make(chan string)
-
-	msg := ""
-	errMsg := ""
-	go func() {
-		defer wg.Done()
-		wg.Add(1)
-		select {
-		case msg = <-notifications:
-
-		case errMsg = <-errors:
-
-		}
-	}()
-	err := functorun(testutils.NewTestLogger().Logger(), client, notifications, errors)
-	wg.Wait()
-
-	return msg, errMsg, err
+	notifications, errors := make(chan string, 1), make(chan string, 1)
+	err := functorun(context.Background(), testutils.NewTestLogger().Logger(), client, notifications, errors)
+	select {
+	case msg := <-notifications:
+		return msg, "", err
+	case errMsg := <-errors:
+		return "", errMsg, err
+	default:
+		return "", "", err
+	}
 }
 
 var _ = Describe("Account Reuse", func() {
@@ -210,6 +201,23 @@ var _ = Describe("Account Reuse", func() {
 					Expect(notifications).To(Equal(""))
 
 				})
+			})
+		})
+
+		Context("When Delete API returns an error without an output", func() {
+			It("reports the error without panicking", func() {
+				serviceID := "FakeID"
+				deleteErr := fmt.Errorf("delete failed")
+				mockAwsClient.EXPECT().DescribeVpcEndpointServiceConfigurations(gomock.Any(), gomock.Any()).Return(
+					&ec2.DescribeVpcEndpointServiceConfigurationsOutput{
+						ServiceConfigurations: []ec2types.ServiceConfiguration{{ServiceId: &serviceID}},
+					}, nil)
+				mockAwsClient.EXPECT().DeleteVpcEndpointServiceConfigurations(gomock.Any(), gomock.Any()).Return(nil, deleteErr)
+
+				notification, errorMessage, err := runCleanupFunc(r.CleanUpAwsAccountVpcEndpointServiceConfigurations, mockAwsClient)
+				Expect(err).To(MatchError(deleteErr))
+				Expect(errorMessage).To(Equal("Failed deleting VPC endpoint service configurations: "))
+				Expect(notification).To(BeEmpty())
 			})
 		})
 

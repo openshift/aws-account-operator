@@ -236,7 +236,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	if accountClaim.DeletionTimestamp != nil {
 		if err := accountClaim.Validate(); err != nil {
 			reqLogger.Info("skipping fleet-manager secret cleanup due to invalid spec during deletion", "error", err.Error())
-			return reconcile.Result{}, r.handleAccountClaimDeletion(reqLogger, accountClaim) //nolint:contextcheck // pre-existing function signature
+			return reconcile.Result{}, r.handleAccountClaimDeletion(ctx, reqLogger, accountClaim)
 		}
 
 		if accountClaim.Spec.FleetManagerConfig.TrustedARN != "" {
@@ -276,7 +276,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 				reqLogger.V(1).Info("successfully cleaned up IAM role and policies", "accountclaim", accountClaim.Name)
 			}
 		}
-		return reconcile.Result{}, r.handleAccountClaimDeletion(reqLogger, accountClaim)
+		return reconcile.Result{}, r.handleAccountClaimDeletion(ctx, reqLogger, accountClaim)
 	}
 
 	isCCS := accountClaim.Spec.BYOCAWSAccountID != ""
@@ -693,7 +693,7 @@ func (r *AccountClaimReconciler) setSupportRoleARNManagedOpenshift(reqLogger log
 	return nil
 }
 
-func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
+func (r *AccountClaimReconciler) handleAccountClaimDeletion(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 
 	if !controllerutils.Contains(accountClaim.GetFinalizers(), accountClaimFinalizer) {
 		return nil
@@ -709,7 +709,7 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logge
 	// Only do AWS cleanup and account reset if accountLink is not empty
 	// We will not attempt AWS cleanup if the account is BYOC since we're not going to reuse these accounts
 	if accountClaim.Spec.AccountLink != "" {
-		err := r.finalizeAccountClaim(reqLogger, accountClaim)
+		err := r.finalizeAccountClaim(ctx, reqLogger, accountClaim)
 		if err != nil {
 			// If the finalize/cleanup process fails for an account we don't want to return
 			// we will flag the account with the Failed Reuse condition, and with state = Failed
@@ -728,6 +728,12 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(reqLogger logr.Logge
 			if errors.Is(err, ErrRateLimited) {
 				reqLogger.Info("Account closure rate limited during claim deletion, will retry after backoff",
 					"accountLink", accountClaim.Spec.AccountLink)
+				return err
+			}
+
+			// A bounded cleanup can resume on the next reconcile with fresh STS
+			// credentials. Keep the account linked and out of the pool meanwhile.
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				return err
 			}
 
