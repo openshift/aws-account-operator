@@ -24,7 +24,7 @@ import (
 	awsv1alpha1 "github.com/openshift/aws-account-operator/api/v1alpha1"
 	"github.com/openshift/aws-account-operator/pkg/utils"
 	"github.com/openshift/aws-account-operator/test/fixtures"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

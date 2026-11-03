@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/aws/smithy-go"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
