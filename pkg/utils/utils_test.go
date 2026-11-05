@@ -752,6 +752,15 @@ func TestShouldSkipS3Cleanup(t *testing.T) {
 		}
 	})
 
+	t.Run("returns true when annotation is 'tRuE' (mixed case)", func(t *testing.T) {
+		annotations := map[string]string{
+			SkipS3CleanupAnnotation: "tRuE",
+		}
+		if !ShouldSkipS3Cleanup(annotations) {
+			t.Error("ShouldSkipS3Cleanup() = false when annotation is 'tRuE' (mixed case), want true")
+		}
+	})
+
 	t.Run("returns false when annotation value is 'false'", func(t *testing.T) {
 		annotations := map[string]string{
 			SkipS3CleanupAnnotation: "false",
