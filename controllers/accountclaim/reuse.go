@@ -161,7 +161,7 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(ctx context.Context, reqLo
 	}
 
 	before := time.Now()
-	err = r.cleanUpAwsAccount(ctx, reqLogger, awsClient)
+	err = r.cleanUpAwsAccount(ctx, reqLogger, awsClient, accountClaim)
 	if err != nil {
 		localmetrics.Collector.AddAccountReuseCleanupFailure()
 		reqLogger.Error(err, "Failed to clean up AWS account")
@@ -360,9 +360,16 @@ func isCloseAccountRateLimitError(err error) bool {
 // deletions are retained when the remaining work is retried with fresh credentials.
 const accountReuseCleanupTimeout = 15 * time.Minute
 
-func (r *AccountClaimReconciler) cleanUpAwsAccount(parentCtx context.Context, reqLogger logr.Logger, awsClient awsclient.Client) error {
+func (r *AccountClaimReconciler) cleanUpAwsAccount(parentCtx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, accountClaim *awsv1alpha1.AccountClaim) error {
 	ctx, cancel := context.WithTimeout(parentCtx, accountReuseCleanupTimeout)
 	defer cancel()
+
+	skipS3 := utils.ShouldSkipS3Cleanup(accountClaim.Annotations)
+	if skipS3 {
+		reqLogger.Info("Skipping S3 bucket cleanup due to annotation",
+			"annotation", utils.SkipS3CleanupAnnotation,
+			"accountClaim", accountClaim.Name)
+	}
 
 	// Every worker reports exactly once. Buffered channels let workers finish
 	// reporting even if the deadline has already released the reconcile.
@@ -370,10 +377,14 @@ func (r *AccountClaimReconciler) cleanUpAwsAccount(parentCtx context.Context, re
 	cleanUpFunctions := []func(context.Context, logr.Logger, awsclient.Client, chan string, chan string) error{
 		r.cleanUpAwsAccountSnapshots,
 		r.cleanUpAwsAccountEbsVolumes,
-		r.cleanUpAwsAccountS3,
 		r.CleanUpAwsAccountVpcEndpointServiceConfigurations,
 		r.cleanUpAwsRoute53,
 	}
+
+	if !skipS3 {
+		cleanUpFunctions = append(cleanUpFunctions[:2], append([]func(context.Context, logr.Logger, awsclient.Client, chan string, chan string) error{r.cleanUpAwsAccountS3}, cleanUpFunctions[2:]...)...)
+	}
+
 	for _, cleanUpFunc := range cleanUpFunctions {
 		//nolint:errcheck // Each worker reports its outcome on one of the buffered channels.
 		go cleanUpFunc(ctx, reqLogger, awsClient, awsNotifications, awsErrors)
