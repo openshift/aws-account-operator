@@ -709,6 +709,68 @@ func TestGetCloseAccountRetryAfter(t *testing.T) {
 	})
 }
 
+func TestShouldSkipS3Cleanup(t *testing.T) {
+	t.Run("returns false when annotations are nil", func(t *testing.T) {
+		if ShouldSkipS3Cleanup(nil) {
+			t.Error("ShouldSkipS3Cleanup(nil) = true, want false")
+		}
+	})
+
+	t.Run("returns false when annotation is not present", func(t *testing.T) {
+		annotations := map[string]string{
+			"some-other-annotation": "value",
+		}
+		if ShouldSkipS3Cleanup(annotations) {
+			t.Error("ShouldSkipS3Cleanup() = true when annotation not present, want false")
+		}
+	})
+
+	t.Run("returns true when annotation is 'true'", func(t *testing.T) {
+		annotations := map[string]string{
+			SkipS3CleanupAnnotation: "true",
+		}
+		if !ShouldSkipS3Cleanup(annotations) {
+			t.Error("ShouldSkipS3Cleanup() = false when annotation is 'true', want true")
+		}
+	})
+
+	t.Run("returns true when annotation is 'True' (case insensitive)", func(t *testing.T) {
+		annotations := map[string]string{
+			SkipS3CleanupAnnotation: "True",
+		}
+		if !ShouldSkipS3Cleanup(annotations) {
+			t.Error("ShouldSkipS3Cleanup() = false when annotation is 'True', want true")
+		}
+	})
+
+	t.Run("returns true when annotation is 'TRUE' (case insensitive)", func(t *testing.T) {
+		annotations := map[string]string{
+			SkipS3CleanupAnnotation: "TRUE",
+		}
+		if !ShouldSkipS3Cleanup(annotations) {
+			t.Error("ShouldSkipS3Cleanup() = false when annotation is 'TRUE', want true")
+		}
+	})
+
+	t.Run("returns false when annotation value is 'false'", func(t *testing.T) {
+		annotations := map[string]string{
+			SkipS3CleanupAnnotation: "false",
+		}
+		if ShouldSkipS3Cleanup(annotations) {
+			t.Error("ShouldSkipS3Cleanup() = true when annotation is 'false', want false")
+		}
+	})
+
+	t.Run("returns false when annotation value is arbitrary string", func(t *testing.T) {
+		annotations := map[string]string{
+			SkipS3CleanupAnnotation: "maybe",
+		}
+		if ShouldSkipS3Cleanup(annotations) {
+			t.Error("ShouldSkipS3Cleanup() = true when annotation is arbitrary string, want false")
+		}
+	})
+}
+
 var _ = Describe("Utils", func() {
 	var (
 		nullTestLogger testutils.TestLogger
