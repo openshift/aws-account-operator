@@ -45,6 +45,9 @@ var ErrDryRunMode = errors.New("dry-run mode enabled")
 // ErrRateLimited is returned when CloseAccount hits AWS quota limits
 var ErrRateLimited = errors.New("rate limited")
 
+// finalizeAccountClaim handles cleanup and account reuse/closure when an AccountClaim is deleted.
+// It performs AWS resource cleanup (S3, EBS, VPC, Route53), and either closes the account
+// (when close-on-release is enabled) or resets it for reuse in the account pool.
 func (r *AccountClaimReconciler) finalizeAccountClaim(ctx context.Context, reqLogger logr.Logger, accountClaim *awsv1alpha1.AccountClaim) error {
 
 	// Get account claimed by deleted accountclaim
@@ -161,6 +164,10 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(ctx context.Context, reqLo
 	}
 
 	before := time.Now()
+	// Check skip-S3-cleanup annotation. The annotation must be set before the AccountClaim
+	// is deleted; changes made after cleanup starts do not stop active cleanup or prevent
+	// subsequent account closure or reuse.
+	skipS3 := utils.ShouldSkipS3Cleanup(accountClaim.Annotations)
 	err = r.cleanUpAwsAccount(ctx, reqLogger, awsClient, accountClaim)
 	if err != nil {
 		localmetrics.Collector.AddAccountReuseCleanupFailure()
@@ -177,7 +184,8 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(ctx context.Context, reqLo
 
 	// Close account instead of reusing if feature is enabled
 	// Skip for FedRAMP (different compliance requirements)
-	if utils.IsCloseOnReleaseEnabled(configMap) && !config.IsFedramp() {
+	// Skip if S3 cleanup was skipped - account must remain accessible for manual S3 cleanup/migration
+	if utils.IsCloseOnReleaseEnabled(configMap) && !config.IsFedramp() && !skipS3 {
 		closeErr := r.closeAndDeleteAccount(context.TODO(), reqLogger, reusedAccount, managementAwsClient, configMap)
 		if closeErr != nil {
 			if errors.Is(closeErr, ErrDryRunMode) {
@@ -200,9 +208,12 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(ctx context.Context, reqLo
 				"accountID", reusedAccount.Spec.AwsAccountID)
 			return nil
 		}
+	} else if skipS3 && utils.IsCloseOnReleaseEnabled(configMap) {
+		reqLogger.Info("Account closure skipped due to S3 cleanup skip annotation",
+			"annotation", utils.SkipS3CleanupAnnotation)
 	}
 
-	err = r.resetAccountSpecStatus(reqLogger, reusedAccount, accountClaim, awsv1alpha1.AccountReused, "Ready")
+	err = r.resetAccountSpecStatus(ctx, reqLogger, reusedAccount, accountClaim, awsv1alpha1.AccountReused, "Ready", skipS3)
 	if err != nil {
 		reqLogger.Error(err, "Failed to reset account entity")
 		return err
@@ -212,11 +223,24 @@ func (r *AccountClaimReconciler) finalizeAccountClaim(ctx context.Context, reqLo
 	return nil
 }
 
-func (r *AccountClaimReconciler) resetAccountSpecStatus(reqLogger logr.Logger, reusedAccount *awsv1alpha1.Account, deletedAccountClaim *awsv1alpha1.AccountClaim, accountState awsv1alpha1.AccountConditionType, conditionStatus string) error {
+// resetAccountSpecStatus prepares an Account CR for reuse by resetting its claim links,
+// rotating credentials, and updating its status. If skipS3 is true, marks the account
+// as pending S3 cleanup to prevent it from being claimed until manual cleanup is complete.
+func (r *AccountClaimReconciler) resetAccountSpecStatus(ctx context.Context, reqLogger logr.Logger, reusedAccount *awsv1alpha1.Account, deletedAccountClaim *awsv1alpha1.AccountClaim, accountState awsv1alpha1.AccountConditionType, conditionStatus string, skipS3 bool) error {
 
 	// Reset claimlink and carry over legal entity from deleted claim
 	reusedAccount.Spec.ClaimLink = ""
 	reusedAccount.Spec.ClaimLinkNamespace = ""
+
+	// Mark account as pending S3 cleanup if S3 was skipped - prevents reuse until cleanup is complete
+	if skipS3 {
+		if reusedAccount.Annotations == nil {
+			reusedAccount.Annotations = make(map[string]string)
+		}
+		reusedAccount.Annotations[utils.PendingS3CleanupAnnotation] = "true"
+		reqLogger.Info("Account quarantined pending S3 cleanup",
+			"annotation", utils.PendingS3CleanupAnnotation)
+	}
 
 	// LegalEntity is being carried over here to support older accounts, that were claimed
 	// prior to the introduction of reuse (their account's legalEntity will be blank )
@@ -225,7 +249,7 @@ func (r *AccountClaimReconciler) resetAccountSpecStatus(reqLogger logr.Logger, r
 		reusedAccount.Spec.LegalEntity.Name = deletedAccountClaim.Spec.LegalEntity.Name
 	}
 
-	err := r.accountSpecUpdate(reqLogger, reusedAccount)
+	err := r.accountSpecUpdate(ctx, reqLogger, reusedAccount)
 	if err != nil {
 		reqLogger.Error(err, "Failed to update account spec for reuse")
 		return err
@@ -360,6 +384,9 @@ func isCloseAccountRateLimitError(err error) bool {
 // deletions are retained when the remaining work is retried with fresh credentials.
 const accountReuseCleanupTimeout = 15 * time.Minute
 
+// cleanUpAwsAccount removes AWS resources (EBS snapshots/volumes, S3 buckets, VPC endpoints, Route53 zones)
+// from an account being finalized. S3 cleanup is skipped if the AccountClaim has the skip-S3-cleanup annotation.
+// All cleanup operations run in parallel with a 15-minute timeout.
 func (r *AccountClaimReconciler) cleanUpAwsAccount(parentCtx context.Context, reqLogger logr.Logger, awsClient awsclient.Client, accountClaim *awsv1alpha1.AccountClaim) error {
 	ctx, cancel := context.WithTimeout(parentCtx, accountReuseCleanupTimeout)
 	defer cancel()
@@ -367,8 +394,7 @@ func (r *AccountClaimReconciler) cleanUpAwsAccount(parentCtx context.Context, re
 	skipS3 := utils.ShouldSkipS3Cleanup(accountClaim.Annotations)
 	if skipS3 {
 		reqLogger.Info("Skipping S3 bucket cleanup due to annotation",
-			"annotation", utils.SkipS3CleanupAnnotation,
-			"accountClaim", accountClaim.Name)
+			"annotation", utils.SkipS3CleanupAnnotation)
 	}
 
 	// Every worker reports exactly once. Buffered channels let workers finish

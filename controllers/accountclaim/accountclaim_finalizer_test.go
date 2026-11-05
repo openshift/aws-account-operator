@@ -313,7 +313,7 @@ var _ = Describe("resetAccountSpecStatus", func() {
 		objs := []runtime.Object{reusedAccount}
 		r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
 
-		err := r.resetAccountSpecStatus(nullLogger, reusedAccount, deletedClaim, v1alpha1.AccountReused, "Ready")
+		err := r.resetAccountSpecStatus(context.TODO(), nullLogger, reusedAccount, deletedClaim, v1alpha1.AccountReused, "Ready", false)
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(reusedAccount.Status.RegionalServiceQuotas).To(BeNil())
@@ -359,7 +359,7 @@ var _ = Describe("resetAccountSpecStatus", func() {
 		objs := []runtime.Object{reusedAccount}
 		r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(objs...).Build()
 
-		err := r.resetAccountSpecStatus(nullLogger, reusedAccount, deletedClaim, v1alpha1.AccountReused, "Ready")
+		err := r.resetAccountSpecStatus(context.TODO(), nullLogger, reusedAccount, deletedClaim, v1alpha1.AccountReused, "Ready", false)
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(reusedAccount.Spec.LegalEntity.ID).To(Equal("claim-entity"))

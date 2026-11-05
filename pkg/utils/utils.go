@@ -384,6 +384,12 @@ const (
 	// should be handled externally. Value should be "true" to skip cleanup.
 	// Example: aws.managed.openshift.io/skip-s3-cleanup: "true"
 	SkipS3CleanupAnnotation = "aws.managed.openshift.io/skip-s3-cleanup"
+
+	// PendingS3CleanupAnnotation marks an Account CR that has S3 buckets requiring
+	// manual cleanup or migration. Accounts with this annotation cannot be claimed
+	// by new AccountClaims until the annotation is removed after S3 work is complete.
+	// Example: aws.managed.openshift.io/pending-s3-cleanup: "true"
+	PendingS3CleanupAnnotation = "aws.managed.openshift.io/pending-s3-cleanup"
 )
 
 // Rate limiting constants for CloseAccount API
@@ -500,7 +506,7 @@ func ShouldSkipS3Cleanup(annotations map[string]string) bool {
 	}
 
 	// Check for "true" value (case-insensitive)
-	return skipS3 == "true" || skipS3 == "True" || skipS3 == "TRUE"
+	return strings.EqualFold(skipS3, "true")
 }
 
 // GetCloseAccountRetryAfter returns the duration to wait before retrying account closure

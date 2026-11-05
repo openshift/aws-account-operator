@@ -341,6 +341,24 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+
+		// Check if the prelinked account is quarantined due to pending S3 cleanup
+		if unclaimedAccount.Annotations[controllerutils.PendingS3CleanupAnnotation] == "true" {
+			err := fmt.Errorf("account is quarantined pending S3 cleanup")
+			controllerutils.SetAccountClaimStatus(
+				accountClaim,
+				"Account Unavailable",
+				"Linked account requires manual S3 cleanup before it can be claimed",
+				awsv1alpha1.AccountClaimFailed,
+				awsv1alpha1.ClaimStatusError,
+			)
+			statusErr := r.Client.Status().Update(ctx, accountClaim)
+			if statusErr != nil {
+				reqLogger.Error(statusErr, "Failed to update AccountClaim status")
+			}
+			return reconcile.Result{}, err
+		}
+
 		reqLogger.V(1).Info("successfully got claimed account", "accountclaim", accountClaim.Name)
 	}
 
@@ -348,7 +366,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 	// This will trigger the reconcile loop for the account which will mark the account as claimed in its status
 	if unclaimedAccount.Spec.ClaimLink == "" {
 		updateClaimedAccountFields(reqLogger, unclaimedAccount, accountClaim)
-		err := r.accountSpecUpdate(reqLogger, unclaimedAccount)
+		err := r.accountSpecUpdate(ctx, reqLogger, unclaimedAccount)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -455,7 +473,7 @@ func (r *AccountClaimReconciler) Reconcile(ctx context.Context, request ctrl.Req
 			}
 			// Remove IAM user Secret from Account Spec
 			unclaimedAccount.Spec.IAMUserSecret = ""
-			err = r.accountSpecUpdate(reqLogger, unclaimedAccount)
+			err = r.accountSpecUpdate(ctx, reqLogger, unclaimedAccount)
 			if err != nil {
 				return reconcile.Result{}, err
 			}
@@ -744,7 +762,9 @@ func (r *AccountClaimReconciler) handleAccountClaimDeletion(ctx context.Context,
 				return fmt.Errorf("failed to get claimed account: %w", err)
 			}
 			// Update account status and add "Reuse Failed" condition
-			accountErr = r.resetAccountSpecStatus(reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed")
+			// Preserve the skip-S3 decision so pending annotation persists when cleanup fails
+			skipS3 := controllerutils.ShouldSkipS3Cleanup(accountClaim.Annotations)
+			accountErr = r.resetAccountSpecStatus(ctx, reqLogger, failedReusedAccount, accountClaim, awsv1alpha1.AccountFailed, "Failed", skipS3)
 			if accountErr != nil {
 				reqLogger.Error(accountErr, "Failed updating account status for failed reuse")
 				return fmt.Errorf("failed updating account status for failed reuse: %w", err)
@@ -1008,6 +1028,11 @@ func CanAccountBeClaimedByAccountClaim(account *awsv1alpha1.Account, accountclai
 		return false
 	}
 
+	// Accounts with pending S3 cleanup can't be claimed - they require manual cleanup/migration first
+	if account.Annotations[controllerutils.PendingS3CleanupAnnotation] == "true" {
+		return false
+	}
+
 	// Accounts that aren't ready can't be claimed
 	if account.Status.State != AccountReady {
 		return false
@@ -1085,8 +1110,8 @@ func (r *AccountClaimReconciler) specUpdate(reqLogger logr.Logger, accountClaim 
 	return err
 }
 
-func (r *AccountClaimReconciler) accountSpecUpdate(reqLogger logr.Logger, account *awsv1alpha1.Account) error {
-	err := r.Update(context.TODO(), account)
+func (r *AccountClaimReconciler) accountSpecUpdate(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account) error {
+	err := r.Update(ctx, account)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("Account spec update for %s failed", account.Name))
 	}
