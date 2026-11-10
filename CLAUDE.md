@@ -177,6 +177,17 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for complete setup instructions, validati
 
 **Dev Mode Detection**: Environment variable `FORCE_DEV_MODE` controls testing behavior (skips support cases, etc.)
 
+### AccountClaim Annotations
+
+**Skip S3 Cleanup**: `aws.managed.openshift.io/skip-s3-cleanup: "true"`
+- Skips S3 bucket cleanup during AccountClaim finalization
+- Useful when S3 cleanup is too slow and blocks other operator operations
+- Other cleanup operations (EBS, Route53, VPC) still run
+- **Important**: S3 buckets must be cleaned up manually or via another process
+- See [docs/10.0-Skip-S3-Cleanup-Annotation.md](docs/10.0-Skip-S3-Cleanup-Annotation.md) for details
+
+**Performance Impact**: S3 cleanup with many objects can significantly slow the operator and block other AccountClaim operations. Skipping S3 cleanup allows faster finalization and frees up operator capacity.
+
 ## Key Configuration
 
 - **Namespace**: All resources operate in `aws-account-operator` namespace

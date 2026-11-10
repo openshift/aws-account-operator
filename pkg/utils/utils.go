@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/openshift/aws-account-operator/test/fixtures"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/openshift/aws-account-operator/test/fixtures"
 
 	"github.com/aws/smithy-go"
 	"gopkg.in/yaml.v2"
@@ -376,6 +377,21 @@ func IsCloseAccountDryRun(configMap *corev1.ConfigMap) bool {
 	return dryRun
 }
 
+// Account cleanup and lifecycle annotations
+const (
+	// SkipS3CleanupAnnotation indicates that S3 bucket cleanup should be skipped
+	// during AccountClaim finalization. Use this when S3 cleanup is too slow or
+	// should be handled externally. Value should be "true" to skip cleanup.
+	// Example: aws.managed.openshift.io/skip-s3-cleanup: "true"
+	SkipS3CleanupAnnotation = "aws.managed.openshift.io/skip-s3-cleanup"
+
+	// PendingS3CleanupAnnotation marks an Account CR that has S3 buckets requiring
+	// manual cleanup or migration. Accounts with this annotation cannot be claimed
+	// by new AccountClaims until the annotation is removed after S3 work is complete.
+	// Example: aws.managed.openshift.io/pending-s3-cleanup: "true"
+	PendingS3CleanupAnnotation = "aws.managed.openshift.io/pending-s3-cleanup"
+)
+
 // Rate limiting constants for CloseAccount API
 const (
 	// CloseAccountRateLimitAnnotation stores the timestamp until which we should
@@ -475,6 +491,22 @@ func ClearCloseAccountRateLimited(annotations map[string]string) map[string]stri
 	delete(annotations, CloseAccountBackoffAnnotation)
 
 	return annotations
+}
+
+// ShouldSkipS3Cleanup checks if the AccountClaim has the annotation to skip S3 cleanup
+// Returns true if S3 cleanup should be skipped during finalization
+func ShouldSkipS3Cleanup(annotations map[string]string) bool {
+	if annotations == nil {
+		return false
+	}
+
+	skipS3, ok := annotations[SkipS3CleanupAnnotation]
+	if !ok {
+		return false
+	}
+
+	// Check for "true" value (case-insensitive)
+	return strings.EqualFold(skipS3, "true")
 }
 
 // GetCloseAccountRetryAfter returns the duration to wait before retrying account closure
