@@ -3,7 +3,7 @@ module github.com/openshift/aws-account-operator
 go 1.25.9
 
 require (
-	github.com/avast/retry-go v2.6.1+incompatible
+	github.com/avast/retry-go v2.7.0+incompatible
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.18
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.17
@@ -20,21 +20,21 @@ require (
 	github.com/go-logr/logr v1.3.0
 	github.com/google/go-cmp v0.6.0
 	github.com/onsi/ginkgo v1.16.5
-	github.com/onsi/ginkgo/v2 v2.6.0
-	github.com/onsi/gomega v1.24.1
-	github.com/openshift/api v0.0.0-20220414050251-a83e6f8f1d50
+	github.com/onsi/ginkgo/v2 v2.34.0
+	github.com/onsi/gomega v1.44.0
+	github.com/openshift/api 950d0a970cb7
 	github.com/openshift/aws-account-operator/api v0.0.0-00010101000000-000000000000
 	github.com/openshift/operator-custom-metrics v0.5.1
 	github.com/operator-framework/operator-lib v0.11.0
-	github.com/prometheus/client_golang v1.14.0
+	github.com/prometheus/client_golang v1.24.1
 	github.com/rkt/rkt v1.30.0
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/mock v0.4.0
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.26.1
-	k8s.io/apimachinery v0.26.1
-	k8s.io/client-go v0.26.1
-	sigs.k8s.io/controller-runtime v0.14.6
+	k8s.io/api v0.35.10
+	k8s.io/apimachinery v0.35.10
+	k8s.io/client-go v0.35.10
+	sigs.k8s.io/controller-runtime v0.23.3
 )
 
 replace github.com/openshift/aws-account-operator/api => ./api
