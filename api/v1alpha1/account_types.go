@@ -145,6 +145,10 @@ type AccountStatus struct {
 	// (not per-region), such as IAM. These are applied once via the us-east-1 endpoint.
 	GlobalServiceQuotas AccountServiceQuota `json:"globalServiceQuotas,omitempty"`
 	OptInRegions        OptInRegions        `json:"optInRegions,omitempty"`
+	// LastCredentialRotationAt records when IAM credentials were last successfully rotated.
+	// Empty if credentials have never been explicitly rotated.
+	// +optional
+	LastCredentialRotationAt *metav1.Time `json:"lastCredentialRotationAt,omitempty"`
 }
 
 // AccountCondition contains details for the current condition of a AWS account
@@ -207,6 +211,10 @@ const (
 	AccountOptingInRegions AccountConditionType = "OptingInRegions"
 	// AccountOptInRegionEnabled indicates that supported Opt-In regions have been enabled
 	AccountOptInRegionEnabled AccountConditionType = "OptInRegionsEnabled"
+	// AccountCredentialRotationFailed is set when IAM credential rotation fails (e.g. 2-key limit reached)
+	AccountCredentialRotationFailed AccountConditionType = "CredentialRotationFailed"
+	// AccountCredentialRotationInProgress is set while IAM credential rotation is running
+	AccountCredentialRotationInProgress AccountConditionType = "CredentialRotationInProgress"
 )
 
 // +genclient

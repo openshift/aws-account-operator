@@ -972,10 +972,16 @@ func schema_openshift_aws_account_operator_api_v1alpha1_AccountStatus(ref common
 							},
 						},
 					},
+					"lastCredentialRotationAt": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastCredentialRotationAt records when IAM credentials were last successfully rotated. Empty if credentials have never been explicitly rotated.",
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/openshift/aws-account-operator/api/v1alpha1.AccountCondition", "github.com/openshift/aws-account-operator/api/v1alpha1.OptInRegionStatus", "github.com/openshift/aws-account-operator/api/v1alpha1.ServiceQuotaStatus"},
+			"github.com/openshift/aws-account-operator/api/v1alpha1.AccountCondition", "github.com/openshift/aws-account-operator/api/v1alpha1.OptInRegionStatus", "github.com/openshift/aws-account-operator/api/v1alpha1.ServiceQuotaStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
 	}
 }

@@ -21,6 +21,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,6 +41,11 @@ import (
 var log = logf.Log.WithName("controller_account")
 var AssumeRoleAndCreateClient = stsclient.AssumeRoleAndCreateClient
 
+// errCredentialRotationFailed is returned by rotateCredentials to signal a graceful
+// (recorded) failure — the account status has been updated and the caller should
+// requeue with a delay rather than propagating the error up the reconcile stack.
+var errCredentialRotationFailed = errors.New("credential rotation failed, will retry")
+
 const (
 	// createPendTime is the maximum time we allow an Account to sit in Creating state before we
 	// time out and set it to Failed.
@@ -51,6 +57,9 @@ const (
 	// awsAccountInitRequeueDuration is the duration we want to wait for the next
 	// reconcile loop after hitting an OptInRequired-error during region initialization.
 	awsAccountInitRequeueDuration = 1 * time.Minute
+	// credentialRotationRetryInterval is how long the controller waits before retrying
+	// a failed credential rotation triggered by Status.RotateCredentials.
+	credentialRotationRetryInterval = 5 * time.Minute
 
 	// AccountPending indicates an account is pending
 	AccountPending = "Pending"
@@ -76,6 +85,13 @@ const (
 	controllerName = "account"
 	// PauseReconciliationAnnotation is the annotation key to pause all reconciliation for an account
 	PauseReconciliationAnnotation = "aws.managed.openshift.com/pause-reconciliation"
+	// RotateCredentialsAnnotation triggers an immediate IAM credential rotation when set to "true".
+	// The annotation is removed after rotation completes or fails.
+	RotateCredentialsAnnotation = "aws.managed.openshift.com/rotate-credentials"
+	// ForceRotateCredentialsAnnotation deletes all existing IAM access keys before creating a new
+	// one. Use this to recover from the 2-key limit that blocks normal rotation. Bypasses the
+	// post-failure back-off. The annotation is removed after rotation completes or fails.
+	ForceRotateCredentialsAnnotation = "aws.managed.openshift.com/force-rotate-credentials"
 
 	// maxSTSClientErrorRetries is the maximum number of reconcile-level retries for transient
 	// STS AssumeRole failures before permanently failing the account. Each retry includes the
@@ -149,6 +165,93 @@ func (r *AccountReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	// Check if reconciliation is paused for this account (but allow deletion to proceed)
 	if currentAcctInstance.Annotations[PauseReconciliationAnnotation] == "true" && !currentAcctInstance.IsPendingDeletion() {
 		reqLogger.Info("Reconciliation paused for account - skipping all operations", "account", currentAcctInstance.Name)
+		return reconcile.Result{}, nil
+	}
+
+	// --- Credential rotation (annotation or status flag) ---
+	// Handled early, before the main phase switch, so it works on Ready accounts without
+	// re-entering the creation flow. Only applicable to non-STS, non-BYOC, Ready accounts.
+	forceRotate := currentAcctInstance.Annotations[RotateCredentialsAnnotation] == "true"
+	forceRotateAll := currentAcctInstance.Annotations[ForceRotateCredentialsAnnotation] == "true"
+	// Status-flag rotation is only valid for unclaimed accounts: reuse.go sets RotateCredentials=true
+	// atomically with Claimed=false, so the flag on a claimed account means rotation failed and the
+	// account was re-claimed before the retry succeeded — do not rotate a live-use account via flag.
+	// Also skip when IsReusedAccountMissingIAMUser: the IAM user doesn't exist yet and the IAM
+	// recreation branch (line ~486) must run first to create it before rotation can proceed.
+	// Annotation-triggered rotation is explicit operator intent and is allowed on claimed accounts
+	// (e.g. credential compromise, 2-key-limit recovery); create-before-delete keeps it safe.
+	reusedRotate := currentAcctInstance.Status.RotateCredentials &&
+		!currentAcctInstance.IsClaimed() &&
+		!currentAcctInstance.IsReusedAccountMissingIAMUser()
+	if (forceRotate || forceRotateAll || reusedRotate) &&
+		currentAcctInstance.IsReady() &&
+		!currentAcctInstance.IsSTS() &&
+		!currentAcctInstance.IsBYOC() &&
+		!currentAcctInstance.IsPendingDeletion() {
+
+		// Guard: never rotate on payer/root accounts. The ConfigMap-based check runs later in
+		// the reconcile, so use the client-based variant that works without the ConfigMap.
+		if currentAcctInstance.Spec.AwsAccountID != "" {
+			isPayer, payerErr := config.IsPayerAccount(currentAcctInstance.Spec.AwsAccountID, r.Client)
+			if payerErr != nil {
+				reqLogger.Error(payerErr, "failed to check payer account status before credential rotation")
+				return reconcile.Result{}, payerErr
+			}
+			if isPayer {
+				reqLogger.Info("skipping credential rotation for payer/root account",
+					"accountID", currentAcctInstance.Spec.AwsAccountID)
+				return reconcile.Result{}, nil
+			}
+		}
+
+		// Debounce: if the last rotation attempt failed recently, wait before retrying.
+		// Skipped when a force annotation is present — the operator explicitly wants to act now.
+		if reusedRotate && !forceRotate && !forceRotateAll {
+			failedCond := currentAcctInstance.GetCondition(awsv1alpha1.AccountCredentialRotationFailed)
+			if failedCond != nil && failedCond.Status == corev1.ConditionTrue {
+				elapsed := time.Since(failedCond.LastProbeTime.Time)
+				if elapsed < credentialRotationRetryInterval {
+					remaining := credentialRotationRetryInterval - elapsed
+					reqLogger.Info("Credential rotation failed recently, backing off",
+						"retryIn", remaining.String())
+					return reconcile.Result{RequeueAfter: remaining}, nil
+				}
+			}
+		}
+
+		awsRegion := config.GetDefaultRegion()
+		awsSetupClient, setupErr := r.awsClientBuilder.GetClient(controllerName, r.Client, awsclient.NewAwsClientInput{
+			SecretName: utils.AwsSecretName,
+			NameSpace:  awsv1alpha1.AccountCrNamespace,
+			AwsRegion:  awsRegion,
+		})
+		if setupErr != nil {
+			reqLogger.Error(setupErr, "failed building operator AWS client for credential rotation")
+			return reconcile.Result{}, setupErr
+		}
+		awsIAMClient, _, assumeErr := r.handleCreateAdminAccessRole(reqLogger, currentAcctInstance, awsSetupClient)
+		if assumeErr != nil {
+			setErr := r.setRotationFailed(ctx, reqLogger, currentAcctInstance, "AssumeRoleFailed", fmt.Sprintf("failed to assume role for credential rotation: %v", assumeErr))
+			if setErr != nil {
+				return reconcile.Result{}, setErr
+			}
+			if reusedRotate {
+				return reconcile.Result{RequeueAfter: credentialRotationRetryInterval}, nil
+			}
+			return reconcile.Result{}, nil
+		}
+		rotErr := r.rotateCredentials(ctx, reqLogger, currentAcctInstance, awsIAMClient, forceRotateAll)
+		if rotErr != nil {
+			if errors.Is(rotErr, errCredentialRotationFailed) && reusedRotate {
+				// Graceful failure recorded in status; retry after the back-off interval.
+				return reconcile.Result{RequeueAfter: credentialRotationRetryInterval}, nil
+			}
+			if errors.Is(rotErr, errCredentialRotationFailed) {
+				// Annotation-only trigger: failure recorded, annotation cleared, no retry.
+				return reconcile.Result{}, nil
+			}
+			return reconcile.Result{}, rotErr
+		}
 		return reconcile.Result{}, nil
 	}
 
@@ -1575,6 +1678,213 @@ func castAWSRegionType(regions []ec2types.Region) []awsv1alpha1.AwsRegions {
 		awsRegions = append(awsRegions, awsv1alpha1.AwsRegions{Name: *region.RegionName})
 	}
 	return awsRegions
+}
+
+// rotateCredentials performs a safe IAM access key rotation for the account's managed IAM user.
+// awsIAMClient must already be an assumed-role client for the target account — the caller is
+// responsible for role assumption via handleCreateAdminAccessRole.
+// On success: updates the K8s secret, sets LastCredentialRotationAt, clears Status.RotateCredentials.
+// On recoverable failure (IAM user not found, key limit, secret update error): records the failure
+// in status via setRotationFailed and returns errCredentialRotationFailed. The caller decides
+// whether to requeue for retry (reuse path) or stop (annotation path).
+// rotateCredentials performs a safe IAM access key rotation for the account's managed IAM user.
+// awsIAMClient must already be an assumed-role client for the target account — the caller is
+// responsible for role assumption via handleCreateAdminAccessRole.
+// When forceDeleteExisting is true all existing keys are deleted before creating the new one,
+// bypassing the 2-key count check. Use this to recover from the AccessKeyLimitReached condition.
+// On success: updates the K8s secret, sets LastCredentialRotationAt, clears Status.RotateCredentials.
+// On recoverable failure: records the failure via setRotationFailed and returns errCredentialRotationFailed.
+func (r *AccountReconciler) rotateCredentials(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, awsIAMClient awsclient.Client, forceDeleteExisting bool) error {
+	iamUserName := fmt.Sprintf("%s-%s", iamUserNameUHC, account.Labels[awsv1alpha1.IAMUserIDLabel])
+	secretName := types.NamespacedName{
+		Name:      createIAMUserSecretName(account.Name),
+		Namespace: awsv1alpha1.AccountCrNamespace,
+	}
+
+	// Mark rotation as in-progress.
+	account.Status.Conditions = utils.SetAccountCondition(
+		account.Status.Conditions,
+		awsv1alpha1.AccountCredentialRotationInProgress,
+		corev1.ConditionTrue,
+		"RotationStarted",
+		fmt.Sprintf("Rotating IAM credentials for user %s", iamUserName),
+		utils.UpdateConditionAlways,
+		account.Spec.BYOC,
+	)
+	if err := r.statusUpdate(account); err != nil {
+		return err
+	}
+
+	// Look up the IAM user.
+	iamUserExists, iamUserOutput, err := awsclient.CheckIAMUserExists(reqLogger, awsIAMClient, iamUserName)
+	if err != nil || !iamUserExists {
+		msg := fmt.Sprintf("IAM user %s not found or unreachable: %v", iamUserName, err)
+		if setErr := r.setRotationFailed(ctx, reqLogger, account, "IAMUserNotFound", msg); setErr != nil {
+			return setErr
+		}
+		return errCredentialRotationFailed
+	}
+
+	// Force path: delete all existing keys before creating to bypass the 2-key limit.
+	if forceDeleteExisting {
+		if err := deleteAllAccessKeys(awsIAMClient, iamUserOutput.User); err != nil {
+			msg := fmt.Sprintf("failed to delete existing access keys for user %s: %v", iamUserName, err)
+			if setErr := r.setRotationFailed(ctx, reqLogger, account, "DeleteKeysFailed", msg); setErr != nil {
+				return setErr
+			}
+			return errCredentialRotationFailed
+		}
+		reqLogger.Info("Force-deleted all existing IAM access keys", "user", iamUserName)
+	}
+
+	// Check key count — fail fast at the 2-key limit before creating a new key.
+	count, err := getAccessKeyCount(awsIAMClient, iamUserOutput.User)
+	if err != nil {
+		if setErr := r.setRotationFailed(ctx, reqLogger, account, "RotationFailed", err.Error()); setErr != nil {
+			return setErr
+		}
+		return errCredentialRotationFailed
+	}
+	if count >= 2 {
+		msg := fmt.Sprintf("IAM user %s already has %d access key(s); delete one before rotating", iamUserName, count)
+		if setErr := r.setRotationFailed(ctx, reqLogger, account, "AccessKeyLimitReached", msg); setErr != nil {
+			return setErr
+		}
+		return errCredentialRotationFailed
+	}
+
+	// Create the new key first so there is never a zero-credential window.
+	newKeyOutput, err := CreateUserAccessKey(awsIAMClient, iamUserOutput.User)
+	if err != nil {
+		if setErr := r.setRotationFailed(ctx, reqLogger, account, "RotationFailed", err.Error()); setErr != nil {
+			return setErr
+		}
+		return errCredentialRotationFailed
+	}
+
+	// Persist the new credentials in the K8s secret BEFORE deleting the old key.
+	// This ensures the old key remains valid if the secret update fails, keeping
+	// credentials in a consistent state rather than leaving the secret pointing at
+	// a deleted key.
+	if err := r.updateIAMUserSecret(reqLogger, secretName, newKeyOutput); err != nil {
+		// Secret update failed: the new key exists but the secret still holds the old one.
+		// Roll back by deleting the new key so the old key (still valid) remains the sole key.
+		if _, rollbackErr := deleteAccessKey(awsIAMClient, newKeyOutput.AccessKey.AccessKeyId, iamUserOutput.User.UserName); rollbackErr != nil {
+			reqLogger.Error(rollbackErr, "failed to roll back new IAM key after secret update failure — manual cleanup required",
+				"newKeyID", aws.ToString(newKeyOutput.AccessKey.AccessKeyId))
+		}
+		if setErr := r.setRotationFailed(ctx, reqLogger, account, "SecretUpdateFailed", fmt.Sprintf("Failed to update secret %s: %v", secretName.Name, err)); setErr != nil {
+			return setErr
+		}
+		return errCredentialRotationFailed
+	}
+
+	// Secret updated with K2. Now delete all pre-existing keys (K1). If this fails the
+	// account has 2 keys and the secret holds the new one — the stale key is harmless
+	// but should be cleaned up. The next rotation attempt will hit AccessKeyLimitReached
+	// and surface the condition clearly.
+	existingKeys, err := listAccessKeys(awsIAMClient, iamUserOutput.User)
+	if err != nil {
+		reqLogger.Error(err, "failed to list old IAM keys for cleanup after secret update — stale key may remain",
+			"user", iamUserName)
+		// Don't fail rotation: the secret is updated and credentials are valid.
+	} else {
+		newKeyID := aws.ToString(newKeyOutput.AccessKey.AccessKeyId)
+		for _, key := range existingKeys.AccessKeyMetadata {
+			if aws.ToString(key.AccessKeyId) == newKeyID {
+				continue
+			}
+			if _, delErr := deleteAccessKey(awsIAMClient, key.AccessKeyId, iamUserOutput.User.UserName); delErr != nil {
+				reqLogger.Error(delErr, "failed to delete old IAM key — stale key may remain",
+					"oldKeyID", aws.ToString(key.AccessKeyId), "user", iamUserName)
+			} else {
+				reqLogger.Info("Deleted old IAM access key", "keyID", aws.ToString(key.AccessKeyId), "user", iamUserName)
+			}
+		}
+	}
+
+	// Clear in-progress, clear any prior failure, record timestamp.
+	now := metav1.Now()
+	account.Status.LastCredentialRotationAt = &now
+	account.Status.RotateCredentials = false
+	account.Status.Conditions = utils.SetAccountCondition(
+		account.Status.Conditions,
+		awsv1alpha1.AccountCredentialRotationInProgress,
+		corev1.ConditionFalse,
+		"RotationComplete",
+		"IAM credential rotation completed successfully",
+		utils.UpdateConditionAlways,
+		account.Spec.BYOC,
+	)
+	account.Status.Conditions = utils.SetAccountCondition(
+		account.Status.Conditions,
+		awsv1alpha1.AccountCredentialRotationFailed,
+		corev1.ConditionFalse,
+		"RotationComplete",
+		"IAM credential rotation completed successfully",
+		utils.UpdateConditionAlways,
+		account.Spec.BYOC,
+	)
+
+	// Remove rotation annotations if present — both are one-shot triggers.
+	// Save the intended status values before Update() so they survive any client-side
+	// merge that might reset in-memory status fields after the metadata write.
+	intendedStatus := account.Status.DeepCopy()
+	if metav1.HasAnnotation(account.ObjectMeta, RotateCredentialsAnnotation) ||
+		metav1.HasAnnotation(account.ObjectMeta, ForceRotateCredentialsAnnotation) {
+		delete(account.Annotations, RotateCredentialsAnnotation)
+		delete(account.Annotations, ForceRotateCredentialsAnnotation)
+		if err := r.Update(ctx, account); err != nil {
+			return err
+		}
+		// Restore the intended status after the metadata Update in case the client
+		// returned a refreshed object that reset the in-memory status fields.
+		account.Status = *intendedStatus
+	}
+
+	if err := r.statusUpdate(account); err != nil {
+		return err
+	}
+
+	reqLogger.Info("IAM credential rotation completed successfully", "user", iamUserName)
+	return nil
+}
+
+// setRotationFailed sets AccountCredentialRotationFailed and clears the in-progress condition.
+// It intentionally does NOT clear Status.RotateCredentials — the caller decides whether to keep
+// it set for a delayed retry (reuse path) or leave it as-is (annotation path, already false).
+// The annotation is always removed: it is a one-shot trigger, not suitable for auto-retry.
+func (r *AccountReconciler) setRotationFailed(ctx context.Context, reqLogger logr.Logger, account *awsv1alpha1.Account, reason, message string) error {
+	reqLogger.Error(fmt.Errorf("%s", message), "credential rotation failed", "reason", reason)
+	account.Status.Conditions = utils.SetAccountCondition(
+		account.Status.Conditions,
+		awsv1alpha1.AccountCredentialRotationFailed,
+		corev1.ConditionTrue,
+		reason,
+		message,
+		utils.UpdateConditionAlways,
+		account.Spec.BYOC,
+	)
+	account.Status.Conditions = utils.SetAccountCondition(
+		account.Status.Conditions,
+		awsv1alpha1.AccountCredentialRotationInProgress,
+		corev1.ConditionFalse,
+		reason,
+		message,
+		utils.UpdateConditionAlways,
+		account.Spec.BYOC,
+	)
+	intendedStatus := account.Status.DeepCopy()
+	if metav1.HasAnnotation(account.ObjectMeta, RotateCredentialsAnnotation) ||
+		metav1.HasAnnotation(account.ObjectMeta, ForceRotateCredentialsAnnotation) {
+		delete(account.Annotations, RotateCredentialsAnnotation)
+		delete(account.Annotations, ForceRotateCredentialsAnnotation)
+		if err := r.Update(ctx, account); err != nil {
+			return err
+		}
+		account.Status = *intendedStatus
+	}
+	return r.statusUpdate(account)
 }
 
 func (r *AccountReconciler) handleCreateAdminAccessRole(

@@ -567,20 +567,44 @@ func detachRolePolicies(awsClient awsclient.Client, roleName string) error {
 	return nil
 }
 
-// RotateIAMAccessKeys will delete all AWS access keys assigned to the user and recreate them
+// RotateIAMAccessKeys rotates IAM access keys using a create-before-delete strategy to avoid
+// a window with zero valid credentials. It creates a new key first, then deletes the old one(s).
+// Returns an error (without creating) if the user already has 2 keys — the caller must surface
+// this via AccountCredentialRotationFailed before retrying.
 func (r *AccountReconciler) RotateIAMAccessKeys(reqLogger logr.Logger, awsClient awsclient.Client, account *awsv1alpha1.Account, iamUser *iamtypes.User) (*iam.CreateAccessKeyOutput, error) {
-
-	// Delete all current access keys
-	err := deleteAllAccessKeys(awsClient, iamUser)
+	// Check key count before attempting creation to surface a clear error when at the 2-key limit.
+	count, err := getAccessKeyCount(awsClient, iamUser)
 	if err != nil {
-		reqLogger.Error(err, fmt.Sprintf("Failed to delete IAM access keys for %s", aws.ToString(iamUser.UserName)))
+		reqLogger.Error(err, fmt.Sprintf("Failed to list IAM access keys for %s", aws.ToString(iamUser.UserName)))
 		return nil, err
 	}
-	// Create new access key
+	if count >= 2 {
+		return nil, fmt.Errorf("IAM user %s already has %d access key(s); delete one before rotating", aws.ToString(iamUser.UserName), count)
+	}
+
+	// Create new access key first so there is never a zero-credential window.
 	accessKeyOutput, err := CreateUserAccessKey(awsClient, iamUser)
 	if err != nil {
 		reqLogger.Error(err, "failed to create IAM access key", "IAMUser", iamUser.UserName)
 		return nil, err
+	}
+
+	// Delete all pre-existing keys (all keys except the one just created).
+	existingKeys, err := listAccessKeys(awsClient, iamUser)
+	if err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Failed to list IAM access keys for %s after creating new key", aws.ToString(iamUser.UserName)))
+		return nil, err
+	}
+	newKeyID := accessKeyOutput.AccessKey.AccessKeyId
+	for _, key := range existingKeys.AccessKeyMetadata {
+		if aws.ToString(key.AccessKeyId) == aws.ToString(newKeyID) {
+			continue
+		}
+		if _, err := deleteAccessKey(awsClient, key.AccessKeyId, iamUser.UserName); err != nil {
+			reqLogger.Error(err, fmt.Sprintf("Failed to delete old IAM access key %s for user %s", aws.ToString(key.AccessKeyId), aws.ToString(iamUser.UserName)))
+			return nil, err
+		}
+		reqLogger.Info(fmt.Sprintf("Deleted old IAM access key %s for user %s", aws.ToString(key.AccessKeyId), aws.ToString(iamUser.UserName)))
 	}
 
 	return accessKeyOutput, nil
@@ -606,6 +630,34 @@ func (r *AccountReconciler) createIAMUserSecret(reqLogger logr.Logger, account *
 
 	// Return nil or err if we're unable to create the k8s secret
 	return r.CreateSecret(reqLogger, account, iamUserSecret)
+}
+
+// updateIAMUserSecret updates an existing K8s secret with new IAM access key credentials.
+func (r *AccountReconciler) updateIAMUserSecret(reqLogger logr.Logger, secretName types.NamespacedName, createAccessKeyOutput *iam.CreateAccessKeyOutput) error {
+	secret := &corev1.Secret{}
+	if err := r.Get(context.TODO(), secretName, secret); err != nil {
+		return err
+	}
+	secret.Data = map[string][]byte{
+		"aws_user_name":         []byte(*createAccessKeyOutput.AccessKey.UserName),
+		"aws_access_key_id":     []byte(*createAccessKeyOutput.AccessKey.AccessKeyId),
+		"aws_secret_access_key": []byte(*createAccessKeyOutput.AccessKey.SecretAccessKey),
+	}
+	if err := r.Update(context.TODO(), secret); err != nil {
+		reqLogger.Error(err, fmt.Sprintf("Failed to update secret %s", secretName.Name))
+		return err
+	}
+	reqLogger.Info(fmt.Sprintf("Updated secret %s with new IAM access key", secretName.Name))
+	return nil
+}
+
+// getAccessKeyCount returns the number of access keys currently associated with an IAM user.
+func getAccessKeyCount(client awsclient.Client, iamUser *iamtypes.User) (int, error) {
+	output, err := listAccessKeys(client, iamUser)
+	if err != nil {
+		return 0, err
+	}
+	return len(output.AccessKeyMetadata), nil
 }
 
 // DoesSecretExist checks to see if a given secret exists

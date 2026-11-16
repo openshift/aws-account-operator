@@ -167,6 +167,12 @@ spec:
                   GlobalServiceQuotas holds quota increase requests for AWS services that are account-global
                   (not per-region), such as IAM. These are applied once via the us-east-1 endpoint.
                 type: object
+              lastCredentialRotationAt:
+                description: |-
+                  LastCredentialRotationAt records when IAM credentials were last successfully rotated.
+                  Empty if credentials have never been explicitly rotated.
+                format: date-time
+                type: string
               optInRegions:
                 additionalProperties:
                   properties:
