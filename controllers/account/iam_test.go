@@ -1,6 +1,7 @@
 package account
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
+	corev1 "k8s.io/api/core/v1"
 	"github.com/aws/smithy-go"
 	"github.com/go-logr/logr"
 	apis "github.com/openshift/aws-account-operator/api"
@@ -634,7 +636,8 @@ func TestRotateIAMAccessKeys(t *testing.T) {
 	account := newTestAccountBuilder().acct
 	account.Name = expectedUsername
 
-	expectedAccessKeyId := "expectedAccessKeyID"
+	oldKeyID := "oldAccessKeyID"
+	newKeyID := "MyAccessKeyID"
 
 	r := AccountReconciler{
 		Client: mocks.fakeKubeClient,
@@ -645,50 +648,87 @@ func TestRotateIAMAccessKeys(t *testing.T) {
 	}
 	nullLogger := testutils.NewTestLogger().Logger()
 
+	gomock.InOrder(
+		// 1. Count check: one existing key → under limit, rotation proceeds.
+		mockAWSClient.EXPECT().ListAccessKeys(
+			gomock.Any(),
+			&iam.ListAccessKeysInput{UserName: &expectedUsername},
+		).Return(
+			&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{{AccessKeyId: &oldKeyID}},
+			},
+			nil,
+		),
+		// 2. Create new key first (create-before-delete).
+		mockAWSClient.EXPECT().CreateAccessKey(
+			gomock.Any(),
+			&iam.CreateAccessKeyInput{UserName: iamUser.UserName},
+		).Return(
+			&iam.CreateAccessKeyOutput{
+				AccessKey: &iamtypes.AccessKey{
+					AccessKeyId: aws.String(newKeyID),
+					UserName:    &expectedUsername,
+				},
+			},
+			nil,
+		),
+		// 3. List again to find old keys to delete.
+		mockAWSClient.EXPECT().ListAccessKeys(
+			gomock.Any(),
+			&iam.ListAccessKeysInput{UserName: &expectedUsername},
+		).Return(
+			&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{
+					{AccessKeyId: &oldKeyID},
+					{AccessKeyId: aws.String(newKeyID)},
+				},
+			},
+			nil,
+		),
+		// 4. Delete only the old key; new key is preserved.
+		mockAWSClient.EXPECT().DeleteAccessKey(
+			gomock.Any(),
+			&iam.DeleteAccessKeyInput{
+				AccessKeyId: &oldKeyID,
+				UserName:    &expectedUsername,
+			},
+		).Return(&iam.DeleteAccessKeyOutput{}, nil),
+	)
+
+	output, err := r.RotateIAMAccessKeys(nullLogger, mockAWSClient, &account, &iamUser)
+	assert.Equal(t, aws.ToString(output.AccessKey.AccessKeyId), newKeyID)
+	assert.Nil(t, err)
+}
+
+func TestRotateIAMAccessKeys_AtKeyLimit(t *testing.T) {
+	mocks := setupDefaultMocks(t, []runtime.Object{})
+	mockAWSClient := mock.NewMockClient(mocks.mockCtrl)
+
+	expectedUsername := "ExpectedName"
+	account := newTestAccountBuilder().acct
+	key1, key2 := "key1", "key2"
+
+	r := AccountReconciler{Client: mocks.fakeKubeClient, Scheme: scheme.Scheme}
+	iamUser := iamtypes.User{UserName: &expectedUsername}
+	nullLogger := testutils.NewTestLogger().Logger()
+
+	// User already has 2 keys — rotation must fail without creating a new one.
 	mockAWSClient.EXPECT().ListAccessKeys(
 		gomock.Any(),
-		&iam.ListAccessKeysInput{
-			UserName: &expectedUsername,
-		},
+		&iam.ListAccessKeysInput{UserName: &expectedUsername},
 	).Return(
 		&iam.ListAccessKeysOutput{
 			AccessKeyMetadata: []iamtypes.AccessKeyMetadata{
-				{
-					AccessKeyId: &expectedAccessKeyId,
-				},
+				{AccessKeyId: &key1},
+				{AccessKeyId: &key2},
 			},
 		},
 		nil,
 	)
-	mockAWSClient.EXPECT().DeleteAccessKey(
-		gomock.Any(),
-		&iam.DeleteAccessKeyInput{
-			AccessKeyId: &expectedAccessKeyId,
-			UserName:    &expectedUsername,
-		},
-	).Return(
-		&iam.DeleteAccessKeyOutput{},
-		nil,
-	)
 
-	expectedAccessKeyOutput := &iam.CreateAccessKeyOutput{
-		AccessKey: &iamtypes.AccessKey{
-			AccessKeyId: aws.String("MyAccessKeyID"),
-		},
-	}
-	mockAWSClient.EXPECT().CreateAccessKey(
-		gomock.Any(),
-		&iam.CreateAccessKeyInput{
-			UserName: iamUser.UserName,
-		},
-	).Return(
-		expectedAccessKeyOutput,
-		nil,
-	)
-
-	output, err := r.RotateIAMAccessKeys(nullLogger, mockAWSClient, &account, &iamUser)
-	assert.Equal(t, output, expectedAccessKeyOutput)
-	assert.Nil(t, err)
+	_, err := r.RotateIAMAccessKeys(nullLogger, mockAWSClient, &account, &iamUser)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already has 2")
 }
 
 func TestDetachUserPolicies(t *testing.T) {
@@ -871,4 +911,81 @@ func TestCreateIAMUserSecretName(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUpdateIAMUserSecret(t *testing.T) {
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		t.Fatalf("failed adding to scheme: %v", err)
+	}
+
+	existingSecret := CreateSecret(
+		"testaccount-secret",
+		TestAccountNamespace,
+		map[string][]byte{
+			"aws_user_name":         []byte("old-user"),
+			"aws_access_key_id":     []byte("OLD_KEY_ID"),
+			"aws_secret_access_key": []byte("OLD_SECRET"),
+		},
+	)
+	mocks := setupDefaultMocks(t, []runtime.Object{existingSecret})
+	defer mocks.mockCtrl.Finish()
+
+	r := AccountReconciler{
+		Client: mocks.fakeKubeClient,
+		Scheme: scheme.Scheme,
+	}
+	nullLogger := testutils.NewTestLogger().Logger()
+	secretName := types.NamespacedName{Name: "testaccount-secret", Namespace: TestAccountNamespace}
+
+	newKeyOutput := &iam.CreateAccessKeyOutput{
+		AccessKey: &iamtypes.AccessKey{
+			UserName:        aws.String("new-user"),
+			AccessKeyId:     aws.String("NEW_KEY_ID"),
+			SecretAccessKey: aws.String("NEW_SECRET"),
+		},
+	}
+
+	err = r.updateIAMUserSecret(nullLogger, secretName, newKeyOutput)
+	assert.Nil(t, err)
+
+	// Verify the secret exists and contains the new credentials.
+	exists, err := r.DoesSecretExist(secretName)
+	assert.Nil(t, err)
+	assert.True(t, exists)
+
+	updatedSecret := &corev1.Secret{}
+	getErr := r.Get(context.TODO(), secretName, updatedSecret)
+	assert.Nil(t, getErr)
+	assert.Equal(t, "new-user", string(updatedSecret.Data["aws_user_name"]))
+	assert.Equal(t, "NEW_KEY_ID", string(updatedSecret.Data["aws_access_key_id"]))
+	assert.Equal(t, "NEW_SECRET", string(updatedSecret.Data["aws_secret_access_key"]))
+}
+
+func TestUpdateIAMUserSecret_SecretNotFound(t *testing.T) {
+	err := apis.AddToScheme(scheme.Scheme)
+	if err != nil {
+		t.Fatalf("failed adding to scheme: %v", err)
+	}
+
+	mocks := setupDefaultMocks(t, []runtime.Object{})
+	defer mocks.mockCtrl.Finish()
+
+	r := AccountReconciler{
+		Client: mocks.fakeKubeClient,
+		Scheme: scheme.Scheme,
+	}
+	nullLogger := testutils.NewTestLogger().Logger()
+	secretName := types.NamespacedName{Name: "nonexistent-secret", Namespace: TestAccountNamespace}
+
+	newKeyOutput := &iam.CreateAccessKeyOutput{
+		AccessKey: &iamtypes.AccessKey{
+			UserName:        aws.String("user"),
+			AccessKeyId:     aws.String("KEY_ID"),
+			SecretAccessKey: aws.String("SECRET"),
+		},
+	}
+
+	err = r.updateIAMUserSecret(nullLogger, secretName, newKeyOutput)
+	assert.Error(t, err)
 }

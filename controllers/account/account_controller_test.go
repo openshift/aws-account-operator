@@ -2,6 +2,7 @@ package account
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -1646,22 +1647,31 @@ var _ = Describe("Account Controller", func() {
 				PolicyArn: &adminAccessArn,
 			}).Return(nil, nil)
 
+			// Count check: no existing keys → rotation proceeds.
 			mockAWSClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{
 				UserName: &userName,
 			}).Return(&iam.ListAccessKeysOutput{
 				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{},
 			}, nil)
 
+			newAccessKeyID := "ACCESS_KEY"
 			mockAWSClient.EXPECT().CreateAccessKey(gomock.Any(), &iam.CreateAccessKeyInput{
 				UserName: &userName,
 			}).Return(&iam.CreateAccessKeyOutput{
 				AccessKey: &iamtypes.AccessKey{
-					AccessKeyId:     aws.String("ACCESS_KEY"),
+					AccessKeyId:     &newAccessKeyID,
 					CreateDate:      &roleCreate,
 					SecretAccessKey: aws.String("SECRET_KEY"),
 					Status:          iamtypes.StatusTypeActive,
 					UserName:        &userName,
 				},
+			}, nil)
+
+			// Post-create list: only the new key exists, nothing to delete.
+			mockAWSClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{
+				UserName: &userName,
+			}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{{AccessKeyId: &newAccessKeyID}},
 			}, nil)
 
 			_, err := r.Reconcile(context.TODO(), req)
@@ -2008,22 +2018,31 @@ var _ = Describe("Account Controller", func() {
 				PolicyArn: &adminAccessArn,
 			}).Return(nil, nil)
 
+			// Count check: no existing keys → rotation proceeds.
 			mockAWSClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{
 				UserName: &userName,
 			}).Return(&iam.ListAccessKeysOutput{
 				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{},
 			}, nil)
 
+			optInNewKeyID := "ACCESS_KEY"
 			mockAWSClient.EXPECT().CreateAccessKey(gomock.Any(), &iam.CreateAccessKeyInput{
 				UserName: &userName,
 			}).Return(&iam.CreateAccessKeyOutput{
 				AccessKey: &iamtypes.AccessKey{
-					AccessKeyId:     aws.String("ACCESS_KEY"),
+					AccessKeyId:     &optInNewKeyID,
 					CreateDate:      &roleCreate,
 					SecretAccessKey: aws.String("SECRET_KEY"),
 					Status:          iamtypes.StatusTypeActive,
 					UserName:        &userName,
 				},
+			}, nil)
+
+			// Post-create list: only the new key exists, nothing to delete.
+			mockAWSClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{
+				UserName: &userName,
+			}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{{AccessKeyId: &optInNewKeyID}},
 			}, nil)
 
 			mockAWSClient.EXPECT().DescribeRegions(gomock.Any(), &ec2.DescribeRegionsInput{
@@ -3355,6 +3374,241 @@ var _ = Describe("Account Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(ac.Status.State).To(BeEmpty(),
 				"account should NOT be failed — just waiting for capacity")
+		})
+	})
+
+	Context("Testing credential rotation", func() {
+		// These tests call rotateCredentials directly with a mock IAM client, bypassing
+		// handleCreateAdminAccessRole. The trigger-level dispatch (annotation / status flag)
+		// is verified by calling Reconcile on a Ready account with the annotation set and
+		// stubbing out AssumeRoleAndCreateClient so the role-assumption chain is skipped.
+
+		var (
+			testAccount    *awsv1alpha1.Account
+			mockIAMClient  *mock.MockClient
+			existingSecret *v1.Secret
+		)
+
+		BeforeEach(func() {
+			testAccount = &newTestAccountBuilder().WithSpec(awsv1alpha1.AccountSpec{
+				AwsAccountID:  "123456789012",
+				IAMUserSecret: "",
+				BYOC:          false,
+				ManualSTSMode: false,
+			}).WithStatus(awsv1alpha1.AccountStatus{
+				Claimed: false,
+				Reused:  false,
+			}).WithState(AccountReady).acct
+			testAccount.Labels[awsv1alpha1.IAMUserIDLabel] = "abcdef"
+
+			existingSecret = CreateSecret(
+				testAccount.Name+"-secret",
+				awsv1alpha1.AccountCrNamespace,
+				map[string][]byte{
+					"aws_user_name":         []byte("osdManagedAdmin-abcdef"),
+					"aws_access_key_id":     []byte("OLD_KEY"),
+					"aws_secret_access_key": []byte("OLD_SECRET"),
+				},
+			)
+
+			// Use a fresh mock controller for the IAM client so expectations
+			// are independent of the outer mock used for AssumeRole chain.
+			iamCtrl := gomock.NewController(GinkgoT())
+			mockIAMClient = mock.NewMockClient(iamCtrl)
+		})
+
+		setupIAMMocks := func(newKeyID string) {
+			userName := "osdManagedAdmin-abcdef"
+			oldKeyID := "OLD_KEY"
+			mockIAMClient.EXPECT().GetUser(gomock.Any(), &iam.GetUserInput{UserName: &userName}).Return(&iam.GetUserOutput{
+				User: &iamtypes.User{UserName: &userName},
+			}, nil)
+			mockIAMClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &userName}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{{AccessKeyId: &oldKeyID}},
+			}, nil)
+			mockIAMClient.EXPECT().CreateAccessKey(gomock.Any(), &iam.CreateAccessKeyInput{UserName: &userName}).Return(&iam.CreateAccessKeyOutput{
+				AccessKey: &iamtypes.AccessKey{AccessKeyId: &newKeyID, SecretAccessKey: aws.String("NEW_SECRET"), UserName: &userName},
+			}, nil)
+			mockIAMClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &userName}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{{AccessKeyId: &oldKeyID}, {AccessKeyId: &newKeyID}},
+			}, nil)
+			mockIAMClient.EXPECT().DeleteAccessKey(gomock.Any(), &iam.DeleteAccessKeyInput{AccessKeyId: &oldKeyID, UserName: &userName}).Return(&iam.DeleteAccessKeyOutput{}, nil)
+		}
+
+		It("Should rotate credentials and set LastCredentialRotationAt on success", func() {
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(testAccount, configMap, existingSecret).Build()
+			setupIAMMocks("NEW_KEY_ID")
+
+			err := r.rotateCredentials(context.TODO(), nullLogger, testAccount, mockIAMClient, false)
+			Expect(err).ToNot(HaveOccurred(), "rotation should succeed for an account with one key")
+
+			ac := &awsv1alpha1.Account{}
+			Expect(r.Get(context.TODO(), types.NamespacedName{Name: testAccount.Name, Namespace: testAccount.Namespace}, ac)).To(Succeed(), "account should be retrievable after rotation")
+			Expect(ac.Status.LastCredentialRotationAt).ToNot(BeNil(), "LastCredentialRotationAt should be set on success")
+			Expect(ac.Status.RotateCredentials).To(BeFalse(), "RotateCredentials flag should be cleared on success")
+			Expect(ac.GetCondition(awsv1alpha1.AccountCredentialRotationInProgress)).ToNot(BeNil(), "CredentialRotationInProgress condition should be present")
+		})
+
+		It("Should clear annotation and RotateCredentials flag after successful rotation", func() {
+			testAccount.Annotations = map[string]string{RotateCredentialsAnnotation: "true"}
+			testAccount.Status.RotateCredentials = true
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(testAccount, configMap, existingSecret).Build()
+			setupIAMMocks("NEW_KEY_ID_2")
+
+			err := r.rotateCredentials(context.TODO(), nullLogger, testAccount, mockIAMClient, false)
+			Expect(err).ToNot(HaveOccurred(), "rotation should succeed when annotation and status flag are both set")
+
+			ac := &awsv1alpha1.Account{}
+			Expect(r.Get(context.TODO(), types.NamespacedName{Name: testAccount.Name, Namespace: testAccount.Namespace}, ac)).To(Succeed(), "account should be retrievable after rotation")
+			Expect(ac.Annotations).ToNot(HaveKey(RotateCredentialsAnnotation), "rotation annotation should be removed after success")
+			Expect(ac.Status.RotateCredentials).To(BeFalse(), "RotateCredentials flag should be cleared after success")
+		})
+
+		It("Should set CredentialRotationFailed condition when IAM user has 2 keys", func() {
+			testAccount.Annotations = map[string]string{RotateCredentialsAnnotation: "true"}
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(testAccount, configMap, existingSecret).Build()
+
+			userName := "osdManagedAdmin-abcdef"
+			key1, key2 := "KEY1", "KEY2"
+			mockIAMClient.EXPECT().GetUser(gomock.Any(), &iam.GetUserInput{UserName: &userName}).Return(&iam.GetUserOutput{
+				User: &iamtypes.User{UserName: &userName},
+			}, nil)
+			mockIAMClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &userName}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{{AccessKeyId: &key1}, {AccessKeyId: &key2}},
+			}, nil)
+
+			err := r.rotateCredentials(context.TODO(), nullLogger, testAccount, mockIAMClient, false)
+			Expect(errors.Is(err, errCredentialRotationFailed)).To(BeTrue(), "should return errCredentialRotationFailed when at the 2-key limit")
+
+			ac := &awsv1alpha1.Account{}
+			Expect(r.Get(context.TODO(), types.NamespacedName{Name: testAccount.Name, Namespace: testAccount.Namespace}, ac)).To(Succeed(), "account should be retrievable after failure")
+			// Failure outcome: CredentialRotationFailed condition set, account stays Ready.
+			failedCond := ac.GetCondition(awsv1alpha1.AccountCredentialRotationFailed)
+			Expect(failedCond).ToNot(BeNil(), "CredentialRotationFailed condition should be set")
+			Expect(string(failedCond.Status)).To(Equal("True"), "CredentialRotationFailed condition should be True")
+			Expect(failedCond.Reason).To(Equal("AccessKeyLimitReached"), "reason should identify the 2-key limit")
+			Expect(ac.Status.State).To(Equal(AccountReady), "account should remain Ready — rotation failure is non-fatal")
+		})
+
+		It("Should delete all keys first and succeed when forceDeleteExisting is true", func() {
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(testAccount, configMap, existingSecret).Build()
+
+			userName := "osdManagedAdmin-abcdef"
+			key1, key2, newKeyID := "KEY1", "KEY2", "NEW_KEY_ID"
+
+			// Force path: list to find all keys to delete, then delete each.
+			mockIAMClient.EXPECT().GetUser(gomock.Any(), &iam.GetUserInput{UserName: &userName}).Return(&iam.GetUserOutput{
+				User: &iamtypes.User{UserName: &userName},
+			}, nil)
+			// deleteAllAccessKeys: list → delete key1 → delete key2
+			mockIAMClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &userName}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{{AccessKeyId: &key1}, {AccessKeyId: &key2}},
+			}, nil)
+			mockIAMClient.EXPECT().DeleteAccessKey(gomock.Any(), &iam.DeleteAccessKeyInput{AccessKeyId: &key1, UserName: &userName}).Return(&iam.DeleteAccessKeyOutput{}, nil)
+			mockIAMClient.EXPECT().DeleteAccessKey(gomock.Any(), &iam.DeleteAccessKeyInput{AccessKeyId: &key2, UserName: &userName}).Return(&iam.DeleteAccessKeyOutput{}, nil)
+			// RotateIAMAccessKeys: count check (0) → create → list (only new key) → no old keys to delete.
+			mockIAMClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &userName}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{},
+			}, nil)
+			mockIAMClient.EXPECT().CreateAccessKey(gomock.Any(), &iam.CreateAccessKeyInput{UserName: &userName}).Return(&iam.CreateAccessKeyOutput{
+				AccessKey: &iamtypes.AccessKey{AccessKeyId: &newKeyID, SecretAccessKey: aws.String("NEW_SECRET"), UserName: &userName},
+			}, nil)
+			mockIAMClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &userName}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{{AccessKeyId: &newKeyID}},
+			}, nil)
+
+			err := r.rotateCredentials(context.TODO(), nullLogger, testAccount, mockIAMClient, true)
+			Expect(err).ToNot(HaveOccurred(), "force rotation should succeed after deleting all existing keys")
+
+			ac := &awsv1alpha1.Account{}
+			Expect(r.Get(context.TODO(), types.NamespacedName{Name: testAccount.Name, Namespace: testAccount.Namespace}, ac)).To(Succeed(), "account should be retrievable after force rotation")
+			Expect(ac.Status.LastCredentialRotationAt).ToNot(BeNil(), "LastCredentialRotationAt should be set after force rotation success")
+			Expect(ac.Status.RotateCredentials).To(BeFalse(), "RotateCredentials flag should be cleared after force rotation")
+		})
+
+		It("Should bypass debounce when ForceRotateCredentialsAnnotation is set during back-off window", func() {
+			// Even with a recent failure (within the 5-minute back-off), force must proceed.
+			recentFailure := metav1.NewTime(time.Now().Add(-30 * time.Second))
+			testAccount.Status.RotateCredentials = true
+			testAccount.Status.Conditions = append(testAccount.Status.Conditions, awsv1alpha1.AccountCondition{
+				Type:          awsv1alpha1.AccountCredentialRotationFailed,
+				Status:        "True",
+				Reason:        "AccessKeyLimitReached",
+				LastProbeTime: recentFailure,
+			})
+			testAccount.Annotations = map[string]string{ForceRotateCredentialsAnnotation: "true"}
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(testAccount, configMap, existingSecret).Build()
+
+			userName := "osdManagedAdmin-abcdef"
+			key1, newKeyID := "KEY1", "FORCE_NEW_KEY"
+
+			mockIAMClient.EXPECT().GetUser(gomock.Any(), &iam.GetUserInput{UserName: &userName}).Return(&iam.GetUserOutput{
+				User: &iamtypes.User{UserName: &userName},
+			}, nil)
+			mockIAMClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &userName}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{{AccessKeyId: &key1}},
+			}, nil)
+			mockIAMClient.EXPECT().DeleteAccessKey(gomock.Any(), &iam.DeleteAccessKeyInput{AccessKeyId: &key1, UserName: &userName}).Return(&iam.DeleteAccessKeyOutput{}, nil)
+			mockIAMClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &userName}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{},
+			}, nil)
+			mockIAMClient.EXPECT().CreateAccessKey(gomock.Any(), &iam.CreateAccessKeyInput{UserName: &userName}).Return(&iam.CreateAccessKeyOutput{
+				AccessKey: &iamtypes.AccessKey{AccessKeyId: &newKeyID, SecretAccessKey: aws.String("NEW_SECRET"), UserName: &userName},
+			}, nil)
+			mockIAMClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &userName}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{{AccessKeyId: &newKeyID}},
+			}, nil)
+
+			err := r.rotateCredentials(context.TODO(), nullLogger, testAccount, mockIAMClient, true)
+			Expect(err).ToNot(HaveOccurred(), "force rotation should succeed even within the back-off window")
+
+			ac := &awsv1alpha1.Account{}
+			Expect(r.Get(context.TODO(), types.NamespacedName{Name: testAccount.Name, Namespace: testAccount.Namespace}, ac)).To(Succeed(), "account should be retrievable after force rotation")
+			Expect(ac.Status.LastCredentialRotationAt).ToNot(BeNil(), "LastCredentialRotationAt should be set on successful force rotation")
+			Expect(ac.Annotations).ToNot(HaveKey(ForceRotateCredentialsAnnotation), "force annotation should be removed after success")
+		})
+
+		It("Should clear CredentialRotationFailed condition on successful force rotation", func() {
+			// A prior failure left the condition set; a successful force rotation must clear it.
+			recentFailure := metav1.NewTime(time.Now().Add(-30 * time.Second))
+			testAccount.Status.RotateCredentials = true
+			testAccount.Status.Conditions = append(testAccount.Status.Conditions, awsv1alpha1.AccountCondition{
+				Type:          awsv1alpha1.AccountCredentialRotationFailed,
+				Status:        "True",
+				Reason:        "AccessKeyLimitReached",
+				LastProbeTime: recentFailure,
+			})
+			testAccount.Annotations = map[string]string{ForceRotateCredentialsAnnotation: "true"}
+			r.Client = fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(testAccount, configMap, existingSecret).Build()
+
+			userName := "osdManagedAdmin-abcdef"
+			key1, newKeyID := "KEY1", "FORCE_NEW_KEY_2"
+
+			mockIAMClient.EXPECT().GetUser(gomock.Any(), &iam.GetUserInput{UserName: &userName}).Return(&iam.GetUserOutput{
+				User: &iamtypes.User{UserName: &userName},
+			}, nil)
+			mockIAMClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &userName}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{{AccessKeyId: &key1}},
+			}, nil)
+			mockIAMClient.EXPECT().DeleteAccessKey(gomock.Any(), &iam.DeleteAccessKeyInput{AccessKeyId: &key1, UserName: &userName}).Return(&iam.DeleteAccessKeyOutput{}, nil)
+			mockIAMClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &userName}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{},
+			}, nil)
+			mockIAMClient.EXPECT().CreateAccessKey(gomock.Any(), &iam.CreateAccessKeyInput{UserName: &userName}).Return(&iam.CreateAccessKeyOutput{
+				AccessKey: &iamtypes.AccessKey{AccessKeyId: &newKeyID, SecretAccessKey: aws.String("NEW_SECRET"), UserName: &userName},
+			}, nil)
+			mockIAMClient.EXPECT().ListAccessKeys(gomock.Any(), &iam.ListAccessKeysInput{UserName: &userName}).Return(&iam.ListAccessKeysOutput{
+				AccessKeyMetadata: []iamtypes.AccessKeyMetadata{{AccessKeyId: &newKeyID}},
+			}, nil)
+
+			err := r.rotateCredentials(context.TODO(), nullLogger, testAccount, mockIAMClient, true)
+			Expect(err).ToNot(HaveOccurred(), "force rotation should succeed")
+
+			ac := &awsv1alpha1.Account{}
+			Expect(r.Get(context.TODO(), types.NamespacedName{Name: testAccount.Name, Namespace: testAccount.Namespace}, ac)).To(Succeed(), "account should be retrievable after force rotation")
+			failedCond := ac.GetCondition(awsv1alpha1.AccountCredentialRotationFailed)
+			Expect(failedCond == nil || string(failedCond.Status) == "False").To(BeTrue(),
+				"CredentialRotationFailed condition should be cleared (False or absent) after successful rotation")
 		})
 	})
 })
