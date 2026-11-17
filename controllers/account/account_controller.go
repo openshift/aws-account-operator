@@ -124,10 +124,10 @@ func (r *AccountReconciler) clearSTSRetry(name string) {
 	delete(r.stsRetryCount, name)
 }
 
-//+kubebuilder:rbac:groups=aws.managed.openshift.io,resources=accounts,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=aws.managed.openshift.io,resources=accounts/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=aws.managed.openshift.io,resources=accounts/finalizers,verbs=update
-
+// +kubebuilder:rbac:groups=aws.managed.openshift.io,resources=accounts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=aws.managed.openshift.io,resources=accounts/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=aws.managed.openshift.io,resources=accounts/finalizers,verbs=update
+// test
 // Reconcile reads that state of the cluster for a Account object and makes changes based on the state read
 // and what is in the Account.Spec
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
