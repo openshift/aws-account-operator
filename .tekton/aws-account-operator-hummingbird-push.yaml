@@ -28,7 +28,7 @@ spec:
   - name: path-context
     value: .
   taskRunTemplate:
-    serviceAccountName: build-pipeline-aws-account-operator
+    serviceAccountName: build-pipeline-aws-account-operator-hummingbird
   workspaces:
   - name: git-auth
     secret:
